@@ -19,6 +19,7 @@ Decided by the Human on 2026-11-18.
 | Agents | Each role can use a different agent and model, from different vendors. |
 | Version 1 scope | What the TMB plugin does today, without the features the plugin has dropped and without anything that exists only for Claude Code. |
 | Dashboard | Version 1 serves it as a local web page. Version 2 is a desktop program with the dashboard built in. |
+| License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
 | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
 
 ## First step
@@ -33,7 +34,6 @@ Not decided. Each becomes a doc in this folder once it is.
 - Where the gate lives, and how the host agent is held to the workflow.
 - How the host agent, the command line and the dashboard reach the engine.
 - Where a project's records are stored.
-- The license.
 
 ## Docs in this folder
 

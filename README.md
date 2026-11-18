@@ -32,4 +32,6 @@ The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the fi
 
 ## License
 
-Not chosen yet.
+[Functional Source License 1.1, Apache 2.0 future license](LICENSE.md) (FSL-1.1-ALv2). You may use, change and share tmb for any purpose, including inside a company, except to offer it to others as a competing commercial product or service. Each release becomes Apache 2.0 two years after it is published.
+
+tmb is source-available. It is not open source by the Open Source Initiative's definition until that two-year date.
