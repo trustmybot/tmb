@@ -17,6 +17,7 @@ Decided by the Human on 2026-11-18.
 | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
 | Roles | The host agent is the planner. The engine runs the workers and the reviewer. |
 | Agents | Each role can use a different agent and model, from different vendors. |
+| Agents left out of version 1 | DeepSeek Harness, as host agent or as worker. |
 | Version 1 scope | What the TMB plugin does today, without the features the plugin has dropped and without anything that exists only for Claude Code. |
 | Dashboard | Version 1 serves it as a local web page. Version 2 is a desktop program with the dashboard built in. |
 | License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
