@@ -32,7 +32,30 @@ In the project's root folder:
 tmb setup
 ```
 
-It asks no questions. For Claude Code it adds one SessionStart hook to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file. The hook runs `tmb hook session-start`, which starts each session with the planner role. In a git work tree that does not ignore that file yet, setup adds it to `.gitignore`. Running setup again changes nothing.
+It asks no questions. Setup:
+
+- Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
+- Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
+- Adds a SessionStart hook to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file. The hook runs `tmb hook session-start`, which starts each session with the planner role and the open work from the record.
+- In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if setup created that file.
+
+Running setup again changes nothing.
+
+## The record from the command line
+
+The planner records work through tmb's tools. You can read and change the same record yourself:
+
+| Command | Does |
+|---|---|
+| `tmb issue create <title> [--body <text>] [--milestone <name>]` | Record a new issue |
+| `tmb issue list [--state open\|closed]` | List issues |
+| `tmb issue show <id>` | Show an issue with its notes and decisions |
+| `tmb issue close <id>`, `tmb issue reopen <id>` | Close or reopen an issue |
+| `tmb note <issue-id> <text> [--decision]` | Add a note, or a decision with `--decision` |
+| `tmb search <query>` | Search issues, notes and decisions |
+| `tmb history <id>` | Show every recorded change to an issue or note |
+
+Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
 
 ## Remove
 
@@ -40,4 +63,4 @@ It asks no questions. For Claude Code it adds one SessionStart hook to `.claude/
 tmb remove
 ```
 
-It removes only the hook setup added and leaves the rest of the settings file as it was. It does not remove the `.gitignore` line.
+It removes only what setup added: the hook, the tool server's entry and its enabled line. It deletes `.mcp.json` only if setup created that file and nothing else is left in it. It keeps the record in `.tmb/`, because that is your data; delete the folder yourself to drop it. It does not remove the `.gitignore` lines.
