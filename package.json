@@ -14,6 +14,7 @@
     "test:agent": "bun tests/agent-run/run.ts",
     "test:chain": "bun tests/agent-chain/run.ts",
     "test:chain:feature": "bun tests/agent-chain/feature.ts",
+    "test:chain:second-host": "bun tests/agent-chain/second-host.ts",
     "test:worker": "bun tests/agent-run/worker.ts",
     "test:scope": "bun tests/agent-run/scope.ts",
     "test:reviewer": "bun tests/agent-run/reviewer.ts"
