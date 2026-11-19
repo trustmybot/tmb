@@ -1,6 +1,6 @@
 // Install update test against the real release repo: an older tmb on the channel is
 // installed into a throwaway HOME and must update itself to the channel's newest release,
-// between sessions and never while one runs. Never touches the real HOME.
+// between sessions and never with a task open. Never touches the real HOME.
 //   bun tests/install/update.ts <dev|rc|stable> [expected-version]
 // With an expected version, the channel's newest release must be it. A channel with no
 // release yet is skipped with a notice.

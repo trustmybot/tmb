@@ -28,7 +28,8 @@ export class MigrationError extends Error {
   override name = "MigrationError";
 }
 
-export type MigrationCounts = { issues: number; discussions: number; tasks: number; reviews: number; checkRuns: number; runs: number };
+/** `openTasks` counts the copied tasks left open: tmb waits for them to close before it updates itself. */
+export type MigrationCounts = { issues: number; discussions: number; tasks: number; openTasks: number; reviews: number; checkRuns: number; runs: number };
 
 export type MigrationResult = {
   from: string;
@@ -305,7 +306,7 @@ export function migratePluginProject(store: Store, options: { pluginDbPath: stri
 
 function copyRecords(db: Database, store: Store, source: { from: string; pluginVersion: string | null; repo: string | null }): MigrationResult {
   const now = new Date().toISOString();
-  const counts: MigrationCounts = { issues: 0, discussions: 0, tasks: 0, reviews: 0, checkRuns: 0, runs: 0 };
+  const counts: MigrationCounts = { issues: 0, discussions: 0, tasks: 0, openTasks: 0, reviews: 0, checkRuns: 0, runs: 0 };
   const issueIds = new Map<number, string>();
   const taskIds = new Map<number, string>();
   const tasks = new Map<number, TaskRow>();
@@ -361,6 +362,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
     if (issue === undefined) continue;
     const at = isoTime(task.created_at) ?? now;
     const closed = TASK_CLOSED_STATES.has(task.status);
+    if (!closed) counts.openTasks++;
     const id = store.backdated(at, () =>
       store.appendTask(actorOf("bro"), {
         id: taskId(at),
