@@ -1,0 +1,35 @@
+# Glossary
+
+The words tmb uses, and the plugin's word for the same thing. tmb prefers the name a developer already knows.
+
+## Renamed
+
+| tmb | Plugin | Why |
+|---|---|---|
+| Code graph | World model | The common name for an index of symbols and their links. |
+| Index (`tmb index`) | Scan | What building a code graph is usually called. |
+| Setup (`tmb setup`) | Onboard | The common name for a first-run step. |
+| Planner | bro, as a role | Says what the role does. bro stays as the planner's name in conversation. |
+| Worker | swe | Says what the role does, for any kind of task. |
+| Reviewer | code-reviewer | Shorter. |
+| Strict mode | Truest mode | A known word for "every change is reviewed". |
+| Docs task | No-code task | Says what it is. |
+| Base branch | Working branch, PR target | The name git hosts use for the branch a pull request merges into. |
+| Start a task | Provision a task | Plain. |
+| Host | Claude Code | tmb is not tied to one agent program. |
+
+## Kept
+
+| Word | Meaning |
+|---|---|
+| Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |
+| Agile mode | One review per feature branch. |
+| Feature branch | A long-lived branch that collects a milestone's tasks. |
+| Issue, task, milestone | As in [WORKFLOW.md](WORKFLOW.md#units-of-work). |
+| Gate | What stops a step that the workflow does not allow. |
+| Concept | An agent-written note in the code graph, anchored to code. |
+| The Human | The developer tmb works for. |
+
+## Not carried over
+
+Lane, roundtable, cheatcode, headless shim, sandbox setup, research switch.
