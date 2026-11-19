@@ -73,3 +73,29 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 | 8. Distribution | **Install:** an install updates itself on each channel, and never in the middle of a task. **Integration:** a plugin project's records carry over. |
 | 9. More hosts | **Integration:** one shared set of adapter tests that every host adapter must pass. **Agent chain:** a second host reviews work on the same record. |
 | 10. Truest mode | **Workflow simulation:** a task cannot be pushed unreviewed. **Agent run:** one task from request to its pull request. |
+
+## Level 4 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/feature-branch.test.ts](../test/feature-branch.test.ts) | feature_start, the fold on close, the refusal of a task whose work is already on the feature branch, and the backup push. |
+| Workflow simulation | [tests/workflow/feature-fold.test.ts](workflow/feature-fold.test.ts) | A code task and then a docs task fold into one feature branch in order. |
+| Workflow simulation | The ported plugin flows, below. | Each flow's steps, refusals and record, through the tool server. |
+| Agent chain | [tests/agent-chain/feature.sh](agent-chain/feature.sh) (`bun run test:chain:feature`) | Two sessions each ask for one more function; one feature branch collects both tasks, passes its tests and is backed up on origin. |
+
+### The plugin's workflow flows
+
+Each flow of the plugin's workflow simulation is ported once tmb has built what it tests, in tmb's own tools and rules. Until then it waits for the level that builds it.
+
+| Plugin flow | tmb test or the level it waits for |
+|---|---|
+| 02 Simple task | [flow-02-simple-task.test.ts](workflow/flow-02-simple-task.test.ts) |
+| 03 Difficult task | [flow-03-difficult-task.test.ts](workflow/flow-03-difficult-task.test.ts). tmb records a question and its answer as notes. |
+| 06 Push gate | Waits for 6. Review and gate. |
+| 08 Retry and escalation | Waits for 6. Review and gate, which adds review, fail and rework. |
+| 09 Cold restart | [flow-09-cold-restart.test.ts](workflow/flow-09-cold-restart.test.ts). Its checks that only the reviewer records a verdict wait for 6. Review and gate. |
+| 10 Roundtable | Not planned: the roundtable is not carried over ([GLOSSARY.md](../docs/architecture/GLOSSARY.md#not-carried-over)). |
+| 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts) |
+| 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
+| 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). tmb issues have no labels, so only the milestone, title and body move. |
+| 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |

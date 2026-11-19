@@ -80,6 +80,26 @@ describe("session start", () => {
     expect(work).not.toContain("Closed issue");
   });
 
+  test("lists the open tasks oldest first with their issue, feature branch and worktree, and leaves closed ones out", () => {
+    let older = "";
+    let newer = "";
+    let issue = "";
+    withStore((store) => {
+      const human = { kind: "human" } as const;
+      issue = store.createIssue(human, { title: "Has tasks" });
+      const feature = store.createFeature(human, { name: "feat/goal", baseBranch: "main", baseCommit: "0".repeat(40) });
+      older = store.appendTask(human, { issueId: issue, title: "Older task", state: "open", worktree: "/w/older", featureId: feature });
+      store.appendTask(human, { issueId: issue, title: "Closed task", state: "closed", featureId: feature });
+      newer = store.appendTask(human, { issueId: issue, title: "Newer task", state: "open", worktree: "/w/newer" });
+    });
+    const work = context().split(OPEN_WORK_HEADING)[1]!;
+    expect(work).toContain(`- ${older} Older task (issue ${issue}, feature branch feat/goal, worktree /w/older)`);
+    expect(work).toContain(`- ${newer} Newer task (issue ${issue}, worktree /w/newer)`);
+    expect(work.indexOf("Has tasks")).toBeLessThan(work.indexOf("Older task"));
+    expect(work.indexOf("Older task")).toBeLessThan(work.indexOf("Newer task"));
+    expect(work).not.toContain("Closed task");
+  });
+
   test("says so when nothing is open", () => {
     withStore(() => {});
     expect(context()).toContain(`${OPEN_WORK_HEADING}\n\nNo open issues.`);

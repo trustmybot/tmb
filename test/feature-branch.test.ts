@@ -252,6 +252,41 @@ describe("folding a closed task into its feature branch", () => {
     ]);
   });
 
+  // The second task holds the first's change again: as a commit of its own, which the rebase drops, or as the first's very commit.
+  for (const rebased of [true, false]) {
+    const how = rebased ? "the rebase drops its only commit" : "its HEAD is the feature's tip";
+    test(`a task whose work is already on the feature branch is refused when ${how}, leaving it open, the feature unmoved and the worktree as it was`, async () => {
+      const first = startTask(["src/a"]);
+      const second = startTask(["src/b"]);
+      const firstHead = commitFile(first.worktree, "src/a/one.ts", "same\n");
+      await taskClose(store, WORKER, { id: first.id }, context());
+      if (rebased) {
+        // Another message keeps the commit distinct from the first's even when both land in the same second.
+        mkdirSync(path.join(second.worktree, "src/a"), { recursive: true });
+        writeFileSync(path.join(second.worktree, "src/a/one.ts"), "same\n");
+        git(second.worktree, "add", ".");
+        git(second.worktree, "commit", "-q", "-m", "the first's change again");
+      } else {
+        git(second.worktree, "merge", "-q", "--ff-only", firstHead);
+      }
+      const secondHead = git(second.worktree, "rev-parse", "HEAD");
+      expect(secondHead === firstHead).toBe(!rebased);
+
+      const error = await asyncRefusal(() => taskClose(store, WORKER, { id: second.id }, context()));
+      expect(error.code).toBe("refused");
+      expect(error.message).toContain(`the task's work is already on the feature branch ${FEATURE} at ${firstHead}`);
+      expect(error.message).toContain(`task ${second.id} stays open`);
+      if (rebased) expect(error.message).toContain(`The worktree is back at ${secondHead}, as it was.`);
+      expect(tip()).toBe(firstHead);
+      expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: null });
+      expect(store.getTask(first.id)).toMatchObject({ state: "closed", commitSha: firstHead });
+      expect(git(second.worktree, "rev-parse", "HEAD")).toBe(secondHead);
+      expect(git(second.worktree, "rev-parse", "--abbrev-ref", "HEAD")).toBe(second.branch);
+      expect(git(second.worktree, "status", "--porcelain")).toBe("");
+      expect(store.listCheckRuns(second.id).map((run) => run.commitSha)).toEqual([secondHead]);
+    });
+  }
+
   test("a rebase conflict is aborted and refused naming the paths, leaving the task open, the feature unmoved and the worktree as it was", async () => {
     const first = startTask(["src/a"]);
     const second = startTask(["src/b"]);

@@ -501,10 +501,16 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
   requireHeadAt(worktree, head);
   const from = featureTip(context.projectDir, feature);
   const rebased = !isAncestor(worktree, from, head);
+  // A fold that adds no commit would record the feature's tip, another task's commit, as this task's.
+  const alreadyOnFeature = () =>
+    new HandlerError("refused", `the task's work is already on the feature branch ${feature.name} at ${from}, so folding it would add no commit of the task's own, and task ${id} stays open`);
+  if (head === from) throw alreadyOnFeature();
   let folded = head;
   if (rebased) {
     folded = rebaseOnto(worktree, feature.name, from, id);
     try {
+      // git drops a commit whose change the tip already holds, so the rebase can leave nothing of the task's own.
+      if (folded === from) throw alreadyOnFeature();
       runs.push(await checkCommit(store, actor, task, folded, commands, context, ` on the task rebased onto the feature branch ${feature.name} at ${from}`));
     } catch (error) {
       undoRebaseAndRethrow(error, worktree, folded, head);
