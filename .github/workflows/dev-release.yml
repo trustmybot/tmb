@@ -1,0 +1,74 @@
+name: dev release
+
+# Publishes every push to dev as the rolling `dev` prerelease of the public
+# trustmybot/tmb-releases repo, so installs need no login.
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: dev-release
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Darwin binaries are built and ad-hoc signed on macOS so they run there.
+          - runner: macos-latest
+            targets: darwin-arm64 darwin-x64
+            sign: true
+          - runner: ubuntu-latest
+            targets: linux-x64 linux-arm64 windows-x64
+            sign: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun scripts/build.ts ${{ matrix.targets }}
+      - name: Ad-hoc sign
+        if: matrix.sign
+        run: for f in dist/tmb-darwin-*; do codesign --force --sign - "$f"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tmb-${{ matrix.runner }}
+          path: dist/tmb-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.TMB_RELEASES_TOKEN }}
+      RELEASES_REPO: trustmybot/tmb-releases
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Collect assets and checksums
+        run: |
+          cp scripts/install.sh scripts/install.ps1 dist/
+          cd dist
+          for f in tmb-darwin-arm64 tmb-darwin-x64 tmb-linux-x64 tmb-linux-arm64 tmb-windows-x64.exe; do
+            test -f "$f" || { echo "missing asset $f" >&2; exit 1; }
+          done
+          sha256sum tmb-* install.sh install.ps1 > SHA256SUMS
+          cat SHA256SUMS
+      - name: Replace the dev prerelease
+        run: |
+          gh release delete dev --repo "$RELEASES_REPO" --yes --cleanup-tag || true
+          gh release create dev --repo "$RELEASES_REPO" --prerelease --title "dev" \
+            --notes "Rolling dev build from trustmybot/tmb@${GITHUB_SHA}." \
+            dist/tmb-* dist/install.sh dist/install.ps1 dist/SHA256SUMS
