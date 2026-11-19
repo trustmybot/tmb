@@ -66,14 +66,14 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 
 ## When each layer runs
 
-Proposed, for the Human's review.
-
 | When | Layers |
 |---|---|
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
 | Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
 | Before an rc or stable release | All of them |
+
+No test fixes the OS, the model or the machine's setup. Each is a setting of the run, so the same test runs unchanged on another OS, with another model, or on a machine set up differently. A test that only passes with one of them names it and says why.
 
 ## Tests each level adds
 
