@@ -19,8 +19,10 @@ check="bun test"
 tmb_bin="${TMB_BIN:-tmb}"
 model="${TMB_AGENT_MODEL:-haiku}"
 # What the flow needs: tmb's tools, the subagent tool (Agent, or Task in older Claude Code), the
-# file tools, and git and bun commands. Every call still goes through tmb's hooks.
-allowed_tools='mcp__tmb__* Agent Task Read Glob Grep Edit Write Bash(git:*) Bash(bun:*)'
+# file tools, and Bash as a whole. The project is a throwaway temp dir, the model wraps commands
+# in compounds such as `cd X && bun test | tail` that narrower Bash rules never match, and no one
+# is there to approve a prompt. Every call still goes through tmb's hooks: nothing here bypasses them.
+allowed_tools='mcp__tmb__* Agent Task Read Glob Grep Edit Write Bash'
 
 if ! command -v claude >/dev/null 2>&1; then
   echo "worker run: claude (Claude Code) is not on PATH; install it and log in, then run this again." >&2
