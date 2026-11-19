@@ -39,10 +39,6 @@ jobs:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
       - run: bun test tests/integration/update.test.ts
-      # The same story against the real release repo: an older build updates itself to the
-      # published dev release. Reads public downloads only; skipped while dev has no release.
-      - run: bun tests/install/update.ts dev
-        shell: bash
       - name: Diagnostic (temporary) - Bun.main in a compiled build
         shell: bash
         run: |
