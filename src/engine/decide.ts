@@ -124,14 +124,14 @@ function commandRule(event: TmbEvent): Decision | null {
     }
     if (call.tool === "git" && call.subcommand === "push") {
       if (event.role === WORKER || event.role === REVIEWER) {
-        return deny(`A ${event.role} never pushes: tmb pushes a task's work itself when the task closes (task_close).`);
+        return deny(`A ${event.role} never pushes: tmb pushes a task's work itself, when the task closes (task_close) or, in truest mode, when its pull request opens (task_pr).`);
       }
       if (call.args.includes("--no-verify")) return deny(`git push --no-verify skips the pre-push hook, and ${PUSH_GATE}. Push without --no-verify.`);
     }
     if (call.tool === "gh" && (call.subcommand === "pr create" || call.subcommand === "pr merge")) {
       return deny(
         call.subcommand === "pr create"
-          ? "tmb opens a feature branch's pull request itself once the reviewer passed it or the Human waived the review: call feature_pr instead of gh pr create."
+          ? "tmb opens a pull request itself once the reviewer passed the work or the Human waived the review: call feature_pr for a feature branch, or task_pr for a truest task, instead of gh pr create."
           : "The Human merges pull requests; no agent runs gh pr merge.",
       );
     }

@@ -108,11 +108,11 @@ describe("tmb setup", () => {
     expect(files.map((file) => readFileSync(file, "utf8"))).toEqual(before);
   });
 
-  test("refuses truest with the level it arrives at, and writes nothing", () => {
+  test("refuses a review mode that does not exist, and writes nothing", () => {
     const project = newBunProject();
-    const result = run(["setup", "--review-mode", "truest"], project);
+    const result = run(["setup", "--review-mode", "strict"], project);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("review mode truest arrives at level 10; only agile is available now");
+    expect(result.stderr).toContain('review mode must be agile or truest, got "strict"');
     expect(readdirSync(project).sort()).toEqual([".git", "bun.lock", "package.json"]);
   });
 

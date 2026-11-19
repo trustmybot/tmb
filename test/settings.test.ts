@@ -63,15 +63,15 @@ describe("settings in the record", () => {
 });
 
 describe("validation", () => {
-  test("refuses truest with the level it arrives at, and records nothing", () => {
-    expect(() => writeSetting(store, HUMAN, "review_mode", "truest")).toThrow(
-      new SettingError("review mode truest arrives at level 10; only agile is available now"),
-    );
-    expect(store.listAudit()).toHaveLength(0);
+  test("takes truest, and refuses a mode that does not exist, recording nothing for it", () => {
+    expect(writeSetting(store, HUMAN, "review_mode", "truest")).toBe(true);
+    expect(readSettings(store).review_mode).toBe("truest");
+    expect(() => writeSetting(store, HUMAN, "review_mode", "strict")).toThrow(new SettingError('review mode must be agile or truest, got "strict"'));
+    expect(store.listAudit()).toHaveLength(1);
   });
 
   test("refuses an unknown review mode", () => {
-    expect(() => validateSetting("review_mode", "fast")).toThrow(/review mode must be agile, got "fast"/);
+    expect(() => validateSetting("review_mode", "fast")).toThrow(/review mode must be agile or truest, got "fast"/);
   });
 
   test("refuses an empty base branch or host, and trims the text it keeps", () => {

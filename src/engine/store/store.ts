@@ -79,6 +79,8 @@ export type Task = {
   reviewMode: string | null;
   pushResult: string | null;
   pushDetail: string | null;
+  /** The pull request the engine opened for a truest task; null until then. */
+  prUrl: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -89,6 +91,9 @@ export type TaskChanges = {
   reviewMode?: string | null;
   pushResult?: string | null;
   pushDetail?: string | null;
+  prUrl?: string | null;
+  /** A truest task rebased onto a moved base branch now leaves it at the new base. */
+  baseCommit?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string };
 export type FeatureChanges = { state?: string; prUrl?: string | null };
@@ -195,6 +200,7 @@ type TaskRow = {
   review_mode: string | null;
   push_result: string | null;
   push_detail: string | null;
+  pr_url?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -296,6 +302,7 @@ function toTask(row: TaskRow): Task {
     reviewMode: row.review_mode,
     pushResult: row.push_result,
     pushDetail: row.push_detail,
+    prUrl: row.pr_url ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -464,6 +471,8 @@ export class Store {
       review_mode: changes.reviewMode,
       push_result: changes.pushResult,
       push_detail: changes.pushDetail,
+      pr_url: changes.prUrl,
+      base_commit: changes.baseCommit,
     });
   }
 
@@ -582,6 +591,12 @@ export class Store {
   /** The reviews of one feature branch, oldest first. */
   listFeatureReviews(featureId: string): Review[] {
     const rows = this.db.query("SELECT * FROM reviews WHERE feature_id = ? ORDER BY id").all(featureId) as ReviewRow[];
+    return rows.map(toReview);
+  }
+
+  /** The reviews of one task's commits (truest mode), oldest first. */
+  listTaskReviews(taskId: string): Review[] {
+    const rows = this.db.query("SELECT * FROM reviews WHERE target_kind = 'commit' AND target = ? ORDER BY id").all(taskId) as ReviewRow[];
     return rows.map(toReview);
   }
 

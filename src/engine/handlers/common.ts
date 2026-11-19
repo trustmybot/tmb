@@ -8,6 +8,9 @@ export type OperationContext = { projectDir: string; checkTimeoutMs?: number };
 
 export const OPEN = "open";
 export const CLOSED = "closed";
+/** A truest task whose checks passed at its commit and that waits for the reviewer, or for its pull request once passed. */
+export const IN_REVIEW = "in_review";
+export const TRUEST = "truest";
 /** Task branches live under this prefix, so no feature branch may take it. */
 export const TASK_BRANCH_PREFIX = "tmb/";
 
