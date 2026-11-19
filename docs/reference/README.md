@@ -32,7 +32,23 @@ In the project's root folder:
 tmb setup
 ```
 
-It asks no questions. Setup:
+Setup first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it; with several it asks which to use.
+
+It then wires tmb into that host, as listed below, and asks three questions:
+
+| Question | Default | Flag |
+|---|---|---|
+| The base branch, the branch pull requests merge into | The branch origin names as its default, else the current branch, else `main`. Outside a git repository there is no default. | `--base <branch>` |
+| The review mode | `agile`, the only mode built so far. `truest` is refused: it arrives at level 10. | `--review-mode <mode>` |
+| The checks, the shell commands that must pass before a task closes | The commands it finds in the project: the `lint`, `typecheck` and `test` scripts of `package.json`, run with bun, npm, pnpm or yarn as the lockfile shows; `pytest` for a Python project; `cargo test` for Rust; `go test ./...` for Go. | `--check <command>`, once per command; the commands given replace the list |
+
+- On a re-run, each default is the answer stored last time.
+- A flag answers its question without asking. `--host <id>` picks the host the same way, and `--yes` takes the default of every question no flag answers.
+- Setup asks only when it runs in a terminal. Without one, it takes the defaults and prints each value, so it never waits for input.
+
+It stores the answers in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Setup prints the settings it stored, and `tmb config` shows them later.
+
+Setup also:
 
 - Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
@@ -44,7 +60,7 @@ It asks no questions. Setup:
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if setup created that file.
 
-Running setup again changes nothing.
+Running setup again with the same answers changes no file and records nothing.
 
 Once the project is set up:
 
@@ -65,6 +81,7 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb note <issue-id> <text> [--decision]` | Add a note, or a decision with `--decision` |
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
+| `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where setup has not run, it says so. |
 
 Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
 

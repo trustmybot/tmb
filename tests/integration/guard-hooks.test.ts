@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
+import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
@@ -21,6 +22,7 @@ beforeAll(() => {
     ...(process.env as Record<string, string>),
     XDG_CONFIG_HOME: path.join(scratch, "no-xdg"),
     GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig"),
+    PATH: pathWithFakeClaude(scratch),
   };
   delete env.CLAUDE_PROJECT_DIR;
 });

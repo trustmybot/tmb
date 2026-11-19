@@ -3,6 +3,7 @@ export { type OpenResult, StoreOpenError, type StoreOpenFailure, openStore } fro
 export { type RecordKind, type StoredEvent } from "./projections.ts";
 export { SCHEMA_VERSION } from "./schema.ts";
 export {
+  type AuditEntry,
   type Discussion,
   type DiscussionKind,
   type GuardDecision,

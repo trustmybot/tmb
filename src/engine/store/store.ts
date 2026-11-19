@@ -48,6 +48,7 @@ export type NewIssue = { title: string; body?: string; milestone?: string | null
 export type IssueChanges = { title?: string; body?: string; state?: IssueState; milestone?: string | null };
 export type NewDiscussion = { issueId: string; kind: DiscussionKind; body: string };
 export type NewAuditEntry = { what: string; detail?: string };
+export type AuditEntry = { id: string; what: string; detail: string; createdBy: Actor; createdAt: string };
 export type NewTask = {
   issueId: string;
   title: string;
@@ -88,6 +89,7 @@ type IssueRow = {
 };
 type DiscussionRow = { id: string; issue_id: string; kind: DiscussionKind; body: string; created_by: string; created_at: string };
 type GuardDecisionRow = { id: string; event: string; decision: "allow" | "deny"; reason: string; created_by: string; created_at: string };
+type AuditRow = { id: string; what: string; detail: string; created_by: string; created_at: string };
 
 /** Flattens whitespace and cuts text to at most SNIPPET_MAX characters, marking a cut with an ellipsis. */
 export function clip(text: string): string {
@@ -130,6 +132,10 @@ function toIssue(row: IssueRow): Issue {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function toAuditEntry(row: AuditRow): AuditEntry {
+  return { id: row.id, what: row.what, detail: row.detail, createdBy: JSON.parse(row.created_by) as Actor, createdAt: row.created_at };
 }
 
 function toDiscussion(row: DiscussionRow): Discussion {
@@ -203,6 +209,18 @@ export class Store {
 
   recordAudit(actor: Actor, entry: NewAuditEntry): string {
     return this.create(actor, "audit", { what: entry.what, detail: entry.detail ?? "" });
+  }
+
+  /** Every audit entry, oldest first. */
+  listAudit(): AuditEntry[] {
+    const rows = this.db.query("SELECT * FROM audit ORDER BY id").all() as AuditRow[];
+    return rows.map(toAuditEntry);
+  }
+
+  /** The newest audit entry about `what`, the one in force. */
+  newestAudit(what: string): AuditEntry | null {
+    const row = this.db.query("SELECT * FROM audit WHERE what = ? ORDER BY id DESC LIMIT 1").get(what) as AuditRow | null;
+    return row ? toAuditEntry(row) : null;
   }
 
   appendTask(actor: Actor, task: NewTask): string {

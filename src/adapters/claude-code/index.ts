@@ -5,7 +5,7 @@ import type { HostAdapter } from "../host-adapter.ts";
 import { detect } from "./detect.ts";
 import { ignoreInGit } from "./git.ts";
 import { answerHook } from "./hook.ts";
-import { registerServer, unregisterServer } from "./mcp-json.ts";
+import { HOST_ID, registerServer, unregisterServer } from "./mcp-json.ts";
 import { removeRoleFiles, roleFilePath, writeRoleFiles } from "./role-files.ts";
 import { install, remove } from "./settings.ts";
 
@@ -43,6 +43,7 @@ function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): str
 }
 
 export const adapter: HostAdapter = {
+  id: HOST_ID,
   name: "Claude Code",
 
   limits: { canDenyToolCall: true, modelPerRole: true, events: TMB_EVENT_TYPES },

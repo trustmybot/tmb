@@ -93,8 +93,8 @@ describe("decide", () => {
 });
 
 describe("projectRootOf", () => {
-  test("finds the nearest folder holding tmb's project folder, from the folder itself or below it", () => {
-    mkdirSync(path.join(project, PROJECT_DIR_NAME));
+  test("finds the nearest folder holding a record, from the folder itself or below it", () => {
+    createRecord();
     const sub = path.join(project, "a", "b");
     mkdirSync(sub, { recursive: true });
     expect(projectRootOf(project)).toBe(project);
@@ -106,6 +106,23 @@ describe("projectRootOf", () => {
     const sub = path.join(project, "a");
     mkdirSync(sub);
     writeFileSync(path.join(sub, PROJECT_DIR_NAME), "");
+    expect(projectRootOf(sub)).toBe(sub);
+  });
+
+  test("passes over a stray project folder with no database in it, up to the folder that holds the record", () => {
+    createRecord();
+    const stray = path.join(project, "a");
+    const sub = path.join(stray, "b");
+    mkdirSync(path.join(stray, PROJECT_DIR_NAME), { recursive: true });
+    mkdirSync(sub);
+    expect(projectRootOf(sub)).toBe(project);
+    expect(projectRootOf(stray)).toBe(project);
+  });
+
+  test("passes over a folder where the database's name is a folder, not a file", () => {
+    const sub = path.join(project, "a");
+    mkdirSync(projectDbPath(project), { recursive: true });
+    mkdirSync(sub);
     expect(projectRootOf(sub)).toBe(sub);
   });
 });

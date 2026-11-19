@@ -3,6 +3,7 @@
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { HandlerError, type IssueDetail, type IssueUpdateResult, OPERATIONS, type OperationName } from "../handlers/index.ts";
 import { openProjectStore } from "../project.ts";
+import { readSettings, settingLines } from "../settings.ts";
 import type { Actor, Discussion, Issue, IssueSummary, SearchHit, StoredEvent } from "../store/index.ts";
 
 export const RECORD_COMMANDS = ["issue", "note", "search", "history"] as const;
@@ -180,6 +181,39 @@ export function runRecordCommand(command: RecordCommand, args: string[], project
     if (!(error instanceof HandlerError)) throw error;
     output.err(`tmb ${command}: ${error.message}`);
     return 1;
+  } finally {
+    opened.store.close();
+  }
+}
+
+export const CONFIG_USAGE = `  tmb config [--json]       Print the project's settings`;
+
+/** Prints the project's settings, as `tmb config` does; returns the exit code. */
+export function runConfigCommand(args: string[], projectDir: string, output: Output): number {
+  let json: boolean;
+  try {
+    const { values, positionals } = parse(args, {});
+    if (positionals.length > 0) throw new UsageError(`config takes no arguments, got ${positionals.join(" ")}`);
+    json = values.json === true;
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    output.err(`tmb config: ${error.message}\n\n${CONFIG_USAGE}`);
+    return 2;
+  }
+
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) {
+    output.err(
+      opened.error.failure === "missing"
+        ? `tmb: setup has not run in ${projectDir}, so it has no settings; run \`tmb setup\` there first.`
+        : `tmb: cannot use the record: ${opened.error.message}`,
+    );
+    return 1;
+  }
+  try {
+    const settings = readSettings(opened.store);
+    output.out(json ? JSON.stringify(settings, null, 2) : settingLines(settings).join("\n"));
+    return 0;
   } finally {
     opened.store.close();
   }

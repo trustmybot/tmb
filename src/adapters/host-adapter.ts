@@ -15,6 +15,8 @@ export type HostLimits = {
 
 /** What every host adapter gives the command line. */
 export interface HostAdapter {
+  /** The host's id: what `--host` takes and what the record stores as the project's host. */
+  id: string;
   /** The host's display name. */
   name: string;
   limits: HostLimits;
