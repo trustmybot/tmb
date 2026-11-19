@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
 import { HOST_ADAPTERS, hostAdapter } from "./adapters/index.ts";
-import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
+import { CONFIG_USAGE, INDEX_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runIndexCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { runSetup, terminalAsk } from "./setup.ts";
 import { version, versionLine } from "./version.ts";
@@ -16,6 +16,7 @@ const USAGE = `Usage:
   tmb remove                Undo what setup added; the record is kept
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
+${INDEX_USAGE}
   tmb mcp --host <id> [--project <dir>]
                             Serve the record's tools over stdio (the host runs this)
   tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)`;
@@ -114,6 +115,8 @@ async function main(argv: string[]): Promise<number> {
       return runSetupCommand(rest);
     case "config":
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
+    case "index":
+      return runIndexCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
       return 0;

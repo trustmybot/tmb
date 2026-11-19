@@ -18,6 +18,8 @@ import {
   validateSetting,
   writeSetting,
 } from "./engine/index.ts";
+import { indexProject } from "./engine/graph/fresh.ts";
+import { HandlerError } from "./engine/handlers/errors.ts";
 import type { Actor } from "./engine/store/index.ts";
 
 /** Answers given on the command line; each one is used without asking. */
@@ -171,6 +173,21 @@ function storeAnswers(projectDir: string, answers: Partial<SettingValues>, out: 
   }
 }
 
+/** Indexes the base branch into the code graph; a project that cannot be indexed yet is told why, and setup goes on. */
+async function indexCodeGraph(projectDir: string, out: (line: string) => void): Promise<void> {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) throw new SetupError(`cannot index the code graph: ${opened.error.message}`);
+  try {
+    const stats = await indexProject(projectDir, opened.store, { rebuild: false });
+    out(`Indexed the code graph of ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
+  } catch (error) {
+    if (!(error instanceof HandlerError)) throw error;
+    out(`The code graph is not indexed yet: ${error.message}. Lookups index it once the base branch has a commit.`);
+  } finally {
+    opened.store.close();
+  }
+}
+
 /** Runs setup in the project. Throws SetupError or SettingError, before writing anything when it can. */
 export async function runSetup(options: SetupOptions): Promise<void> {
   const { projectDir, flags, out } = options;
@@ -197,6 +214,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 
   storeAnswers(projectDir, { host: adapter.id, base_branch: base ?? undefined, review_mode: reviewMode, checks }, out);
   if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb setup --base <branch> to set one.");
+  else await indexCodeGraph(projectDir, out);
   out(`tmb is set up for ${adapter.name}. Open it in this project to start as the planner.`);
 }
 
