@@ -50,7 +50,8 @@ Decided by the Human on 2026-11-18.
 | Hosts | Claude Code first, in its command line and its desktop app. No host is hardcoded: each is an adapter, so another such as Codex can be added. |
 | Login | The Human's subscription to the host. No API key is needed. |
 | Roles | The host's main agent is the planner. Workers and the reviewer are subagents the host starts. The engine briefs, records and gates them. |
-| Agents from different vendors | Each role can use a different agent and model, from different vendors. Planned, after the first host. |
+| Different models | Each role can use a different model. Agents from different vendors work on one task by connecting their hosts to the same record. Planned, after the first host. |
+| What tmb does not do | Start agents, run models or manage parallel sessions. The host does. |
 | Agents left out of version 1 | DeepSeek Harness, as host or as worker. |
 | Network | The engine works with no internet access. Running fully offline with local models needs a host that supports them. |
 | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
@@ -72,7 +73,7 @@ The order serves one goal: tmb is used to build tmb as early as possible. Each s
 | 3. Feature branch review | The reviewer, the review of a whole feature branch, the pre-push gate, the Human's waiver. | A milestone reaches the base branch reviewed. |
 | 4. Dashboard | The local web page over the record. | The Human sees the work without asking an agent. |
 | 5. Distribution | One-step install, three channels, pushed updates, the migration tool. | Others can install it. |
-| 6. More hosts and vendors | A second host adapter, runners for other vendors, local models. | Mixed teams of agents. |
+| 6. More hosts and vendors | A second host adapter, two hosts on one record, local models. | Mixed teams of agents. |
 | 7. Truest mode | Review of every task before its push. | Version 1 is complete. |
 
 ## Reuse from the plugin

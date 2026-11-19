@@ -82,16 +82,26 @@ The same three building blocks exist in both hosts checked so far, which is what
 
 When a host cannot deny an action, the engine's own layers still hold: checks at close, and git's pre-push hook ([WORKFLOW.md](WORKFLOW.md#the-gate)).
 
-## Agents from different vendors on one task
+## What tmb leaves to the host
 
-Planned, after the first host works end to end. A second kind of adapter, a runner, lets the engine start another vendor's agent program as a worker or reviewer, such as a Codex reviewer under a Claude Code planner. A runner starts the vendor's own unmodified program under the Human's own login for that program, and only where that vendor's terms allow it. Local models arrive the same way, through a host or runner that supports them.
+tmb starts no agent, runs no model and manages no parallel sessions. Hosts do that better, and tmb ships what they lack: one record, one code graph, one workflow and one gate.
 
-## Doors into the engine
+## Different models on one task
 
-| Door | Used by |
-|---|---|
-| Tool server | Agents in the host. |
-| Command line | The Human, git hooks and host events. |
-| Dashboard | The Human, as a local web page. |
+- **One vendor, several models.** The host already runs a different model per subagent. The adapter writes each role's model into the host's role definitions.
+- **Several vendors.** Planned, after the first host works end to end. Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
+- **Local models.** They arrive through a host that supports them.
 
-All three call the same engine, so a rule cannot be skipped by choosing another door.
+Every record names the role and the host that made it, so a review is known to come from a different agent than the one that wrote the change.
+
+## Ways into the engine
+
+| Way in | Used by | Why |
+|---|---|---|
+| Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
+| Host events | The host, before an agent acts | The engine can refuse an action no agent asked it about. |
+| Git's pre-push hook | git | A push is checked even when typed by hand. |
+| Command line | The Human | Setup, indexing, health checks. |
+| Dashboard | The Human | A local web page over the record. |
+
+All of them call the same engine, so a rule cannot be skipped by choosing another way in.
