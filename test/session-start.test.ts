@@ -3,7 +3,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { handleEvent, OPEN_WORK_HEADING, OPEN_WORK_MAX, openProjectStore, plannerRole, projectDbPath } from "../src/engine/index.ts";
+import {
+  handleEvent,
+  OPEN_WORK_HEADING,
+  OPEN_WORK_MAX,
+  openProjectStore,
+  plannerRole,
+  projectDbPath,
+  UNATTENDED_INSTRUCTION,
+} from "../src/engine/index.ts";
 import type { Store } from "../src/engine/store/index.ts";
 
 let project: string;
@@ -17,7 +25,7 @@ afterEach(() => {
 });
 
 function context(): string {
-  return handleEvent({ type: "session-start", projectDir: project }).context;
+  return handleEvent({ type: "session-start", projectDir: project, unattended: false }).context;
 }
 
 function withStore(use: (store: Store) => void): void {
@@ -87,5 +95,33 @@ describe("session start", () => {
     expect(listed[0]).toContain(`Issue number ${OPEN_WORK_MAX + 3}`);
     expect(work).not.toContain("Issue number 3\n");
     expect(work).toContain("3 older open issues");
+  });
+});
+
+describe("unattended mode", () => {
+  function contextWith(unattended: boolean): string {
+    return handleEvent({ type: "session-start", projectDir: project, unattended }).context;
+  }
+
+  test("when on, the answer is the attended one followed by the unattended instruction", () => {
+    withStore((store) => {
+      store.createIssue({ kind: "human" }, { title: "Open issue" });
+    });
+    const attended = contextWith(false);
+    const text = contextWith(true);
+    expect(text).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+    expect(text.indexOf("Open issue")).toBeLessThan(text.indexOf(UNATTENDED_INSTRUCTION));
+    expect(UNATTENDED_INSTRUCTION).toContain("No one can answer in this run");
+    expect(UNATTENDED_INSTRUCTION).toContain("name each default you used");
+    expect(UNATTENDED_INSTRUCTION).toContain("stop with the reason when a default is not safe");
+  });
+
+  test("when on and there is no record, the role is followed by the instruction", () => {
+    expect(contextWith(true)).toBe(`${plannerRole.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+  });
+
+  test("when off, the answer is the role and the open work alone", () => {
+    withStore(() => {});
+    expect(contextWith(false)).toBe(`${plannerRole.trimEnd()}\n\n${OPEN_WORK_HEADING}\n\nNo open issues.\n`);
   });
 });

@@ -1,8 +1,7 @@
-// The trajectory schema, version 1: one append-only events table, the projections of
-// current state derived from it, and a full-text index over issues and discussions.
-// Version 1 is a single baseline; a later version adds its own step from here.
-
-export const SCHEMA_VERSION = 1;
+// The trajectory schema: one append-only events table, the projections of current state
+// derived from it, and a full-text index over issues and discussions. Version 1 is the
+// baseline; each later version is one step on top of the one before, so a new database
+// and an upgraded one end up with the same tables.
 
 /** Projection tables, children before parents so they can be emptied in this order. */
 export const PROJECTION_TABLES = [
@@ -140,3 +139,18 @@ CREATE VIRTUAL TABLE search USING fts5(
   tokenize = 'porter unicode61 remove_diacritics 2'
 );
 `;
+
+// Version 2: a task records its worktree and the commit it was cut from, and a check run
+// records each command it ran.
+const VERSION_2_SQL = `
+ALTER TABLE tasks ADD COLUMN worktree TEXT;
+ALTER TABLE tasks ADD COLUMN base_commit TEXT;
+CREATE INDEX idx_tasks_state ON tasks(state, id);
+ALTER TABLE check_runs ADD COLUMN commands TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(commands));
+CREATE INDEX idx_runs_open ON runs(role, ended_at, id);
+`;
+
+/** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL];
+
+export const SCHEMA_VERSION = SCHEMA_STEPS.length;

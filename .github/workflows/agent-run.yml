@@ -1,9 +1,10 @@
 name: agent run
 
 # Real Claude Code sessions in a project set up with tmb. agent-run greets a session set up
-# with the dev build and checks bro answers; agent-chain builds tmb from this checkout, has
-# one session record an issue and checks a new session finds it. Runs only on request, and
-# each job only does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
+# with the dev build and checks bro answers, then has a session built from this checkout fix a
+# small bun project through a task; agent-chain builds tmb from this checkout, has one session
+# record a goal and checks a new session finds it. Runs only on request, and each job only
+# does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
 
 on:
   workflow_dispatch:
@@ -34,6 +35,19 @@ jobs:
       - name: Run the agent test
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         run: sh tests/agent-run/run.sh
+      # The worker run needs bun for its fixture's tests and the task commands of this checkout.
+      - uses: oven-sh/setup-bun@v2
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        with:
+          bun-version: "1.4"
+      - name: Build tmb from this checkout
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: |
+          bun install --frozen-lockfile
+          bun run build:local
+      - name: Run the worker agent run
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-run/worker.sh
 
   agent-chain:
     runs-on: ubuntu-latest

@@ -4,11 +4,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { answerHook } from "../src/adapters/claude-code/hook.ts";
-import { openProjectStore, projectDbPath } from "../src/engine/index.ts";
+import { handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
 
 let project: string;
 const savedProjectDir = process.env.CLAUDE_PROJECT_DIR;
+const ATTENDED = { unattended: false };
 
 beforeEach(() => {
   project = mkdtempSync(path.join(tmpdir(), "tmb-hook-"));
@@ -53,25 +54,38 @@ function preToolUse(toolName: string, toolInput: Record<string, unknown>, extra:
   return answerHook(
     "pre-tool-use",
     JSON.stringify({ hook_event_name: "PreToolUse", cwd: project, tool_name: toolName, tool_input: toolInput, ...extra }),
+    ATTENDED,
   );
 }
 
 describe("hook pre-tool-use", () => {
   test("translates each guarded tool into its tmb event and action, allowing with no output", () => {
     createRecord();
-    const calls: [string, Record<string, unknown>, string, string][] = [
-      ["Write", { file_path: "/p/a.ts", content: "x" }, "before-file-write", "/p/a.ts"],
-      ["Edit", { file_path: "/p/b.ts", old_string: "a", new_string: "b" }, "before-file-write", "/p/b.ts"],
-      ["MultiEdit", { file_path: "/p/c.ts", edits: [] }, "before-file-write", "/p/c.ts"],
-      ["NotebookEdit", { notebook_path: "/p/d.ipynb", new_source: "" }, "before-file-write", "/p/d.ipynb"],
-      ["Bash", { command: "git push" }, "before-command", "git push"],
-      ["Agent", { subagent_type: "worker", prompt: "go" }, "before-agent-start", "worker"],
-      ["Task", { subagent_type: "reviewer", prompt: "go" }, "before-agent-start", "reviewer"],
+    // A subagent start names the role of the agent starting, and its start prompt is the action.
+    const calls: [string, Record<string, unknown>, string, string, string][] = [
+      ["Write", { file_path: "/p/a.ts", content: "x" }, "before-file-write", "planner", "/p/a.ts"],
+      ["Edit", { file_path: "/p/b.ts", old_string: "a", new_string: "b" }, "before-file-write", "planner", "/p/b.ts"],
+      ["MultiEdit", { file_path: "/p/c.ts", edits: [] }, "before-file-write", "planner", "/p/c.ts"],
+      ["NotebookEdit", { notebook_path: "/p/d.ipynb", new_source: "" }, "before-file-write", "planner", "/p/d.ipynb"],
+      ["Bash", { command: "git push" }, "before-command", "planner", "git push"],
+      ["Agent", { subagent_type: "Explore", prompt: "look around" }, "before-agent-start", "Explore", "look around"],
+      ["Task", { subagent_type: "reviewer", prompt: "review it" }, "before-agent-start", "reviewer", "review it"],
+      ["Agent", { prompt: "no type given" }, "before-agent-start", "general-purpose", "no type given"],
     ];
     for (const [tool, input] of calls) expect(preToolUse(tool, input)).toBe("");
 
     const recorded = guardDecisions().map((decision) => JSON.parse(decision.event));
-    expect(recorded).toEqual(calls.map(([, , type, action]) => ({ type, role: "planner", action })));
+    expect(recorded).toEqual(calls.map(([, , type, role, action]) => ({ type, role, action })));
+  });
+
+  test("denies a worker start whose prompt names no open task, in Claude Code's form", () => {
+    createRecord();
+    const output = JSON.parse(preToolUse("Agent", { subagent_type: "worker", prompt: "fix the bug" }));
+    expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(output.hookSpecificOutput.permissionDecisionReason).toContain("task_id=<id>");
+    const [recorded] = guardDecisions();
+    expect(recorded).toMatchObject({ decision: "deny" });
+    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-agent-start", role: "worker", action: "fix the bug" });
   });
 
   test("takes the role from agent_type inside a subagent, and records under it and the host", () => {
@@ -138,7 +152,7 @@ describe("hook pre-tool-use", () => {
   });
 
   test("still throws on input that is not JSON", () => {
-    expect(() => answerHook("pre-tool-use", "{ not json")).toThrow();
+    expect(() => answerHook("pre-tool-use", "{ not json", ATTENDED)).toThrow();
   });
 });
 
@@ -146,7 +160,7 @@ describe("hook subagent-stop", () => {
   test("records an after-agent-stop under the stopped agent's role and answers nothing", () => {
     createRecord();
     const input = { hook_event_name: "SubagentStop", cwd: project, agent_id: "a1", agent_type: "reviewer", stop_hook_active: false };
-    expect(answerHook("subagent-stop", JSON.stringify(input))).toBe("");
+    expect(answerHook("subagent-stop", JSON.stringify(input), ATTENDED)).toBe("");
     const [recorded] = guardDecisions();
     expect(recorded!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
     expect(JSON.parse(recorded!.event)).toEqual({ type: "after-agent-stop", role: "reviewer", action: "reviewer" });
@@ -154,14 +168,31 @@ describe("hook subagent-stop", () => {
 
   test("answers nothing even when the record cannot be read", () => {
     breakRecord();
-    expect(answerHook("subagent-stop", JSON.stringify({ cwd: project }))).toBe("");
+    expect(answerHook("subagent-stop", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
   });
 
   test("records the stop from a subfolder of the project", () => {
     createRecord();
-    expect(answerHook("subagent-stop", JSON.stringify({ cwd: subfolder(), agent_type: "worker" }))).toBe("");
+    expect(answerHook("subagent-stop", JSON.stringify({ cwd: subfolder(), agent_type: "worker" }), ATTENDED)).toBe("");
     expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
       { type: "after-agent-stop", role: "worker", action: "worker" },
     ]);
+  });
+});
+
+describe("hook session-start", () => {
+  function sessionStartContext(unattended: boolean): string {
+    const input = JSON.stringify({ hook_event_name: "SessionStart", cwd: project });
+    const output = JSON.parse(answerHook("session-start", input, { unattended }));
+    return output.hookSpecificOutput.additionalContext as string;
+  }
+
+  test("puts the run's unattended flag in the engine's session-start event", () => {
+    createRecord();
+    const attended = handleEvent({ type: "session-start", projectDir: project, unattended: false }).context;
+    expect(sessionStartContext(false)).toBe(attended);
+    expect(sessionStartContext(true)).toBe(handleEvent({ type: "session-start", projectDir: project, unattended: true }).context);
+    expect(sessionStartContext(true)).toEndWith(`${UNATTENDED_INSTRUCTION}\n`);
+    expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
   });
 });

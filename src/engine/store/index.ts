@@ -4,6 +4,8 @@ export { type RecordKind, type StoredEvent } from "./projections.ts";
 export { SCHEMA_VERSION } from "./schema.ts";
 export {
   type AuditEntry,
+  type CheckRun,
+  type CheckRunEnd,
   type Discussion,
   type DiscussionKind,
   type GuardDecision,
@@ -19,9 +21,13 @@ export {
   type NewReview,
   type NewRun,
   type NewTask,
+  type Run,
+  type RunEnd,
   SEARCH_LIMIT_MAX,
   SNIPPET_MAX,
   type SearchHit,
   Store,
+  type Task,
+  type TaskChanges,
   clip,
 } from "./store.ts";

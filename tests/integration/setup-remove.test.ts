@@ -6,19 +6,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { adapter } from "../../src/adapters/claude-code/index.ts";
 import { roleFilePath } from "../../src/adapters/claude-code/role-files.ts";
 import { isTmbHookCommand, TMB_HOOKS } from "../../src/adapters/claude-code/settings.ts";
-import { projectDbPath, type SubagentRole } from "../../src/engine/index.ts";
+import { projectDbPath, SUBAGENT_ROLES } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
-// The command the tmb process writes into the host's files when it runs from source.
-const TMB_COMMAND = [process.execPath, CLI];
-
-// The engine's role list stays empty until Level 3, so the role registration uses a fixture.
-const FIXTURE_ROLE: SubagentRole = { name: "fixture-worker", description: "A test role", prompt: "Do the task.\n", model: "sonnet" };
+const ROLE_NAMES = SUBAGENT_ROLES.map((role) => role.name);
 
 const SETTINGS = path.join(".claude", "settings.local.json");
 const MCP_JSON = ".mcp.json";
@@ -56,17 +51,10 @@ function newGitProject(): string {
   return project;
 }
 
-/**
- * Runs `tmb setup --yes`, then adds the fixture role through the adapter in this process: the
- * tmb process always writes the engine's own role list and cannot take an injected role.
- * The same tmb command is passed, so the in-process setup changes nothing but the role file.
- */
+/** Runs `tmb setup --yes`, which writes the engine's subagent roles among the rest. */
 function setUp(project: string): void {
-  tmb(["setup", "--yes"], project);
-  const lines = adapter.setup(project, TMB_COMMAND, [FIXTURE_ROLE]);
-  expect(lines.filter((line) => !/already|kept/.test(line))).toEqual([
-    `Wrote the ${FIXTURE_ROLE.name} role to ${path.relative(project, roleFilePath(project, FIXTURE_ROLE.name))}.`,
-  ]);
+  const out = tmb(["setup", "--yes"], project);
+  for (const name of ROLE_NAMES) expect(out).toContain(`Wrote the ${name} role to ${path.relative(project, roleFilePath(project, name))}.`);
 }
 
 function readJson(file: string): Record<string, unknown> {
@@ -108,9 +96,11 @@ describe("tmb setup on a fresh project", () => {
     expect(settings.enabledMcpjsonServers).toEqual(["tmb"]);
     expect(tmbHooksByEvent(settings)).toEqual(Object.fromEntries(TMB_HOOKS.map((hook) => [hook.hookEvent, [hook.name]])));
 
-    const roleFile = roleFilePath(project, FIXTURE_ROLE.name);
-    expect(path.relative(project, roleFile)).toBe(path.join(".claude", "agents", "fixture-worker.md"));
-    expect(readFileSync(roleFile, "utf8")).toContain(FIXTURE_ROLE.prompt.trim());
+    expect(readdirSync(path.join(project, ".claude", "agents")).sort()).toEqual(["reviewer.md", "worker.md"]);
+    for (const role of SUBAGENT_ROLES) expect(readFileSync(roleFilePath(project, role.name), "utf8")).toContain(role.prompt.trim());
+
+    const again = tmb(["setup", "--yes"], project);
+    for (const name of ROLE_NAMES) expect(again).toContain(`${path.relative(project, roleFilePath(project, name))} already holds the ${name} role; nothing to change.`);
 
     expect(projectDbPath(project)).toBe(path.join(project, ".tmb", "trajectory.db"));
     expect(existsSync(projectDbPath(project))).toBe(true);
@@ -164,7 +154,7 @@ describe("tmb remove", () => {
     tmb(["remove"], project);
 
     expect(existsSync(path.join(project, MCP_JSON))).toBe(false);
-    expect(existsSync(roleFilePath(project, FIXTURE_ROLE.name))).toBe(false);
+    for (const name of ROLE_NAMES) expect(existsSync(roleFilePath(project, name))).toBe(false);
     noTmbHookLeft(project);
     expect(existsSync(projectDbPath(project))).toBe(true);
   });

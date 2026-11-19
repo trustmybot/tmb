@@ -8,9 +8,12 @@ export const NOT_BLANK = "\\S";
 /** Schema pattern: a record id. Ids are Crockford base32, which reads lower case as upper case. */
 export const RECORD_ID = "^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$";
 
+type TextSchema = { type: "string"; description: string; enum?: readonly string[]; pattern?: string };
+
 export type FieldSchema =
-  | { type: "string"; description: string; enum?: readonly string[]; pattern?: string }
-  | { type: "integer"; description: string; minimum: number; maximum: number };
+  | TextSchema
+  | { type: "integer"; description: string; minimum: number; maximum: number }
+  | { type: "array"; description: string; items: Omit<TextSchema, "description">; minItems?: number };
 
 export type InputSchema = {
   type: "object";
@@ -19,13 +22,21 @@ export type InputSchema = {
   additionalProperties: false;
 };
 
+function describeText(field: Omit<TextSchema, "description">): string {
+  if (field.enum) return `one of ${field.enum.join(", ")}`;
+  if (field.pattern === RECORD_ID) return "a 26-character record id, such as 01KA0000000000000000000000";
+  if (field.pattern === NOT_BLANK) return "text that is not blank";
+  if (field.pattern !== undefined) return `text matching /${field.pattern}/`;
+  return "text";
+}
+
 function describeField(name: string, field: FieldSchema): string {
   if (field.type === "integer") return `${name} must be an integer from ${field.minimum} to ${field.maximum}`;
-  if (field.enum) return `${name} must be one of ${field.enum.join(", ")}`;
-  if (field.pattern === RECORD_ID) return `${name} must be a 26-character record id, such as 01KA0000000000000000000000`;
-  if (field.pattern === NOT_BLANK) return `${name} must be text that is not blank`;
-  if (field.pattern !== undefined) return `${name} must be text matching /${field.pattern}/`;
-  return `${name} must be text`;
+  if (field.type === "array") {
+    const least = field.minItems === undefined || field.minItems === 0 ? "" : ` of at least ${field.minItems}`;
+    return `${name} must be a list${least}, each item ${describeText(field.items)}`;
+  }
+  return `${name} must be ${describeText(field)}`;
 }
 
 function fieldValue(name: string, field: FieldSchema, value: unknown): unknown {
@@ -34,10 +45,21 @@ function fieldValue(name: string, field: FieldSchema, value: unknown): unknown {
     if (typeof value !== "number" || !Number.isInteger(value) || value < field.minimum || value > field.maximum) throw refuse();
     return value;
   }
-  if (typeof value !== "string") throw refuse();
-  if (field.enum !== undefined && !field.enum.includes(value)) throw refuse();
-  if (field.pattern !== undefined && !new RegExp(field.pattern, "u").test(value)) throw refuse();
-  return field.pattern === RECORD_ID ? value.toUpperCase() : value;
+  if (field.type === "array") {
+    if (!Array.isArray(value) || value.length < (field.minItems ?? 0)) throw refuse();
+    return value.map((item) => {
+      if (!textMatches(field.items, item)) throw refuse();
+      return item;
+    });
+  }
+  if (!textMatches(field, value)) throw refuse();
+  return field.pattern === RECORD_ID ? (value as string).toUpperCase() : value;
+}
+
+function textMatches(field: Omit<TextSchema, "description">, value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (field.enum !== undefined && !field.enum.includes(value)) return false;
+  return field.pattern === undefined || new RegExp(field.pattern, "u").test(value);
 }
 
 /** Checks `input` against `schema` and returns it with ids in upper case; throws a HandlerError naming what is allowed. */

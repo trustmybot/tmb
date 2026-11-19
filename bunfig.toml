@@ -1,0 +1,3 @@
+# The agent runs' fixture projects carry their own tests, which fail as shipped on purpose.
+[test]
+pathIgnorePatterns = ["tests/agent-run/fixtures/**"]

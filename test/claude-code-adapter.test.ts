@@ -11,6 +11,7 @@ import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath } from 
 
 const EXE = path.join(tmpdir(), "tmb bin", "tmb");
 const BINARY = [EXE];
+const ATTENDED = { unattended: false };
 const BUN = path.join(tmpdir(), "bun bin", "bun");
 const SOURCE = [BUN, path.join(tmpdir(), "my code", "tmb", "src", "cli.ts")];
 
@@ -347,7 +348,7 @@ describe("hook session-start", () => {
   const roleOnly = { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: plannerRole } };
 
   test("answers with the planner role alone when the project has no record", () => {
-    const output = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", source: "startup", cwd: project })));
+    const output = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", source: "startup", cwd: project }), ATTENDED));
     expect(output).toEqual(roleOnly);
     expect(output.hookSpecificOutput.additionalContext).toStartWith("# You are bro, the planner");
   });
@@ -360,17 +361,17 @@ describe("hook session-start", () => {
     const sub = path.join(project, "src", "deep");
     mkdirSync(sub, { recursive: true });
 
-    const fromCwd = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: sub })));
+    const fromCwd = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: sub }), ATTENDED));
     expect(fromCwd.hookSpecificOutput.additionalContext).toContain(OPEN_WORK_HEADING);
     expect(fromCwd.hookSpecificOutput.additionalContext).toContain("Resume me");
 
     process.env.CLAUDE_PROJECT_DIR = sub;
-    const fromEnv = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: tmpdir() })));
+    const fromEnv = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: tmpdir() }), ATTENDED));
     expect(fromEnv.hookSpecificOutput.additionalContext).toContain("Resume me");
   });
 
   test("rejects an unknown event", () => {
-    expect(() => answerHook("nope", "")).toThrow();
+    expect(() => answerHook("nope", "", ATTENDED)).toThrow();
   });
 });
 
