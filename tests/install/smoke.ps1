@@ -70,7 +70,15 @@ function Invoke-Smoke {
     try {
         git init -q
         $setupLog = Join-Path $work 'setup.log'
-        & $tmb setup *> $setupLog
+        # Setup needs an installed host, and a clean machine has none: a copy of tmb named
+        # claude stands in, since setup only needs `claude --version` to answer.
+        $fakeHost = Join-Path $work 'fake-host'
+        New-Item -ItemType Directory -Force -Path $fakeHost | Out-Null
+        Copy-Item $tmb (Join-Path $fakeHost 'claude.exe')
+        $savedPath = $env:PATH
+        $env:PATH = "$fakeHost;$savedPath"
+        try { & $tmb setup *> $setupLog }
+        finally { $env:PATH = $savedPath }
         $settings = Join-Path $project '.claude\settings.local.json'
         if ($LASTEXITCODE -eq 0 -and (Test-Path $settings) -and (Get-Content -Raw $settings) -match 'hook session-start') {
             Pass 'tmb setup wired the SessionStart hook in a fresh git repo'

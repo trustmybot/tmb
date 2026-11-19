@@ -1,5 +1,5 @@
 // Claude Code's per-user, per-project settings file: the Human's own, never shared. tmb adds
-// its SessionStart hook and enables its tool server from the project's .mcp.json.
+// its hooks and enables its tool server from the project's .mcp.json.
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { ignoreInGit } from "./git.ts";
@@ -9,45 +9,113 @@ import { SERVER_KEY } from "./mcp-json.ts";
 const SETTINGS_RELATIVE = path.join(".claude", "settings.local.json");
 const GITIGNORE_ENTRY = ".claude/settings.local.json";
 const ENABLED_SERVERS_KEY = "enabledMcpjsonServers";
-const HOOK_ARGS = "hook session-start";
-// The hook a compiled tmb writes: its quoted executable, named tmb, then the hook arguments.
-const BINARY_HOOK_COMMAND = /^"(?:[^"]*[\\/])?tmb(?:[^"\\/]*)"\s+hook\s+session-start$/i;
-// The hook a source run writes: quoted Bun, then tmb's src/cli.ts, quoted or not, then the arguments.
-const SOURCE_HOOK_COMMAND = /^"[^"]*"\s+(?:"[^"]*[\\/]src[\\/]cli\.ts"|[^"\s]*[\\/]src[\\/]cli\.ts)\s+hook\s+session-start$/i;
 
+/** The tools whose calls raise a tmb event: file writes, shell commands and subagent starts. */
+export const GUARDED_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "Agent", "Task"] as const;
+
+/** Each Claude Code hook tmb wires: the hook event, its matcher, and the `tmb hook` name it runs. */
+export const TMB_HOOKS = [
+  { hookEvent: "SessionStart", name: "session-start" },
+  { hookEvent: "PreToolUse", name: "pre-tool-use", matcher: GUARDED_TOOLS.join("|") },
+  { hookEvent: "SubagentStop", name: "subagent-stop" },
+] as const;
+
+type TmbHook = (typeof TMB_HOOKS)[number];
+export type HookName = TmbHook["name"];
 type HookCommand = { type?: unknown; command?: unknown } & JsonObject;
-type HookGroup = { hooks?: unknown } & JsonObject;
+type HookGroup = { matcher?: unknown; hooks?: unknown } & JsonObject;
+
+const HOOK_NAMES = TMB_HOOKS.map((hook) => hook.name).join("|");
+// The hook a compiled tmb writes: its quoted executable, named tmb, then the hook arguments.
+const BINARY_HOOK_COMMAND = new RegExp(String.raw`^"(?:[^"]*[\\/])?tmb(?:[^"\\/]*)"\s+hook\s+(${HOOK_NAMES})$`, "i");
+// The hook a source run writes: quoted Bun, then tmb's src/cli.ts, quoted or not, then the arguments.
+const SOURCE_HOOK_COMMAND = new RegExp(
+  String.raw`^"[^"]*"\s+(?:"[^"]*[\\/]src[\\/]cli\.ts"|[^"\s]*[\\/]src[\\/]cli\.ts)\s+hook\s+(${HOOK_NAMES})$`,
+  "i",
+);
 
 export function settingsPath(projectDir: string): string {
   return path.join(projectDir, SETTINGS_RELATIVE);
 }
 
 /** The hook's shell command: each part of the tmb command quoted, then the hook arguments. */
-export function hookCommand(tmbCommand: readonly string[]): string {
-  return `${tmbCommand.map((part) => `"${part}"`).join(" ")} ${HOOK_ARGS}`;
+export function hookCommand(tmbCommand: readonly string[], name: HookName): string {
+  return `${tmbCommand.map((part) => `"${part}"`).join(" ")} hook ${name}`;
 }
 
-export function isTmbHookCommand(command: unknown): boolean {
-  return typeof command === "string" && (BINARY_HOOK_COMMAND.test(command) || SOURCE_HOOK_COMMAND.test(command));
+/** The `tmb hook` name a command runs when it is one of tmb's hooks, else null. */
+function tmbHookName(command: unknown): string | null {
+  if (typeof command !== "string") return null;
+  const match = BINARY_HOOK_COMMAND.exec(command) ?? SOURCE_HOOK_COMMAND.exec(command);
+  return match ? match[1]!.toLowerCase() : null;
 }
 
-function isTmbHook(hook: unknown): boolean {
-  return isTmbHookCommand((hook as HookCommand | null)?.command);
+/** Whether the command is a tmb hook, any of them, or the one named. */
+export function isTmbHookCommand(command: unknown, name?: HookName): boolean {
+  const found = tmbHookName(command);
+  return found !== null && (name === undefined || found === name);
 }
 
-/** Removes tmb's session-start hooks from the groups, dropping groups left empty. */
-function withoutTmbHooks(groups: unknown[]): unknown[] {
+function isTmbHookOf(name: HookName): (hook: unknown) => boolean {
+  return (hook) => isTmbHookCommand((hook as HookCommand | null)?.command, name);
+}
+
+function hooksOf(group: unknown): unknown[] {
+  const hooks = (group as HookGroup | null)?.hooks;
+  return isObject(group) && Array.isArray(hooks) ? hooks : [];
+}
+
+/** Removes tmb's hooks of one kind from the groups, dropping groups left empty. */
+function withoutTmbHooks(groups: unknown[], name: HookName): unknown[] {
+  const isTmb = isTmbHookOf(name);
   const kept: unknown[] = [];
   for (const group of groups) {
-    const hooks = (group as HookGroup | null)?.hooks;
-    if (!isObject(group) || !Array.isArray(hooks) || !hooks.some(isTmbHook)) {
+    const hooks = hooksOf(group);
+    if (!hooks.some(isTmb)) {
       kept.push(group);
       continue;
     }
-    const remaining = hooks.filter((hook) => !isTmbHook(hook));
-    if (remaining.length > 0) kept.push({ ...group, hooks: remaining });
+    const remaining = hooks.filter((hook) => !isTmb(hook));
+    if (remaining.length > 0) kept.push({ ...(group as JsonObject), hooks: remaining });
   }
   return kept;
+}
+
+function groupFor(hook: TmbHook, command: string): JsonObject {
+  const group: JsonObject = "matcher" in hook ? { matcher: hook.matcher } : {};
+  group.hooks = [{ type: "command", command }];
+  return group;
+}
+
+/** True when the groups hold exactly one tmb hook of this kind, and it is the current one. */
+function isWired(groups: unknown[], hook: TmbHook, command: string): boolean {
+  const isTmb = isTmbHookOf(hook.name);
+  const wired = groups.flatMap((group) => hooksOf(group).filter(isTmb).map((found) => ({ group: group as HookGroup, found })));
+  if (wired.length !== 1) return false;
+  const { group, found } = wired[0]!;
+  const matcher = "matcher" in hook ? hook.matcher : undefined;
+  return (found as HookCommand).command === command && group.matcher === matcher;
+}
+
+/** Adds the hook unless it is there already; a tmb hook of the same kind pointing elsewhere is stale and replaced. */
+function addHook(settings: JsonObject, hook: TmbHook, command: string): boolean {
+  const hooks = isObject(settings.hooks) ? settings.hooks : {};
+  const groups = Array.isArray(hooks[hook.hookEvent]) ? (hooks[hook.hookEvent] as unknown[]) : [];
+  if (isWired(groups, hook, command)) return false;
+  settings.hooks = { ...hooks, [hook.hookEvent]: [...withoutTmbHooks(groups, hook.name), groupFor(hook, command)] };
+  return true;
+}
+
+function removeHook(settings: JsonObject, hook: TmbHook): boolean {
+  const hooks = settings.hooks;
+  const groups = isObject(hooks) ? hooks[hook.hookEvent] : undefined;
+  if (!isObject(hooks) || !Array.isArray(groups)) return false;
+  const kept = withoutTmbHooks(groups, hook.name);
+  if (kept.length === groups.length && kept.every((group, i) => group === groups[i])) return false;
+  if (kept.length > 0) hooks[hook.hookEvent] = kept;
+  else delete hooks[hook.hookEvent];
+  if (Object.keys(hooks).length === 0) delete settings.hooks;
+  return true;
 }
 
 function enabledServers(settings: JsonObject, file: string): unknown[] {
@@ -57,70 +125,44 @@ function enabledServers(settings: JsonObject, file: string): unknown[] {
   return enabled;
 }
 
-/** Adds the hook unless it is there already; a tmb hook pointing at another tmb is stale and replaced. */
-function addHook(settings: JsonObject, command: string): boolean {
-  const hooks = isObject(settings.hooks) ? settings.hooks : {};
-  const sessionStart = Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
-  const alreadyWired = sessionStart.some((group) => {
-    const groupHooks = (group as HookGroup | null)?.hooks;
-    return Array.isArray(groupHooks) && groupHooks.some((hook) => (hook as HookCommand | null)?.command === command);
-  });
-  if (alreadyWired) return false;
-  const groups = withoutTmbHooks(sessionStart);
-  groups.push({ hooks: [{ type: "command", command }] });
-  settings.hooks = { ...hooks, SessionStart: groups };
-  return true;
-}
-
-function removeHook(settings: JsonObject): boolean {
-  const hooks = settings.hooks;
-  const sessionStart = isObject(hooks) ? hooks.SessionStart : undefined;
-  if (!isObject(hooks) || !Array.isArray(sessionStart)) return false;
-  const groups = withoutTmbHooks(sessionStart);
-  if (groups.length === sessionStart.length && groups.every((group, i) => group === sessionStart[i])) return false;
-  if (groups.length > 0) hooks.SessionStart = groups;
-  else delete hooks.SessionStart;
-  if (Object.keys(hooks).length === 0) delete settings.hooks;
-  return true;
-}
-
-export type SetupResult = { settingsFile: string; hookAdded: boolean; serverEnabled: boolean; gitignoreChanged: boolean };
+/** `hooksAdded` and `hooksRemoved` name the Claude Code hook events tmb changed, in wiring order. */
+export type SetupResult = { settingsFile: string; hooksAdded: string[]; serverEnabled: boolean; gitignoreChanged: boolean };
 
 export function install(projectDir: string, tmbCommand: readonly string[]): SetupResult {
   const file = settingsPath(projectDir);
   const settings = readJsonObject(file);
   const enabled = enabledServers(settings, file);
 
-  const hookAdded = addHook(settings, hookCommand(tmbCommand));
+  const hooksAdded = TMB_HOOKS.filter((hook) => addHook(settings, hook, hookCommand(tmbCommand, hook.name))).map((hook) => hook.hookEvent);
   const serverEnabled = !enabled.includes(SERVER_KEY);
   if (serverEnabled) settings[ENABLED_SERVERS_KEY] = [...enabled, SERVER_KEY];
-  if (hookAdded || serverEnabled) writeJsonObject(file, settings);
+  if (hooksAdded.length > 0 || serverEnabled) writeJsonObject(file, settings);
 
-  return { settingsFile: file, hookAdded, serverEnabled, gitignoreChanged: ignoreInGit(projectDir, GITIGNORE_ENTRY) };
+  return { settingsFile: file, hooksAdded, serverEnabled, gitignoreChanged: ignoreInGit(projectDir, GITIGNORE_ENTRY) };
 }
 
-export type RemoveResult = { settingsFile: string; hookRemoved: boolean; serverDisabled: boolean; fileDeleted: boolean };
+export type RemoveResult = { settingsFile: string; hooksRemoved: string[]; serverDisabled: boolean; fileDeleted: boolean };
 
 export function remove(projectDir: string): RemoveResult {
   const file = settingsPath(projectDir);
-  const unchanged = { settingsFile: file, hookRemoved: false, serverDisabled: false, fileDeleted: false };
+  const unchanged: RemoveResult = { settingsFile: file, hooksRemoved: [], serverDisabled: false, fileDeleted: false };
   if (!existsSync(file)) return unchanged;
 
   const settings = readJsonObject(file);
   const enabled = enabledServers(settings, file);
-  const hookRemoved = removeHook(settings);
+  const hooksRemoved = TMB_HOOKS.filter((hook) => removeHook(settings, hook)).map((hook) => hook.hookEvent);
   const serverDisabled = enabled.includes(SERVER_KEY);
   if (serverDisabled) {
     const remaining = enabled.filter((name) => name !== SERVER_KEY);
     if (remaining.length > 0) settings[ENABLED_SERVERS_KEY] = remaining;
     else delete settings[ENABLED_SERVERS_KEY];
   }
-  if (!hookRemoved && !serverDisabled) return unchanged;
+  if (hooksRemoved.length === 0 && !serverDisabled) return unchanged;
 
   if (Object.keys(settings).length === 0) {
     deleteFile(file, projectDir);
-    return { settingsFile: file, hookRemoved, serverDisabled, fileDeleted: true };
+    return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: true };
   }
   writeJsonObject(file, settings);
-  return { settingsFile: file, hookRemoved, serverDisabled, fileDeleted: false };
+  return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: false };
 }
