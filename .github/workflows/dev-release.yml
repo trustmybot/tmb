@@ -110,13 +110,13 @@ jobs:
       TMB_EXPECTED_VERSION: ${{ needs.version.outputs.tmb_version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install smoke (macOS, Linux)
-        if: runner.os != 'Windows'
-        run: sh tests/install/smoke.sh dev "$TMB_EXPECTED_VERSION"
-      - name: Install smoke (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./tests/install/smoke.ps1 -Channel dev -ExpectedVersion $env:TMB_EXPECTED_VERSION
+      # Only the test driver runs under bun; the installer runs under sh, or PowerShell on Windows.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - name: Install smoke
+        shell: bash
+        run: bun tests/install/smoke.ts dev "$TMB_EXPECTED_VERSION"
 
   # An older dev install updates itself to the release just published, between sessions and
   # never while a session runs, on every OS. Needs no secret.
