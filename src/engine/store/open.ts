@@ -1,0 +1,93 @@
+// Opens the project's database file, or refuses it with a named cause. The caller passes
+// the path; the store never works out where the file lives.
+import { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
+import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { Store } from "./store.ts";
+
+const BUSY_TIMEOUT_MS = 5000;
+
+export type StoreOpenFailure = "missing" | "unreadable" | "newer";
+
+export class StoreOpenError extends Error {
+  override name = "StoreOpenError";
+  constructor(
+    readonly failure: StoreOpenFailure,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export type OpenResult = { ok: true; store: Store } | { ok: false; error: StoreOpenError };
+
+function failed(failure: StoreOpenFailure, message: string): OpenResult {
+  return { ok: false, error: new StoreOpenError(failure, message) };
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Reads the schema version and whether the file holds any table, the first reads that fail on a non-database file. */
+function readHeader(db: Database): { version: number; tables: number } {
+  const { user_version: version } = db.query("PRAGMA user_version").get() as { user_version: number };
+  const { tables } = db.query("SELECT count(*) AS tables FROM sqlite_master").get() as { tables: number };
+  return { version, tables };
+}
+
+/**
+ * Opens the trajectory database at `dbPath`. With `create`, a missing file is made and
+ * given the version 1 schema. Refuses a missing file without `create`, a file that is not
+ * a readable tmb database, and a database made by a newer tmb.
+ */
+export function openStore(dbPath: string, options: { create: boolean }): OpenResult {
+  if (!existsSync(dbPath) && !options.create) return failed("missing", `no tmb database at ${dbPath}`);
+
+  let db: Database;
+  try {
+    db = new Database(dbPath, { create: options.create, readwrite: true, strict: true });
+  } catch (error) {
+    return failed("unreadable", `cannot open ${dbPath}: ${describe(error)}`);
+  }
+
+  try {
+    db.run(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+    let header: { version: number; tables: number };
+    try {
+      header = readHeader(db);
+    } catch (error) {
+      db.close();
+      return failed("unreadable", `${dbPath} is not a readable SQLite database: ${describe(error)}`);
+    }
+
+    if (header.version > SCHEMA_VERSION) {
+      db.close();
+      return failed(
+        "newer",
+        `${dbPath} has schema version ${header.version}, made by a newer tmb; this build reads up to version ${SCHEMA_VERSION}`,
+      );
+    }
+    if (header.version === 0 && header.tables > 0) {
+      db.close();
+      return failed("unreadable", `${dbPath} is a SQLite database but not a tmb one: it has tables and no schema version`);
+    }
+    if (header.version === 0 && !options.create) {
+      db.close();
+      return failed("missing", `${dbPath} is empty: no tmb database has been set up in it`);
+    }
+
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA foreign_keys = ON");
+    if (header.version === 0) {
+      db.transaction(() => {
+        db.run(SCHEMA_SQL);
+        db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      }).immediate();
+    }
+    return { ok: true, store: new Store(db) };
+  } catch (error) {
+    db.close();
+    return failed("unreadable", `cannot use ${dbPath}: ${describe(error)}`);
+  }
+}

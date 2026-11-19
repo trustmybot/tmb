@@ -13,13 +13,15 @@
     "typecheck": "tsc --noEmit",
     "lint:links": "bun tests/lint/links.ts",
     "test:install": "sh tests/install/smoke.sh",
-    "test:agent": "sh tests/agent-run/run.sh"
+    "test:agent": "sh tests/agent-run/run.sh",
+    "test:chain": "sh tests/agent-chain/run.sh"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "tree-sitter-typescript": "^0.23.2",
     "web-tree-sitter": "^0.27.2"
   }

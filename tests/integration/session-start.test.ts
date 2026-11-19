@@ -10,21 +10,10 @@ const CLI = path.join(ROOT, "src", "cli.ts");
 const PLANNER_ROLE = readFileSync(path.join(ROOT, "roles", "planner.md"), "utf8");
 
 let scratch: string;
-let tmbExe: string;
 
 beforeAll(() => {
-  // The real path, because the binary records its own resolved path (macOS /tmp is a symlink).
   scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-integration-")));
-  // setup records process.execPath as the hook command, and remove only recognises an
-  // executable named tmb, so setup/remove run through a compiled binary, as users get it.
-  tmbExe = path.join(scratch, "bin", process.platform === "win32" ? "tmb.exe" : "tmb");
-  const build = spawnSync(process.execPath, ["build", "--compile", CLI, "--outfile", tmbExe], {
-    cwd: ROOT,
-    encoding: "utf8",
-    timeout: 120_000,
-  });
-  if (build.status !== 0) throw new Error(`compiling tmb failed: ${build.stderr}`);
-}, 120_000);
+});
 
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
@@ -79,14 +68,16 @@ describe("tmb setup and remove", () => {
     writeFileSync(settingsFile, JSON.stringify(original, null, 2) + "\n");
     const readSettings = () => JSON.parse(readFileSync(settingsFile, "utf8")) as Record<string, any>;
 
-    const setup = run(tmbExe, ["setup"], project);
+    // From source, setup wires Bun running src/cli.ts, and remove must recognise that hook.
+    const setup = run(process.execPath, [CLI, "setup"], project);
     expect(setup.status).toBe(0);
     const afterSetup = readSettings();
     expect(afterSetup.permissions).toEqual(original.permissions);
     expect(afterSetup.hooks.PreToolUse).toEqual([otherHook]);
-    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: `"${tmbExe}" hook session-start` }] }]);
+    const hookCommand = `"${process.execPath}" "${CLI}" hook session-start`;
+    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand }] }]);
 
-    const remove = run(tmbExe, ["remove"], project);
+    const remove = run(process.execPath, [CLI, "remove"], project);
     expect(remove.status).toBe(0);
     expect(existsSync(settingsFile)).toBe(true);
     expect(readSettings()).toEqual(original);

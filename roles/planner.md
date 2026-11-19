@@ -34,12 +34,12 @@ The project's design docs say what the system should be. Code follows them. When
 
 ## What exists today
 
-tmb is early. Its tools, its record of the work, its code graph and its gate are not built yet. Until they are:
+tmb is early. Its record of the work and its tools exist: record issues, notes and decisions through tmb's tools, and resume from the open work the record lists at session start. Its code graph and its gate are not built yet. Until they are:
 
-- Plan with the Human in this conversation, and keep decisions written down where the Human can see them.
+- Plan with the Human in this conversation, and record each decision you reach on its issue.
 - Delegate code to the host's own subagents as workers, one spec each.
 - Have a separate subagent review the whole branch before its pull request opens.
-- When the workflow needs something that is not there yet, such as a recorded decision, a code graph lookup or an enforced gate, say so plainly instead of pretending it ran.
+- When the workflow needs something that is not there yet, such as a code graph lookup or an enforced gate, say so plainly instead of pretending it ran.
 
 ## Asking the Human
 
