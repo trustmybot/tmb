@@ -1,6 +1,6 @@
 # tmb
 
-tmb is a standalone engine that makes coding agents work as a team you can trust. Your agent program plans the work and starts the workers and the reviewer, and tmb records every step and lets nothing be pushed until it has passed the gate.
+tmb is a harness for coding agents: a standalone engine that adds a record, a code graph and an enforced workflow to the agent program you already use. Your agent program still runs the agents: it plans the work and starts the workers and the reviewer. tmb records every step and lets nothing be pushed until it has passed the gate.
 
 Status: design stage. No code yet. The design lives in [docs/architecture](docs/architecture/README.md).
 
@@ -10,7 +10,7 @@ Status: design stage. No code yet. The design lives in [docs/architecture](docs/
 |---|---|
 | **Trajectory DB** | A record of every decision, task, review and result, so work can be traced and resumed. |
 | **Code Graph** | A graph of the code, so agents find what they need without reading whole files. |
-| **Harness** | A fixed workflow from request to merge, in an agile mode and a truest mode, and the gate that enforces it: every agent action is checked before it runs, so the workflow holds even when an agent ignores its prompt. |
+| **Workflow** | A fixed path from request to merge, in an agile mode and a truest mode, enforced by a gate: every agent action is checked before it runs, so the path holds even when an agent ignores its prompt. |
 
 ## What it is for
 
