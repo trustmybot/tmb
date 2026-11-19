@@ -89,6 +89,14 @@ flowchart TD
 - **The gate holds.** The host itself asks the engine before an action, and the engine answers from the record. An agent cannot skip that.
 - A session resumes from the record, so a new session needs nothing from the conversation before it.
 
+## Unattended mode
+
+Planned. A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.
+
+- Whoever starts the run sets the mode, for that run only. It is not stored in the project, so the next session the Human opens is a normal one.
+- It comes from the engine, so it works the same on every host and the Human's prompt needs no special wording.
+- It changes guidance only. The gate allows and denies exactly as in a normal session.
+
 ## tmb's own events
 
 tmb has its own hook system. Rules are written once against tmb's events, never against a host's or git's. Host hooks and git hooks are only sources that raise a tmb event.

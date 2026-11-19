@@ -32,12 +32,18 @@ tmb is a product for users, so an agent run tests what a user would really type,
 - **Write as a user would.** Short and loose. Name the goal, not tmb's tools, records or steps.
 - **Do not ask for a step tmb should take by itself.** If bro should record a goal without being told, a prompt that says "record this" tests nothing.
 - **Be specific only where the test needs it.** A detail belongs in a prompt only when the check has to find it afterwards.
-- **End with "Don't ask questions."** on its own line. No one is there to answer, so bro must apply its defaults and go on.
+- **Add nothing for the test's sake.** A prompt holds only what a user would type. That no one is there to answer is said by the run, not by the prompt ([Unattended runs](#unattended-runs)).
 
 | A user would type | Reads like a spec |
 |---|---|
 | `@bro we need a dark mode toggle` | `@bro record an issue titled "Dark mode toggle"` |
 | `@bro where were we?` | `@bro what open work is in the record?` |
+
+## Unattended runs
+
+An agent run has no one to answer a question, so it runs tmb in unattended mode ([HOSTS.md](../docs/architecture/HOSTS.md#unattended-mode)): the engine tells bro at session start to apply its defaults and name the ones it used. The test sets the mode; the prompt never mentions it.
+
+Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. Planned, for the first level that depends on a question.
 
 ## When each layer runs
 
