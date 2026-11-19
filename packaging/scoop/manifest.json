@@ -15,6 +15,6 @@
   "bin": "{{PROGRAM}}.exe",
   "notes": [
     "{{PROGRAM}} updates itself from the {{CHANNEL}} channel between sessions.",
-    "Run '{{PROGRAM}} setup' in a project, then start your agent program there."
+    "Run '{{PROGRAM}} init' in a project, then start your agent program there."
   ]
 }

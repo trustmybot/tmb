@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { programName } from "../src/program.ts";
 import { channelOf, compareVersions, type Channel, Updater } from "../src/update.ts";
 
 const root = path.resolve(import.meta.dir, "..");
@@ -35,11 +36,11 @@ export type Names = { program: string; cask: string; wingetId: string; name: str
 export function namesOf(channel: Channel): Names {
   switch (channel) {
     case "stable":
-      return { program: "tmb", cask: "tmb", wingetId: "TrustMyBot.tmb", name: "tmb" };
+      return { program: programName("stable"), cask: "tmb", wingetId: "TrustMyBot.tmb", name: "tmb" };
     case "rc":
-      return { program: "tmb-rc", cask: "tmb@rc", wingetId: "TrustMyBot.tmb.RC", name: "tmb (rc)" };
+      return { program: programName("rc"), cask: "tmb@rc", wingetId: "TrustMyBot.tmb.RC", name: "tmb (rc)" };
     case "dev":
-      return { program: "tmb-dev", cask: "tmb@dev", wingetId: "TrustMyBot.tmb.Dev", name: "tmb (dev)" };
+      return { program: programName("dev"), cask: "tmb@dev", wingetId: "TrustMyBot.tmb.Dev", name: "tmb (dev)" };
   }
 }
 

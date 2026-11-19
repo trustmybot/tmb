@@ -7,30 +7,32 @@ cask "{{CASK}}" do
     on_arm do
       sha256 "{{SHA256_DARWIN_ARM64}}"
       url "{{DOWNLOAD}}/tmb-darwin-arm64"
-
-      binary "tmb-darwin-arm64", target: "{{PROGRAM}}"
     end
     on_intel do
       sha256 "{{SHA256_DARWIN_X64}}"
       url "{{DOWNLOAD}}/tmb-darwin-x64"
-
-      binary "tmb-darwin-x64", target: "{{PROGRAM}}"
     end
   end
   on_linux do
     on_arm do
       sha256 "{{SHA256_LINUX_ARM64}}"
       url "{{DOWNLOAD}}/tmb-linux-arm64"
-
-      binary "tmb-linux-arm64", target: "{{PROGRAM}}"
     end
     on_intel do
       sha256 "{{SHA256_LINUX_X64}}"
       url "{{DOWNLOAD}}/tmb-linux-x64"
-
-      binary "tmb-linux-x64", target: "{{PROGRAM}}"
     end
   end
+
+  # A tmb program knows itself by its file's name, and a cask's binary is a symlink, which the
+  # program does not see. So the file itself takes the program's name before it is linked, and
+  # tmb-dev never takes itself for tmb (trustmybot/tmb#89, Part 2).
+  preflight do
+    Dir.glob("#{staged_path}/tmb-{darwin,linux}-*").each do |file|
+      File.rename(file, "#{staged_path}/{{PROGRAM}}")
+    end
+  end
+  binary "{{PROGRAM}}"
 
   name "{{NAME}}"
   desc "Harness for coding agents: a record, a code graph and an enforced workflow"
@@ -45,6 +47,6 @@ cask "{{CASK}}" do
 
   caveats <<~EOS
     {{PROGRAM}} updates itself from the {{CHANNEL}} channel between sessions.
-    Run `{{PROGRAM}} setup` in a project, then start your agent program there.
+    Run `{{PROGRAM}} init` in a project, then start your agent program there.
   EOS
 end
