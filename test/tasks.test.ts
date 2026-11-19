@@ -143,7 +143,7 @@ describe("task_start", () => {
       commitSha: null,
       featureId: store.findFeature(FEATURE)!.id,
       kind: "code",
-      reviewMode: null,
+      reviewMode: "agile",
       createdBy: PLANNER,
     });
     expect(started.brief).toMatchObject({
@@ -318,6 +318,7 @@ describe("task_brief and task_list", () => {
         worktree: started.worktree,
         commitSha: null,
         files: ["src/a"],
+        prUrl: null,
       },
     ]);
     expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" })).code).toBe("not_found");

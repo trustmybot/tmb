@@ -142,7 +142,7 @@ describe("the questions", () => {
     writeFileSync(path.join(project, "Cargo.toml"), "");
     const ask = scripted(["trunk", "", "cargo test", "cargo clippy", ""]);
     await setup({ ask });
-    expect(ask.prompts).toEqual(["Base branch, the branch pull requests merge into: ", "Review mode, one of: agile [agile]: ", "> ", "> ", "> "]);
+    expect(ask.prompts).toEqual(["Base branch, the branch pull requests merge into: ", "Review mode, one of: agile, truest [agile]: ", "> ", "> ", "> "]);
     expect(output).toContain("  Detected:");
     expect(output).toContain("    cargo test");
     expect(settings()).toEqual({ host: "a", base_branch: "trunk", review_mode: "agile", checks: ["cargo test", "cargo clippy"] });
@@ -155,11 +155,11 @@ describe("the questions", () => {
     expect(settings().base_branch).toBe("main");
   });
 
-  test("refuses truest with the level it arrives at, and asks again", async () => {
-    const ask = scripted(["main", "truest", "agile"]);
+  test("refuses a review mode that does not exist, and asks again", async () => {
+    const ask = scripted(["main", "strict", "truest"]);
     await setup({ ask });
-    expect(output).toContain("review mode truest arrives at level 10; only agile is available now");
-    expect(settings().review_mode).toBe("agile");
+    expect(output).toContain('review mode must be agile or truest, got "strict"');
+    expect(settings().review_mode).toBe("truest");
   });
 
   test("none clears the checks; Enter keeps the default", async () => {
@@ -203,8 +203,8 @@ describe("flags", () => {
     expect(settings().base_branch).toBe("main");
   });
 
-  test("refuse truest and a blank check before anything is written", async () => {
-    await expect(setup({ flags: { reviewMode: "truest" } })).rejects.toThrow(new SettingError("review mode truest arrives at level 10; only agile is available now"));
+  test("refuse an unknown review mode and a blank check before anything is written", async () => {
+    await expect(setup({ flags: { reviewMode: "strict" } })).rejects.toThrow(new SettingError('review mode must be agile or truest, got "strict"'));
     await expect(setup({ flags: { checks: ["bun test", ""] } })).rejects.toThrow(SettingError);
     await expect(setup({ flags: { base: " " } })).rejects.toThrow(SettingError);
     expect(setUpWith).toEqual([]);

@@ -16,7 +16,7 @@ const PROJECT_MAP_DEPTH = 2;
 const MAP_SUMMARY_MAX = 120;
 
 function openWork(store: Store): string {
-  return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}`;
+  return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}${inReviewTasks(store)}`;
 }
 
 function openIssues(store: Store): string {
@@ -41,6 +41,15 @@ function openTasks(store: Store): string {
   });
   if (open.length > OPEN_WORK_MAX) lines.push(`- …and ${open.length - OPEN_WORK_MAX} newer open tasks; task_list shows them all.`);
   return `\n\nOpen tasks, oldest first:\n\n${lines.join("\n")}`;
+}
+
+/** Truest tasks waiting on their review or their pull request, oldest first; empty when none is. */
+function inReviewTasks(store: Store): string {
+  const waiting = store.listTasks("in_review");
+  if (waiting.length === 0) return "";
+  const lines = waiting.slice(0, OPEN_WORK_MAX).map((task) => `- ${task.id} ${task.title} (issue ${task.issueId}, at ${task.commitSha?.slice(0, 12) ?? "no commit"})`);
+  if (waiting.length > OPEN_WORK_MAX) lines.push(`- …and ${waiting.length - OPEN_WORK_MAX} newer tasks in review; task_list shows them all.`);
+  return `\n\nTasks in review, oldest first (task_brief shows whether a review covers each; task_pr opens a covered one's pull request):\n\n${lines.join("\n")}`;
 }
 
 /** Text from the project's files on one line, so a path or summary cannot forge a heading of this context. */
