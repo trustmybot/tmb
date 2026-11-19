@@ -1,0 +1,42 @@
+name: install smoke
+
+# Runs the install smoke test against the channel's published installer on every OS, whenever
+# the test driver itself changes, so a broken driver is caught before the next release needs it.
+# The release workflows run the same driver after they publish. Needs no secret.
+
+on:
+  pull_request:
+    paths:
+      - tests/install/smoke.ts
+      - tests/lib/**
+      - .github/workflows/install-smoke.yml
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Channel whose installer to run: dev, rc or stable"
+        default: dev
+      version:
+        description: "Version tmb --version must report; the rc channel needs it to find its installer"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  install-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - name: Install smoke
+        shell: bash
+        env:
+          TMB_CHANNEL: ${{ inputs.channel || 'dev' }}
+          TMB_EXPECTED_VERSION: ${{ inputs.version }}
+        run: bun tests/install/smoke.ts "$TMB_CHANNEL" "$TMB_EXPECTED_VERSION"
