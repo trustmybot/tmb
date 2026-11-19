@@ -125,6 +125,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts) |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). tmb issues have no labels, so only the milestone, title and body move. |
+| 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
 
 ## Level 6 tests
 
@@ -134,7 +135,6 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Setup writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
 | Workflow simulation | [tests/workflow/review-gate.test.ts](workflow/review-gate.test.ts) | Review, fail, rework, pass and the pull request on one feature branch, and a Human waiver on a second; only a reviewer run records a verdict, and only on the branch's tip. |
 | Agent run | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) (`bun run test:reviewer`) | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
-| 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
 
 ## Level 7 tests
 
