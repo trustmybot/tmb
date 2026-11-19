@@ -177,6 +177,34 @@ result.store.close();
     }
   }, 60_000);
 
+  test("creates a new database once when several processes open it at the same moment", async () => {
+    const opener = path.join(dir, "create-once.ts");
+    const openModule = path.join(import.meta.dir, "../src/engine/store/open.ts");
+    writeFileSync(
+      opener,
+      `import { openStore } from ${JSON.stringify(openModule)};
+const result = openStore(process.argv[2]!, { create: true });
+if (!result.ok) { console.error(result.error.message); process.exit(1); }
+result.store.close();
+`,
+    );
+    for (let round = 0; round < 5; round++) {
+      const roundPath = path.join(dir, `create-${round}.db`);
+      const openers = Array.from({ length: 8 }, () =>
+        Bun.spawn([process.execPath, "run", opener, roundPath], { stdout: "pipe", stderr: "pipe" }),
+      );
+      const outcomes = await Promise.all(
+        openers.map(async (child) => ({ code: await child.exited, stderr: await new Response(child.stderr).text() })),
+      );
+      expect(outcomes.filter((outcome) => outcome.code !== 0)).toEqual([]);
+
+      const db = new Database(roundPath, { readonly: true });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
+      expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
+      db.close();
+    }
+  }, 60_000);
+
   test("reopens an existing database without create", () => {
     const id = open().createIssue(HUMAN, { title: "kept" });
     store!.close();

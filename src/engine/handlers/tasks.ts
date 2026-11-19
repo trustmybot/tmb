@@ -498,6 +498,33 @@ export function closeChecks(store: Store, task: Task): string[] {
   return commands;
 }
 
+/**
+ * Closes a task whose commit the feature branch already holds at its tip, folded by an earlier close that
+ * stopped before it recorded the task closed: records the close, then cleans up and pushes as a fold does.
+ */
+function finishFold(
+  store: Store,
+  actor: Actor,
+  task: Task,
+  head: string,
+  reviewMode: string,
+  featureName: string,
+  runs: CheckRunOutcome[],
+  context: OperationContext,
+): TaskCloseResult {
+  const id = task.id;
+  const worktree = task.worktree!;
+  store.transaction(() => {
+    if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
+    requireHeadAt(worktree, head);
+    store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
+  });
+  const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
+  const push = pushFeature(context.projectDir, featureName);
+  store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
+  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems });
+}
+
 export async function taskClose(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> {
   const { id } = validateInput<{ id: string }>("task_close", taskCloseSchema, input);
   requireRole(actor, "task_close", ["worker", "planner"]);
@@ -532,7 +559,12 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
   // A fold that adds no commit would record the feature's tip, another task's commit, as this task's.
   const alreadyOnFeature = () =>
     new HandlerError("refused", `the task's work is already on the feature branch ${feature.name} at ${from}, so folding it would add no commit of the task's own, and task ${id} stays open`);
-  if (head === from) throw alreadyOnFeature();
+  if (head === from) {
+    // The tip is this task's own commit when an earlier close moved the feature branch and stopped before
+    // it recorded the task closed. Only another task recording the commit makes it not the task's own.
+    if (store.listTasks().some((other) => other.id !== id && other.commitSha === head)) throw alreadyOnFeature();
+    return finishFold(store, actor, task, head, reviewMode, feature.name, runs, context);
+  }
   let folded = head;
   if (rebased) {
     folded = rebaseOnto(worktree, feature.name, from, id);
