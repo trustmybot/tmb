@@ -352,18 +352,20 @@ describe("hook session-start", () => {
     expect(output.hookSpecificOutput.additionalContext).toStartWith("# You are bro, the planner");
   });
 
-  test("takes the project from cwd in the input, then CLAUDE_PROJECT_DIR", () => {
+  test("takes the project from CLAUDE_PROJECT_DIR, then cwd in the input, looking up from a subfolder", () => {
     const opened = openProjectStore(project, { create: true });
     if (!opened.ok) throw opened.error;
     opened.store.createIssue({ kind: "human" }, { title: "Resume me" });
     opened.store.close();
+    const sub = path.join(project, "src", "deep");
+    mkdirSync(sub, { recursive: true });
 
-    const fromCwd = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: project })));
+    const fromCwd = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: sub })));
     expect(fromCwd.hookSpecificOutput.additionalContext).toContain(OPEN_WORK_HEADING);
     expect(fromCwd.hookSpecificOutput.additionalContext).toContain("Resume me");
 
-    process.env.CLAUDE_PROJECT_DIR = project;
-    const fromEnv = JSON.parse(answerHook("session-start", "{}"));
+    process.env.CLAUDE_PROJECT_DIR = sub;
+    const fromEnv = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: tmpdir() })));
     expect(fromEnv.hookSpecificOutput.additionalContext).toContain("Resume me");
   });
 

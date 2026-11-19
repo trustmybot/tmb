@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { decide, openProjectStore, projectDbPath, type TmbEvent } from "../src/engine/index.ts";
+import { decide, openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf, type TmbEvent } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
 
 let project: string;
@@ -89,5 +89,23 @@ describe("decide", () => {
     expect(answer.decision).toBe("deny");
     expect(answer.reason).toContain("could not record its decision");
     expect(guardDecisions()).toHaveLength(0);
+  });
+});
+
+describe("projectRootOf", () => {
+  test("finds the nearest folder holding tmb's project folder, from the folder itself or below it", () => {
+    mkdirSync(path.join(project, PROJECT_DIR_NAME));
+    const sub = path.join(project, "a", "b");
+    mkdirSync(sub, { recursive: true });
+    expect(projectRootOf(project)).toBe(project);
+    expect(projectRootOf(sub)).toBe(project);
+    expect(projectRootOf(path.join(sub, ".."))).toBe(project);
+  });
+
+  test("passes over a file of that name, and with no project folder above returns the start folder", () => {
+    const sub = path.join(project, "a");
+    mkdirSync(sub);
+    writeFileSync(path.join(sub, PROJECT_DIR_NAME), "");
+    expect(projectRootOf(sub)).toBe(sub);
   });
 });

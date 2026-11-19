@@ -1,4 +1,4 @@
-import { decide, handleEvent, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
 import { isObject, type JsonObject } from "./json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
 import type { HookName } from "./settings.ts";
@@ -21,12 +21,14 @@ function stringField(object: JsonObject, key: string): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
-/** The project the session runs in: the hook input's cwd, else Claude Code's project dir, else this process's cwd. */
+/**
+ * The project the session runs in. Claude Code's project dir comes first because the input's
+ * cwd follows the session into subfolders; from there tmb looks up to the folder holding its record.
+ */
 function projectDirOf(input: JsonObject): string {
-  const cwd = stringField(input, "cwd");
-  if (cwd) return cwd;
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
-  return projectDir && projectDir.trim() !== "" ? projectDir : process.cwd();
+  const start = projectDir && projectDir.trim() !== "" ? projectDir : (stringField(input, "cwd") ?? process.cwd());
+  return projectRootOf(start);
 }
 
 /** Inside a subagent Claude Code names its agent type; the main agent is the planner. */
