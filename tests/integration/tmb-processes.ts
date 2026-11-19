@@ -55,7 +55,7 @@ export function tmbProcesses(prefix: string) {
   /**
    * A git project whose first commit on the base branch holds `files` (a README when none), set
    * up with the given check. With `origin`, a bare repository is its origin and holds the base
-   * branch before setup, as a project that is already on a remote does.
+   * branch before init, as a project that is already on a remote does.
    */
   function setUpProject(check: string, files: Record<string, string> = { "README.md": "hello\n" }, options: { origin?: boolean } = {}): string {
     const project = mkdtempSync(path.join(scratch, "project-"));
@@ -75,7 +75,8 @@ export function tmbProcesses(prefix: string) {
       git(project, "remote", "add", "origin", origin);
       git(project, "push", "-q", "-u", "origin", BASE_BRANCH);
     }
-    tmb(["setup", "--base", BASE_BRANCH, "--check", check, "--yes"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--base", BASE_BRANCH, "--check", check, "--yes"], project);
     return project;
   }
 
