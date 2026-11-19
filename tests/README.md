@@ -58,6 +58,7 @@ The Install, Agent run and Agent chain layers are plain scripts rather than `bun
 | [tests/agent-run/run.ts](agent-run/run.ts) | `bun run test:agent` | Agent run |
 | [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
 | [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
+| [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) | `bun run test:reviewer` | Agent run |
 | [tests/agent-chain/run.ts](agent-chain/run.ts) | `bun run test:chain` | Agent chain |
 | [tests/agent-chain/feature.ts](agent-chain/feature.ts) | `bun run test:chain:feature` | Agent chain |
 
@@ -117,13 +118,22 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 |---|---|
 | 02 Simple task | [flow-02-simple-task.test.ts](workflow/flow-02-simple-task.test.ts) |
 | 03 Difficult task | [flow-03-difficult-task.test.ts](workflow/flow-03-difficult-task.test.ts). tmb records a question and its answer as notes. |
-| 06 Push gate | Waits for 6. Review and gate. |
-| 08 Retry and escalation | Waits for 6. Review and gate, which adds review, fail and rework. |
-| 09 Cold restart | [flow-09-cold-restart.test.ts](workflow/flow-09-cold-restart.test.ts). Its checks that only the reviewer records a verdict wait for 6. Review and gate. |
+| 06 Push gate | [push-gate.test.ts](integration/push-gate.test.ts). git's own pre-push hook judges every push, one typed by hand too, so it runs as an integration test with a real origin. |
+| 08 Retry and escalation | [review-gate.test.ts](workflow/review-gate.test.ts) ports review, fail and rework. tmb keeps no retry count, so escalation is the planner's call, not a rule. |
+| 09 Cold restart | [flow-09-cold-restart.test.ts](workflow/flow-09-cold-restart.test.ts). Its checks that only the reviewer records a verdict are in [review-gate.test.ts](workflow/review-gate.test.ts). |
 | 10 Roundtable | Not planned: the roundtable is not carried over ([GLOSSARY.md](../docs/architecture/GLOSSARY.md#not-carried-over)). |
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts) |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). tmb issues have no labels, so only the milestone, title and body move. |
+
+## Level 6 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/commands.test.ts](../test/commands.test.ts), [test/decide.test.ts](../test/decide.test.ts) | The command reader finds git and gh through quotes, prefixes, `sh -c` and `eval`; the host guards deny skipping git's hook, a push by a worker or the reviewer, a hand-made pull request, a subcommand that is not plain text, and a write outside an open task's worktree. |
+| Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Setup writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
+| Workflow simulation | [tests/workflow/review-gate.test.ts](workflow/review-gate.test.ts) | Review, fail, rework, pass and the pull request on one feature branch, and a Human waiver on a second; only a reviewer run records a verdict, and only on the branch's tip. |
+| Agent run | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) (`bun run test:reviewer`) | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
 | 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
 
 ## Level 7 tests

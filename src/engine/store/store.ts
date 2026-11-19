@@ -91,12 +91,15 @@ export type TaskChanges = {
   pushDetail?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string };
+export type FeatureChanges = { state?: string; prUrl?: string | null };
 export type Feature = {
   id: string;
   name: string;
   baseBranch: string;
   baseCommit: string;
   state: string;
+  /** The pull request the engine opened for it; null until then. */
+  prUrl: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -140,7 +143,26 @@ export type NewCheckRun = {
   result?: string | null;
   commands?: unknown[];
 };
-export type NewReview = { id?: string; target: { kind: "commit" | "branch"; ref: string }; verdict: string; findings?: unknown[] };
+export type NewReview = {
+  id?: string;
+  target: { kind: "commit" | "branch"; ref: string };
+  verdict: string;
+  findings?: unknown[];
+  /** The feature branch a branch review judged, and the commit it judged it at. */
+  featureId?: string | null;
+  commitSha?: string | null;
+};
+export type Review = {
+  id: string;
+  targetKind: "commit" | "branch";
+  target: string;
+  verdict: string;
+  findings: unknown[];
+  featureId: string | null;
+  commitSha: string | null;
+  createdBy: Actor;
+  createdAt: string;
+};
 export type NewGuardDecision = { event: string; decision: "allow" | "deny"; reason: string };
 export type GuardDecision = NewGuardDecision & { id: string; createdBy: Actor; createdAt: string };
 
@@ -183,9 +205,21 @@ type FeatureRow = {
   base_branch: string;
   base_commit: string;
   state: string;
+  pr_url: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
+};
+type ReviewRow = {
+  id: string;
+  target_kind: "commit" | "branch";
+  target: string;
+  verdict: string;
+  findings: string;
+  feature_id: string | null;
+  commit_sha: string | null;
+  created_by: string;
+  created_at: string;
 };
 type RunRow = { id: string; task_id: string | null; role: Role; started_at: string; ended_at: string | null; outcome: string | null; created_by: string };
 type CheckRunRow = {
@@ -275,9 +309,24 @@ function toFeature(row: FeatureRow): Feature {
     baseBranch: row.base_branch,
     baseCommit: row.base_commit,
     state: row.state,
+    prUrl: row.pr_url,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function toReview(row: ReviewRow): Review {
+  return {
+    id: row.id,
+    targetKind: row.target_kind,
+    target: row.target,
+    verdict: row.verdict,
+    findings: JSON.parse(row.findings) as unknown[],
+    featureId: row.feature_id,
+    commitSha: row.commit_sha,
+    createdBy: JSON.parse(row.created_by) as Actor,
+    createdAt: row.created_at,
   };
 }
 
@@ -381,6 +430,12 @@ export class Store {
     return rows.map(toAuditEntry);
   }
 
+  /** Every audit entry about `what`, oldest first. */
+  listAuditAbout(what: string): AuditEntry[] {
+    const rows = this.db.query("SELECT * FROM audit WHERE what = ? ORDER BY id").all(what) as AuditRow[];
+    return rows.map(toAuditEntry);
+  }
+
   /** The newest audit entry about `what`, the one in force. */
   newestAudit(what: string): AuditEntry | null {
     const row = this.db.query("SELECT * FROM audit WHERE what = ? ORDER BY id DESC LIMIT 1").get(what) as AuditRow | null;
@@ -437,6 +492,10 @@ export class Store {
 
   createFeature(actor: Actor, feature: NewFeature): string {
     return this.create(actor, "feature", { name: feature.name, base_branch: feature.baseBranch, base_commit: feature.baseCommit });
+  }
+
+  updateFeature(actor: Actor, id: string, changes: FeatureChanges): void {
+    this.append(actor, "feature", id, "updated", { state: changes.state, pr_url: changes.prUrl });
   }
 
   getFeature(id: string): Feature | null {
@@ -515,7 +574,21 @@ export class Store {
       target: review.target.ref,
       verdict: review.verdict,
       findings: review.findings ?? [],
+      feature_id: review.featureId ?? null,
+      commit_sha: review.commitSha ?? null,
     }, review.id);
+  }
+
+  /** The reviews of one feature branch, oldest first. */
+  listFeatureReviews(featureId: string): Review[] {
+    const rows = this.db.query("SELECT * FROM reviews WHERE feature_id = ? ORDER BY id").all(featureId) as ReviewRow[];
+    return rows.map(toReview);
+  }
+
+  /** Every review, oldest first. */
+  listReviews(): Review[] {
+    const rows = this.db.query("SELECT * FROM reviews ORDER BY id").all() as ReviewRow[];
+    return rows.map(toReview);
   }
 
   appendGuardDecision(actor: Actor, guard: NewGuardDecision): string {

@@ -38,12 +38,15 @@ The project's design docs say what the system should be. Code follows them. When
 
 ## What exists today
 
-tmb is early. Its record of the work, its tasks, its feature branches and part of its gate exist: record issues, notes and decisions through tmb's tools, and resume from the open work the record lists at session start. `feature_start` cuts a feature branch from the base branch, `task_start` cuts each task's branch from its feature branch into its own worktree, and the gate refuses a worker start whose prompt names no open task with a ready worktree. tmb closes a task only when its checks pass on the committed work, then folds it into the feature branch, rebasing it and running the checks again first if the branch moved, and pushes the feature branch to origin as a backup. Its code graph indexes the base branch, keeps itself current on every lookup, and lays an open task's commit on top when a lookup passes that task's id. The review of the branch, the review queue, the pull request and the push gate are not built yet. Until they are:
+tmb is early. Its record of the work, its tasks, its feature branches, the review of a branch and the gate exist: record issues, notes and decisions through tmb's tools, and resume from the open work the record lists at session start. `feature_start` cuts a feature branch from the base branch, `task_start` cuts each task's branch from its feature branch into its own worktree, and the gate refuses a worker start whose prompt names no open task with a ready worktree. tmb closes a task only when its checks pass on the committed work, then folds it into the feature branch, rebasing it and running the checks again first if the branch moved, and pushes the feature branch to origin as a backup. Its code graph indexes the base branch, keeps itself current on every lookup, and lays an open task's commit on top when a lookup passes that task's id.
+
+At the milestone, start the reviewer with the `feature=<name>` line from `feature_brief` at the head of its prompt. It records its verdict with `review_record` on the branch's tip. On a fail, start a task for each blocking finding and review again once they land. Once a pass, or a waiver the Human recorded with `tmb feature waive`, holds the tip, open the pull request with `feature_pr`: tmb pushes the branch and opens it into the base branch. git's pre-push hook refuses any push, typed by hand too, that brings onto the base branch a commit no reviewed or waived tip holds. No agent turns that hook off, pushes from a worker or the reviewer, or opens or merges a pull request with `gh`.
+
+The review queue is not built yet. Until it is:
 
 - Plan with the Human in this conversation, and record each decision you reach on its issue.
-- tmb opens no pull request for the feature branch. At the milestone, agree with the Human how it lands.
-- Start the reviewer on the whole branch before its pull request opens. tmb does not record its verdict or hold a push for it.
-- When the workflow needs something that is not there yet, such as an enforced review, say so plainly instead of pretending it ran.
+- Only the Human waives a review; ask, never assume one.
+- When the workflow needs something that is not there yet, say so plainly instead of pretending it ran.
 
 ## Asking the Human
 

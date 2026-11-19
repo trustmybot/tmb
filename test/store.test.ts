@@ -53,9 +53,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 4 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -91,7 +91,7 @@ describe("openStore", () => {
     return { issueId, discussionId, taskId };
   }
 
-  for (const version of [1, 2]) {
+  for (const version of [1, 2, 3]) {
     test(`upgrades a version-${version} database in place, keeping its records`, () => {
       const records = oldDatabase(version);
       const result = openStore(dbPath, { create: false });

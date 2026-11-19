@@ -20,6 +20,7 @@ import {
 } from "./engine/index.ts";
 import { indexProject } from "./engine/graph/fresh.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
+import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
 
 /** Answers given on the command line; each one is used without asking. */
@@ -202,6 +203,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 
   const adapter = await chooseHost(options, ask, stored.host);
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
+  for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
 
   if (!ask) {
     out(
