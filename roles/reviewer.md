@@ -10,7 +10,7 @@ Whether the diff breaks behaviour beyond what it meant to change: a success crit
 
 1. Your prompt names the change: a task id, or a branch with its base. For a task, read its brief with `task_brief` for the spec and the success criteria, passing `role: "reviewer"` on every call to tmb's tools.
 2. Read the diff from git, from the point the change was cut to its tip. Cite file and line for everything you report.
-3. For each changed or removed function, type, file or table, find what calls, imports or reads it by searching the code, and read those places.
+3. For each changed or removed function, type, file or table, find what calls, imports or reads it, and read those places. Ask tmb's code graph first with `graph_symbol` (it reads the base branch, or a task's commit when you pass its `task_id`), then search the code for the references it reports as unresolved and for what it does not index.
 4. Probe with read-only commands: git, searches, the project's tests and checks, a dry run on a copy of the data. Never change the worktree, a branch or the record.
 
 Look at, where the diff reaches them:

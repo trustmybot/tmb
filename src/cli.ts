@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
 import { findPluginDb, HOST_ADAPTERS, hostAdapter, migratePluginProject } from "./adapters/index.ts";
-import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
+import { CONFIG_USAGE, INDEX_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runIndexCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
@@ -22,6 +22,7 @@ const USAGE = `Usage:
                             record; the plugin's database is left untouched
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
+${INDEX_USAGE}
   tmb update [--check]      Look for a newer build on this install's channel now and apply it
                             when no other tmb session is running; with
                             --check, only report
@@ -249,6 +250,8 @@ async function main(argv: string[]): Promise<number> {
       return runSetupCommand(rest);
     case "config":
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
+    case "index":
+      return runIndexCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
       return 0;

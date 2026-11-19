@@ -26,7 +26,7 @@ Stop and report instead of guessing when:
 - **Validate at the boundary.** Check input where it enters, and surface errors instead of swallowing them.
 - **Keep it simple.** Build what the spec needs today.
 - **Test the behaviour.** Write tests that fail when the behaviour breaks, not tests that mirror the code.
-- **Check the callers.** For each thing you change, find what calls or reads it and make sure it still works.
+- **Check the callers.** For each thing you change, find what calls or reads it and make sure it still works. Ask tmb's code graph first: `graph_symbol` with your task's `task_id` lists the callers, importers and tests as your commit leaves them. It links a reference only on proof, so search the code for the unresolved ones it counts.
 
 ## Finish
 

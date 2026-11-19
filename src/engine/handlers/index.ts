@@ -2,6 +2,7 @@
 // telling an agent when to use it. The tool server publishes these as its tools.
 import type { Actor, Store } from "../store/index.ts";
 import * as feature from "./features.ts";
+import * as graph from "./graph.ts";
 import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
 import * as task from "./tasks.ts";
@@ -92,6 +93,47 @@ export const OPERATIONS = {
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },
+  graph_map: {
+    description:
+      "Show what the project looks like from tmb's code graph: its directories and files, each with a short summary from its README or header, and how many symbols each file defines. Use it at the start of planning instead of listing and opening files.",
+    inputSchema: graph.graphMapSchema,
+    run: graph.graphMap,
+  },
+  graph_find: {
+    description:
+      "Find where something lives in the code: a symbol by name, a file by path, or words matched against symbol names, docs, file and directory summaries. Returns ranked hits with paths and lines. Cheaper than reading files to search them.",
+    inputSchema: graph.graphFindSchema,
+    run: graph.graphFind,
+  },
+  graph_symbol: {
+    description:
+      "Look up a symbol, or a file by its path, in the code graph: where it is defined, what calls or imports it, what it calls, and which tests cover it. References are linked only on proof; the rest are listed as unresolved. Use it before changing something, to see what the change may break.",
+    inputSchema: graph.graphSymbolSchema,
+    run: graph.graphSymbol,
+  },
+  graph_scope: {
+    description:
+      "Draft a task's scope from the code graph: from an objective and any anchors (symbols or files), the files in scope with why each is there (search, anchor, caller, import), the tests that cover them, the concepts anchored there, and a draft list of files for task_start. For the planner, before task_start, instead of reading files.",
+    inputSchema: graph.graphScopeSchema,
+    run: graph.graphScope,
+  },
+  graph_concept_upsert: {
+    description:
+      "Record a concept in the code graph: a flow or a rule, anchored to the files and symbols that carry it out, so later sessions find the design behind the code. Anchors must exist in the base branch. A rebuild re-checks each concept and marks one whose code is gone as broken.",
+    inputSchema: graph.graphConceptUpsertSchema,
+    run: graph.graphConceptUpsert,
+  },
+  graph_concepts: {
+    description: "List the concepts recorded in the code graph, or read one by name, with each one's anchors and whether its code still exists.",
+    inputSchema: graph.graphConceptsSchema,
+    run: graph.graphConcepts,
+  },
+  graph_miss: {
+    description:
+      "Report a code graph lookup that answered wrong or missed something you then found another way, so the graph's value can be measured. Lookups that find nothing are recorded on their own.",
+    inputSchema: graph.graphMissSchema,
+    run: graph.graphMiss,
+  },
 } as const satisfies Record<string, Operation>;
 
 export type OperationName = keyof typeof OPERATIONS;
@@ -103,6 +145,7 @@ export function isOperationName(name: unknown): name is OperationName {
 export { HandlerError, type HandlerErrorCode } from "./errors.ts";
 export { type FieldSchema, type InputSchema } from "./input.ts";
 export * from "./features.ts";
+export * from "./graph.ts";
 export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
 export * from "./tasks.ts";
