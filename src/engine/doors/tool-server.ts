@@ -60,13 +60,14 @@ export class ToolSession {
     return this.store;
   }
 
-  call(name: string, args: Record<string, unknown> | undefined): CallToolResult {
+  async call(name: string, args: Record<string, unknown> | undefined): Promise<CallToolResult> {
     if (!isOperationName(name)) return textResult(`unknown tool ${name}; the tools are ${Object.keys(OPERATIONS).join(", ")}`, true);
     const { role = DEFAULT_ROLE, ...input } = args ?? {};
     if (!ROLES.includes(role as Role)) return textResult(`role must be one of ${ROLES.join(", ")}, got ${JSON.stringify(role)}`, true);
     const actor: Actor = { kind: "agent", role: role as Role, host: this.host };
     try {
-      return textResult(JSON.stringify(OPERATIONS[name].run(this.openStore(), actor, input)));
+      const result = await OPERATIONS[name].run(this.openStore(), actor, input, { projectDir: this.projectDir });
+      return textResult(JSON.stringify(result));
     } catch (error) {
       return textResult(error instanceof HandlerError ? error.message : describe(error), true);
     }

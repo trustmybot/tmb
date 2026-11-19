@@ -2,7 +2,7 @@
 // the path; the store never works out where the file lives.
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { SCHEMA_STEPS, SCHEMA_VERSION } from "./schema.ts";
 import { Store } from "./store.ts";
 
 const BUSY_TIMEOUT_MS = 5000;
@@ -37,8 +37,22 @@ function readHeader(db: Database): { version: number; tables: number } {
 }
 
 /**
+ * Runs every schema step the database still lacks in one transaction, so it is never left
+ * between versions. The version is read again under the write lock: another process may
+ * have upgraded the file since it was first read.
+ */
+function upgrade(db: Database): void {
+  db.transaction(() => {
+    const { user_version: from } = db.query("PRAGMA user_version").get() as { user_version: number };
+    if (from >= SCHEMA_VERSION) return;
+    for (const step of SCHEMA_STEPS.slice(from)) db.run(step);
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  }).immediate();
+}
+
+/**
  * Opens the trajectory database at `dbPath`. With `create`, a missing file is made and
- * given the version 1 schema. Refuses a missing file without `create`, a file that is not
+ * given the current schema; a database an older tmb made is upgraded. Refuses a missing file without `create`, a file that is not
  * a readable tmb database, and a database made by a newer tmb.
  */
 export function openStore(dbPath: string, options: { create: boolean }): OpenResult {
@@ -79,12 +93,7 @@ export function openStore(dbPath: string, options: { create: boolean }): OpenRes
 
     db.run("PRAGMA journal_mode = WAL");
     db.run("PRAGMA foreign_keys = ON");
-    if (header.version === 0) {
-      db.transaction(() => {
-        db.run(SCHEMA_SQL);
-        db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-      }).immediate();
-    }
+    if (header.version < SCHEMA_VERSION) upgrade(db);
     return { ok: true, store: new Store(db) };
   } catch (error) {
     db.close();

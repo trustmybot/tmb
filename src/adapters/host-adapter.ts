@@ -13,6 +13,12 @@ export type HostLimits = {
   events: readonly TmbEventType[];
 };
 
+/** What whoever started this tmb said about the run, as the command line read it. */
+export type HookRun = {
+  /** No one can answer in the run. */
+  unattended: boolean;
+};
+
 /** What every host adapter gives the command line. */
 export interface HostAdapter {
   /** The host's id: what `--host` takes and what the record stores as the project's host. */
@@ -31,5 +37,5 @@ export interface HostAdapter {
   /** Undoes exactly what setup added; returns what changed, one line each. */
   remove(projectDir: string): string[];
   /** Answers a host event: the host's stdin in, the host's stdout out (empty when there is nothing to say). Throws on bad input. */
-  answerHook(event: string, stdinText: string): string;
+  answerHook(event: string, stdinText: string, run: HookRun): string;
 }

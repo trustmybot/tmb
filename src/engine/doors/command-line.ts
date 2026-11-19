@@ -1,12 +1,22 @@
 // The record commands of the command line: the Human's way into the record. Each command
 // calls the same operation an agent's tool call does, acting as the Human.
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
-import { HandlerError, type IssueDetail, type IssueUpdateResult, OPERATIONS, type OperationName } from "../handlers/index.ts";
+import {
+  HandlerError,
+  type IssueDetail,
+  type IssueUpdateResult,
+  OPERATIONS,
+  type OperationName,
+  type TaskBrief,
+  type TaskCloseResult,
+  type TaskStartResult,
+  type TaskSummary,
+} from "../handlers/index.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
 import type { Actor, Discussion, Issue, IssueSummary, SearchHit, StoredEvent } from "../store/index.ts";
 
-export const RECORD_COMMANDS = ["issue", "note", "search", "history"] as const;
+export const RECORD_COMMANDS = ["issue", "note", "search", "history", "task"] as const;
 export type RecordCommand = (typeof RECORD_COMMANDS)[number];
 
 export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--milestone <name>]
@@ -20,6 +30,12 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
                             Add a note, or with --decision a decision, to an issue
   tmb search <query>        Search issues, notes and decisions
   tmb history <id>          Show every recorded change to an issue or note
+  tmb task start <issue-id> --intent <text> --file <path>... --criterion <text>... [--check <command>]...
+                            Start a task: cut its branch and worktree and record its spec
+  tmb task list [--state open|closed|all]
+                            List the open tasks, or the closed ones or all
+  tmb task brief <id>       Show a task's spec, worktree, branch and checks
+  tmb task close <id>       Run the checks on the task's commit; close it when all pass
   Add --json to any of these for JSON output.`;
 
 const HUMAN: Actor = { kind: "human" };
@@ -124,10 +140,89 @@ function issueRequest(args: string[]): Request {
   }
 }
 
+function briefLines(brief: TaskBrief): string[] {
+  const list = (items: string[]) => (items.length === 0 ? ["  (none)"] : items.map((item) => `  - ${item}`));
+  return [
+    `Task ${brief.id}  ${brief.state}  on issue ${brief.issueId}`,
+    `Branch: ${brief.branch ?? "(none)"}`,
+    `Worktree: ${brief.worktree ?? "(none)"}`,
+    ...(brief.commitSha ? [`Closed at commit: ${brief.commitSha}`] : []),
+    "",
+    brief.spec.intent.trimEnd(),
+    "",
+    "Files it may touch:",
+    ...list(brief.spec.files),
+    "Success criteria:",
+    ...list(brief.spec.criteria),
+    "Checks that run at close:",
+    ...list(brief.checks),
+    "",
+    `A worker's start prompt carries: ${brief.startLine}`,
+  ];
+}
+
+function taskLine(task: TaskSummary, withState: boolean): string {
+  const state = withState ? `  ${task.state.padEnd(6)}` : "";
+  const commit = task.commitSha ? `\n  closed at: ${task.commitSha}` : "";
+  return `${task.id}${state}  ${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
+}
+
+/** The open list keeps its plain form; a list that may mix states shows each task's state. */
+function formatTasks(state: string | undefined) {
+  const which = state === undefined || state === "open" ? "open " : state === "closed" ? "closed " : "";
+  return (tasks: TaskSummary[]) =>
+    tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
+}
+
+function formatClose({ brief, checks }: TaskCloseResult): string {
+  return [`Closed task ${brief.id} at commit ${brief.commitSha}.`, ...checks.map((check) => `  passed: ${check.command}`)].join("\n");
+}
+
+function taskRequest(args: string[]): Request {
+  const [action, ...rest] = args;
+  switch (action) {
+    case "start": {
+      const { values, positionals } = parse(rest, {
+        intent: { type: "string" },
+        file: { type: "string", multiple: true },
+        criterion: { type: "string", multiple: true },
+        check: { type: "string", multiple: true },
+      });
+      const input = {
+        issue_id: only(positionals, "issue id"),
+        intent: values.intent,
+        files: values.file ?? [],
+        criteria: values.criterion ?? [],
+        checks: values.check,
+      };
+      const format = (started: TaskStartResult) => [`Started task ${started.id}.`, "", ...briefLines(started.brief)].join("\n");
+      return { operation: "task_start", input, json: values.json === true, format };
+    }
+    case "list": {
+      const { values, positionals } = parse(rest, { state: { type: "string" } });
+      if (positionals.length > 0) throw new UsageError(`task list takes no arguments, got ${positionals.join(" ")}`);
+      return { operation: "task_list", input: { state: values.state }, json: values.json === true, format: formatTasks(values.state) };
+    }
+    case "brief": {
+      const { values, positionals } = parse(rest, {});
+      const format = (brief: TaskBrief) => briefLines(brief).join("\n");
+      return { operation: "task_brief", input: { id: only(positionals, "task id") }, json: values.json === true, format };
+    }
+    case "close": {
+      const { values, positionals } = parse(rest, {});
+      return { operation: "task_close", input: { id: only(positionals, "task id") }, json: values.json === true, format: formatClose };
+    }
+    default:
+      throw new UsageError(action === undefined ? "task needs an action: start, list, brief or close" : `unknown task action '${action}'`);
+  }
+}
+
 function toRequest(command: RecordCommand, args: string[]): Request {
   switch (command) {
     case "issue":
       return issueRequest(args);
+    case "task":
+      return taskRequest(args);
     case "note": {
       const { values, positionals } = parse(args, { decision: { type: "boolean" } });
       const [issueId, ...text] = positionals;
@@ -153,8 +248,8 @@ function toRequest(command: RecordCommand, args: string[]): Request {
 
 export type Output = { out: (text: string) => void; err: (text: string) => void };
 
-/** Runs one record command in the project as the Human; returns the exit code. */
-export function runRecordCommand(command: RecordCommand, args: string[], projectDir: string, output: Output): number {
+/** Runs one record command in the project as the Human; resolves to the exit code. */
+export async function runRecordCommand(command: RecordCommand, args: string[], projectDir: string, output: Output): Promise<number> {
   let request: Request;
   try {
     request = toRequest(command, args);
@@ -174,7 +269,7 @@ export function runRecordCommand(command: RecordCommand, args: string[], project
     return 1;
   }
   try {
-    const result = OPERATIONS[request.operation].run(opened.store, HUMAN, request.input);
+    const result = await OPERATIONS[request.operation].run(opened.store, HUMAN, request.input, { projectDir });
     output.out(request.json ? JSON.stringify(result, null, 2) : request.format(result as never));
     return 0;
   } catch (error) {

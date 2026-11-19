@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import path from "node:path";
 import { parseArgs } from "node:util";
+import type { HookRun } from "./adapters/host-adapter.ts";
 import { HOST_ADAPTERS, hostAdapter } from "./adapters/index.ts";
 import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
@@ -29,12 +30,23 @@ function tmbCommand(): string[] {
   return COMPILED_ENTRY.test(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
 }
 
+/**
+ * Whoever starts a run sets this to `1` when no one can answer in it. Only this door reads it;
+ * the adapter and the engine get a plain flag.
+ */
+const UNATTENDED_VARIABLE = "TMB_UNATTENDED";
+
+/** Only `1` turns unattended mode on; unset or any other value leaves the run attended. */
+function hookRun(): HookRun {
+  return { unattended: process.env[UNATTENDED_VARIABLE] === "1" };
+}
+
 async function runHook(event: string | undefined): Promise<number> {
   // A hook must never break the host session: any failure exits 0 with a note on stderr.
   try {
     if (!event) throw new Error("missing event name");
     const stdinText = await Bun.stdin.text();
-    const output = adapter.answerHook(event, stdinText);
+    const output = adapter.answerHook(event, stdinText, hookRun());
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
     if (output !== "") process.stdout.write(output + "\n");
   } catch (error) {

@@ -27,8 +27,20 @@ function oneLine(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
 }
 
+export const UNATTENDED_INSTRUCTION =
+  "## Unattended run\n\nNo one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.";
+
+/**
+ * The role and the open work, then, when `unattended` says no one can answer in this run,
+ * the instruction for it. Nothing about the mode is stored in the project.
+ */
+export function sessionStartContext(projectDir: string, unattended: boolean): string {
+  const context = attendedContext(projectDir);
+  return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
+}
+
 /** Never throws: a missing record gives the role alone, a bad one the role and a line naming the problem. */
-export function sessionStartContext(projectDir: string): string {
+function attendedContext(projectDir: string): string {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     return opened.error.failure === "missing" ? plannerRole : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);

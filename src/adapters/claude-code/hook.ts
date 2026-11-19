@@ -1,19 +1,26 @@
 import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+import type { HookRun } from "../host-adapter.ts";
 import { isObject, type JsonObject } from "./json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
 import type { HookName } from "./settings.ts";
 
 const MAIN_AGENT_ROLE = "planner";
 
-/** Each guarded tool: the tmb event its call raises, and the tool input field that names the action. */
-const TOOL_EVENTS: Record<string, { type: TmbEventType; actionField: string }> = {
+/** The subagent Claude Code starts when the call names no subagent_type. */
+const DEFAULT_SUBAGENT = "general-purpose";
+
+/**
+ * Each guarded tool: the tmb event its call raises, the tool input field that names the
+ * action and, for a subagent start, the field that names the role of the agent starting.
+ */
+const TOOL_EVENTS: Record<string, { type: TmbEventType; actionField: string; roleField?: string }> = {
   Write: { type: "before-file-write", actionField: "file_path" },
   Edit: { type: "before-file-write", actionField: "file_path" },
   MultiEdit: { type: "before-file-write", actionField: "file_path" },
   NotebookEdit: { type: "before-file-write", actionField: "notebook_path" },
   Bash: { type: "before-command", actionField: "command" },
-  Agent: { type: "before-agent-start", actionField: "subagent_type" },
-  Task: { type: "before-agent-start", actionField: "subagent_type" },
+  Agent: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
+  Task: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
 };
 
 function stringField(object: JsonObject, key: string): string | undefined {
@@ -36,12 +43,12 @@ function roleOf(input: JsonObject): string {
   return stringField(input, "agent_type") ?? MAIN_AGENT_ROLE;
 }
 
-function eventOf(input: JsonObject, type: TmbEventType, action: string): TmbEvent {
-  return { type, projectDir: projectDirOf(input), host: HOST_ID, role: roleOf(input), action };
+function eventOf(input: JsonObject, type: TmbEventType, action: string, role: string = roleOf(input)): TmbEvent {
+  return { type, projectDir: projectDirOf(input), host: HOST_ID, role, action };
 }
 
-function sessionStart(input: JsonObject): string {
-  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input) });
+function sessionStart(input: JsonObject, run: HookRun): string {
+  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: run.unattended });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 
@@ -51,7 +58,8 @@ function preToolUse(input: JsonObject): string {
   const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
   if (!tool) return "";
   const toolInput = isObject(input.tool_input) ? input.tool_input : {};
-  const answer = decide(eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? ""));
+  const role = tool.roleField === undefined ? roleOf(input) : (stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT);
+  const answer = decide(eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? "", role));
   if (answer.decision === "allow") return "";
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: answer.reason },
@@ -64,7 +72,7 @@ function subagentStop(input: JsonObject): string {
   return "";
 }
 
-const ANSWERS: Record<HookName, (input: JsonObject) => string> = {
+const ANSWERS: Record<HookName, (input: JsonObject, run: HookRun) => string> = {
   "session-start": sessionStart,
   "pre-tool-use": preToolUse,
   "subagent-stop": subagentStop,
@@ -72,12 +80,12 @@ const ANSWERS: Record<HookName, (input: JsonObject) => string> = {
 
 /**
  * Turns Claude Code's hook input into the engine's event and the engine's answer into
- * Claude Code's hook output. Returns the stdout text, empty when there is nothing to say,
- * or throws on bad input.
+ * Claude Code's hook output; `run` is what the command line read about the run. Returns the
+ * stdout text, empty when there is nothing to say, or throws on bad input.
  */
-export function answerHook(event: string, stdinText: string): string {
+export function answerHook(event: string, stdinText: string, run: HookRun): string {
   const answer = Object.hasOwn(ANSWERS, event) ? ANSWERS[event as HookName] : undefined;
   if (!answer) throw new Error(`unknown hook event '${event}'`);
   const input: unknown = stdinText.trim() === "" ? {} : JSON.parse(stdinText);
-  return answer(isObject(input) ? input : {});
+  return answer(isObject(input) ? input : {}, run);
 }
