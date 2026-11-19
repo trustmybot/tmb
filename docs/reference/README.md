@@ -47,25 +47,26 @@ Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). Th
 
 ## Set up a project
 
-Two commands, in the project's root folder:
+In the project's root folder:
 
 ```sh
 tmb init
-tmb onboard
 ```
+
+Then open the host. At the first session the planner applies the settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It gives each setting a default, so tmb works straight after. | No |
+| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's settings empty. | No |
 | `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks. Run it again at any time. | Yes |
-| `tmb setup` | `tmb init`, then `tmb onboard`. | Yes |
+| `tmb setup` | Going away: `tmb init`, then `tmb onboard`. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
 ### init
 
 `tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
 
-It then wires tmb into that host, as listed below, and stores a value for each setting. A setting stored before is kept, a flag sets its setting, and the rest take their defaults. It ends by naming the defaults it took and pointing to `tmb onboard`. It never waits for input.
+It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings, saying which are still empty and how they get filled. It never waits for input.
 
 ### onboard
 
@@ -79,13 +80,21 @@ It then wires tmb into that host, as listed below, and stores a value for each s
 | The checks, the shell commands that must pass before a task closes | The commands it finds in the project: the `lint`, `typecheck` and `test` scripts of `package.json`, run with bun, npm, pnpm or yarn as the lockfile shows; `pytest` for a Python project; `cargo test` for Rust; `go test ./...` for Go. | `--check <command>`, once per command; the commands given replace the list |
 
 - The host is the one init stored; `--host <id>` names another host init wired.
-- A flag answers its question without asking, and `--yes` keeps the value of every question no flag answers. `tmb init` takes the same flags but `--yes`.
-- Onboard asks only when it runs in a terminal. Without one, it keeps the stored values, so it never waits for input.
+- A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
+- Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
 - In a project where `tmb init` has not run, it says so and changes nothing.
 
-Both store the settings in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Both print the settings in force, and `tmb config` shows them later.
+### Onboarding by itself
 
-`tmb setup` runs init, then onboard, with the same flags, as earlier versions did.
+When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the settings it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. Once all are set, the session start says nothing about them.
+
+`settings_get` reads the settings and what tmb found; `settings_set` is the planner's alone.
+
+### Settings
+
+Init, onboard and `settings_set` store the settings in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Init and onboard print the settings in force, and `tmb config` shows them later.
+
+`tmb setup` runs init, then onboard, with onboard's flags, as earlier versions did, and says on stderr that it is going away. It is removed once init and onboard have shipped.
 
 `tmb init` also:
 

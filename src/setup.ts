@@ -1,8 +1,9 @@
 // Preparing a project for tmb, in two commands. `tmb init` picks the host, has its adapter wire
-// tmb into the project, adds git's push hook, stores a default for each setting not yet stored
-// and indexes the code graph; it asks nothing. `tmb onboard` asks the questions the workflow
-// needs and stores the answers; it can be run again at any time. `tmb setup` is init followed
-// by onboard. They reach a host only through the adapter interface, so they name none.
+// tmb into the project, adds git's push hook and indexes the code graph; it asks nothing and
+// leaves the project's settings empty, for the planner to fill at the first session start.
+// `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
+// again at any time. `tmb setup`, going away, is init followed by onboard. They reach a host
+// only through the adapter interface, so they name none.
 import { createInterface } from "node:readline";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "./adapters/index.ts";
 import {
@@ -25,6 +26,7 @@ import {
   writeSetting,
 } from "./engine/index.ts";
 import { indexProject } from "./engine/graph/fresh.ts";
+import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
@@ -206,28 +208,22 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void): 
   }
 }
 
-function checksText(checks: readonly string[]): string {
-  return checks.length === 0 ? "no checks" : `the checks ${listed(checks.map((check) => JSON.stringify(check)))}`;
-}
-
 /** What init did, for the lines that close the run. */
 type Initialised = {
   adapter: HostAdapter;
   role: HostRole;
   recorded: number;
-  /** The settings init filled with a default, each as a phrase. */
-  defaults: string[];
   /** Said first and last when the host is not supported in this release. */
   warning: string | null;
 };
 
 /**
- * Wires one host into the project and makes sure every setting has a value. Asks nothing: a
- * flag answers its setting, a stored value is kept, and the rest take their defaults.
+ * Wires one host into the project in its role. Asks nothing and sets none of the project's
+ * settings: those are the planner's at the first session start, or the Human's with onboard.
  */
 async function initProject(options: SetupOptions): Promise<Initialised> {
   const { projectDir, flags, out } = options;
-  const answered = validatedFlags(flags);
+  const answered = validatedFlags({ role: flags.role });
   const stored = storedSettings(projectDir) ?? NO_SETTINGS;
 
   const adapter = chooseHost(options, stored.host);
@@ -241,31 +237,13 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
 
-  const defaults: string[] = [];
   // The role is the host's main agent's: kept from an earlier init of this host unless --role names another.
-  const storedRole = stored.host_roles?.[adapter.id];
-  const role = answered.role ?? storedRole ?? DEFAULT_HOST_ROLE;
-  if (answered.role === undefined && storedRole === undefined) defaults.push(`the ${role} role for ${adapter.name}`);
-  let base = answered.base_branch ?? stored.base_branch;
-  if (base === null) {
-    base = detectBaseBranch(projectDir);
-    if (base !== null) defaults.push(`the base branch ${base}`);
-  }
-  let reviewMode = answered.review_mode ?? stored.review_mode;
-  if (reviewMode === null) {
-    reviewMode = DEFAULT_REVIEW_MODE;
-    defaults.push(`the review mode ${reviewMode}`);
-  }
-  let checks = answered.checks ?? stored.checks;
-  if (checks === null) {
-    checks = detectChecks(projectDir);
-    defaults.push(checks.length === 0 ? "no checks, as none were found" : `${checksText(checks)}, found in the project`);
-  }
-
+  const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
   const hostRoles = { ...(stored.host_roles ?? {}), [adapter.id]: role };
-  const recorded = storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode, checks });
-  if (base !== null) await indexCodeGraph(projectDir, out);
-  return { adapter, role, recorded, defaults, warning };
+  const recorded = storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles });
+  // With no base branch set, the graph is built from the one tmb detects.
+  if ((stored.base_branch ?? detectBaseBranch(projectDir)) !== null) await indexCodeGraph(projectDir, out);
+  return { adapter, role, recorded, warning };
 }
 
 /** What onboard stored, for the lines that close the run. */
@@ -332,14 +310,19 @@ export async function runInit(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
   const init = await initProject(options);
   printSettings(projectDir, init.recorded, out);
-  const base = storedSettings(projectDir)?.base_branch ?? null;
-  sayNoBase(base, out);
   sayReady(projectDir, init.adapter, init.role, out);
-  out(
-    init.defaults.length === 0
-      ? "Run tmb onboard to change the settings, at any time."
-      : `Took the defaults for ${listed(init.defaults)}. Run tmb onboard to change them, at any time.`,
-  );
+  const settings = storedSettings(projectDir) ?? NO_SETTINGS;
+  const empty = emptySettings(settings).map((name) => name.replace("_", " "));
+  if (empty.length === 0) {
+    out("Run tmb onboard to change the settings, at any time.");
+  } else if (init.role === "planner") {
+    out(
+      `The settings are still empty: ${listed(empty)}. When you open ${init.adapter.name} here, the planner applies the ones it recommends for this project and shows them; ` +
+        "run tmb onboard to set them yourself instead, at any time.",
+    );
+  } else {
+    out(`The settings are still empty: ${listed(empty)}. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.`);
+  }
   // Said again last, so it is not lost above init's other lines.
   if (init.warning) out(init.warning);
 }
@@ -352,9 +335,11 @@ export async function runOnboard(options: SetupOptions): Promise<void> {
   sayNoBase(onboarded.base, out);
 }
 
-/** `tmb setup`: init, then onboard. Throws SetupError or SettingError, before writing anything when it can. */
+/** `tmb setup`, going away: init, then onboard. Throws SetupError or SettingError, before writing anything when it can. */
 export async function runSetup(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
+  // Every flag is checked before init writes anything.
+  validatedFlags(options.flags);
   const init = await initProject(options);
   // init wired the host it chose; onboard asks about that one.
   const onboarded = await onboardProject({ ...options, flags: { ...options.flags, host: init.adapter.id } });

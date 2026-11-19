@@ -19,6 +19,8 @@ const TOOLS = [
   "discussion_append",
   "search",
   "history",
+  "settings_get",
+  "settings_set",
   "feature_start",
   "feature_list",
   "feature_brief",

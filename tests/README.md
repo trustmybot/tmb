@@ -178,12 +178,14 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 
 ## Init and onboard
 
-`tmb setup` split into `tmb init`, which asks nothing, and `tmb onboard`, which asks the questions (trustmybot/tmb#89, Part 1).
+`tmb setup` split into `tmb init`, which asks nothing and leaves the settings empty, and `tmb onboard`, which asks the questions; at the first session with empty settings the planner applies the ones it recommends (trustmybot/tmb#89, Part 1).
 
 | Layer | Test | What it proves |
 |---|---|---|
-| Unit | [test/setup.test.ts](../test/setup.test.ts) | init never asks, keeps what onboard stored, takes its flags and names only the defaults it took; onboard refuses a project or a host init has not prepared, changes a setting and can be run twice, and asks a host's role, the base branch, the review mode and the checks; setup is init followed by onboard. |
-| Integration | [tests/integration/init-onboard.test.ts](integration/init-onboard.test.ts) | As separate processes: `tmb init` on a fresh project asks no question, ends naming the defaults and pointing to onboard; `tmb onboard` changes a setting and can be run twice; `tmb remove` undoes `tmb init`, keeping the record and the `.gitignore` lines; `tmb setup` runs both. |
+| Unit | [test/setup.test.ts](../test/setup.test.ts) | init never asks, stores only the host and its role, keeps what onboard stored and refuses an unknown role; onboard refuses a project or a host init has not prepared, changes a setting and can be run twice, and asks a host's role, the base branch, the review mode and the checks; setup is init followed by onboard. |
+| Unit | [test/settings-tools.test.ts](../test/settings-tools.test.ts) | settings_get shows the settings, the empty ones and what tmb found; settings_set is the planner's, changes only what it is given and refuses an empty request or a bad value. |
+| Unit | [test/session-start.test.ts](../test/session-start.test.ts) | With the settings empty the planner's session start tells it to apply its recommendation, with what tmb found, and to remind the Human of `tmb onboard`; an unattended run is told to name the values; only the empty ones are named, and once all are set the section is gone. |
+| Integration | [tests/integration/init-onboard.test.ts](integration/init-onboard.test.ts) | As separate processes: `tmb init` on a fresh project asks no question, refuses any flag but the host and role, and ends saying the settings are empty and how they get filled; the next session start tells the planner, settings_set through the tool server fills them, and the section is gone after; `tmb onboard` changes a setting and can be run twice; `tmb remove` undoes `tmb init`, keeping the record and the `.gitignore` lines; `tmb setup` runs both and says it is going away. |
 
 ## Docs task check
 

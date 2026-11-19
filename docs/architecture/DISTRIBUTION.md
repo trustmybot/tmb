@@ -14,10 +14,12 @@ One step per platform. After it, two commands inside a project:
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It gives each setting a default, so tmb works straight after, and ends by naming the defaults and pointing to `tmb onboard`. | No |
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | No |
 | `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
-`tmb setup` stays as another name for `tmb init` followed by `tmb onboard`, so nothing written for it breaks.
+**Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied.
+
+`tmb setup`, init followed by onboard, still runs and says it is going away. It is removed in a later release, once init and onboard have shipped (trustmybot/tmb#89).
 
 Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
 
@@ -25,8 +27,6 @@ tmb is one program for the whole machine. Only the database and the host wiring 
 
 Planned (trustmybot/tmb#89), decided by the Human on 2026-11-19:
 
-- **Setup splits in two.** `tmb init` prepares the project and asks nothing: the database, the host wiring, git's push hook and the code graph. `tmb onboard` sets tmb's settings, such as the base branch, the review mode and the checks. `tmb setup` is removed once both have shipped.
-- **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the planner works out the settings it recommends for that project, applies them and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked.
 - **Channels live side by side.** Each channel installs under its own name, updates only itself, and keeps its own machine-wide state. A project is run by the program that initialised it.
 - **An older tmb refuses a newer database.** It stops and says which version wrote it. That is the only refusal: a project can be moved to another channel, in either direction, whenever that channel's program can read the database.
 - **tmb's own installer and updater come first.** Install through a package manager is later (trustmybot/tmb#91).

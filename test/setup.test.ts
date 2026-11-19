@@ -145,18 +145,17 @@ describe("a host this release does not support yet", () => {
 });
 
 describe("tmb init", () => {
-  test("asks nothing, stores a default for each setting, and ends naming them and pointing to onboard", async () => {
+  test("asks nothing, sets only the host and its role, and ends saying the settings are empty and how they get filled", async () => {
     writeFileSync(path.join(project, "go.mod"), "module x\n");
     const ask = scripted(["should not be read"]);
-    await init({ ask });
+    await init({ ask, flags: { base: "main", reviewMode: "truest", checks: ["x"] } });
     expect(ask.prompts).toEqual([]);
-    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: "agile", checks: ["go test ./..."] });
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: null });
     expect(output).toContain("Settings in the record:");
-    expect(output).toContain("  review mode: agile");
-    expect(output).toContain("No base branch is set: this folder is not a git work tree. Run tmb onboard --base <branch> to set one.");
     expect(output).toContain("tmb is set up for Host A. Open it in this project to start as the planner.");
     expect(output.at(-1)).toBe(
-      'Took the defaults for the planner role for Host A, the review mode agile and the checks "go test ./...", found in the project. Run tmb onboard to change them, at any time.',
+      "The settings are still empty: base branch, review mode and checks. When you open Host A here, the planner applies the ones it recommends for this project and shows them; " +
+        "run tmb onboard to set them yourself instead, at any time.",
     );
   });
 
@@ -172,15 +171,16 @@ describe("tmb init", () => {
     expect(output.at(-1)).toBe("Run tmb onboard to change the settings, at any time.");
   });
 
-  test("takes its flags as settings, and names only the defaults it took", async () => {
-    await init({ flags: { base: "main", checks: ["true"], role: "reviewer" } });
-    expect(settings()).toEqual({ host: "a", host_roles: { a: "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["true"] });
-    expect(output.at(-1)).toBe("Took the defaults for the review mode agile. Run tmb onboard to change them, at any time.");
+  test("sets the role --role names, and a reviewer host leaves the settings to the planner's", async () => {
+    await init({ flags: { role: "reviewer" } });
+    expect(settings().host_roles).toEqual({ a: "reviewer" });
+    expect(output.at(-1)).toBe(
+      "The settings are still empty: base branch, review mode and checks. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.",
+    );
   });
 
-  test("refuses an unknown review mode and a blank check before anything is written", async () => {
-    await expect(init({ flags: { reviewMode: "strict" } })).rejects.toThrow(new SettingError('review mode must be agile or truest, got "strict"'));
-    await expect(init({ flags: { checks: ["bun test", ""] } })).rejects.toThrow(SettingError);
+  test("refuses an unknown role before anything is written", async () => {
+    await expect(init({ flags: { role: "boss" } })).rejects.toThrow(new SettingError('a host\'s role must be planner or reviewer, got "boss"'));
     expect(setUpWith).toEqual([]);
     expect(existsSync(path.join(project, ".tmb"))).toBe(false);
   });
@@ -203,11 +203,11 @@ describe("tmb onboard", () => {
     await init();
     const before = auditCount();
     await onboard({ ask: scripted(["", "release", "", ""]) });
-    expect(settings().base_branch).toBe("release");
-    expect(auditCount()).toBe(before + 1);
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: "agile", checks: [] });
+    expect(auditCount()).toBe(before + 3);
     await onboard({ ask: scripted(["reviewer", "", "truest", "make test", ""]) });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["make test"] });
-    expect(auditCount()).toBe(before + 4);
+    expect(auditCount()).toBe(before + 6);
   });
 
   test("sets the role of the host --host names, keeping the others'", async () => {
@@ -245,7 +245,7 @@ describe("the questions", () => {
       "> ",
       "> ",
     ]);
-    expect(output).toContain("  Stored:");
+    expect(output).toContain("  Detected:");
     expect(output).toContain("    cargo test");
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["cargo test", "cargo clippy"] });
   });

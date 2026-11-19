@@ -14,20 +14,18 @@ import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
   tmb --version             Print the version
-  tmb init [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-           [--check <command>]...
+  tmb init [--host <id>] [--role planner|reviewer]
                             Prepare the project in the current directory: create its record,
                             wire one host in its role, add git's push hook and index the code
-                            graph. Asks nothing: a flag sets its setting, a stored one is kept
-                            and the rest take their defaults, which it names. Run it once per
-                            host to use two hosts on one record
+                            graph. Asks nothing and leaves the settings empty: the planner
+                            applies the ones it recommends at its first session. Run it once
+                            per host to use two hosts on one record
   tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
               [--check <command>]... [--yes]
                             Set the project's settings: a host's role, the base branch, the
-                            review mode and the checks. Asks on a terminal, else takes the
+                            review mode and the checks. Asks on a terminal, else keeps the
                             stored values; run it again at any time
-  tmb setup [same flags as onboard]
-                            tmb init, then tmb onboard
+  tmb setup                 Going away: tmb init, then tmb onboard, taking onboard's flags
   tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept
   tmb migrate [--from <plugin db>] [--repo <name>]
@@ -202,20 +200,23 @@ async function runDashboard(args: string[]): Promise<number> {
   return 0;
 }
 
+const INIT_OPTIONS = { host: { type: "string" }, role: { type: "string" } } as const;
+
 const SETTING_OPTIONS = {
-  host: { type: "string" },
-  role: { type: "string" },
+  ...INIT_OPTIONS,
   base: { type: "string" },
   "review-mode": { type: "string" },
   check: { type: "string", multiple: true },
 } as const;
 
-/** `tmb init`, `tmb onboard` or `tmb setup`, which share their flags; init has no --yes, as it never asks. */
+/** `tmb init`, `tmb onboard` or `tmb setup`; init takes only the host and its role, as it asks nothing and sets no other setting. */
 async function runPrepareCommand(command: "init" | "onboard" | "setup", args: string[]): Promise<number> {
-  const options = command === "init" ? SETTING_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
+  const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
-  const yes = "yes" in values ? (values.yes as boolean | undefined) : undefined;
+  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean };
+  // Said on stderr, so whatever reads setup's output still reads the same lines.
+  if (command === "setup") console.error("tmb setup is going away: run tmb init, then tmb onboard.");
   // Ask only when a person is at both ends; otherwise never wait for input. init never asks.
   const terminal = command !== "init" && process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
   const run = { init: runInit, onboard: runOnboard, setup: runSetup }[command];
@@ -223,7 +224,7 @@ async function runPrepareCommand(command: "init" | "onboard" | "setup", args: st
     projectDir: process.cwd(),
     tmbCommand: tmbCommand(),
     adapters: HOST_ADAPTERS,
-    flags: { host: values.host, role: values.role, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes },
+    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes },
     ask: terminal?.ask ?? null,
     out: (line) => console.log(line),
   };
