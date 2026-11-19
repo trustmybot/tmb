@@ -100,6 +100,7 @@ The event list is proposed, for the Human's review.
 
 - An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
 - A rule answers allow or deny, and a deny always says why and what would be allowed.
+- Version 1 ships tmb's own rules only. Users cannot add rules of their own on these events.
 - A host that cannot raise an event is reported by its adapter, and the rules on that event fall back to the next event that can catch the same thing, such as the close or the push.
 
 ## Hosts
