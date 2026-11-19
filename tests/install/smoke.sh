@@ -2,12 +2,21 @@
 # Install smoke test: runs the published installer into a throwaway HOME, then checks the
 # installed binary end to end. Never touches the real HOME.
 #   sh tests/install/smoke.sh [channel] [expected-version]
-# channel defaults to dev; with an expected version, `tmb --version` must report it.
+# channel defaults to dev; with an expected version, `tmb --version` must report it. The rc
+# channel needs the expected version, to find that release's installer.
 set -u
 
 channel="${1:-${TMB_CHANNEL:-dev}}"
 expected_version="${2:-${TMB_EXPECTED_VERSION:-}}"
-installer_url="https://github.com/trustmybot/tmb-releases/releases/download/${channel}/install.sh"
+releases_url="https://github.com/trustmybot/tmb-releases"
+case "$channel" in
+  stable) installer_url="${releases_url}/releases/latest/download/install.sh" ;;
+  rc)
+    [ -n "$expected_version" ] || { echo "FAIL the rc channel needs an expected version"; exit 1; }
+    installer_url="${releases_url}/releases/download/v${expected_version}/install.sh"
+    ;;
+  *) installer_url="${releases_url}/releases/download/${channel}/install.sh" ;;
+esac
 
 failures=0
 pass() { echo "PASS $*"; }

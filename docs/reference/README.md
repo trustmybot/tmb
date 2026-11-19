@@ -20,6 +20,27 @@ irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1
 
 The script downloads the file for your platform, checks it against the published checksums, refuses to install on a mismatch, and puts tmb in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`), the folder Claude Code also installs to. If that folder is not on your PATH, the script adds it to your shell profile (Windows: your user PATH) and says where; open a new terminal afterwards. Set `TMB_NO_MODIFY_PATH=1` to skip that and have it print the line to add instead. Run the same command again to upgrade.
 
+## Channels and updates
+
+An install follows one channel, picked with `TMB_CHANNEL` when you install:
+
+| Channel | Holds | Install |
+|---|---|---|
+| dev (default) | A build of every merge to the base branch. | The commands above. |
+| rc | Release candidates, tagged `vX.Y.Z-rc.N`. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_CHANNEL=rc sh` |
+| stable | Releases, tagged `vX.Y.Z`. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_CHANNEL=stable sh` |
+
+On Windows, set `$env:TMB_CHANNEL` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
+
+tmb keeps itself up to date on its channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends and no other tmb session is running, so no session ever runs on two versions. An open task does not hold it back, since a task can stay open for days; a build that changes the record's layout upgrades it at the next start. Until then it keeps running the version it has, and with no network it simply runs that version.
+
+| Command | Does |
+|---|---|
+| `tmb update` | Look for a newer build now and install it when no tmb session is running; otherwise keep it for the next swap and say so |
+| `tmb update --check` | Only say whether a newer build is out |
+
+Set `TMB_NO_UPDATE=1` to turn updates off. tmb keeps the kept build, the time of the last look and its session markers in `~/.local/state/tmb` (`$XDG_STATE_HOME/tmb` when that is set; Windows: `%LOCALAPPDATA%\tmb`). A tmb run from source never updates itself.
+
 Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb setup` again in any project you set up with it.
 
 `tmb --version` prints the version and the source commit it was built from. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
@@ -99,6 +120,18 @@ Add `--json` to any of them for JSON output. A change you make here is recorded 
 A task closes only when its worktree has no uncommitted changes and has at least one commit past the point it was cut from. tmb then runs the project's checks, followed by the task's own, one after another in the worktree. Each check gets 10 minutes. Every run is recorded with its start, its end, each command's exit code and the end of its output. If a check fails, the task stays open, and tmb names the command and shows the end of its output. A task with no checks at all never closes.
 
 When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode `agile` and the commit it folded. tmb then removes the task's worktree and branch, and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
+
+## Move a plugin project
+
+A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can bring its records over. In the project's folder:
+
+```sh
+tmb migrate
+```
+
+tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into this project's new record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working.
+
+The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. Run `tmb setup` afterwards if you have not.
 
 ## Remove
 
