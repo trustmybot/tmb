@@ -72,7 +72,7 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
 | Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
-| Before an rc or stable release | All of them |
+| Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
 
 No test fixes the OS, the model or the machine's setup. Each is a setting of the run, so the same test runs unchanged on another OS, with another model, or on a machine set up differently. A test that only passes with one of them names it and says why.
 
