@@ -52,7 +52,7 @@ Proposed, for the Human's review.
 | When | Layers |
 |---|---|
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
-| Every build published to the dev channel | Install |
+| Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
 | Before an rc or stable release | All of them |
 
@@ -99,3 +99,12 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). tmb issues have no labels, so only the milestone, title and body move. |
 | 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
+
+## Level 8 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Install | [tests/install/update.ts](install/update.ts) (`bun run test:install:update <channel>`) | An older install on the channel, in a throwaway HOME, updates itself to the channel's newest release from the real release repo: the build is kept at a session's start, `tmb update` waits while a session runs, nothing swaps at a session's end while a task is open, and the next session's end with no task open swaps it in. Runs after each dev build and each rc or stable release on macOS, Windows and Linux; a channel with no release yet is skipped. |
+| Install | [tests/install/smoke.sh](install/smoke.sh), [smoke.ps1](install/smoke.ps1) | The installer of each channel installs the release it should. |
+| Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
+| Integration | [tests/integration/migrate.test.ts](integration/migrate.test.ts) | `tmb migrate` copies a plugin project's issues, notes and decisions, tasks, reviews, check runs and agent runs, with their original times, from a database at plugin schema v76; leaves the plugin's file byte for byte unchanged; carries nothing of other repos or dropped features; and refuses a second run, another schema version, an unnamed repo among several and a missing database. |
