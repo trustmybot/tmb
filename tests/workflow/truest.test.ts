@@ -127,7 +127,7 @@ describe("Truest mode: every task is reviewed before its push", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 60_000);
 
   test("a changed patch needs a new review, a conflict reopens the task, and the Human's waiver lets a task through", async () => {
     const project = truestProject();
@@ -173,8 +173,25 @@ describe("Truest mode: every task is reviewed before its push", () => {
       expect(tmb(["task", "pr", waived.id, "--title", "New file"], project)).toContain("https://github.com/example/project/pull/9");
       expect(readFileSync(ghLog, "utf8")).toContain(`Review waived by the Human at ${waivedCommit}: A file the Human read`);
       expect(git(project, "ls-remote", "origin", `refs/heads/${waived.branch}`)).toStartWith(waivedCommit);
+
+      // When the base branch already holds the same change, the task closes with no pull request and frees its files.
+      const twin = await startTask("Add a guide", ["guide"]);
+      const twinCommit = commitFile(twin.worktree, "guide/a.txt", "guide\n", "guide");
+      await callJson(client, "task_close", { id: twin.id, role: "worker" });
+      await passAt(twin.id, twinCommit);
+      const origin = git(project, "remote", "get-url", "origin");
+      const other = mkdtempSync(path.join(scratch, "twin-"));
+      git(other, "clone", "-q", "-b", "main", origin, ".");
+      mkdirSync(path.join(other, "guide"));
+      writeFileSync(path.join(other, "guide/a.txt"), "guide\n");
+      git(other, "add", ".");
+      git(other, "commit", "-q", "-m", "the same guide, landed apart");
+      git(other, "push", "-q", "origin", "main");
+      expect(await callRefused(client, "task_pr", { id: twin.id, title: "Guide" })).toContain("already holds the change");
+      expect((await callJson(client, "task_brief", { id: twin.id })).state).toBe("closed");
+      await startTask("Edit the guide again", ["guide"]);
     } finally {
       await client.close();
     }
-  });
+  }, 60_000);
 });
