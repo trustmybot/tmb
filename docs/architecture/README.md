@@ -80,7 +80,7 @@ What each version delivers. Decided by the Human on 2026-11-19. Each version is 
 
 ## Build order
 
-tmb is built in levels, from easy to hard. Each level unlocks one ability and ends in something the Human can try in a minute. Each level is a GitHub milestone, and its issues say which plugin code they reuse.
+tmb is built in levels, from easy to hard. Each level unlocks one ability and ends in something the Human can try in a minute. Each level has its issues in its version's milestone, and they say which plugin code they reuse.
 
 | Level | Unlocks | The Human sees it when |
 |---|---|---|

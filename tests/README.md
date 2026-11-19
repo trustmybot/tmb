@@ -78,7 +78,7 @@ No test fixes the OS, the model or the machine's setup. Each is a setting of the
 
 ## Tests each level adds
 
-Each level's milestone holds one test issue with this list. A later level keeps every earlier level's tests passing.
+Each level has one test issue with this list. A later level keeps every earlier level's tests passing.
 
 | Level | Tests it adds |
 |---|---|
