@@ -55,7 +55,7 @@ Decided by the Human on 2026-11-18.
 | Network | The engine works with no internet access. Running fully offline with local models needs a host that supports them. |
 | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
 | Version 1 scope | What the TMB plugin does today, without the features the plugin has dropped and without anything that exists only for Claude Code outside its adapter. |
-| Review modes | Agile is the default and is built first. Strict is built last. |
+| Review modes | Agile is the default and is built first. Truest is built last. |
 | Dashboard | Version 1 serves it as a local web page. Version 2 is a desktop program with the dashboard built in. |
 | License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
 | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
@@ -73,7 +73,7 @@ The order serves one goal: tmb is used to build tmb as early as possible. Each s
 | 4. Dashboard | The local web page over the record. | The Human sees the work without asking an agent. |
 | 5. Distribution | One-step install, three channels, pushed updates, the migration tool. | Others can install it. |
 | 6. More hosts and vendors | A second host adapter, runners for other vendors, local models. | Mixed teams of agents. |
-| 7. Strict mode | Review of every task before its push. | Version 1 is complete. |
+| 7. Truest mode | Review of every task before its push. | Version 1 is complete. |
 
 ## Reuse from the plugin
 

@@ -35,9 +35,9 @@ The review mode decides who reviews a change and when. Only the Human sets it.
 | Mode | Review | Reaches the base branch as | For |
 |---|---|---|---|
 | **Agile** (default) | Once, on the whole feature branch | One pull request per milestone | Building a feature in many small tasks and judging it as a whole. |
-| **Strict** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed. |
+| **Truest** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed. |
 
-Agile is built first. Strict is built last (see [the build order](README.md#build-order)).
+Agile is built first. Truest is built last (see [the build order](README.md#build-order)).
 
 ## Agile mode
 
@@ -64,7 +64,7 @@ flowchart TD
 - The feature branch's pull request opens only after the reviewer passes the branch, or after a Human waiver that is recorded.
 - The Human can try the feature branch in a separate worktree while tasks continue.
 
-## Strict mode
+## Truest mode
 
 Planned, last in the build order.
 

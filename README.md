@@ -10,7 +10,7 @@ Status: design stage. No code yet. The design lives in [docs/architecture](docs/
 |---|---|
 | **Trajectory DB** | A record of every decision, task, review and result, so work can be traced and resumed. |
 | **Code Graph** | A graph of the code, so agents find what they need without reading whole files. |
-| **Workflow** | A fixed path from request to merge, in an agile mode and a strict mode, so you choose between speed and safety. |
+| **Workflow** | A fixed path from request to merge, in an agile mode and a truest mode, so you choose between speed and safety. |
 
 ## What it is for
 
