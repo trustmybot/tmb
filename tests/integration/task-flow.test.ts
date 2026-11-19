@@ -194,8 +194,17 @@ describe("the worker gate through the hook process", () => {
     return result.stdout.trim();
   }
 
+  /** The name setup wrote into the worker's agent file: the host starts the agent, and names it to the hooks, by it. */
+  function workerAgentName(project: string): string {
+    const text = readFileSync(path.join(project, ".claude", "agents", "worker.md"), "utf8");
+    const line = /^name: (.*)$/m.exec(text);
+    if (!line) throw new Error("setup wrote no name into the worker's agent file");
+    return JSON.parse(line[1]!) as string;
+  }
+
   function startWorker(project: string, prompt: string): string {
-    return runHook(project, "PreToolUse", { hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "worker", prompt } });
+    const subagentType = workerAgentName(project);
+    return runHook(project, "PreToolUse", { hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: subagentType, prompt } });
   }
 
   function openWorkerRuns(project: string): Run[] {
@@ -216,7 +225,7 @@ describe("the worker gate through the hook process", () => {
     const [run] = openWorkerRuns(project);
     expect(run).toMatchObject({ taskId: started.id, role: "worker", endedAt: null, createdBy: { kind: "agent", role: "worker", host: "claude-code" } });
 
-    expect(runHook(project, "SubagentStop", { hook_event_name: "SubagentStop", agent_id: "a1", agent_type: "worker" })).toBe("");
+    expect(runHook(project, "SubagentStop", { hook_event_name: "SubagentStop", agent_id: "a1", agent_type: workerAgentName(project) })).toBe("");
     expect(openWorkerRuns(project)).toEqual([]);
     withStore(project, (store) => {
       const [start, end] = store.history(run!.id);

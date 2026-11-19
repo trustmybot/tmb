@@ -56,7 +56,7 @@ Setup also:
   - A SessionStart hook runs `tmb hook session-start`, which starts each session with the planner role and the open work from the record.
   - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, runs a shell command or starts a subagent.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
-- Writes one agent file in `.claude/agents/` for each subagent role tmb defines, marked as tmb's. tmb defines no subagent roles yet, so today it writes none.
+- Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if setup created that file.
 
