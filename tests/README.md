@@ -23,7 +23,27 @@ tmb keeps the plugin's layers, ordered from cheap to costly. They are named here
 - A lower layer passing says nothing about the layer above it. Each layer catches what the ones below cannot see.
 - Tests run from cheap to costly, and a failure stops the run.
 - The layers from Install to Workflow simulation use no model and cost nothing. An agent run and an agent chain use the host under a subscription login, so they cost time and usage.
-- The prompts of an agent run are written by the Human, in the words a real user would type. An agent never edits one to make a test pass.
+- The prompts of an agent run are written by the Human, in the words a real user would type ([Prompts](#prompts)). An agent never edits one to make a test pass.
+
+## Prompts
+
+tmb is a product for users, so an agent run tests what a user would really type, not what the engine expects to hear.
+
+- **Write as a user would.** Short and loose. Name the goal, not tmb's tools, records or steps.
+- **Do not ask for a step tmb should take by itself.** If bro should record a goal without being told, a prompt that says "record this" tests nothing.
+- **Be specific only where the test needs it.** A detail belongs in a prompt only when the check has to find it afterwards.
+- **Add nothing for the test's sake.** A prompt holds only what a user would type. That no one is there to answer is said by the run, not by the prompt ([Unattended runs](#unattended-runs)).
+
+| A user would type | Reads like a spec |
+|---|---|
+| `@bro we need a dark mode toggle` | `@bro record an issue titled "Dark mode toggle"` |
+| `@bro where were we?` | `@bro what open work is in the record?` |
+
+## Unattended runs
+
+An agent run has no one to answer a question, so it runs tmb in unattended mode ([HOSTS.md](../docs/architecture/HOSTS.md#unattended-mode)): the engine tells bro at session start to apply its defaults and name the ones it used. The test sets the mode; the prompt never mentions it.
+
+Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. Planned, for the first level that depends on a question.
 
 ## When each layer runs
 
