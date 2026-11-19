@@ -26,7 +26,7 @@ Planned (trustmybot/tmb#89), decided by the Human on 2026-11-19:
 - **Setup splits in two.** `tmb init` prepares the project and asks nothing: the database, the host wiring, git's push hook and the code graph, with defaults. `tmb onboard` asks for tmb's settings, such as the base branch, the review mode and the checks, and can be run again at any time.
 - **Channels live side by side.** Each channel installs under its own name, updates only itself, and keeps its own machine-wide state. A project is run by the program that initialised it.
 - **An older tmb refuses a newer database.** It stops and says which version wrote it. A project can move to a newer channel, not back.
-- **Package managers, beside the installer.** tmb's own Homebrew tap for macOS and Linux, and its own Scoop bucket for Windows. tmb keeps its own updater on every route, and tells the package manager so. Proposed, for the Human's review.
+- **tmb's own installer and updater come first.** Install through a package manager is later (trustmybot/tmb#91).
 
 ## Channels and updates
 
