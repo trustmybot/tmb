@@ -24,9 +24,11 @@ How the host starts workers and the reviewer is in [HOSTS.md](HOSTS.md).
 | Kind | Who writes it | When |
 |---|---|---|
 | Code task | A worker | The change touches code. |
-| Docs task | The planner | The change touches only docs or prompts. A project declares which paths count. |
+| Docs task | The planner | The change is to docs or prompts and changes no behaviour. |
 
-A docs task that turns out to touch code is refused at its close, and the code part becomes a code task.
+- **The planner judges which kind a task is.** The engine holds no list of paths that count as docs: such a list is wrong for the next project and for the next file. The planner names the kind when it starts the task, and the record keeps it.
+- **A docs task is checked like any other.** Its checks run at close, and the reviewer sees it in the same review as the code tasks.
+- **A wrong call is caught in review.** A docs task that changed behaviour is a finding, and that part is redone as a code task. Proposed, for the Human's review.
 
 ## Review modes
 
