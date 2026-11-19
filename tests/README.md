@@ -175,6 +175,15 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 | Workflow simulation | [tests/workflow/truest.test.ts](workflow/truest.test.ts) | A task cannot be pushed unreviewed: task_pr and a push typed by hand through git's pre-push hook are refused. Review, fail, rework and pass on one task, then task_pr rebases onto a base branch that moved, carries the review over the unchanged patch, pushes the task branch and opens its pull request. A rebase that changes the patch needs a new review, a conflict reopens the task, and a Human waiver lets a task through. |
 | Agent run | [tests/agent-run/truest.ts](agent-run/truest.ts) (`bun run test:truest`) | One task from request to its pull request: bro has a worker fix add, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |
 
+## Init and onboard
+
+`tmb setup` split into `tmb init`, which asks nothing, and `tmb onboard`, which asks the questions (trustmybot/tmb#89, Part 1).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/setup.test.ts](../test/setup.test.ts) | init never asks, keeps what onboard stored, takes its flags and names only the defaults it took; onboard refuses a project or a host init has not prepared, changes a setting and can be run twice, and asks a host's role, the base branch, the review mode and the checks; setup is init followed by onboard. |
+| Integration | [tests/integration/init-onboard.test.ts](integration/init-onboard.test.ts) | As separate processes: `tmb init` on a fresh project asks no question, ends naming the defaults and pointing to onboard; `tmb onboard` changes a setting and can be run twice; `tmb remove` undoes `tmb init`, keeping the record and the `.gitignore` lines; `tmb setup` runs both. |
+
 ## Docs task check
 
 The check of a docs task by file type at its close ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#two-kinds-of-task)).

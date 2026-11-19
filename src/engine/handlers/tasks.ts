@@ -307,7 +307,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   requireOpenIssue(store, request.issue_id);
   const settings = readSettings(store);
   const baseBranch = settings.base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so setup has not run here; run `tmb setup` in the project first");
+  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so tmb init has not run here; run `tmb init` in the project first");
   const truest = settings.review_mode === TRUEST;
   if (truest && request.feature !== undefined) {
     throw new HandlerError(
@@ -513,7 +513,7 @@ export function closeChecks(store: Store, task: Task): string[] {
   if (commands.length === 0) {
     throw new HandlerError(
       "refused",
-      "no checks are set, neither the project's nor the task's, and a task never closes unchecked; add the project's with `tmb setup --check <command>`",
+      "no checks are set, neither the project's nor the task's, and a task never closes unchecked; add the project's with `tmb onboard --check <command>`",
     );
   }
   return commands;

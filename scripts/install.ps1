@@ -59,7 +59,7 @@ try {
                 Remove-Item -Force -Path $dir -ErrorAction SilentlyContinue
             }
         }
-        Write-Host 'Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run tmb setup again.'
+        Write-Host 'Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run tmb init again.'
     }
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -77,7 +77,7 @@ try {
         }
     }
 
-    Write-Host 'Run tmb setup in a project, then start claude there.'
+    Write-Host 'Run tmb init in a project, then start claude there.'
 }
 catch {
     Write-Error "tmb install: $_"

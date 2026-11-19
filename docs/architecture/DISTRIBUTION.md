@@ -10,14 +10,16 @@ The packaging test runs at level 0 of the build: one compiled file that runs on 
 
 ## Install
 
-One step per platform. After it, `tmb setup` inside a project:
+One step per platform. After it, two commands inside a project:
 
-1. Finds which hosts are installed and asks which to use.
-2. Has the host adapter register tmb's tools, roles and guards with that host ([HOSTS.md](HOSTS.md)).
-3. Creates the project's database and asks the few questions the workflow needs: the base branch, the review mode, the checks to run.
-4. Indexes the code graph.
+| Command | Does | Asks questions |
+|---|---|---|
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It gives each setting a default, so tmb works straight after, and ends by naming the defaults and pointing to `tmb onboard`. | No |
+| `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
-Removing tmb from a project undoes exactly what setup added and leaves the Human's own settings alone.
+`tmb setup` stays as another name for `tmb init` followed by `tmb onboard`, so nothing written for it breaks.
+
+Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
 
 ## Channels and updates
 

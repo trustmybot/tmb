@@ -539,7 +539,7 @@ export async function runRecordCommand(command: RecordCommand, args: string[], p
   if (!opened.ok) {
     output.err(
       opened.error.failure === "missing"
-        ? `tmb: no tmb record in ${projectDir}; run \`tmb setup\` there first.`
+        ? `tmb: no tmb record in ${projectDir}; run \`tmb init\` there first.`
         : `tmb: cannot use the record: ${opened.error.message}`,
     );
     return 1;
@@ -576,7 +576,7 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
   if (!opened.ok) {
     output.err(
       opened.error.failure === "missing"
-        ? `tmb: setup has not run in ${projectDir}, so it has no settings; run \`tmb setup\` there first.`
+        ? `tmb: tmb init has not run in ${projectDir}, so it has no settings; run \`tmb init\` there first.`
         : `tmb: cannot use the record: ${opened.error.message}`,
     );
     return 1;
@@ -610,7 +610,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     output.err(
-      opened.error.failure === "missing" ? `tmb: no tmb record in ${projectDir}; run \`tmb setup\` there first.` : `tmb: cannot use the record: ${opened.error.message}`,
+      opened.error.failure === "missing" ? `tmb: no tmb record in ${projectDir}; run \`tmb init\` there first.` : `tmb: cannot use the record: ${opened.error.message}`,
     );
     return 1;
   }

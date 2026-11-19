@@ -194,13 +194,13 @@ describe("tool server", () => {
     }
   });
 
-  test("tells the agent to run tmb setup when the project has no record", async () => {
+  test("tells the agent to run tmb init when the project has no record", async () => {
     const project = newGitProject();
     const client = await connect(project);
     try {
       const result = await call(client, "issue_list", {});
       expect(result.isError).toBe(true);
-      expect(result.content[0]?.text).toContain("tmb setup");
+      expect(result.content[0]?.text).toContain("tmb init");
     } finally {
       await client.close();
     }
@@ -251,7 +251,7 @@ describe("command line", () => {
     const project = newGitProject();
     const missing = run(["issue", "list"], project);
     expect(missing.status).toBe(1);
-    expect(missing.stderr).toContain("tmb setup");
+    expect(missing.stderr).toContain("tmb init");
 
     tmb(["setup"], project);
     const badState = run(["issue", "list", "--state", "done"], project);

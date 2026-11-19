@@ -41,35 +41,53 @@ tmb keeps itself up to date on its channel. When a session starts, tmb looks for
 
 Set `TMB_NO_UPDATE=1` to turn updates off. tmb keeps the kept build, the time of the last look and its session markers in `~/.local/state/tmb` (`$XDG_STATE_HOME/tmb` when that is set; Windows: `%LOCALAPPDATA%\tmb`). A tmb run from source never updates itself.
 
-Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb setup` again in any project you set up with it.
+Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb init` again in any project you set up with it.
 
 `tmb --version` prints the version and the source commit it was built from. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
 ## Set up a project
 
-In the project's root folder:
+Two commands, in the project's root folder:
 
 ```sh
-tmb setup
+tmb init
+tmb onboard
 ```
 
-Setup first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it; with several it asks which to use.
+| Command | Does | Asks questions |
+|---|---|---|
+| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It gives each setting a default, so tmb works straight after. | No |
+| `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks. Run it again at any time. | Yes |
+| `tmb setup` | `tmb init`, then `tmb onboard`. | Yes |
+| `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
-It then wires tmb into that host, as listed below, and asks three questions:
+### init
+
+`tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
+
+It then wires tmb into that host, as listed below, and stores a value for each setting. A setting stored before is kept, a flag sets its setting, and the rest take their defaults. It ends by naming the defaults it took and pointing to `tmb onboard`. It never waits for input.
+
+### onboard
+
+`tmb onboard` asks four questions, each offering the value stored now:
 
 | Question | Default | Flag |
 |---|---|---|
+| The role of the host's main agent | `planner`; `reviewer` makes the host the project's reviewer. | `--role planner\|reviewer` |
 | The base branch, the branch pull requests merge into | The branch origin names as its default, else the current branch, else `main`. Outside a git repository there is no default. | `--base <branch>` |
-| The review mode | `agile`, the only mode built so far. `truest` is refused: it arrives at level 10. | `--review-mode <mode>` |
+| The review mode | `agile` or `truest`. | `--review-mode <mode>` |
 | The checks, the shell commands that must pass before a task closes | The commands it finds in the project: the `lint`, `typecheck` and `test` scripts of `package.json`, run with bun, npm, pnpm or yarn as the lockfile shows; `pytest` for a Python project; `cargo test` for Rust; `go test ./...` for Go. | `--check <command>`, once per command; the commands given replace the list |
 
-- On a re-run, each default is the answer stored last time.
-- A flag answers its question without asking. `--host <id>` picks the host the same way, and `--yes` takes the default of every question no flag answers.
-- Setup asks only when it runs in a terminal. Without one, it takes the defaults and prints each value, so it never waits for input.
+- The host is the one init stored; `--host <id>` names another host init wired.
+- A flag answers its question without asking, and `--yes` keeps the value of every question no flag answers. `tmb init` takes the same flags but `--yes`.
+- Onboard asks only when it runs in a terminal. Without one, it keeps the stored values, so it never waits for input.
+- In a project where `tmb init` has not run, it says so and changes nothing.
 
-It stores the answers in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Setup prints the settings it stored, and `tmb config` shows them later.
+Both store the settings in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Both print the settings in force, and `tmb config` shows them later.
 
-Setup also:
+`tmb setup` runs init, then onboard, with the same flags, as earlier versions did.
+
+`tmb init` also:
 
 - Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
@@ -79,9 +97,11 @@ Setup also:
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
-- In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if setup created that file.
+- In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
+- In a git work tree, writes git's pre-push hook, so every push asks tmb first. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
+- Indexes the code graph of the base branch, once it has a commit.
 
-Running setup again with the same answers changes no file and records nothing.
+Running init or onboard again with the same answers changes no file and records nothing.
 
 Once the project is set up:
 
@@ -107,10 +127,10 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb note <issue-id> <text> [--decision]` | Add a note, or a decision with `--decision` |
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
-| `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where setup has not run, it says so. |
-| `tmb feature start <name>` | Start a feature branch: tmb cuts it from the latest commit of the base branch, without checking it out anywhere, and records it. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project where setup has not set a base branch. |
+| `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where `tmb init` has not run, it says so. |
+| `tmb feature start <name>` | Start a feature branch: tmb cuts it from the latest commit of the base branch, without checking it out anywhere, and records it. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project with no base branch set. |
 | `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks |
-| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. It also refuses when setup has not set a base branch, or when a file overlaps one held by another open task. |
+| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. It also refuses when no base branch is set, or when a file overlaps one held by another open task. |
 | `tmb task list [--state open\|closed\|all]` | List the open tasks, or the closed ones, each with the commit it closed at, or all |
 | `tmb task brief <id>` | Show a task's kind, feature branch, spec, branch, worktree and the checks that run when it closes |
 | `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin` |
@@ -131,7 +151,7 @@ tmb migrate
 
 tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into this project's new record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working.
 
-The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. Run `tmb setup` afterwards if you have not.
+The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. Run `tmb init` afterwards if you have not.
 
 ## Remove
 
@@ -139,11 +159,12 @@ The plugin's own features that tmb does not carry over stay behind: its audit lo
 tmb remove
 ```
 
-It removes only what setup added:
+It removes only what `tmb init` added:
 
 - The three hooks, keeping your own hooks and settings.
 - The agent files tmb wrote in `.claude/agents/`, keeping any you wrote.
 - The tool server's entry and its enabled line.
-- `.mcp.json` itself, only if setup created that file and nothing else is left in it.
+- `.mcp.json` itself, only if init created that file and nothing else is left in it.
+- git's pre-push hook, if tmb wrote it.
 
 It keeps the record in `.tmb/`, because that is your data; delete the folder yourself to drop it. It does not remove the `.gitignore` lines.

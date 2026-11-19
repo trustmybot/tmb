@@ -8,18 +8,27 @@ import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGate } from "./engine/push-gate.ts";
-import { runSetup, terminalAsk } from "./setup.ts";
+import { runInit, runOnboard, runSetup, type SetupOptions, terminalAsk } from "./setup.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
   tmb --version             Print the version
-  tmb setup [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-            [--check <command>]... [--yes]
-                            Wire one host into the project in the current directory, in its
-                            role, and store the settings; asks on a terminal, else takes the
-                            defaults. Run it once per host to use two hosts on one record
-  tmb remove [--host <id>]  Undo what setup added for one host, or for every host and the
+  tmb init [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
+           [--check <command>]...
+                            Prepare the project in the current directory: create its record,
+                            wire one host in its role, add git's push hook and index the code
+                            graph. Asks nothing: a flag sets its setting, a stored one is kept
+                            and the rest take their defaults, which it names. Run it once per
+                            host to use two hosts on one record
+  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
+              [--check <command>]... [--yes]
+                            Set the project's settings: a host's role, the base branch, the
+                            review mode and the checks. Asks on a terminal, else takes the
+                            stored values; run it again at any time
+  tmb setup [same flags as onboard]
+                            tmb init, then tmb onboard
+  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept
   tmb migrate [--from <plugin db>] [--repo <name>]
                             Copy a tmb plugin project's records into this project's new
@@ -193,32 +202,33 @@ async function runDashboard(args: string[]): Promise<number> {
   return 0;
 }
 
-async function runSetupCommand(args: string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args,
-    options: {
-      host: { type: "string" },
-      role: { type: "string" },
-      base: { type: "string" },
-      "review-mode": { type: "string" },
-      check: { type: "string", multiple: true },
-      yes: { type: "boolean", short: "y" },
-    },
-    allowPositionals: true,
-    strict: true,
-  });
-  if (positionals.length > 0) throw new Error(`setup takes no arguments, got ${positionals.join(" ")}`);
-  // Ask only when a person is at both ends; otherwise never wait for input.
-  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+const SETTING_OPTIONS = {
+  host: { type: "string" },
+  role: { type: "string" },
+  base: { type: "string" },
+  "review-mode": { type: "string" },
+  check: { type: "string", multiple: true },
+} as const;
+
+/** `tmb init`, `tmb onboard` or `tmb setup`, which share their flags; init has no --yes, as it never asks. */
+async function runPrepareCommand(command: "init" | "onboard" | "setup", args: string[]): Promise<number> {
+  const options = command === "init" ? SETTING_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
+  const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
+  if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
+  const yes = "yes" in values ? (values.yes as boolean | undefined) : undefined;
+  // Ask only when a person is at both ends; otherwise never wait for input. init never asks.
+  const terminal = command !== "init" && process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  const run = { init: runInit, onboard: runOnboard, setup: runSetup }[command];
+  const setupOptions: SetupOptions = {
+    projectDir: process.cwd(),
+    tmbCommand: tmbCommand(),
+    adapters: HOST_ADAPTERS,
+    flags: { host: values.host, role: values.role, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes },
+    ask: terminal?.ask ?? null,
+    out: (line) => console.log(line),
+  };
   try {
-    await runSetup({
-      projectDir: process.cwd(),
-      tmbCommand: tmbCommand(),
-      adapters: HOST_ADAPTERS,
-      flags: { host: values.host, role: values.role, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes: values.yes },
-      ask: terminal?.ask ?? null,
-      out: (line) => console.log(line),
-    });
+    await run(setupOptions);
   } finally {
     terminal?.close();
   }
@@ -275,7 +285,7 @@ function runMigrateCommand(args: string[]): number {
       if (left.length > 0) {
         console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
       }
-      console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
+      console.log("The plugin's database is unchanged. Run tmb init here if you have not, to wire tmb into your host.");
     }
   } finally {
     opened.store.close();
@@ -294,8 +304,10 @@ async function main(argv: string[]): Promise<number> {
     case "version":
       console.log(versionLine());
       return 0;
+    case "init":
+    case "onboard":
     case "setup":
-      return runSetupCommand(rest);
+      return runPrepareCommand(command, rest);
     case "config":
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "index":
