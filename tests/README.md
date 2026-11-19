@@ -92,6 +92,7 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 | 8. Distribution | **Install:** an install updates itself on each channel, and never in the middle of a task. **Integration:** a plugin project's records carry over. |
 | 9. More hosts | **Integration:** one shared set of adapter tests that every host adapter must pass. **Agent chain:** a second host reviews work on the same record. |
 | 10. Truest mode | **Workflow simulation:** a task cannot be pushed unreviewed. **Agent run:** one task from request to its pull request. |
+| 11. Syncer | **Unit:** each change the session start check looks for. **Integration:** the syncer against a local remote, and with no network. **Workflow simulation:** a pull request merged outside tmb closes its feature branch and issue in the record; a freeze from one session holds in a second. **Agent chain:** a task left half done is reported at the next session's start. |
 
 ## Level 5 tests
 

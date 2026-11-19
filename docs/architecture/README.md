@@ -80,9 +80,10 @@ tmb is built in levels, from easy to hard. Each level unlocks one ability and en
 | 8. Distribution | Three channels, pushed updates, the migration tool. | An install updates itself and a plugin project's records carry over. |
 | 9. More hosts | A second host adapter, two hosts on one record, local models. | A second host reviews work on the same record. |
 | 10. Truest mode | Review of every task before its push. | A task cannot be pushed unreviewed. |
+| 11. Syncer | A check of open tasks at session start, a syncer that brings what happened on the remote into the record, which session made each entry, and a freeze for all sessions. Proposed, for the Human's review: the Human named the level, and its content is bro's proposal. | A pull request merged in the browser shows as merged in the record at the next session start. |
 
 - A level is done only when its tests pass with no manual step. The last column is one of those tests ([tests/README.md](../../tests/README.md)).
-- After level 4, tmb's own development moves onto tmb. After level 10, version 1 is complete.
+- After level 4, tmb's own development moves onto tmb. After level 10, version 1 is complete. Level 11 comes after version 1.
 - Enforcement arrives in steps: the planner is guided by its prompt alone until level 3 brings checks at close, and level 6 brings the push gate.
 - The packaging test runs at level 0, ahead of the levels that need what it tests, because a failure reopens the language decision ([DISTRIBUTION.md](DISTRIBUTION.md)).
 
