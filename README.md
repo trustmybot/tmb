@@ -29,7 +29,7 @@ The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the fi
 |---|---|
 | [docs/architecture](docs/architecture/README.md) | The design: what the engine does and why. |
 | [docs/contributing](docs/contributing/README.md) | How work on this repo is done. |
-| [docs/reference](docs/reference/README.md) | Install, upgrade and configuration, once there is something to install. |
+| [docs/reference](docs/reference/README.md) | Install, set up and remove tmb. |
 
 ## License
 
