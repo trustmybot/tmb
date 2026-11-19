@@ -320,6 +320,19 @@ export function openPullRequest(projectDir: string, args: readonly string[]): { 
   return url === undefined ? { ok: false, why: `gh printed no pull request address: ${said}` } : { ok: true, url };
 }
 
+/** The address of the open pull request from `branch`, when one is already open; null when none is or gh cannot say. */
+export function existingPullRequest(projectDir: string, branch: string): string | null {
+  const result = spawnSync("gh", ["pr", "list", "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url"], {
+    cwd: projectDir,
+    encoding: "utf8",
+    timeout: PR_TIMEOUT_MS,
+    env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
+  });
+  if (result.error || result.status !== 0) return null;
+  const url = (result.stdout ?? "").trim();
+  return /^https?:\/\/\S+$/.test(url) ? url : null;
+}
+
 export function featurePr(store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult {
   const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
   requireRole(actor, "feature_pr", ["planner"]);
