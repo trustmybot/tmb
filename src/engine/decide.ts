@@ -10,10 +10,23 @@ import { toolCalls } from "./commands.ts";
 import { OPEN } from "./handlers/common.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
+import { hostRole } from "./settings.ts";
 import { type Actor, ROLES, type Role, type Store, type StoreOpenError } from "./store/index.ts";
 
 export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-command", "before-agent-start", "after-agent-stop"] as const;
 export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
+
+/**
+ * The role an adapter gives an event from the host's main agent, which is not a subagent. The
+ * engine reads the host's role in the record for it: the planner, unless setup named another.
+ */
+export const MAIN_AGENT = "main-agent";
+
+/**
+ * The role an adapter gives an agent starting when the host's input does not say which agent it
+ * is. The start goes through, and its recorded decision says tmb could not tell, as a finding.
+ */
+export const UNNAMED_AGENT = "unnamed-agent";
 
 /** A host-neutral event: the same fields whatever host raised it. */
 export type TmbEvent = {
@@ -21,7 +34,7 @@ export type TmbEvent = {
   projectDir: string;
   /** The host's id, as its adapter names it. */
   host: string;
-  /** The role of the agent starting or stopping; for any other event, the planner or the subagent the event came from. */
+  /** The role of the agent starting or stopping; for any other event, MAIN_AGENT or the subagent the event came from. */
   role: string;
   task?: string;
   /** What is about to happen: the file path, the command, the start prompt of an agent starting, or the role of one stopping. */
@@ -88,7 +101,8 @@ function reviewerStart(store: Store, event: TmbEvent): Decision {
  * start left without an end is shown as a finding instead.
  */
 function runStop(store: Store, event: TmbEvent, role: Role): Decision {
-  const open = store.openRuns(role, event.task);
+  // A stop ends only a run its own host started: another host's run is not this host's to end.
+  const open = store.openRuns(role, event.task).filter((run) => run.createdBy.kind === "agent" && run.createdBy.host === event.host);
   if (open.length !== 1) {
     const which = event.task === undefined ? "" : ` on task ${event.task}`;
     const reason =
@@ -178,6 +192,9 @@ function fileWriteRule(store: Store, event: TmbEvent): Decision | null {
 }
 
 function rule(store: Store, event: TmbEvent): Decision {
+  if (event.role === UNNAMED_AGENT && event.type === "before-agent-start") {
+    return { decision: "allow", reason: "finding: the host did not say which agent is starting, so tmb could not apply a role's rules to its start" };
+  }
   if (event.role === WORKER && event.type === "before-agent-start") return workerStart(store, event);
   if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
   if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);
@@ -198,6 +215,7 @@ export function decide(event: TmbEvent): Decision {
   const store = opened.store;
   try {
     return store.transaction(() => {
+      if (event.role === MAIN_AGENT) event = { ...event, role: hostRole(store, event.host) };
       const decision = rule(store, event);
       store.appendGuardDecision(actorOf(event), {
         event: recordedEvent(event),

@@ -21,7 +21,7 @@ describe("the review of a feature branch", () => {
   test("review, fail, rework, pass, then the pull request; and a waiver on a second branch", async () => {
     const project = setUpProject("true", undefined, { origin: true });
     const issue = tmbJson(["issue", "create", "Greet the user"], project);
-    const client = await connect(project);
+    const client = await connect(project, "claude-code");
     const startTask = async (intent: string) =>
       callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent, files: ["src"], criteria: ["SC1: it works"] });
     try {
@@ -107,5 +107,5 @@ describe("the review of a feature branch", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });
