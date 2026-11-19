@@ -287,6 +287,23 @@ describe("folding a closed task into its feature branch", () => {
     });
   }
 
+  test("a task whose earlier close moved the feature branch and stopped before recording it closes, finishing the fold", async () => {
+    const task = startTask(["src/a"]);
+    const head = commitFile(task.worktree, "src/a/one.ts");
+    // What the earlier close left: the feature branch moved to the task's commit, the task still open.
+    const from = tip();
+    moveFeature(project, FEATURE, from, head, "a fold that stopped before it recorded the close");
+    expect(store.getTask(task.id)).toMatchObject({ state: "open", commitSha: null });
+
+    const result = await taskClose(store, WORKER, { id: task.id }, context());
+    expect(result.fold).toEqual({ feature: FEATURE, from: head, to: head, rebased: false });
+    expect(result.cleanupProblems).toEqual([]);
+    expect(tip()).toBe(head);
+    expect(store.getTask(task.id)).toMatchObject({ state: "closed", commitSha: head, reviewMode: "agile", pushResult: "skipped" });
+    expect(existsSync(task.worktree)).toBe(false);
+    expect(branches()).not.toContain(task.branch);
+  });
+
   test("a rebase conflict is aborted and refused naming the paths, leaving the task open, the feature unmoved and the worktree as it was", async () => {
     const first = startTask(["src/a"]);
     const second = startTask(["src/b"]);

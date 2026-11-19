@@ -54,17 +54,12 @@ const short = (sha: string): string => sha.slice(0, 12);
  * a local ref, the remote-tracking one or the base a feature was cut from, can hold commits
  * that never reached the remote. Merge commits are left out: they bring no change of their own.
  */
-function uncovered(
-  store: Store,
-  projectDir: string,
-  ref: PushRef,
-  remoteHolds: string[] = [],
-): { lines: string[]; shas: string[]; error: string | null } {
+function uncovered(store: Store, projectDir: string, ref: PushRef): { lines: string[]; shas: string[]; error: string | null } {
   const known = [
     ZERO_SHA.test(ref.remoteSha) ? null : commitOf(projectDir, ref.remoteSha),
     ...coveredCommits(store).map((commit) => commitOf(projectDir, commit)),
   ].filter((sha): sha is string => sha !== null);
-  const listed = runGit(projectDir, ["rev-list", "--no-merges", "--format=%H %h %s", ref.localSha, "--not", ...new Set(known), ...remoteHolds]);
+  const listed = runGit(projectDir, ["rev-list", "--no-merges", "--format=%H %h %s", ref.localSha, "--not", ...new Set(known)]);
   if (!listed.ok) return { lines: [], shas: [], error: `git could not list the commits the push brings: ${listed.stderr || "no reason given"}` };
   const rows = listed.stdout.split("\n").filter((line) => line !== "" && !line.startsWith("commit "));
   const at = (row: string) => row.indexOf(" ");
@@ -87,16 +82,6 @@ function judgeRef(store: Store, projectDir: string, remote: string, base: string
 }
 
 /**
- * The remote's branches as git last fetched or pushed them, when `remote` is a configured
- * remote's name: in truest mode a new task branch's commits under the base branch are already
- * there. A remote given as an address has no such copy, so only the commits it reported count.
- */
-function remoteTracking(projectDir: string, remote: string): string[] {
-  if (remote.startsWith("-") || !runGit(projectDir, ["remote", "get-url", remote]).ok) return [];
-  return [`--remotes=${remote}/*`];
-}
-
-/**
  * In truest mode the base branch is judged as in agile mode, and every other ref too: a task's
  * commit it brings must be held by a reviewed or waived task commit. A commit of no task passes.
  */
@@ -105,7 +90,8 @@ function judgeTruestRef(store: Store, projectDir: string, remote: string, base: 
     return ref.remoteRef === `refs/heads/${base}` ? `it deletes the base branch ${base} on ${remote}, and tmb never lets the base branch go` : null;
   }
   const toBase = ref.remoteRef === `refs/heads/${base}`;
-  const found = uncovered(store, projectDir, ref, toBase ? [] : remoteTracking(projectDir, remote));
+  // Only what the remote reported holds counts as there: a local remote-tracking ref can be moved by hand.
+  const found = uncovered(store, projectDir, ref);
   if (found.error !== null) return found.error;
   const taskCommits = toBase ? null : truestTaskCommits(store, projectDir);
   const lines = taskCommits === null ? found.lines : found.lines.filter((_, index) => taskCommits.has(found.shas[index]!));
