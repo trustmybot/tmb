@@ -56,6 +56,9 @@ export function tmbProcesses(prefix: string) {
   function setUpProject(check: string, files: Record<string, string> = { "README.md": "hello\n" }): string {
     const project = mkdtempSync(path.join(scratch, "project-"));
     git(project, "init", "-q", "-b", BASE_BRANCH);
+    // tmb's own git calls (the rebase in a close) commit too, and a CI runner has no global identity for them.
+    git(project, "config", "user.name", "t");
+    git(project, "config", "user.email", "t@example.com");
     for (const [file, text] of Object.entries(files)) writeFileSync(path.join(project, file), text);
     git(project, "add", ".");
     git(project, "commit", "-q", "-m", "first");

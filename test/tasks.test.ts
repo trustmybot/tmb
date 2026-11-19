@@ -42,6 +42,9 @@ function git(cwd: string, ...args: string[]): string {
 beforeEach(() => {
   project = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-tasks-")));
   git(project, "init", "-q", "-b", "main");
+  // The close's rebase commits through tmb's own git calls, which a CI runner gives no global identity.
+  git(project, "config", "user.name", "t");
+  git(project, "config", "user.email", "t@example.com");
   writeFileSync(path.join(project, ".gitignore"), ".tmb/\n");
   writeFileSync(path.join(project, "README.md"), "hello\n");
   git(project, "add", ".");
