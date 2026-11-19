@@ -73,7 +73,7 @@ Decided by the Human on 2026-11-18.
 | Hosts | Claude Code first, in its command line and its desktop app. No host is hardcoded: each is an adapter, so another such as Codex can be added. |
 | Login | The Human's subscription to the host. No API key is needed. |
 | Roles | The host's main agent is the planner. Workers and the reviewer are subagents the host starts. The engine briefs, records and gates them. |
-| Different models | Each role can use a different model. Agents from different vendors work on one task by connecting their hosts to the same record. Planned, after the first host. |
+| Different models | Each role can use a different model. Agents from different vendors work on one task by connecting their hosts to the same record. Built at level 9, and supported from v2. |
 | Records | Shareable from the first schema: history is kept as events, every record names the role and host that made it, and ids never collide across machines. |
 | What tmb does not do | Start agents, run models or manage parallel sessions. The host does. |
 | Agents left out of version 1 | DeepSeek Harness, as host or as worker. |

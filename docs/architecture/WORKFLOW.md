@@ -70,8 +70,6 @@ flowchart TD
 
 ## Truest mode
 
-Planned, last in the build order.
-
 ```mermaid
 flowchart TD
     A[Task's checks pass] --> B[Reviewer reviews the task's commit]

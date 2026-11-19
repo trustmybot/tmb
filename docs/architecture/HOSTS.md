@@ -91,7 +91,7 @@ flowchart TD
 
 ## Unattended mode
 
-Planned. A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.
+A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.
 
 - Whoever starts the run sets the mode, for that run only. It is not stored in the project, so the next session the Human opens is a normal one.
 - It comes from the engine, so it works the same on every host and the Human's prompt needs no special wording.
@@ -133,7 +133,7 @@ flowchart LR
 | Host | Status | Tools | Roles | Events that can deny |
 |---|---|---|---|---|
 | Claude Code, command line and desktop app | First | Tool server from the project's settings | Agent files in the project | Yes, from the project's settings, inside subagents too |
-| Codex | Planned | Tool server from its config | Agent files in the project | Yes, after the Human trusts them |
+| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from its config | Agent files in the project | Yes, after the Human trusts them |
 | Others | Planned | | | |
 
 The same three building blocks exist in both hosts checked so far, which is what makes one adapter shape enough.
@@ -147,7 +147,7 @@ tmb starts no agent, runs no model and manages no parallel sessions. Hosts do th
 ## Different models on one task
 
 - **One vendor, several models.** The host already runs a different model per subagent. The adapter writes each role's model into the host's role definitions.
-- **Several vendors.** Planned, after the first host works end to end. Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
+- **Several vendors.** Built at level 9, and not supported or tested before v2. Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
 - **Local models.** They arrive through a host that supports them.
 
 Every record names the role and the host that made it, so a review is known to come from a different agent than the one that wrote the change.
