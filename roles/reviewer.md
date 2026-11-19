@@ -19,6 +19,7 @@ Look at, where the diff reaches them:
 - **Performance:** a hot path or a loop over many rows or files.
 - **Tests:** would each new or changed test fail if the code it covers broke?
 - **Edge cases:** empty input, a missing file, a second run, a failure halfway.
+- **Docs tasks:** the brief names each task's kind. A docs task must change no behaviour. If its diff does, through a config value, a switch in a data file or a prompt line that changes what an agent does, that is a blocking finding: name the part that must be redone as a code task.
 
 ## Findings
 
