@@ -1,12 +1,27 @@
 #!/usr/bin/env bun
+import path from "node:path";
+import { parseArgs } from "node:util";
 import { adapter } from "#host-adapter";
-import { versionLine } from "./version.ts";
+import { isRecordCommand, RECORD_USAGE, runRecordCommand } from "./engine/doors/command-line.ts";
+import { serveTools } from "./engine/doors/tool-server.ts";
+import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
   tmb --version             Print the version
   tmb setup                 Wire tmb into the project in the current directory
-  tmb remove                Undo what setup added
+  tmb remove                Undo what setup added; the record is kept
+${RECORD_USAGE}
+  tmb mcp --host <id> [--project <dir>]
+                            Serve the record's tools over stdio (the host runs this)
   tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)`;
+
+// A compiled tmb runs its entry from Bun's embedded file system; from source, Bun runs this file.
+const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:\\~BUN\\)/i;
+
+/** The command that runs this tmb: the executable, plus this file when run from source. */
+function tmbCommand(): string[] {
+  return COMPILED_ENTRY.test(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
+}
 
 async function runHook(event: string | undefined): Promise<number> {
   // A hook must never break the host session: any failure exits 0 with a note on stderr.
@@ -20,8 +35,24 @@ async function runHook(event: string | undefined): Promise<number> {
   return 0;
 }
 
+async function runToolServer(args: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args,
+    options: { host: { type: "string" }, project: { type: "string" } },
+    allowPositionals: true,
+    strict: true,
+  });
+  if (positionals.length > 0) throw new Error(`mcp takes no arguments, got ${positionals.join(" ")}`);
+  if (values.host === undefined || values.host.trim() === "") throw new Error("mcp needs --host <id>, the host that runs it");
+  await serveTools({ projectDir: path.resolve(values.project ?? process.cwd()), host: values.host, version });
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
+  if (isRecordCommand(command)) {
+    return runRecordCommand(command, rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
+  }
   switch (command) {
     case "--version":
     case "-v":
@@ -29,12 +60,14 @@ async function main(argv: string[]): Promise<number> {
       console.log(versionLine());
       return 0;
     case "setup":
-      for (const line of adapter.setup(process.cwd(), process.execPath)) console.log(line);
+      for (const line of adapter.setup(process.cwd(), tmbCommand())) console.log(line);
       console.log(`tmb is set up for ${adapter.name}. Open it in this project to start as the planner.`);
       return 0;
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
       return 0;
+    case "mcp":
+      return runToolServer(rest);
     case "hook":
       return runHook(rest[0]);
     case undefined:

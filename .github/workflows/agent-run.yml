@@ -1,7 +1,9 @@
 name: agent run
 
-# Greets a real Claude Code session in a project set up with the dev build and checks bro
-# answers. Runs only on request, and only does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
+# Real Claude Code sessions in a project set up with tmb. agent-run greets a session set up
+# with the dev build and checks bro answers; agent-chain builds tmb from this checkout, has
+# one session record an issue and checks a new session finds it. Runs only on request, and
+# each job only does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
 
 on:
   workflow_dispatch:
@@ -32,3 +34,29 @@ jobs:
       - name: Run the agent test
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         run: sh tests/agent-run/run.sh
+
+  agent-chain:
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Skip without the token
+        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
+        run: echo "::notice title=agent chain skipped::Set the CLAUDE_CODE_OAUTH_TOKEN repository secret to run the agent chain."
+      - uses: actions/checkout@v4
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+      - uses: oven-sh/setup-bun@v2
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        with:
+          bun-version: "1.4"
+      - name: Build tmb from this checkout
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: |
+          bun install --frozen-lockfile
+          bun run build:local
+      - name: Install Claude Code
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Run the agent chain
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-chain/run.sh
