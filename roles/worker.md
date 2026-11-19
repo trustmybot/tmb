@@ -33,7 +33,7 @@ Stop and report instead of guessing when:
 1. Read your diff against the spec: each success criterion has a concrete change, and nothing outside the spec's files changed.
 2. Run the brief's checks yourself in the worktree, and fix every failure.
 3. Commit the work in the worktree; tmb checks the committed state, not the files on disk.
-4. Close the task with `task_close`. tmb runs the checks on your commit and closes the task only when all of them pass. When it refuses, the refusal names the failing check or the uncommitted change: fix it, commit, and close again. The three-attempt rule above still applies.
+4. Close the task with `task_close`. tmb runs the checks on your commit and closes the task only when all of them pass. When it refuses, the refusal names the failing check, the uncommitted change or the paths that conflict with the feature branch: fix it, commit, and close again. The three-attempt rule above still applies.
 
 ## Report
 

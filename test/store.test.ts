@@ -53,20 +53,75 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 2 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
     expect(() => s.appendDiscussion(HUMAN, { issueId: newId(), kind: "note", body: "orphan" })).toThrow(/FOREIGN KEY/);
   });
 
-  test("upgrades a version-1 database in place, keeping its records", () => {
+  /**
+   * Leaves a database at schema `version` as an older tmb wrote it: an issue, a decision on it
+   * and a task, each as its event and its projection row.
+   */
+  function oldDatabase(version: number): { issueId: string; discussionId: string; taskId: string } {
     const old = new Database(dbPath, { create: true });
-    old.run(SCHEMA_STEPS[0]!);
-    old.run("PRAGMA user_version = 1");
+    for (const step of SCHEMA_STEPS.slice(0, version)) old.run(step);
+    old.run(`PRAGMA user_version = ${version}`);
+    const at = "2026-11-01T00:00:00.000Z";
+    const by = JSON.stringify(HUMAN);
+    const event = (kind: string, id: string, data: Record<string, unknown>) =>
+      old
+        .query("INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at) VALUES (?, ?, ?, 'created', ?, 'human', NULL, NULL, ?)")
+        .run(newId(), kind, id, JSON.stringify(data), at);
+    const [issueId, discussionId, taskId] = [newId(), newId(), newId()];
+    event("issue", issueId, { title: "kept goal", body: "from before", milestone: null });
+    old.query("INSERT INTO issues (id, title, body, created_by, created_at, updated_at) VALUES (?, 'kept goal', 'from before', ?, ?, ?)").run(issueId, by, at, at);
+    old.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('issue', ?, ?, 'kept goal', 'from before')").run(issueId, issueId);
+    event("discussion", discussionId, { issue_id: issueId, kind: "decision", body: "kept decision" });
+    old.query("INSERT INTO discussions (id, issue_id, kind, body, created_by, created_at) VALUES (?, ?, 'decision', 'kept decision', ?, ?)").run(discussionId, issueId, by, at);
+    old.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('discussion', ?, ?, '', 'kept decision')").run(discussionId, issueId);
+    event("task", taskId, { issue_id: issueId, title: "kept task", spec: "", state: "closed", branch: "tmb/old", commit_sha: "abc1234" });
+    old
+      .query("INSERT INTO tasks (id, issue_id, title, spec, state, branch, commit_sha, created_by, created_at, updated_at) VALUES (?, ?, 'kept task', '', 'closed', 'tmb/old', 'abc1234', ?, ?, ?)")
+      .run(taskId, issueId, by, at, at);
     old.close();
+    return { issueId, discussionId, taskId };
+  }
+
+  for (const version of [1, 2]) {
+    test(`upgrades a version-${version} database in place, keeping its records`, () => {
+      const records = oldDatabase(version);
+      const result = openStore(dbPath, { create: false });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      store = result.store;
+      expect(store.getIssue(records.issueId)).toMatchObject({ title: "kept goal", body: "from before", state: "open" });
+      expect(store.newestDecision(records.issueId)).toMatchObject({ id: records.discussionId, body: "kept decision" });
+      expect(store.search("decision").map((hit) => hit.id)).toEqual([records.discussionId]);
+      expect(store.getTask(records.taskId)).toMatchObject({ title: "kept task", state: "closed", commitSha: "abc1234", featureId: null, kind: null });
+      expect(store.history(records.taskId)).toHaveLength(1);
+
+      const before = peek(snapshot);
+      store.rebuildProjections();
+      expect(peek(snapshot)).toEqual(before);
+      const featureId = store.createFeature(PLANNER, { name: "feat/after", baseBranch: "main", baseCommit: "abc1234" });
+      expect(store.findFeature("feat/after")).toMatchObject({ id: featureId, state: "open" });
+      const db = new Database(dbPath);
+      try {
+        expect(() => db.run("DELETE FROM events")).toThrow(/append-only/);
+        expect(() => db.run("UPDATE events SET type = 'tampered'")).toThrow(/append-only/);
+        expect((db.query("SELECT count(*) AS n FROM events").get() as { n: number }).n).toBe(4);
+      } finally {
+        db.close();
+      }
+    });
+  }
+
+  test("an upgraded database has the same schema as a new one", () => {
+    oldDatabase(1);
     const kept = (() => {
       const result = openStore(path.join(dir, "fresh.db"), { create: true });
       if (!result.ok) throw result.error;
@@ -291,7 +346,9 @@ describe("events", () => {
     s.updateIssue(HUMAN, other, { state: "closed", milestone: null });
     s.appendDiscussion(HUMAN, { issueId, kind: "decision", body: "keep history as events" });
     s.appendDiscussion(PLANNER, { issueId, kind: "note", body: "a note" });
-    const taskId = s.appendTask(PLANNER, { issueId, title: "Build the store", spec: "## Goal", branch: "feat/x" });
+    const featureId = s.createFeature(PLANNER, { name: "feat/x", baseBranch: "main", baseCommit: "abc1234" });
+    const taskId = s.appendTask(PLANNER, { issueId, title: "Build the store", spec: "## Goal", branch: "tmb/x", featureId, kind: "code" });
+    s.updateTask(WORKER, taskId, { state: "closed", commitSha: "def5678", reviewMode: "agile", pushResult: "skipped", pushDetail: "no origin" });
     s.appendRun(WORKER, { taskId, role: "worker", outcome: "completed", cost: { tokens: 1200 } });
     s.appendCheckRun(WORKER, { taskId, commitSha: "abc1234", result: "pass", endedAt: "2026-11-18T00:00:00.000Z" });
     s.appendReview({ kind: "agent", role: "reviewer", host: "host-c" }, {
