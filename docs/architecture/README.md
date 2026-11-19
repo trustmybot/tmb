@@ -70,8 +70,8 @@ tmb is built in levels, from easy to hard. Each level unlocks one ability and en
 | Level | Unlocks | The Human sees it when |
 |---|---|---|
 | 0. Wake up | Download, install and cold start, with the smallest setup: one session start event. | Claude Code, opened in a project, answers as bro. |
-| 1. Memory | The trajectory record and tmb's tools. | Bro records an issue and a new session picks it up. |
-| 2. Setup | Full setup with its questions, the project's database and the complete Claude Code adapter. | One command sets up a fresh project and another undoes it. |
+| 1. Memory | The trajectory record, the project's database and tmb's tools. | Bro records an issue and a new session picks it up. |
+| 2. Setup | Full setup with its questions, and the complete Claude Code adapter. | One command sets up a fresh project and another undoes it. |
 | 3. Workers | Tasks, worktrees, workers as subagents, checks at close. | Bro hands a code task to a worker and it closes only when its checks pass. |
 | 4. Agile mode | Feature branches, docs tasks written by the planner, contract tests. | A feature branch collects several tasks. |
 | 5. Code graph | Indexing, lookups, and their use in scoping a task. | Bro scopes a task from the graph, not by reading files. |
