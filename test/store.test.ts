@@ -89,6 +89,39 @@ describe("openStore", () => {
     });
   });
 
+  test("upgrades a version-1 database once when several processes open it at the same moment", async () => {
+    const opener = path.join(dir, "open-once.ts");
+    const openModule = path.join(import.meta.dir, "../src/engine/store/open.ts");
+    writeFileSync(
+      opener,
+      `import { openStore } from ${JSON.stringify(openModule)};
+const result = openStore(process.argv[2]!, { create: false });
+if (!result.ok) { console.error(result.error.message); process.exit(1); }
+result.store.close();
+`,
+    );
+    for (let round = 0; round < 3; round++) {
+      const roundPath = path.join(dir, `concurrent-${round}.db`);
+      const old = new Database(roundPath, { create: true });
+      old.run("PRAGMA journal_mode = WAL");
+      old.run(SCHEMA_STEPS[0]!);
+      old.run("PRAGMA user_version = 1");
+      old.close();
+
+      const openers = Array.from({ length: 8 }, () =>
+        Bun.spawn([process.execPath, "run", opener, roundPath], { stdout: "pipe", stderr: "pipe" }),
+      );
+      const outcomes = await Promise.all(
+        openers.map(async (child) => ({ code: await child.exited, stderr: await new Response(child.stderr).text() })),
+      );
+      expect(outcomes.filter((outcome) => outcome.code !== 0)).toEqual([]);
+
+      const db = new Database(roundPath, { readonly: true });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
+      db.close();
+    }
+  }, 60_000);
+
   test("reopens an existing database without create", () => {
     const id = open().createIssue(HUMAN, { title: "kept" });
     store!.close();

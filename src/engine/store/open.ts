@@ -36,9 +36,15 @@ function readHeader(db: Database): { version: number; tables: number } {
   return { version, tables };
 }
 
-/** Runs every schema step after version `from` in one transaction, so a database is never left between versions. */
-function upgrade(db: Database, from: number): void {
+/**
+ * Runs every schema step the database still lacks in one transaction, so it is never left
+ * between versions. The version is read again under the write lock: another process may
+ * have upgraded the file since it was first read.
+ */
+function upgrade(db: Database): void {
   db.transaction(() => {
+    const { user_version: from } = db.query("PRAGMA user_version").get() as { user_version: number };
+    if (from >= SCHEMA_VERSION) return;
     for (const step of SCHEMA_STEPS.slice(from)) db.run(step);
     db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   }).immediate();
@@ -87,7 +93,7 @@ export function openStore(dbPath: string, options: { create: boolean }): OpenRes
 
     db.run("PRAGMA journal_mode = WAL");
     db.run("PRAGMA foreign_keys = ON");
-    if (header.version < SCHEMA_VERSION) upgrade(db, header.version);
+    if (header.version < SCHEMA_VERSION) upgrade(db);
     return { ok: true, store: new Store(db) };
   } catch (error) {
     db.close();
