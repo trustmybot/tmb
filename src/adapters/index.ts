@@ -10,4 +10,6 @@ export function hostAdapter(): HostAdapter {
   return HOST_ADAPTERS[0]!;
 }
 
+// The plugin tmb replaces ran on Claude Code only, so migrating from it is that adapter's.
+export { findPluginDb, MigrationError, migratePluginProject, type MigrationResult } from "./claude-code/migrate-plugin.ts";
 export type { HostAdapter, HostDetection, HostLimits } from "./host-adapter.ts";
