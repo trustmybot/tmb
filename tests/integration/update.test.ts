@@ -90,12 +90,12 @@ function releaseEnv(): Record<string, string> {
 
 describe("an install updates itself", () => {
   for (const [channel, { old, next }] of Object.entries(CHANNELS)) {
-    test(`on the ${channel} channel, between sessions, never while one runs`, async () => {
+    test(`on the ${channel} channel, between sessions and never with a task open`, async () => {
       const scenario = install(old, releaseEnv());
       {
         const steps: string[] = [];
         await updatesItself(scenario, next, (line) => steps.push(line));
-        expect(steps).toHaveLength(6);
+        expect(steps).toHaveLength(7);
         expect(installedVersion(scenario)).toBe(next);
       }
     }, 120_000);
@@ -148,7 +148,7 @@ describe("tmb update", () => {
     expect(reinstalled.apply()).toEqual({ outcome: "none" });
   }, 60_000);
 
-  test("with no session running, applies at once", async () => {
+  test("with no task open and no session running, applies at once", async () => {
     const scenario = install(CHANNELS.stable.old, releaseEnv());
     const updated = await runUpdate(scenario);
     expect(updated).toMatchObject({ status: 0 });
@@ -268,7 +268,7 @@ describe("programs side by side (trustmybot/tmb#89)", () => {
 
   test("a project initialised by one program is called through that name, and moves only by another's init", async () => {
     const side = sideBySide({ tmb: CHANNELS.stable.old, "tmb-dev": CHANNELS.dev.old }, { TMB_NO_UPDATE: "1" });
-    // Setup needs an installed host, and a clean machine has none: a copy of tmb named claude stands in.
+    // init needs an installed host, and a clean machine has none: a copy of tmb named claude stands in.
     const fakeHost = path.join(side.root, "fake-host");
     mkdirSync(fakeHost, { recursive: true });
     copyFileSync(side.files.tmb!, path.join(fakeHost, `claude${EXE}`));
@@ -276,9 +276,9 @@ describe("programs side by side (trustmybot/tmb#89)", () => {
     const project = path.join(side.root, "project");
     mkdirSync(project, { recursive: true });
     expect(spawnSync("git", ["init", "-q"], { cwd: project }).status).toBe(0);
-    const setup = (name: string) => spawnSync(side.files[name]!, ["setup", "--host", "claude-code", "--yes"], { cwd: project, env: side.env, encoding: "utf8", timeout: 120_000 });
+    const init = (name: string) => spawnSync(side.files[name]!, ["init", "--host", "claude-code"], { cwd: project, env: side.env, encoding: "utf8", timeout: 120_000 });
 
-    const first = setup("tmb-dev");
+    const first = init("tmb-dev");
     expect(first.status).toBe(0);
     expect(first.stdout).toContain(`This project runs tmb-dev: its hooks and tool server call ${side.files["tmb-dev"]}`);
     const mcp = JSON.parse(readFileSync(path.join(project, ".mcp.json"), "utf8"));
@@ -286,10 +286,10 @@ describe("programs side by side (trustmybot/tmb#89)", () => {
     expect(readFileSync(path.join(project, ".claude", "settings.local.json"), "utf8")).toContain(JSON.stringify(side.files["tmb-dev"]).slice(1, -1));
     expect(readFileSync(path.join(project, ".git", "hooks", "pre-push"), "utf8")).toContain(`tmb-dev${EXE}`);
 
-    // Running the same program's setup again neither moves nor re-records the tie.
-    expect(setup("tmb-dev").stdout).not.toContain("This project runs");
+    // Running the same program's init again neither moves nor re-records the tie.
+    expect(init("tmb-dev").stdout).not.toContain("This project runs");
 
-    const moved = setup("tmb");
+    const moved = init("tmb");
     expect(moved.status).toBe(0);
     expect(moved.stdout).toContain(`Moved this project from tmb-dev ${CHANNELS.dev.old} to tmb ${CHANNELS.stable.old}.`);
     expect(JSON.parse(readFileSync(path.join(project, ".mcp.json"), "utf8")).mcpServers.tmb.command).toBe(side.files.tmb);

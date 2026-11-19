@@ -6,6 +6,7 @@ import * as graph from "./graph.ts";
 import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
 import * as review from "./reviews.ts";
+import * as settings from "./settings.ts";
 import * as task from "./tasks.ts";
 import * as truest from "./truest.ts";
 
@@ -137,6 +138,18 @@ export const OPERATIONS = {
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },
+  settings_get: {
+    description:
+      "Read the project's settings (base branch, review mode, checks, each host's role), which of the project settings are still empty, and what tmb detects in the project as a start for a recommendation. Use it before settings_set.",
+    inputSchema: settings.settingsGetSchema,
+    run: settings.settingsGet,
+  },
+  settings_set: {
+    description:
+      "Set one or more of the project's settings: the base branch, the review mode, the checks. Use it when a session starts with the settings empty, to apply the ones you recommend for this project, and when the Human asks to change one. Only the settings you pass change. For the planner.",
+    inputSchema: settings.settingsSetSchema,
+    run: settings.settingsSet,
+  },
   graph_map: {
     description:
       "Show what the project looks like from tmb's code graph: its directories and files, each with a short summary from its README or header, and how many symbols each file defines. Use it at the start of planning instead of listing and opening files.",
@@ -193,5 +206,6 @@ export * from "./graph.ts";
 export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
 export * from "./reviews.ts";
+export * from "./settings.ts";
 export * from "./tasks.ts";
 export * from "./truest.ts";

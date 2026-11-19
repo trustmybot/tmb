@@ -1,12 +1,16 @@
-// `tmb setup`: picks the host, has its adapter wire tmb into the project, then asks the
-// questions the workflow needs and stores the answers in the record. It reaches a host only
-// through the adapter interface, so it names none.
+// Preparing a project for tmb, in two commands. `tmb init` picks the host, has its adapter wire
+// tmb into the project, adds git's push hook and indexes the code graph; it asks nothing and
+// leaves the project's settings empty, for the planner to fill at the first session start.
+// `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
+// again at any time. `tmb setup`, going away, is init followed by onboard. They reach a host
+// only through the adapter interface, so they name none.
 import { createInterface } from "node:readline";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "./adapters/index.ts";
 import {
   AVAILABLE_REVIEW_MODES,
   DEFAULT_HOST_ROLE,
   detectBaseBranch,
+  HOST_ROLES,
   type HostRole,
   detectChecks,
   openProjectStore,
@@ -23,6 +27,7 @@ import {
   writeSetting,
 } from "./engine/index.ts";
 import { indexProject } from "./engine/graph/fresh.ts";
+import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
@@ -39,10 +44,10 @@ export type SetupOptions = {
   tmbCommand: readonly string[];
   adapters: readonly HostAdapter[];
   flags: SetupFlags;
-  /** Asks on the terminal; null when there is none, so every question takes its default. */
+  /** Asks on the terminal; null when there is none, so every question takes its default. init never asks. */
   ask: Ask | null;
   out: (line: string) => void;
-  /** The ids of the hosts this release supports; setup warns for any other. SUPPORTED_HOST_IDS unless given. */
+  /** The ids of the hosts this release supports; init warns for any other. SUPPORTED_HOST_IDS unless given. */
   supportedHostIds?: readonly string[];
   /** The tmb program running setup, which the project is tied to; plain tmb at its package version unless given. */
   program?: { name: string; version: string };
@@ -55,6 +60,10 @@ export class SetupError extends Error {
 const HUMAN: Actor = { kind: "human" };
 const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null };
 const DEFAULT_REVIEW_MODE: ReviewMode = "agile";
+const NOT_INITIALISED = "tmb is not set up in this project; run tmb init first";
+
+/** The flag answers, checked. */
+type Answered = Partial<Omit<SettingValues, "host" | "host_roles">> & { role?: HostRole };
 
 /** "A", "A and B", "A, B and C". */
 function listed(items: readonly string[]): string {
@@ -65,12 +74,16 @@ function supportedHosts(adapters: readonly HostAdapter[]): string {
   return listed(adapters.map((adapter) => `${adapter.name} (${adapter.id})`));
 }
 
-/** The settings a previous setup stored, offered as this run's defaults; none without a record. */
-function storedSettings(projectDir: string): Settings {
+function hostName(adapters: readonly HostAdapter[], id: string): string {
+  return adapters.find((adapter) => adapter.id === id)?.name ?? id;
+}
+
+/** The settings stored so far; null when the project has no record yet. */
+function storedSettings(projectDir: string): Settings | null {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
-    if (opened.error.failure === "missing") return NO_SETTINGS;
-    throw new SetupError(`cannot set up the record: ${opened.error.message}`);
+    if (opened.error.failure === "missing") return null;
+    throw new SetupError(`cannot read the record: ${opened.error.message}`);
   }
   try {
     return readSettings(opened.store);
@@ -79,8 +92,8 @@ function storedSettings(projectDir: string): Settings {
   }
 }
 
-/** Checks the flag answers before setup changes anything. Throws SettingError. */
-function validatedFlags(flags: SetupFlags): Partial<Omit<SettingValues, "host" | "host_roles">> & { role?: HostRole } {
+/** Checks the flag answers before anything is changed. Throws SettingError. */
+function validatedFlags(flags: SetupFlags): Answered {
   return {
     role: flags.role === undefined ? undefined : validateHostRole(flags.role),
     base_branch: flags.base === undefined ? undefined : validateSetting("base_branch", flags.base),
@@ -89,39 +102,28 @@ function validatedFlags(flags: SetupFlags): Partial<Omit<SettingValues, "host" |
   };
 }
 
-async function chooseHost(options: SetupOptions, ask: Ask | null, storedHost: string | null): Promise<HostAdapter> {
+/** The host init wires: the one --host names, else the one installed, else the stored one, else the first. Never asks. */
+function chooseHost(options: SetupOptions, storedHost: string | null): HostAdapter {
   const { adapters, flags, out } = options;
   if (flags.host !== undefined) {
     const named = adapters.find((adapter) => adapter.id === flags.host);
     if (!named) throw new SetupError(`unknown host '${flags.host}'; tmb supports ${supportedHosts(adapters)}`);
-    if (!named.detect().installed) throw new SetupError(`${named.name} is not installed; install it, then run tmb setup again`);
+    if (!named.detect().installed) throw new SetupError(`${named.name} is not installed; install it, then run tmb init again`);
     out(`Setting tmb up for ${named.name}, as --host asked.`);
     return named;
   }
 
   const installed = adapters.filter((adapter) => adapter.detect().installed);
   if (installed.length === 0) {
-    throw new SetupError(`no supported host is installed; tmb supports ${supportedHosts(adapters)}. Install one, then run tmb setup again.`);
+    throw new SetupError(`no supported host is installed; tmb supports ${supportedHosts(adapters)}. Install one, then run tmb init again.`);
   }
   if (installed.length === 1) {
     out(`Found ${installed[0]!.name}, the one supported host installed; setting tmb up for it.`);
     return installed[0]!;
   }
-
-  const fallback = installed.find((adapter) => adapter.id === storedHost) ?? installed[0]!;
-  if (!ask) {
-    out(`Several hosts are installed (${listed(installed.map((adapter) => adapter.name))}); taking ${fallback.name}. Pass --host to choose.`);
-    return fallback;
-  }
-  out("Several supported hosts are installed:");
-  installed.forEach((adapter, i) => out(`  ${i + 1}. ${adapter.name} (${adapter.id})${(options.supportedHostIds ?? SUPPORTED_HOST_IDS).includes(adapter.id) ? "" : ", not supported yet"}`));
-  for (;;) {
-    const answer = (await ask(`Which host should tmb use? [${fallback.id}] `))?.trim();
-    if (!answer) return fallback;
-    const chosen = installed.find((adapter) => adapter.id === answer) ?? installed[Number(answer) - 1];
-    if (chosen) return chosen;
-    out(`'${answer}' is not one of them; answer with its number or its id.`);
-  }
+  const chosen = installed.find((adapter) => adapter.id === storedHost) ?? installed[0]!;
+  out(`Several hosts are installed (${listed(installed.map((adapter) => adapter.name))}); taking ${chosen.name}. Pass --host to choose.`);
+  return chosen;
 }
 
 /** Asks for one line of text; an empty answer takes the fallback, and with none, asks again. */
@@ -134,11 +136,12 @@ async function askText(ask: Ask, question: string, fallback: string | null): Pro
   }
 }
 
-async function askReviewMode(ask: Ask, fallback: ReviewMode, out: (line: string) => void): Promise<ReviewMode> {
+/** Asks until the answer passes `validate`, saying why each refused one is wrong. */
+async function askValid<T extends string>(ask: Ask, question: string, fallback: T, validate: (value: unknown) => T, out: (line: string) => void): Promise<T> {
   for (;;) {
-    const answer = await askText(ask, `Review mode, one of: ${AVAILABLE_REVIEW_MODES.join(", ")}`, fallback);
+    const answer = await askText(ask, question, fallback);
     try {
-      return validateSetting("review_mode", answer);
+      return validate(answer);
     } catch (error) {
       if (!(error instanceof SettingError)) throw error;
       out(error.message);
@@ -166,7 +169,7 @@ async function askChecks(ask: Ask, fallback: string[], source: string, out: (lin
   }
 }
 
-/** Ties the project to the program running setup, and says so when it moved from another. */
+/** Ties the project to the program running init, and says so when it moved from another. */
 function tieToProgram(projectDir: string, program: { name: string; version: string }, command: readonly string[], out: (line: string) => void): void {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw new SetupError(`cannot tie the project to ${program.name}: ${opened.error.message}`);
@@ -179,8 +182,8 @@ function tieToProgram(projectDir: string, program: { name: string; version: stri
   }
 }
 
-/** Records each answer that differs from the stored one, then prints the settings in force. */
-function storeAnswers(projectDir: string, answers: Partial<SettingValues>, out: (line: string) => void): void {
+/** Records each answer that differs from the stored one; returns how many it recorded. */
+function storeAnswers(projectDir: string, answers: Partial<SettingValues>): number {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw new SetupError(`cannot store the settings: ${opened.error.message}`);
   try {
@@ -189,15 +192,20 @@ function storeAnswers(projectDir: string, answers: Partial<SettingValues>, out: 
       const value = answers[name];
       if (value !== undefined && writeSetting(opened.store, HUMAN, name, value)) recorded++;
     }
-    out("Settings in the record:");
-    for (const line of settingLines(readSettings(opened.store))) out(`  ${line}`);
-    out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's audit trail.`);
+    return recorded;
   } finally {
     opened.store.close();
   }
 }
 
-/** Indexes the base branch into the code graph; a project that cannot be indexed yet is told why, and setup goes on. */
+/** Prints the settings in force and how many changes this run recorded. */
+function printSettings(projectDir: string, recorded: number, out: (line: string) => void): void {
+  out("Settings in the record:");
+  for (const line of settingLines(storedSettings(projectDir) ?? NO_SETTINGS)) out(`  ${line}`);
+  out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's audit trail.`);
+}
+
+/** Indexes the base branch into the code graph; a project that cannot be indexed yet is told why, and the run goes on. */
 async function indexCodeGraph(projectDir: string, out: (line: string) => void): Promise<void> {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw new SetupError(`cannot index the code graph: ${opened.error.message}`);
@@ -205,7 +213,7 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void): 
     const stats = await indexProject(projectDir, opened.store, { rebuild: false });
     out(`Indexed the code graph of ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
   } catch (error) {
-    // Setup has stored its answers by now, and every lookup indexes the graph itself, so a failed index never fails setup.
+    // The settings are stored by now, and every lookup indexes the graph itself, so a failed index never fails the run.
     const message = error instanceof Error ? error.message : String(error);
     out(
       error instanceof HandlerError
@@ -217,50 +225,146 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void): 
   }
 }
 
-/** Runs setup in the project. Throws SetupError or SettingError, before writing anything when it can. */
-export async function runSetup(options: SetupOptions): Promise<void> {
-  const { projectDir, flags, out } = options;
-  const answered = validatedFlags(flags);
-  const stored = storedSettings(projectDir);
-  const ask = flags.yes === true ? null : options.ask;
+/** What init did, for the lines that close the run. */
+type Initialised = {
+  adapter: HostAdapter;
+  role: HostRole;
+  recorded: number;
+  /** Said first and last when the host is not supported in this release. */
+  warning: string | null;
+};
 
-  const adapter = await chooseHost(options, ask, stored.host);
+/**
+ * Wires one host into the project in its role. Asks nothing and sets none of the project's
+ * settings: those are the planner's at the first session start, or the Human's with onboard.
+ */
+async function initProject(options: SetupOptions): Promise<Initialised> {
+  const { projectDir, flags, out } = options;
+  const answered = validatedFlags({ role: flags.role });
+  const stored = storedSettings(projectDir) ?? NO_SETTINGS;
+
+  const adapter = chooseHost(options, stored.host);
   const supported = options.supportedHostIds ?? SUPPORTED_HOST_IDS;
-  const unsupported = !supported.includes(adapter.id);
-  const notSupported = `${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
-  if (unsupported) out(`Warning: ${notSupported}`);
-  // The role is the host's main agent's: kept from an earlier setup of this host unless --role names another.
-  const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
+  const warning = supported.includes(adapter.id)
+    ? null
+    : `Warning: ${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
+  if (warning) out(warning);
+
+  // The wiring: the host's registrations, which create the record, then git's push hook.
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
   tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);
 
+  // The role is the host's main agent's: kept from an earlier init of this host unless --role names another.
+  const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
+  const hostRoles = { ...(stored.host_roles ?? {}), [adapter.id]: role };
+  const recorded = storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles });
+  // With no base branch set, the graph is built from the one tmb detects.
+  if ((stored.base_branch ?? detectBaseBranch(projectDir)) !== null) await indexCodeGraph(projectDir, out);
+  return { adapter, role, recorded, warning };
+}
+
+/** What onboard stored, for the lines that close the run. */
+type Onboarded = { recorded: number; base: string | null; role: HostRole };
+
+/** Asks each question, offering the stored value, and stores the answers. Needs a project init has prepared. */
+async function onboardProject(options: SetupOptions): Promise<Onboarded> {
+  const { projectDir, adapters, flags, out } = options;
+  const answered = validatedFlags(flags);
+  const stored = storedSettings(projectDir);
+  if (stored === null || stored.host === null) throw new SetupError(NOT_INITIALISED);
+  const hostId = flags.host ?? stored.host;
+  const name = hostName(adapters, hostId);
+  if (hostId !== stored.host && stored.host_roles?.[hostId] === undefined) {
+    throw new SetupError(`${name} is not set up in this project; run tmb init --host ${hostId} first`);
+  }
+  const ask = flags.yes === true ? null : options.ask;
   if (!ask) {
     out(
       `${flags.yes === true ? "--yes was given" : "There is no terminal to ask on"}, so each question takes its default; ` +
-        "--base, --review-mode and --check set them.",
+        "--role, --base, --review-mode and --check set them.",
     );
   }
+
+  const roleFallback = stored.host_roles?.[hostId] ?? DEFAULT_HOST_ROLE;
+  const role =
+    answered.role ??
+    (ask ? await askValid(ask, `Role of ${name}'s main agent, one of: ${HOST_ROLES.join(", ")}`, roleFallback, validateHostRole, out) : roleFallback);
   const baseFallback = stored.base_branch ?? detectBaseBranch(projectDir);
   const base = answered.base_branch ?? (ask ? await askText(ask, "Base branch, the branch pull requests merge into", baseFallback) : baseFallback);
   const reviewFallback = stored.review_mode ?? DEFAULT_REVIEW_MODE;
-  const reviewMode = answered.review_mode ?? (ask ? await askReviewMode(ask, reviewFallback, out) : reviewFallback);
+  const reviewMode =
+    answered.review_mode ??
+    (ask
+      ? await askValid(ask, `Review mode, one of: ${AVAILABLE_REVIEW_MODES.join(", ")}`, reviewFallback, (value) => validateSetting("review_mode", value), out)
+      : reviewFallback);
   const checksFallback = stored.checks ?? detectChecks(projectDir);
   const checks =
     answered.checks ?? (ask ? await askChecks(ask, checksFallback, stored.checks === null ? "Detected" : "Stored", out) : checksFallback);
 
-  const hostRoles = { ...(stored.host_roles ?? {}), [adapter.id]: role };
-  storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode, checks }, out);
-  if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb setup --base <branch> to set one.");
-  else await indexCodeGraph(projectDir, out);
+  const hostRoles = { ...(stored.host_roles ?? {}), [hostId]: role };
+  const recorded = storeAnswers(projectDir, { host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode, checks });
+  // A new base branch has its own code graph; init indexed the old one.
+  if (base !== null && base !== stored.base_branch) await indexCodeGraph(projectDir, out);
+  return { recorded, base, role };
+}
+
+function sayNoBase(base: string | null, out: (line: string) => void): void {
+  if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb onboard --base <branch> to set one.");
+}
+
+/** The steps the Human must take before the host runs tmb, then the line saying tmb is ready. */
+function sayReady(projectDir: string, adapter: HostAdapter, role: HostRole, out: (line: string) => void): void {
   const steps = adapter.pendingSteps?.(projectDir) ?? [];
   if (steps.length > 0) {
     out(`Before ${adapter.name} runs tmb in this project, you need to:`);
     for (const step of steps) out(`  - ${step}`);
   }
   out(`tmb is set up for ${adapter.name}. Open it in this project to start as the ${role}.`);
-  // Said again last, so it is not lost above setup's other lines.
-  if (unsupported) out(`Warning: ${notSupported}`);
+}
+
+/** `tmb init`. Throws SetupError or SettingError, before writing anything when it can. */
+export async function runInit(options: SetupOptions): Promise<void> {
+  const { projectDir, out } = options;
+  const init = await initProject(options);
+  printSettings(projectDir, init.recorded, out);
+  sayReady(projectDir, init.adapter, init.role, out);
+  const settings = storedSettings(projectDir) ?? NO_SETTINGS;
+  const empty = emptySettings(settings).map((name) => name.replace("_", " "));
+  if (empty.length === 0) {
+    out("Run tmb onboard to change the settings, at any time.");
+  } else if (init.role === "planner") {
+    out(
+      `The settings are still empty: ${listed(empty)}. When you open ${init.adapter.name} here, the planner applies the ones it recommends for this project and shows them; ` +
+        "run tmb onboard to set them yourself instead, at any time.",
+    );
+  } else {
+    out(`The settings are still empty: ${listed(empty)}. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.`);
+  }
+  // Said again last, so it is not lost above init's other lines.
+  if (init.warning) out(init.warning);
+}
+
+/** `tmb onboard`. Throws SetupError or SettingError, before writing anything when it can. */
+export async function runOnboard(options: SetupOptions): Promise<void> {
+  const { projectDir, out } = options;
+  const onboarded = await onboardProject(options);
+  printSettings(projectDir, onboarded.recorded, out);
+  sayNoBase(onboarded.base, out);
+}
+
+/** `tmb setup`, going away: init, then onboard. Throws SetupError or SettingError, before writing anything when it can. */
+export async function runSetup(options: SetupOptions): Promise<void> {
+  const { projectDir, out } = options;
+  // Every flag is checked before init writes anything.
+  validatedFlags(options.flags);
+  const init = await initProject(options);
+  // init wired the host it chose; onboard asks about that one.
+  const onboarded = await onboardProject({ ...options, flags: { ...options.flags, host: init.adapter.id } });
+  printSettings(projectDir, init.recorded + onboarded.recorded, out);
+  sayNoBase(onboarded.base, out);
+  sayReady(projectDir, init.adapter, onboarded.role, out);
+  if (init.warning) out(init.warning);
 }
 
 /** Asks on the process's terminal, one line per question. */

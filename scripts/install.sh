@@ -113,7 +113,7 @@ echo "Installed ${name} at ${bin_dir}/${name}: ${installed}"
 if [ "$name" != tmb ] && [ -x "${bin_dir}/tmb" ]; then
   legacy_version="$("${bin_dir}/tmb" --version 2>/dev/null | cut -d ' ' -f 2)" || legacy_version=""
   case "$legacy_version" in
-    *-dev.* | *-rc.*) echo "${bin_dir}/tmb is ${legacy_version}, installed before the channels had their own names; it keeps following its channel. Run ${name} setup in a project to move it to ${name}." ;;
+    *-dev.* | *-rc.*) echo "${bin_dir}/tmb is ${legacy_version}, installed before the channels had their own names; it keeps following its channel. Run ${name} init in a project to move it to ${name}." ;;
   esac
 fi
 
@@ -122,7 +122,7 @@ if [ -e "${legacy_dir}/tmb" ]; then
   rm -f "${legacy_dir}/tmb"
   rmdir "$legacy_dir" 2>/dev/null || true
   rmdir "${HOME}/.tmb" 2>/dev/null || true
-  echo "Removed the old ~/.tmb/bin/tmb. In projects set up with it, run tmb setup again."
+  echo "Removed the old ~/.tmb/bin/tmb. In projects set up with it, run tmb init again."
 fi
 
 login_shell="$(basename "${SHELL:-sh}")"
@@ -157,4 +157,4 @@ case ":${PATH}:" in
     ;;
 esac
 
-echo "Run ${name} setup in a project, then start claude there."
+echo "Run ${name} init in a project, then start claude there."

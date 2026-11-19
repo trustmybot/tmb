@@ -52,7 +52,7 @@ export class ToolSession {
     const opened = openProjectStore(this.projectDir, { create: false });
     if (!opened.ok) {
       if (opened.error.failure === "missing") {
-        throw new Error(`There is no tmb record in ${this.projectDir}: run \`tmb setup\` in the project first, then try again.`);
+        throw new Error(`There is no tmb record in ${this.projectDir}: run \`tmb init\` in the project first, then try again.`);
       }
       throw new Error(`tmb cannot use the record: ${opened.error.message}`);
     }

@@ -101,6 +101,8 @@ describe("a plugin project's records carry over", () => {
     expect(output).toContain("(repo app)");
     expect(output).toContain("2 issues, 2 notes and decisions, 3 tasks, 2 reviews, 1 check runs, 2 agent runs");
     expect(output).toContain("Left behind, as tmb has no such kind: 1 analysis, 1 answer, 2 intent, 1 question.");
+    // Left open, so it holds tmb's updates back (trustmybot/tmb#61).
+    expect(output).toContain("1 of the tasks are still open");
   });
 
   test("the plugin's database is byte for byte unchanged", () => {

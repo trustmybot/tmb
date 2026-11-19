@@ -10,14 +10,26 @@ The packaging test runs at level 0 of the build: one compiled file that runs on 
 
 ## Install
 
-One step per platform. After it, `tmb setup` inside a project:
+One step per platform. After it, two commands inside a project:
 
-1. Finds which hosts are installed and asks which to use.
-2. Has the host adapter register tmb's tools, roles and guards with that host ([HOSTS.md](HOSTS.md)).
-3. Creates the project's database and asks the few questions the workflow needs: the base branch, the review mode, the checks to run.
-4. Indexes the code graph.
+| Command | Does | Asks questions |
+|---|---|---|
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | No |
+| `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
-Removing tmb from a project undoes exactly what setup added and leaves the Human's own settings alone.
+**Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied.
+
+`tmb setup`, init followed by onboard, still runs and says it is going away. It is removed in a later release, once init and onboard have shipped (trustmybot/tmb#89).
+
+Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
+
+tmb is one program for the whole machine. Only the database and the host wiring are per project.
+
+Planned (trustmybot/tmb#89), decided by the Human on 2026-11-19:
+
+- **Channels live side by side.** Each channel installs under its own name, updates only itself, and keeps its own machine-wide state. A project is run by the program that initialised it.
+- **An older tmb refuses a newer database.** It stops and says which version wrote it. That is the only refusal: a project can be moved to another channel, in either direction, whenever that channel's program can read the database.
+- **tmb's own installer and updater come first.** Install through a package manager is later (trustmybot/tmb#91).
 
 ## Channels and updates
 
@@ -27,7 +39,7 @@ Removing tmb from a project undoes exactly what setup added and leaves the Human
 | rc | Release candidates. |
 | stable | Releases. |
 
-Planned: release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo stays private for now. How the three channels map onto that repo is proposed, for the Human's review: stable as normal releases, rc as prereleases, dev as one rolling prerelease.
+Release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo stays private for now. On that repo, stable is a normal release, rc is a prerelease, and dev is one rolling prerelease.
 
 A compiled file is not secret: its bundled code can be read. The public repo hides the source repo's docs, issues and history, not the code.
 
@@ -37,13 +49,13 @@ As built at level 8, as agreed on trustmybot/tmb#16 (pending the Human's review)
 
 - A build's version names its channel: `X.Y.Z-dev.N` is dev, `X.Y.Z-rc.N` is rc, `X.Y.Z` is stable. Every release carries a `VERSION` file and the checksums of its files.
 - dev is the rolling `dev` prerelease, published on every push to the base branch. rc and stable are published only when a `vX.Y.Z-rc.N` or `vX.Y.Z` tag is pushed: rc as a prerelease, stable as the release marked latest. rc's newest release is found through the public releases API.
-- When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no task is open in any project tmb has served. A task is one agent's run and is short, so an open task holds the swap back only briefly, and a half-done task never meets a new build. `tmb update` does the same on request. Planned: the build on dev still swaps while a task is open.
+- When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no task is open in any project tmb has served. A task is one agent's run and is short, so an open task holds the swap back only briefly, and a half-done task never meets a new build. `tmb update` does the same on request.
 
 Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2):
 
 - Each channel is a program of its own name: `tmb` follows stable, `tmb-rc` rc, `tmb-dev` dev, and `tmb-<version>` is one rc or stable release that never updates itself. The name is the installed file's. A `tmb` follows the channel its version names, so a dev build installed as `tmb` before the names were split keeps following dev.
 - Each program updates itself only from its own channel and keeps its machine-wide state in a folder of its own name, so one never swaps another.
-- A project is tied to the program whose setup last wired it: its hooks, its tool server and git's push hook call that program, and the record's audit trail keeps every move from one program to another.
+- A project is tied to the program whose init last wired it: its hooks, its tool server and git's push hook call that program, and the record's audit trail keeps every move from one program to another.
 - The record's shape is signed with the version and program that wrote it. A tmb that finds a newer shape than it knows refuses the record and names them.
 - The installers take `TMB_CHANNEL` and, to pin one release, `TMB_INSTALL_VERSION`, and install under the matching name.
 

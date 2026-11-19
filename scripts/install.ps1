@@ -78,7 +78,7 @@ try {
     if ($name -ne 'tmb' -and (Test-Path $plain)) {
         $legacyVersion = ((& $plain --version 2>$null) -split '\s+')[1]
         if ($legacyVersion -match '-(dev|rc)\.') {
-            Write-Host "$plain is $legacyVersion, installed before the channels had their own names; it keeps following its channel. Run $name setup in a project to move it to $name."
+            Write-Host "$plain is $legacyVersion, installed before the channels had their own names; it keeps following its channel. Run $name init in a project to move it to $name."
         }
     }
 
@@ -91,7 +91,7 @@ try {
                 Remove-Item -Force -Path $dir -ErrorAction SilentlyContinue
             }
         }
-        Write-Host 'Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run tmb setup again.'
+        Write-Host 'Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run tmb init again.'
     }
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -109,7 +109,7 @@ try {
         }
     }
 
-    Write-Host "Run $name setup in a project, then start claude there."
+    Write-Host "Run $name init in a project, then start claude there."
 }
 catch {
     Write-Error "tmb install: $_"

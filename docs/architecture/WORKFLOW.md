@@ -27,10 +27,10 @@ How the host starts workers and the reviewer is in [HOSTS.md](HOSTS.md).
 | Docs task | The planner | The change is to docs or prompts and changes no behaviour. |
 
 - **The planner judges which kind a task is.** A project declares no list of paths that count as docs: such a list is wrong for the next project and for the next file. The planner names the kind when it starts the task, and the record keeps it.
-- **The engine checks the call by file type.** A docs task whose commit touches a file written in a programming language is refused at its close, and the refusal names the file. The engine tells a programming language from prose, markup and data with the language table of GitHub's Linguist, which it ships with. The table is maintained for every project, so tmb keeps no list of its own.
+- **The engine checks the call by file type.** A docs task whose commit touches a file written in a programming language is refused at its close, and the refusal names the file. The engine tells a programming language from prose, markup and data with the language table of GitHub's Linguist, which it ships with. The table is maintained for every project, so tmb keeps no list of its own. Where the table gives one extension to several languages, the file is refused only when every one of them is a programming language; tmb does not read the file to guess.
 - **The rest stays the planner's call.** The table marks config and data files as data, and cannot tell whether a change to one alters behaviour.
 - **A docs task is checked like any other.** Its checks run at close, and the reviewer sees it in the same review as the code tasks.
-- **A wrong call the engine cannot see is caught in review.** A docs task that changed behaviour is a finding, and that part is redone as a code task. Proposed, for the Human's review.
+- **A wrong call the engine cannot see is caught in review.** A docs task that changed behaviour is a finding, and that part is redone as a code task.
 
 ## Review modes
 
@@ -70,8 +70,6 @@ flowchart TD
 
 ## Truest mode
 
-Planned, last in the build order.
-
 ```mermaid
 flowchart TD
     A[Task's checks pass] --> B[Reviewer reviews the task's commit]
@@ -90,6 +88,8 @@ Code enforces the workflow; prompts only guide. Three layers, each owned by the 
 3. **Git's own pre-push hook.** A push is refused unless the record holds what the review mode requires for those commits. This layer does not depend on the host, so it also holds for a push typed by hand.
 
 A gate denies when it cannot read the record, and allows in a project tmb has never been set up in.
+
+**Freeze.** Planned (trustmybot/tmb#64). The Human can stop all work in a project with one request to any session, and start it again the same way. A freeze is an entry in the record with its reason, so it holds for every session. While it holds, the gate denies what moves work forward: starting a task, starting a worker or the reviewer, a file write by an agent, closing a task and opening a pull request. Reads stay allowed, the planner is told at session start, and a push typed by hand is not affected.
 
 ## What the engine does itself
 

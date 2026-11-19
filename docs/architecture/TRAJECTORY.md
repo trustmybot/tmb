@@ -22,16 +22,16 @@ The record of the work: what was asked, what was decided, what each agent did an
 - **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
 - **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump. Agents spend their context on the work.
 - **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
-- **Every record names who made it.** The Human, or the role and host that acted.
+- **Every record names who made it.** The Human, or the role and host that acted. Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
 - **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering.
 
 ## Where it lives
 
-One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one. The engine creates it at setup, and is the only program that migrates it.
+One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one. The engine creates it at `tmb init`, and is the only program that migrates it.
 
 | State | Gate | Other commands |
 |---|---|---|
-| No database | Allows: tmb stays out of projects it was never set up in | Offer setup |
+| No database | Allows: tmb stays out of projects it was never set up in | Offer `tmb init` |
 | Readable | Decides normally | Run normally |
 | Unreadable, or made by a newer tmb | Denies, naming the cause, and for a newer one the version and program that wrote its shape | Only the health check and repair run |
 
