@@ -70,6 +70,38 @@ Running several workers at once, each on its own task and worktree, is the host'
 
 All rules stay in the engine. An adapter that grows a rule is a defect.
 
+## tmb's own events
+
+tmb has its own hook system. Rules are written once against tmb's events, never against a host's or git's. Host hooks and git hooks are only sources that raise a tmb event.
+
+```mermaid
+flowchart LR
+    HH[Host hook] --> A[Host adapter] --> EV[tmb event]
+    GH[git hook] --> EV
+    EN[The engine's own steps] --> EV
+    EV --> RU[Rules in the engine]
+    RU --> AN[Allow, or deny with the reason]
+    RU --> RE[Every decision is recorded]
+```
+
+| tmb event | Raised when | Raised by |
+|---|---|---|
+| Session start | A host session opens in a tmb project | Host |
+| Before a file write | An agent is about to write a file | Host |
+| Before a command | An agent is about to run a shell command | Host |
+| Before an agent start | The host is about to start a subagent | Host |
+| After an agent stop | A subagent has ended | Host |
+| Before a task start | The engine is asked to start a task | Engine |
+| Before a task close | The engine is asked to close a task | Engine |
+| Before a push | Commits are about to leave the machine | git, and the host for a push an agent types |
+| After a branch moves | A merge, a fetch or a checkout moved a branch | git |
+
+The event list is proposed, for the Human's review.
+
+- An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
+- A rule answers allow or deny, and a deny always says why and what would be allowed.
+- A host that cannot raise an event is reported by its adapter, and the rules on that event fall back to the next event that can catch the same thing, such as the close or the push.
+
 ## Hosts
 
 | Host | Status | Tools | Roles | Events that can deny |
