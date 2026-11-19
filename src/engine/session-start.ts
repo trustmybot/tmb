@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
 import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
 import { featureBriefOf, reviewLine } from "./handlers/reviews.ts";
-import { isReviewerHost, openHostReviewerRun } from "./host-runs.ts";
+import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
@@ -116,7 +116,8 @@ function reviewerContext(projectDir: string, host: string): string {
   if (!opened.ok) return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(opened.error)}\n`;
   try {
     const context = `${reviewerRole.trimEnd()}\n\n${awaitingReview(opened.store, projectDir)}\n`;
-    openHostReviewerRun(opened.store, host);
+    // A host may raise a session start again on resume, clear or compact: one run per session.
+    ensureHostReviewerRun(opened.store, host);
     return context;
   } catch (error) {
     return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(error)}\n`;

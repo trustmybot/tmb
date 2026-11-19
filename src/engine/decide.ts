@@ -101,7 +101,8 @@ function reviewerStart(store: Store, event: TmbEvent): Decision {
  * start left without an end is shown as a finding instead.
  */
 function runStop(store: Store, event: TmbEvent, role: Role): Decision {
-  const open = store.openRuns(role, event.task);
+  // A stop ends only a run its own host started: another host's run is not this host's to end.
+  const open = store.openRuns(role, event.task).filter((run) => run.createdBy.kind === "agent" && run.createdBy.host === event.host);
   if (open.length !== 1) {
     const which = event.task === undefined ? "" : ` on task ${event.task}`;
     const reason =

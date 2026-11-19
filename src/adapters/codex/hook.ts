@@ -76,14 +76,18 @@ function sessionStart(input: JsonObject, run: HookRun): string {
 /** A deny becomes Codex's deny; an allow says nothing, so Codex's own approvals still apply. */
 function preToolUse(input: JsonObject): string {
   const toolName = stringField(input, "tool_name") ?? "";
-  const toolInput = isObject(input.tool_input) ? input.tool_input : {};
+  // apply_patch is a freeform tool, so its input may come as the patch text itself.
+  const toolInput = isObject(input.tool_input) ? input.tool_input : typeof input.tool_input === "string" ? { command: input.tool_input } : {};
+  // A patch names files from the session's folder; the engine reads a relative path from the project.
+  const writes = (files: string[]) => files.map((file) => decide(eventOf(input, "before-file-write", path.resolve(cwdOf(input), file))));
   let decisions: Decision[];
   if (SHELL_TOOLS.has(toolName)) {
-    decisions = [decide(eventOf(input, "before-command", shellCommandOf(toolInput)))];
+    // Codex also runs apply_patch through the shell; each file the patch names is a write as well.
+    const { file_path: _file, path: _path, ...shellInput } = toolInput;
+    decisions = [decide(eventOf(input, "before-command", shellCommandOf(toolInput))), ...writes(patchFilesOf(shellInput))];
   } else if (PATCH_TOOLS.has(toolName)) {
-    // A patch names files from the session's folder; the engine reads a relative path from the project.
-    const files = patchFilesOf(toolInput).map((file) => path.resolve(cwdOf(input), file));
-    decisions = (files.length > 0 ? files : [""]).map((file) => decide(eventOf(input, "before-file-write", file)));
+    const files = patchFilesOf(toolInput);
+    decisions = files.length > 0 ? writes(files) : [decide(eventOf(input, "before-file-write", ""))];
   } else if (SPAWN_TOOLS.has(toolName)) {
     const spawn = spawnOf(toolInput);
     decisions = [decide(eventOf(input, "before-agent-start", spawn.prompt, spawn.role))];
@@ -96,7 +100,10 @@ function preToolUse(input: JsonObject): string {
 
 /** Codex takes no answer tmb needs to give to a subagent's stop; the engine records it. */
 function subagentStop(input: JsonObject): string {
-  decide(eventOf(input, "after-agent-stop", stringField(input, "agent_type") ?? ""));
+  const agentType = stringField(input, "agent_type");
+  // A stop that names no agent cannot be matched to a run; read as the main agent's, it would end the host's own.
+  if (agentType === undefined) return "";
+  decide(eventOf(input, "after-agent-stop", agentType));
   return "";
 }
 

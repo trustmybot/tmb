@@ -1,11 +1,11 @@
 // The project's .codex/hooks.json, where Codex finds project hooks. Its shape is Claude Code's:
 // {"hooks": {Event: [{matcher?, hooks: [{type: "command", command}]}]}}. tmb adds one group per
 // event it answers and never touches another hook.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ignoreInGit } from "../common/git.ts";
 import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject } from "../common/json-file.ts";
-import { CODEX_DIR, createdMarkerPath, HOST_ID, hooksJsonPath } from "./paths.ts";
+import { CODEX_DIR, createdMarkerPath, HOST_ID, hooksJsonPath, originalHooksPath } from "./paths.ts";
 
 /**
  * Each Codex hook tmb wires and the `tmb hook` name it runs. PreToolUse has no matcher, so every
@@ -61,6 +61,18 @@ function withoutTmb(groups: Group[]): Group[] {
   });
 }
 
+/** The Human's part of a hooks config: every tmb hook out, and an emptied group, event or hooks key dropped. */
+function humansPart(config: JsonObject, file: string): string {
+  const hooks = hooksOf(config, file);
+  const kept: JsonObject = {};
+  for (const event of Object.keys(hooks)) {
+    const groups = withoutTmb(groupsOf(hooks, event, file));
+    if (groups.length > 0) kept[event] = groups;
+  }
+  const { hooks: _hooks, ...rest } = config;
+  return JSON.stringify(Object.keys(kept).length > 0 ? { ...rest, hooks: kept } : rest);
+}
+
 export type InstallResult = { file: string; hooksAdded: string[]; created: boolean; gitignoreChanged: boolean };
 
 export function installHooks(projectDir: string, tmbCommand: readonly string[]): InstallResult {
@@ -79,6 +91,9 @@ export function installHooks(projectDir: string, tmbCommand: readonly string[]):
     hooksAdded.push(hook.hookEvent);
   }
   if (hooksAdded.length > 0) {
+    // Keep the Human's file as it was, the first time tmb changes it, so remove gives it back unchanged.
+    const original = originalHooksPath(projectDir);
+    if (!created && !existsSync(original)) writeJsonObject(original, { text: readFileSync(file, "utf8") });
     config.hooks = hooks;
     writeJsonObject(file, config);
     if (created) writeJsonObject(createdMarkerPath(projectDir, "hooks"), { created: path.join(CODEX_DIR, "hooks.json") });
@@ -89,6 +104,11 @@ export function installHooks(projectDir: string, tmbCommand: readonly string[]):
 }
 
 export type RemoveResult = { file: string; hooksRemoved: string[]; fileDeleted: boolean };
+
+function originalText(projectDir: string): string | null {
+  const saved = readJsonObject(originalHooksPath(projectDir)).text;
+  return typeof saved === "string" ? saved : null;
+}
 
 export function removeHooks(projectDir: string): RemoveResult {
   const file = hooksJsonPath(projectDir);
@@ -109,14 +129,19 @@ export function removeHooks(projectDir: string): RemoveResult {
     if (result.hooksRemoved.length > 0) {
       if (Object.keys(hooks).length === 0) delete config.hooks;
       else config.hooks = hooks;
+      const original = originalText(projectDir);
       if (tmbCreatedIt && Object.keys(config).length === 0) {
         deleteFile(file, projectDir);
         result.fileDeleted = true;
+      } else if (original !== null && humansPart(JSON.parse(original.trim() === "" ? "{}" : original), file) === humansPart(config, file)) {
+        // Nothing of the Human's changed since setup: their file comes back byte for byte.
+        writeFileSync(file, original);
       } else {
         writeJsonObject(file, config);
       }
     }
   }
   if (tmbCreatedIt) deleteFile(marker, projectDir);
+  if (existsSync(originalHooksPath(projectDir))) deleteFile(originalHooksPath(projectDir), projectDir);
   return result;
 }

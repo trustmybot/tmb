@@ -66,7 +66,10 @@ function preToolUse(input: JsonObject): string {
 
 /** Claude Code takes no answer to a subagent's stop; the engine records it. */
 function subagentStop(input: JsonObject): string {
-  decide(eventOf(input, "after-agent-stop", stringField(input, "agent_type") ?? ""));
+  const agentType = stringField(input, "agent_type");
+  // A stop that names no agent cannot be matched to a run; read as the main agent's, it would end the host's own.
+  if (agentType === undefined) return "";
+  decide(eventOf(input, "after-agent-stop", agentType));
   return "";
 }
 

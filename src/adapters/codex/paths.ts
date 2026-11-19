@@ -11,6 +11,11 @@ export const hooksJsonPath = (projectDir: string) => path.join(projectDir, CODEX
 export const agentsDir = (projectDir: string) => path.join(projectDir, CODEX_DIR, "agents");
 
 /** The file that records setup created `file`, so remove deletes it only when it was tmb's. */
+/** Where setup keeps the Human's hooks.json as it was, so remove can give it back byte for byte. */
+export function originalHooksPath(projectDir: string): string {
+  return path.join(projectDir, PROJECT_DIR_NAME, "codex-original-hooks.json");
+}
+
 export function createdMarkerPath(projectDir: string, file: "config" | "hooks"): string {
   return path.join(projectDir, PROJECT_DIR_NAME, `codex-created-${file}.json`);
 }

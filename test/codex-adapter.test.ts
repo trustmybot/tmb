@@ -45,6 +45,19 @@ describe(".codex/config.toml", () => {
     }
   });
 
+  test("a file whose line endings turned CRLF after setup still gives up its block, and setup runs again", () => {
+    mkdirSync(path.dirname(configTomlPath(project)), { recursive: true });
+    writeFileSync(configTomlPath(project), 'model = "gpt-5"\n');
+    registerServer(project, TMB);
+    writeFileSync(configTomlPath(project), readFileSync(configTomlPath(project), "utf8").replace(/\n/g, "\r\n"));
+    expect(unregisterServer(project).removed).toBe(true);
+    expect(readFileSync(configTomlPath(project), "utf8")).toBe('model = "gpt-5"\r\n');
+    expect(registerServer(project, TMB).changed).toBe(true);
+    expect(readFileSync(configTomlPath(project), "utf8")).not.toMatch(/[^\r]\n/);
+    expect(unregisterServer(project).removed).toBe(true);
+    expect(readFileSync(configTomlPath(project), "utf8")).toBe('model = "gpt-5"\r\n');
+  });
+
   test("a file tmb created is deleted on remove", () => {
     expect(registerServer(project, TMB)).toMatchObject({ created: true, changed: true });
     expect(unregisterServer(project)).toMatchObject({ removed: true, fileDeleted: true });
@@ -71,6 +84,23 @@ describe(".codex/hooks.json", () => {
     expect(installHooks(project, TMB).hooksAdded).toEqual([]);
     expect(removeHooks(project).hooksRemoved).toEqual(["PreToolUse", "SessionStart", "SubagentStop", "SessionEnd"]);
     expect(JSON.parse(readFileSync(hooksJsonPath(project), "utf8"))).toEqual(human);
+  });
+
+  test("remove gives back the Human's own file byte for byte, its layout and empty entries included", () => {
+    const humans = [
+      JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "done.sh" }] }] } }, null, 4),
+      '{"hooks": {}, "x": 1}',
+      '{"hooks":{"SessionStart":[]}}\n',
+      "",
+    ];
+    for (const human of humans) {
+      mkdirSync(path.join(project, ".codex"), { recursive: true });
+      writeFileSync(hooksJsonPath(project), human);
+      installHooks(project, TMB);
+      installHooks(project, TMB);
+      expect(removeHooks(project).fileDeleted).toBe(false);
+      expect(readFileSync(hooksJsonPath(project), "utf8")).toBe(human);
+    }
   });
 
   test("replaces a tmb hook that points at another executable", () => {
@@ -172,6 +202,38 @@ describe("tool calls", () => {
       permissionDecision: "deny",
       permissionDecisionReason: expect.stringContaining("reviewer"),
     });
+  });
+
+  test("apply_patch run through the shell, or sent as bare text, is guarded as a write of each file", () => {
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    writeSetting(opened.store, { kind: "human" }, "host_roles", { codex: "reviewer" });
+    opened.store.close();
+    const patch = "*** Begin Patch\n*** Add File: notes.md\n+x\n*** End Patch\n";
+    for (const call of [
+      { tool_name: "Bash", tool_input: { command: ["apply_patch", patch] } },
+      { tool_name: "Bash", tool_input: { command: ["bash", "-lc", `apply_patch <<'EOF'\n${patch}EOF`] } },
+      { tool_name: "apply_patch", tool_input: patch },
+    ]) {
+      const answer = answerHook("pre-tool-use", JSON.stringify({ cwd: project, ...call }), ATTENDED);
+      expect(JSON.parse(answer).hookSpecificOutput.permissionDecision).toBe("deny");
+    }
+  });
+
+  test("a subagent's stop that names no agent ends no run", () => {
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    writeSetting(opened.store, { kind: "human" }, "host_roles", { codex: "reviewer" });
+    opened.store.close();
+    answerHook("session-start", JSON.stringify({ cwd: project }), ATTENDED);
+    expect(answerHook("subagent-stop", JSON.stringify({ cwd: project, agent_id: "a1" }), ATTENDED)).toBe("");
+    const reopened = openProjectStore(project, { create: false });
+    if (!reopened.ok) throw reopened.error;
+    try {
+      expect(reopened.store.openRuns("reviewer")).toHaveLength(1);
+    } finally {
+      reopened.store.close();
+    }
   });
 
   test("a spawn is a start of the agent type it names, and a subagent's stop is recorded", () => {

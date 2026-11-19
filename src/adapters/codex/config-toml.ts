@@ -9,7 +9,8 @@ import { CODEX_DIR, configTomlPath, createdMarkerPath, HOST_ID, SERVER_KEY } fro
 const BEGIN = "# >>> tmb: written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
 const END = "# <<< tmb";
 // The block and the newline setup put before it: a blank line after a file that ends with one.
-const BLOCK = new RegExp(String.raw`\n${escape(BEGIN)}\n[\s\S]*?\n${escape(END)}\n`);
+// An editor or git may turn the file's line endings into CRLF after setup, so either is read.
+const BLOCK = new RegExp(String.raw`\r?\n${escape(BEGIN)}\r?\n[\s\S]*?\r?\n${escape(END)}\r?\n`);
 
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -18,9 +19,9 @@ function escape(text: string): string {
 /** A TOML basic string: JSON's escapes are all valid TOML ones. */
 const tomlString = (value: string) => JSON.stringify(value);
 
-export function serverBlock(tmbCommand: readonly string[]): string {
+export function serverBlock(tmbCommand: readonly string[], eol = "\n"): string {
   const args = [...tmbCommand.slice(1), "mcp", "--host", HOST_ID];
-  return [BEGIN, `[mcp_servers.${SERVER_KEY}]`, `command = ${tomlString(tmbCommand[0]!)}`, `args = [${args.map(tomlString).join(", ")}]`, END, ""].join("\n");
+  return [BEGIN, `[mcp_servers.${SERVER_KEY}]`, `command = ${tomlString(tmbCommand[0]!)}`, `args = [${args.map(tomlString).join(", ")}]`, END, ""].join(eol);
 }
 
 function parse(text: string, file: string): Record<string, unknown> {
@@ -45,7 +46,8 @@ export function registerServer(projectDir: string, tmbCommand: readonly string[]
   const humans = before.replace(BLOCK, "");
   if (hasServer(parse(humans, file))) throw new Error(`${file} already has an [mcp_servers.${SERVER_KEY}] tmb did not write; remove it, then run setup again`);
   // One newline before the block: a blank line after a file that ends with one, a line break after one that does not.
-  const text = `${humans}\n${serverBlock(tmbCommand)}`;
+  const eol = humans.includes("\r\n") ? "\r\n" : "\n";
+  const text = `${humans}${eol}${serverBlock(tmbCommand, eol)}`;
   if (!hasServer(parse(text, file))) throw new Error(`tmb could not add its server to ${file}`);
 
   const changed = text !== before;

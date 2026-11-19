@@ -171,6 +171,26 @@ describe("a host set up as the reviewer", () => {
     expect(openRunsOf(REVIEWER_HOST)).toHaveLength(1);
   });
 
+  test("a session start raised again on resume or compact opens no second run", () => {
+    handleEvent({ type: "session-start", projectDir: project, unattended: false, host: REVIEWER_HOST });
+    handleEvent({ type: "session-start", projectDir: project, unattended: false, host: REVIEWER_HOST });
+    expect(openRunsOf(REVIEWER_HOST)).toHaveLength(1);
+    handleEvent({ type: "session-end", projectDir: project, host: REVIEWER_HOST });
+    expect(openRunsOf(REVIEWER_HOST)).toHaveLength(0);
+  });
+
+  test("another host neither records a verdict on its run nor is blocked by it", async () => {
+    const tip = await featureWithWork();
+    handleEvent({ type: "session-start", projectDir: project, unattended: false, host: REVIEWER_HOST });
+    const asReviewerOnHostA: Actor = { kind: "agent", role: "reviewer", host: "host-a" };
+    expect(() => reviewRecord(store, asReviewerOnHostA, { feature: FEATURE, commit: tip, verdict: "pass" }, context())).toThrow(/no reviewer run is open/);
+
+    decide({ type: "before-agent-start", projectDir: project, host: "host-a", role: "reviewer", action: "review" });
+    decide({ type: "after-agent-stop", projectDir: project, host: "host-a", role: "reviewer", action: "reviewer" });
+    expect(openRunsOf("host-a")).toHaveLength(0);
+    expect(openRunsOf(REVIEWER_HOST)).toHaveLength(1);
+  });
+
   test("a session that ends before a verdict ends its run with none", () => {
     handleEvent({ type: "session-start", projectDir: project, unattended: false, host: REVIEWER_HOST });
     const [run] = openRunsOf(REVIEWER_HOST);

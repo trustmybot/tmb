@@ -235,7 +235,8 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
     throw new HandlerError("refused", "only the reviewer records a review; the Human waives one instead, with `tmb feature waive <name> --reason <text>`");
   }
   requireRole(actor, "review_record", ["reviewer"]);
-  if (store.openRuns("reviewer").length === 0) {
+  // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
+  if (!store.openRuns("reviewer").some((run) => run.createdBy.kind === "agent" && run.createdBy.host === actor.host)) {
     throw new HandlerError(
       "refused",
       "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
