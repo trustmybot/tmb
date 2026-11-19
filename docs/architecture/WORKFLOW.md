@@ -43,6 +43,9 @@ The review mode decides who reviews a change and when. Only the Human sets it.
 
 Agile is built first, at level 4. Truest is built last, at level 10 (see [the build order](README.md#build-order)).
 
+- **A default for the project.** The Human sets it at onboarding. It is the mode of any work that names none.
+- **Or a mode for one line of work.** The Human can give one line of work the other mode, and the default stays for the rest. Planned. Proposed, for the Human's review: what counts as one line of work.
+
 ## Agile mode
 
 ```mermaid
@@ -70,8 +73,6 @@ flowchart TD
 
 ## Truest mode
 
-Planned, last in the build order.
-
 ```mermaid
 flowchart TD
     S[Engine cuts the task branch from the base branch] --> W[Worker changes code, or the planner writes docs]
@@ -88,7 +89,7 @@ flowchart TD
     D --> E[Human merges]
 ```
 
-- **No feature branch.** A truest task is cut from the base branch, and starting a feature branch is refused.
+- **No feature branch.** A truest task is cut from the base branch and belongs to no feature branch.
 - **In review.** After its checks pass, a task waits at its commit and keeps its worktree. Nothing is pushed. Only a reviewer run records the verdict, and only on that commit.
 - **The pull request is tmb's own step.** After a pass the planner asks the engine for it without being told by the Human.
 - **A waiver is the Human's.** It is given per task, with a reason, and counts as a pass on the task's current commit.

@@ -130,3 +130,4 @@ Most of the plugin's logic is host-neutral and carries over. What is tied to Cla
 ## Open
 
 - How much of the plugin's guard set levels 3 and 4 need, beyond checks at close.
+- Which second host comes first.
