@@ -200,6 +200,9 @@ function runMigrateCommand(args: string[]): number {
         `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
           `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
       );
+      if (counts.openTasks > 0) {
+        console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
+      }
       console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
     }
   } finally {

@@ -97,7 +97,15 @@ jobs:
           cat SHA256SUMS
       - name: Create the release
         run: |
-          if [ "$CHANNEL" = rc ]; then flags="--prerelease --latest=false"; else flags="--latest"; fi
+          # A stable release is marked latest only when it is the highest, so a fix tagged on an
+          # older line never becomes what new stable installs get.
+          if [ "$CHANNEL" = rc ]; then
+            flags="--prerelease --latest=false"
+          else
+            current="$(gh release view --repo "$RELEASES_REPO" --json tagName -q .tagName 2>/dev/null || true)"
+            highest="$(printf '%s\n%s\n' "${current#v}" "$TMB_VERSION" | grep -v '^$' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
+            if [ "$highest" = "$TMB_VERSION" ]; then flags="--latest"; else flags="--latest=false"; fi
+          fi
           # A release is never replaced: a second push of the same tag fails here.
           gh release create "v${TMB_VERSION}" --repo "$RELEASES_REPO" $flags --title "tmb ${TMB_VERSION}" \
             --notes "tmb ${TMB_VERSION} (${CHANNEL}) from trustmybot/tmb@${GITHUB_SHA}." \

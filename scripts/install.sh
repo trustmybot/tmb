@@ -36,10 +36,11 @@ case "$channel" in
   dev) base_url="${releases_url}/releases/download/dev" ;;
   stable) base_url="${releases_url}/releases/latest/download" ;;
   rc)
-    rc_tag="$(curl -fsSL "${releases_api}/releases?per_page=100" | tr ',' '\n' |
+    releases="$(curl -fsSL "${releases_api}/releases?per_page=100")" || fail "could not read the rc releases from ${releases_api}"
+    rc_tag="$(printf '%s' "$releases" | tr ',' '\n' |
       sed -n 's/.*"tag_name": *"\(v[0-9]*\.[0-9]*\.[0-9]*-rc\.[0-9]*\)".*/\1/p' |
       awk '{ split(substr($0, 2), n, /[.]|-rc[.]/); printf "%09d%09d%09d%09d %s\n", n[1], n[2], n[3], n[4], $0 }' |
-      sort | tail -n 1 | cut -d ' ' -f 2)" || fail "could not read the rc releases"
+      sort | tail -n 1 | cut -d ' ' -f 2)"
     [ -n "$rc_tag" ] || fail "the rc channel has no release yet"
     base_url="${releases_url}/releases/download/${rc_tag}"
     ;;

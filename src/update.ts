@@ -2,7 +2,7 @@
 // there when a session starts, keeps a verified copy next to it, and swaps it in only when
 // no tmb session is running and no task is open, so no session or task ever mixes versions.
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "./engine/project.ts";
@@ -94,7 +94,12 @@ export function updaterOptions(version: string, compiled: boolean, env: NodeJS.P
   };
 }
 
-type Staged = { version: string; channel: Channel; file: string; sha256: string };
+/** A kept build. `from` is the version that kept it: a reinstall of another version drops it. */
+type Staged = { version: string; channel: Channel; from: string; file: string; sha256: string };
+
+function sha256Of(file: string): string {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
 export type Release = { version: string; base: string };
 
 function readJson<T>(file: string): T | null {
@@ -168,11 +173,52 @@ export class Updater {
     return this.channel === "dev" ? version !== this.options.version : compareVersions(version, this.options.version) > 0;
   }
 
-  /** The verified build kept for the next swap, when there is one that replaces this tmb. */
+  /**
+   * The verified build kept for the next swap, when this tmb kept it and it replaces this tmb.
+   * One kept by another installed version, such as before a reinstall, is never swapped in.
+   */
   staged(): Staged | null {
     const staged = readJson<Staged>(this.file("staged.json"));
-    if (!staged || !existsSync(staged.file) || staged.channel !== this.channel) return null;
+    if (!staged || !existsSync(staged.file) || staged.channel !== this.channel || staged.from !== this.options.version) return null;
     return this.replaces(staged.version) ? staged : null;
+  }
+
+  private discardStaged(): void {
+    rmSync(this.file("staged.json"), { force: true });
+    rmSync(this.file("staged"), { recursive: true, force: true });
+  }
+
+  /**
+   * Runs `work` holding the updater's lock, so keeping a build and swapping it in never
+   * overlap, across processes. Returns null, without running it, while another live process
+   * holds the lock; a lock left by an ended process is taken over.
+   */
+  private withLock<T>(work: () => T): T | null {
+    const lock = this.file("update.lock");
+    mkdirSync(this.options.stateDir, { recursive: true });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let fd: number;
+      try {
+        fd = openSync(lock, "wx");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        const holder = Number.parseInt(readFileSafe(lock), 10);
+        if (Number.isInteger(holder) && isRunning(holder)) return null;
+        rmSync(lock, { force: true });
+        continue;
+      }
+      try {
+        writeSync(fd, String(process.pid));
+      } finally {
+        closeSync(fd);
+      }
+      try {
+        return work();
+      } finally {
+        rmSync(lock, { force: true });
+      }
+    }
+    return null;
   }
 
   /**
@@ -189,9 +235,13 @@ export class Updater {
       const release = await this.latest(options.signal);
       const kept = this.staged();
       let outcome: { outcome: "current" | "staged"; version: string };
-      if (!this.replaces(release.version)) outcome = { outcome: "current", version: release.version };
-      else if (kept && kept.version === release.version) outcome = { outcome: "staged", version: kept.version };
-      else {
+      if (!this.replaces(release.version)) {
+        // Nothing on the channel replaces this tmb, so no kept build should either.
+        this.withLock(() => this.discardStaged());
+        outcome = { outcome: "current", version: release.version };
+      } else if (kept && kept.version === release.version && sha256Of(kept.file) === kept.sha256) {
+        outcome = { outcome: "staged", version: kept.version };
+      } else {
         await this.download(release, options.signal);
         outcome = { outcome: "staged", version: release.version };
       }
@@ -220,13 +270,19 @@ export class Updater {
     const bytes = new Uint8Array(await response.arrayBuffer());
     const actual = createHash("sha256").update(bytes).digest("hex");
     if (actual !== expected) throw new Error(`checksum mismatch for ${asset} ${release.version}: expected ${expected}, got ${actual}`);
-    const dir = this.file("staged");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, asset);
-    writeFileSync(file, bytes);
-    if (!IS_WINDOWS) chmodSync(file, 0o755);
-    writeJson(this.file("staged.json"), { version: release.version, channel: this.channel, file, sha256: actual } satisfies Staged);
+    const kept = this.withLock(() => {
+      this.discardStaged();
+      const dir = this.file("staged");
+      mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, asset);
+      // Written under another name and renamed, so a cut-short write is never taken for the build.
+      writeFileSync(`${file}.part`, bytes);
+      if (!IS_WINDOWS) chmodSync(`${file}.part`, 0o755);
+      renameSync(`${file}.part`, file);
+      writeJson(this.file("staged.json"), { version: release.version, channel: this.channel, from: this.options.version, file, sha256: actual } satisfies Staged);
+      return true;
+    });
+    if (kept === null) throw new Error("another tmb is updating; trying again later");
   }
 
   // --- sessions and projects ------------------------------------------------------------
@@ -234,8 +290,9 @@ export class Updater {
   /** Marks a session as running in `projectDir` until `endSession`, and remembers the project. */
   startSession(projectDir: string, pid: number = process.pid): void {
     writeJson(path.join(this.leaseDir, `${pid}.json`), { pid, project: projectDir, startedAt: new Date().toISOString() });
-    const projects = new Set(readJson<string[]>(this.file("projects.json")) ?? []);
-    if (!projects.has(projectDir)) writeJson(this.file("projects.json"), [...projects, projectDir].sort());
+    // One file per project, so sessions starting together never lose one another's project.
+    const name = createHash("sha256").update(projectDir).digest("hex").slice(0, 32);
+    writeJson(path.join(this.file("projects"), `${name}.json`), { project: projectDir });
   }
 
   endSession(pid: number = process.pid): void {
@@ -258,27 +315,24 @@ export class Updater {
 
   /** Projects tmb has served that hold an open task. A project whose record is gone is forgotten. */
   projectsWithOpenTasks(): string[] {
-    const projects = readJson<string[]>(this.file("projects.json")) ?? [];
+    const dir = this.file("projects");
     const busy: string[] = [];
-    const kept: string[] = [];
-    for (const project of projects) {
+    for (const name of existsSync(dir) ? readdirSync(dir).filter((entry) => entry.endsWith(".json")) : []) {
+      const project = readJson<{ project: string }>(path.join(dir, name))?.project;
+      if (typeof project !== "string") continue;
       const opened = openProjectStore(project, { create: false });
       if (!opened.ok) {
         // A record made by a newer tmb may still hold open tasks: keep the project and wait.
-        if (opened.error.failure !== "missing") {
-          kept.push(project);
-          busy.push(project);
-        }
+        if (opened.error.failure === "missing") rmSync(path.join(dir, name), { force: true });
+        else busy.push(project);
         continue;
       }
-      kept.push(project);
       try {
         if (opened.store.listTasks("open").length > 0) busy.push(project);
       } finally {
         opened.store.close();
       }
     }
-    if (kept.length !== projects.length) writeJson(this.file("projects.json"), kept);
     return busy;
   }
 
@@ -296,39 +350,73 @@ export class Updater {
     const busy = this.projectsWithOpenTasks();
     if (busy.length > 0) return { outcome: "waiting", version: staged.version, reason: `a task is open in ${busy[0]}` };
     const target = this.options.target!;
-    try {
-      const actual = createHash("sha256").update(readFileSync(staged.file)).digest("hex");
-      if (actual !== staged.sha256) throw new Error("the kept build no longer matches its checksum");
-      // Copied next to the target first, so the last step is a rename within one folder.
-      const next = `${target}.new`;
-      copyFileSync(staged.file, next);
-      if (!IS_WINDOWS) chmodSync(next, 0o755);
-      if (IS_WINDOWS && existsSync(target)) {
-        // A running .exe cannot be replaced on Windows, but it can be renamed out of the way.
+    const swapped = this.withLock(() => {
+      // Copied next to the target first, under a name of this process's own, and checked there,
+      // so the last step is a rename within one folder of exactly the verified bytes.
+      const next = `${target}.${process.pid}.new`;
+      try {
+        copyFileSync(staged.file, next);
+        if (sha256Of(next) !== staged.sha256) {
+          this.discardStaged();
+          throw new Error("the kept build no longer matches its checksum; it is dropped and downloaded again");
+        }
+        if (!IS_WINDOWS) chmodSync(next, 0o755);
         const old = `${target}.old`;
-        rmSync(old, { force: true });
-        renameSync(target, old);
+        const movedAside = IS_WINDOWS && existsSync(target);
+        if (movedAside) {
+          // A running .exe cannot be replaced on Windows, but it can be renamed out of the way.
+          rmSync(old, { force: true });
+          renameSync(target, old);
+        }
+        try {
+          renameSync(next, target);
+        } catch (error) {
+          if (movedAside) renameSync(old, target);
+          throw error;
+        }
+        this.discardStaged();
+        return { outcome: "applied" as const, version: staged.version };
+      } catch (error) {
+        return { outcome: "failed" as const, version: staged.version, reason: error instanceof Error ? error.message : String(error) };
+      } finally {
+        rmSync(next, { force: true });
       }
-      renameSync(next, target);
-      rmSync(path.dirname(staged.file), { recursive: true, force: true });
-      rmSync(this.file("staged.json"), { force: true });
-      return { outcome: "applied", version: staged.version };
-    } catch (error) {
-      return { outcome: "failed", version: staged.version, reason: error instanceof Error ? error.message : String(error) };
-    }
+    });
+    return swapped ?? { outcome: "waiting", version: staged.version, reason: "another tmb is updating" };
   }
 
-  /** Removes what an earlier swap left: the old Windows executable, once it no longer runs. */
+  /** Removes what an earlier swap left: the old Windows executable once it no longer runs, and copies of ended swaps. */
   tidy(): void {
     const target = this.options.target;
     if (!target) return;
-    for (const leftover of [`${target}.old`, `${target}.new`]) {
+    const base = path.basename(target);
+    const copies = (readdirSafe(path.dirname(target)))
+      .map((entry) => ({ entry, pid: entry.startsWith(`${base}.`) && entry.endsWith(".new") ? Number(entry.slice(base.length + 1, -4)) : NaN }))
+      .filter(({ pid }) => Number.isInteger(pid) && pid !== process.pid && !isRunning(pid))
+      .map(({ entry }) => path.join(path.dirname(target), entry));
+    for (const leftover of [`${target}.old`, ...copies]) {
       try {
         if (statSync(leftover, { throwIfNoEntry: false })) rmSync(leftover, { force: true });
       } catch {
         // Still running on Windows: removed after a later start.
       }
     }
+  }
+}
+
+function readFileSafe(file: string): string {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readdirSafe(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
   }
 }
 

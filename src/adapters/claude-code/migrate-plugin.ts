@@ -28,7 +28,8 @@ export class MigrationError extends Error {
   override name = "MigrationError";
 }
 
-export type MigrationCounts = { issues: number; discussions: number; tasks: number; reviews: number; checkRuns: number; runs: number };
+/** `openTasks` counts the copied tasks left open: tmb waits for them to close before it updates itself. */
+export type MigrationCounts = { issues: number; discussions: number; tasks: number; openTasks: number; reviews: number; checkRuns: number; runs: number };
 
 export type MigrationResult = {
   from: string;
@@ -40,6 +41,17 @@ export type MigrationResult = {
 };
 
 /** The plugin database for a project: the nearest `.claude/tmb/trajectory.db` in it or a folder above it. */
+/** The probes a review recorded; a value that is not a JSON list is kept as it was. */
+function probesOf(json: string | null): unknown[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return [json];
+  }
+}
+
 export function findPluginDb(projectDir: string): string | null {
   for (let dir = path.resolve(projectDir); ; dir = path.dirname(dir)) {
     const candidate = path.join(dir, PLUGIN_DB_RELATIVE);
@@ -292,7 +304,7 @@ export function migratePluginProject(store: Store, options: { pluginDbPath: stri
 
 function copyRecords(db: Database, store: Store, source: { from: string; pluginVersion: string | null; repo: string | null }): MigrationResult {
   const now = new Date().toISOString();
-  const counts: MigrationCounts = { issues: 0, discussions: 0, tasks: 0, reviews: 0, checkRuns: 0, runs: 0 };
+  const counts: MigrationCounts = { issues: 0, discussions: 0, tasks: 0, openTasks: 0, reviews: 0, checkRuns: 0, runs: 0 };
   const issueIds = new Map<number, string>();
   const taskIds = new Map<number, string>();
   const tasks = new Map<number, TaskRow>();
@@ -339,11 +351,14 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
          FROM tasks ORDER BY created_at, id`,
     )
     .all() as TaskRow[];
+  // A task the plugin left unfinished under an issue it closed was abandoned: it is copied closed.
+  const closedIssues = new Set(issues.filter((issue) => issue.status === "closed").map((issue) => issue.id));
   for (const task of taskRows) {
     const issue = issueIds.get(task.issue_id);
     if (issue === undefined) continue;
     const at = isoTime(task.created_at) ?? now;
-    const closed = TASK_CLOSED_STATES.has(task.status);
+    const closed = TASK_CLOSED_STATES.has(task.status) || closedIssues.has(task.issue_id);
+    if (!closed) counts.openTasks++;
     const id = store.backdated(at, () =>
       store.appendTask(actorOf("bro"), {
         id: taskId(at),
@@ -391,7 +406,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
         severity: finding.severity,
         class: finding.class,
       }));
-    const probes = attempt.probes_json ? (JSON.parse(attempt.probes_json) as unknown[]) : [];
+    const probes = probesOf(attempt.probes_json);
     store.backdated(at, () =>
       store.appendReview(actorOf(attempt.agent || "code-reviewer"), {
         id: reviewId(at),

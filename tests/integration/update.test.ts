@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { assetName, channelOf, compareVersions } from "../../src/update.ts";
+import { assetName, channelOf, compareVersions, Updater } from "../../src/update.ts";
 import { buildTmb, cleanup, installedVersion, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
 
 const CHANNELS = {
@@ -126,6 +126,18 @@ describe("tmb update", () => {
     expect(checked.status).toBe(0);
     expect(checked.output).toContain(CHANNELS.dev.next);
     expect(installedVersion(scenario)).toBe(CHANNELS.dev.old);
+  }, 60_000);
+
+  test("a build kept before a reinstall of another version is never swapped in", async () => {
+    const scenario = install(CHANNELS.dev.old, releaseEnv());
+    expect((await runUpdate(scenario, "--check")).status).toBe(0);
+    const updaterFor = (version: string) =>
+      new Updater({ version, target: scenario.installed, stateDir: scenario.stateDir, releasesUrl: "http://127.0.0.1:9", releasesApi: "http://127.0.0.1:9", enabled: true });
+    expect(updaterFor(CHANNELS.dev.old).staged()?.version).toBe(CHANNELS.dev.next);
+    // The Human reinstalled and now runs a later dev build: the build kept by the old one would take it back.
+    const reinstalled = updaterFor("0.1.0-dev.3");
+    expect(reinstalled.staged()).toBeNull();
+    expect(reinstalled.apply()).toEqual({ outcome: "none" });
   }, 60_000);
 
   test("with no task open and no session running, applies at once", async () => {

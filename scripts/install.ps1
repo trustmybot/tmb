@@ -16,7 +16,7 @@ switch ($channel) {
     'rc' {
         $tags = (Invoke-RestMethod -UseBasicParsing -Uri "$releasesApi/releases?per_page=100") |
             Where-Object { -not $_.draft -and $_.tag_name -match '^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$' } |
-            Sort-Object { $null = $_.tag_name -match '^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$'; [long]$Matches[1] * 1e9 + [long]$Matches[2] * 1e6 + [long]$Matches[3] * 1e3 + [long]$Matches[4] }
+            Sort-Object { $null = $_.tag_name -match '^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$'; [version]"$($Matches[1]).$($Matches[2]).$($Matches[3]).$($Matches[4])" }
         if (-not $tags) { throw 'the rc channel has no release yet' }
         $baseUrl = "$releasesUrl/releases/download/$(@($tags)[-1].tag_name)"
     }

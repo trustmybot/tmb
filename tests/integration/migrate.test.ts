@@ -37,14 +37,14 @@ function pluginWorkspace(): { workspace: string; dbPath: string } {
                        base_sha, workflow_mode, no_code_class, repo) VALUES
       (10, 1, 'feat/dark-mode', 'Theme variables', 'Add the variables', 'closed', '## Spec\nAdd CSS variables.', 'abc123',
        '2026-01-02T11:00:00.000Z', '2026-01-04T11:00:00.000Z', '2026-01-04T11:00:00.000Z', 'base000', 'agile', NULL, 'app'),
-      (11, 1, 'docs/dark-mode', '', 'Document the toggle', 'escalated', '', NULL,
+      (11, 1, 'docs/dark-mode', '', 'Document the toggle', 'running', '', NULL,
        '2026-01-02T12:00:00.000Z', '2026-01-02T12:00:00.000Z', NULL, NULL, NULL, 'docs', 'app'),
       (12, 2, 'perf/search', 'Index search', 'Add an index', 'running', 'Index it.', NULL,
        '2026-01-03T11:00:00.000Z', '2026-01-03T11:00:00.000Z', NULL, 'base111', NULL, NULL, 'app'),
       (13, 3, 'other/x', 'Other task', 'Elsewhere', 'pending', '', NULL,
        '2026-01-04T11:00:00.000Z', '2026-01-04T11:00:00.000Z', NULL, NULL, NULL, NULL, 'other');
     INSERT INTO validation_attempts (task_id, attempt_n, agent, verdict, feedback, mcp_available, repo, created_at, reviewed_sha, probes_json) VALUES
-      (10, 1, 'code-reviewer', 'fail', 'Missing a test.', 1, 'app', '2026-01-03T09:00:00.000Z', 'abc000', NULL),
+      (10, 1, 'code-reviewer', 'fail', 'Missing a test.', 1, 'app', '2026-01-03T09:00:00.000Z', 'abc000', 'not json'),
       (10, 2, 'code-reviewer', 'pass', 'All good.', 1, 'app', '2026-01-04T09:00:00.000Z', 'abc123', '[{"target":"t","probe_cmd":"bun test","observed":"ok"}]');
     INSERT INTO review_findings (id, task_id, attempt_n, criterion_id, probe_cmd, expected, observed, status, created_at, severity) VALUES
       ('F10-1', 10, 1, 'SC1', 'bun test', 'a test for the toggle', 'none', 'fixed', '2026-01-03T09:00:00.000Z', 'blocking');
@@ -96,6 +96,7 @@ describe("a plugin project's records carry over", () => {
     expect(output).toContain(dbPath);
     expect(output).toContain("(repo app)");
     expect(output).toContain("2 issues, 4 notes and decisions, 3 tasks, 2 reviews, 1 check runs, 2 agent runs");
+    expect(output).toContain("1 of the tasks are still open");
   });
 
   test("the plugin's database is byte for byte unchanged", () => {
@@ -139,7 +140,8 @@ describe("a plugin project's records carry over", () => {
         ["Index search", "open", "perf/search", "code", null, "base111", null],
       ]);
       expect(tasks[0]!.spec).toBe("Carried over from the plugin's task 10 (status closed).\n\n## Spec\nAdd CSS variables.");
-      expect(tasks[1]!.spec).toContain("(status escalated)");
+      // Left running under an issue the plugin closed: abandoned, so copied closed.
+      expect(tasks[1]!.spec).toContain("(status running)");
       expect(tasks[0]!.createdAt).toBe("2026-01-02T11:00:00.000Z");
       expect(tasks.map((task) => task.createdBy)).toEqual(tasks.map(() => ({ kind: "agent", role: "planner", host: "claude-code" })));
 
@@ -163,6 +165,8 @@ describe("a plugin project's records carry over", () => {
       const failFindings = JSON.parse(reviews[0]!.findings!) as Record<string, unknown>[];
       expect(failFindings[0]).toMatchObject({ attempt: 1, feedback: "Missing a test." });
       expect(failFindings[1]).toMatchObject({ criterion: "SC1", probe: "bun test", status: "fixed", severity: "blocking" });
+      // A probe list that is not JSON is kept as written rather than stopping the copy.
+      expect(failFindings[2]).toEqual({ probe: "not json" });
       expect(JSON.parse(reviews[0]!.created_by!)).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
 
       const runs = db.query("SELECT role, task_id IS NULL AS issue_level, ended_at, outcome, cost FROM runs ORDER BY id").all() as Record<string, unknown>[];
