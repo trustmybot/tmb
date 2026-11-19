@@ -81,6 +81,14 @@ describe("Truest mode: every task is reviewed before its push", () => {
       expect(pushed.status).not.toBe(0);
       expect(pushed.stderr).toContain("tmb task waive");
       expect(git(project, "ls-remote", "origin", task.branch)).toBe("");
+      // A branch of the Human's own, with no task's commit, pushes freely; onto the base branch it is refused.
+      git(project, "switch", "-q", "-c", "human/notes");
+      commitFile(project, "NOTES.md", "mine\n", "notes");
+      expect(handPush(project, "human/notes").status).toBe(0);
+      const ontoBase = handPush(project, "human/notes:refs/heads/main");
+      expect(ontoBase.status).not.toBe(0);
+      expect(ontoBase.stderr).toContain("onto the base branch main");
+      git(project, "switch", "-q", "main");
 
       // 4. Only a reviewer the host started records a verdict; a fail reopens the task.
       const fail = { id: task.id, commit: first, verdict: "fail", blocking: ["src/lines.txt:2 shouts"] };

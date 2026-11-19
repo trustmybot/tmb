@@ -135,6 +135,30 @@ export function truestCoveredCommits(store: Store): string[] {
 }
 
 /**
+ * Every commit that is a truest task's work: from the commit the task was cut from to its
+ * branch and to each commit of it the record names (a rebase leaves the reviewed one behind).
+ * The push gate holds these to review on any branch; a commit of no task it lets through.
+ */
+export function truestTaskCommits(store: Store, projectDir: string): Set<string> {
+  const commits = new Set<string>();
+  for (const task of store.listTasks()) {
+    if (task.reviewMode !== TRUEST || task.baseCommit === null) continue;
+    const records = coverageRecords(store, task.id);
+    const tips = [
+      task.branch === null ? null : `refs/heads/${task.branch}`,
+      task.commitSha,
+      ...records.reviews.map((review) => review.commitSha),
+      ...records.waivers.map((waiver) => waiver.commit),
+      ...records.carries.flatMap((carry) => [carry.from, carry.to]),
+    ].filter((tip): tip is string => tip !== null && runGit(projectDir, ["rev-parse", "--verify", "--quiet", `${tip}^{commit}`]).ok);
+    if (tips.length === 0) continue;
+    const listed = runGit(projectDir, ["rev-list", "--no-merges", ...new Set(tips), "--not", task.baseCommit]);
+    if (listed.ok) for (const sha of listed.stdout.split("\n")) if (sha !== "") commits.add(sha);
+  }
+  return commits;
+}
+
+/**
  * The commit a truest task is cut from: the base branch as origin holds it, fetched first, so
  * the task's pull request carries only the task's own work. The local base branch when there is
  * no origin, or origin does not have it.
