@@ -15,6 +15,9 @@ on:
       channel:
         description: "Channel whose installer to run: dev, rc or stable"
         default: dev
+      version:
+        description: "Version tmb --version must report; the rc channel needs it to find its installer"
+        default: ""
 
 permissions:
   contents: read
@@ -35,4 +38,5 @@ jobs:
         shell: bash
         env:
           TMB_CHANNEL: ${{ inputs.channel || 'dev' }}
-        run: bun tests/install/smoke.ts "$TMB_CHANNEL"
+          TMB_EXPECTED_VERSION: ${{ inputs.version }}
+        run: bun tests/install/smoke.ts "$TMB_CHANNEL" "$TMB_EXPECTED_VERSION"

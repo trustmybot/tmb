@@ -31,7 +31,13 @@ export function cannotRun(label: string, message: string): never {
 
 const cleanups: string[] = [];
 process.on("exit", () => {
-  for (const dir of cleanups) rmSync(dir, { recursive: true, force: true });
+  for (const dir of cleanups) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // A file still locked (Windows) leaves the folder behind; the outcome stands.
+    }
+  }
 });
 
 /**
@@ -176,9 +182,9 @@ export class Tmb {
   }
 
   /** Runs tmb and returns what it printed; fails the test, showing that output, on an error. */
-  text(args: string[]): string {
+  text(args: string[], what = `tmb ${args.filter((arg) => arg !== "--json").join(" ")} failed`): string {
     const result = run(this.bin, args, { cwd: this.project });
-    if (result.status !== 0) fail(`tmb ${args.join(" ")} failed: ${result.output}`);
+    if (result.status !== 0) fail(`${what}: ${result.output}`);
     return result.stdout;
   }
 

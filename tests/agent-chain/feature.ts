@@ -21,10 +21,10 @@ import {
   checkoutTree,
   fail,
   fixtureProject,
-  git,
   preflight,
   readPrompt,
   revParse,
+  run,
   show,
   tempDir,
 } from "../lib/driver.ts";
@@ -83,7 +83,7 @@ if (closed < 2) fail(`the feature branch ${feature} has ${closed} closed tasks, 
 const tip = revParse(project, `refs/heads/${feature}`);
 if (!tip) fail(`git has no branch ${feature}`);
 console.log(`--- git log ${base}..${feature} ---`);
-console.log(git(project, "log", "--format=%h %s", `${base}..${feature}`));
+console.log(run("git", ["log", "--format=%h %s", `${base}..${feature}`], { cwd: project }).output.trimEnd());
 console.log("--- end of git log ---");
 
 try {
@@ -91,18 +91,27 @@ try {
 } catch {
   fail(`could not check out ${feature} at ${tip}`);
 }
-let math: Record<string, unknown>;
-try {
-  math = await import(pathToFileURL(path.join(tree, "src/math.ts")).href);
-} catch (error) {
-  fail(`${feature} at ${tip} does not export a working subtract and multiply from src/math.ts: ${error instanceof Error ? error.message : String(error)}`);
-}
-const { subtract, multiply } = math;
+// Loaded in a child bun, so the agents' code cannot end or crash this driver.
+const exportsCheck = path.join(scratch, "exports.ts");
+writeFileSync(
+  exportsCheck,
+  `import * as math from ${JSON.stringify(pathToFileURL(path.join(tree, "src/math.ts")).href)};
+const subtract = (math as Record<string, unknown>).subtract;
+const multiply = (math as Record<string, unknown>).multiply;
 if (typeof subtract !== "function" || typeof multiply !== "function") {
-  fail(`${feature} at ${tip} does not export a working subtract and multiply from src/math.ts: src/math.ts exports ${Object.keys(math).join(", ")}`);
+  console.log("src/math.ts exports " + Object.keys(math).join(", "));
+  process.exit(1);
 }
 if (subtract(7, 3) !== 4 || multiply(4, 3) !== 12) {
-  fail(`${feature} at ${tip} does not export a working subtract and multiply from src/math.ts: subtract(7, 3) = ${subtract(7, 3)}, multiply(4, 3) = ${multiply(4, 3)}`);
+  console.log("subtract(7, 3) = " + subtract(7, 3) + ", multiply(4, 3) = " + multiply(4, 3));
+  process.exit(1);
+}
+console.log("ok");
+`,
+);
+const exportsResult = run("bun", [exportsCheck], { cwd: scratch });
+if (exportsResult.status !== 0 || exportsResult.stdout.trim() !== "ok") {
+  fail(`${feature} at ${tip} does not export a working subtract and multiply from src/math.ts: ${exportsResult.output.trim()}`);
 }
 const featureTestLog = path.join(logs, "feature-test.log");
 if (!bunTest(tree, featureTestLog)) {
@@ -114,7 +123,9 @@ const pushed = revParse(origin, `refs/heads/${feature}`);
 if (!pushed) fail(`origin has no branch ${feature}, so it was never pushed as a backup`);
 if (pushed !== tip) fail(`origin's ${feature} is at ${pushed}, but the local tip is ${tip}`);
 
-const taskBranches = git(project, "branch", "--list", "tmb/*");
+const branchList = run("git", ["branch", "--list", "tmb/*"], { cwd: project });
+if (branchList.status !== 0) fail(`git branch --list failed: ${branchList.output}`);
+const taskBranches = branchList.stdout.trim();
 if (taskBranches) fail(`task branches remain: ${taskBranches}`);
 
 console.log(`PASS one feature branch ${feature} at ${tip} collected ${closed} closed tasks across two sessions, exports subtract and multiply, passes bun test and is backed up on origin`);
