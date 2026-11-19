@@ -271,6 +271,10 @@ function runMigrateCommand(args: string[]): number {
         `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
           `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
       );
+      const left = Object.entries(result.leftBehind).sort(([a], [b]) => a.localeCompare(b));
+      if (left.length > 0) {
+        console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
+      }
       console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
     }
   } finally {

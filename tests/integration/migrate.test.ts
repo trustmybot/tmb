@@ -31,6 +31,10 @@ function pluginWorkspace(): { workspace: string; dbPath: string } {
       (1, 'bro', 'decision', 'Use CSS variables for the theme.', 'app', '2026-01-02T10:02:00.000Z'),
       (1, 'human', 'note', 'Keep the default light.', 'app', '2026-01-02T10:03:00.000Z'),
       (1, 'code-reviewer', 'question', 'Is the toggle persisted?', 'app', '2026-01-02T10:04:00.000Z'),
+      (1, 'bro', 'answer', 'Yes, in local storage.', 'app', '2026-01-02T10:05:00.000Z'),
+      (2, 'bro', 'analysis', 'The scan is linear.', 'app', '2026-01-03T10:01:00.000Z'),
+      (2, 'bro', 'intent', 'Add an index.', 'app', '2026-01-03T10:02:00.000Z'),
+      (3, 'bro', 'question', 'Other repo, not counted.', 'other', '2026-01-04T10:03:00.000Z'),
       (3, 'bro', 'note', 'Not carried.', 'other', '2026-01-04T10:01:00.000Z'),
       (-1, 'bro', 'note', 'System note, not carried.', NULL, '2026-01-04T10:02:00.000Z');
     INSERT INTO tasks (id, issue_id, branch_id, title, description, status, spec_body, commit_sha, created_at, updated_at, completed_at,
@@ -92,10 +96,11 @@ describe("a plugin project's records carry over", () => {
     output = t.tmb(["migrate"], project);
   });
 
-  test("tmb migrate finds the plugin database above the project and says what it copied", () => {
+  test("tmb migrate finds the plugin database above the project and says what it copied and what it left behind", () => {
     expect(output).toContain(dbPath);
     expect(output).toContain("(repo app)");
-    expect(output).toContain("2 issues, 4 notes and decisions, 3 tasks, 2 reviews, 1 check runs, 2 agent runs");
+    expect(output).toContain("2 issues, 2 notes and decisions, 3 tasks, 2 reviews, 1 check runs, 2 agent runs");
+    expect(output).toContain("Left behind, as tmb has no such kind: 1 analysis, 1 answer, 2 intent, 1 question.");
   });
 
   test("the plugin's database is byte for byte unchanged", () => {
@@ -115,11 +120,10 @@ describe("a plugin project's records carry over", () => {
       expect(dark.createdAt).toBe("2026-01-02T10:00:00.000Z");
       expect(dark.updatedAt).toBe("2026-01-05T10:00:00.000Z");
       const bodies = store.listDiscussions(dark.id).map((d) => [d.kind, d.body, d.createdBy.kind === "agent" ? d.createdBy.role : "human"]);
+      // The plugin's intent, question, answer and analysis records are left behind, not made notes.
       expect(bodies).toEqual([
-        ["note", "Intent: Add a toggle in settings.", "planner"],
         ["decision", "Use CSS variables for the theme.", "planner"],
         ["note", "Keep the default light.", "human"],
-        ["note", "Question: Is the toggle persisted?", "reviewer"],
         ["note", "Carried over from the plugin's issue 1 (GitHub #41, repo app).", "human"],
       ]);
       expect(store.newestDecision(dark.id)?.body).toBe("Use CSS variables for the theme.");
@@ -129,7 +133,7 @@ describe("a plugin project's records carry over", () => {
     }
   });
 
-  test("tasks carry their branch, commits, kind and the plugin's status; finished ones are closed", () => {
+  test("tasks carry their branch, commits, kind and spec, not the plugin's status; finished ones are closed", () => {
     const store = openRecord(project);
     try {
       const tasks = store.listTasks();
@@ -138,8 +142,9 @@ describe("a plugin project's records carry over", () => {
         ["Document the toggle", "closed", "docs/dark-mode", "docs", null, null, null],
         ["Index search", "open", "perf/search", "code", null, "base111", null],
       ]);
-      expect(tasks[0]!.spec).toBe("Carried over from the plugin's task 10 (status closed).\n\n## Spec\nAdd CSS variables.");
-      expect(tasks[1]!.spec).toContain("(status escalated)");
+      expect(tasks[0]!.spec).toBe("## Spec\nAdd CSS variables.");
+      expect(tasks[1]!.spec).toBe("Document the toggle");
+      expect(tasks.some((task) => task.spec.includes("status"))).toBe(false);
       expect(tasks[0]!.createdAt).toBe("2026-01-02T11:00:00.000Z");
       expect(tasks.map((task) => task.createdBy)).toEqual(tasks.map(() => ({ kind: "agent", role: "planner", host: "claude-code" })));
 
@@ -176,8 +181,13 @@ describe("a plugin project's records carry over", () => {
 
       const audit = db.query("SELECT what, detail FROM audit").all() as { what: string; detail: string }[];
       expect(audit.map((entry) => entry.what)).toEqual(["migration.plugin"]);
-      const detail = JSON.parse(audit[0]!.detail) as { repo: string; ids: { issues: Record<string, string>; tasks: Record<string, string> } };
+      const detail = JSON.parse(audit[0]!.detail) as {
+        repo: string;
+        leftBehind: Record<string, number>;
+        ids: { issues: Record<string, string>; tasks: Record<string, string> };
+      };
       expect(detail.repo).toBe("app");
+      expect(detail.leftBehind).toEqual({ intent: 2, question: 1, answer: 1, analysis: 1 });
       expect(Object.keys(detail.ids.issues)).toEqual(["1", "2"]);
       expect(Object.keys(detail.ids.tasks)).toEqual(["10", "11", "12"]);
 
