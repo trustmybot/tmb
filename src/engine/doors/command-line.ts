@@ -13,8 +13,10 @@ import {
   type OperationName,
   type TaskBrief,
   type TaskCloseResult,
+  type TaskPrResult,
   type TaskStartResult,
   type TaskSummary,
+  type TaskWaiver,
   type Waiver,
 } from "../handlers/index.ts";
 import type { Concept } from "../graph/concepts.ts";
@@ -50,11 +52,17 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
                  --criterion <text>... [--check <command>]...
                             Start a task: cut its branch and worktree from the feature
                             branch and record its spec
-  tmb task list [--state open|closed|all]
-                            List the open tasks, or the closed ones or all
+  tmb task list [--state open|in_review|closed|all]
+                            List the open tasks, or those in review, the closed ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
   tmb task close <id>       Run the checks on the task's commit; when all pass, close it,
                             fold it into its feature branch and push that to origin
+                            (in truest mode: put it in review at that commit)
+  tmb task waive <id> --reason <text>
+                            Waive the review of a truest task at its commit (the Human only)
+  tmb task pr <id> --title <text> [--body <text>]
+                            Open a truest task's pull request into the base branch, once
+                            the reviewer passed it or the Human waived the review
   tmb graph map [<dir>] [--depth <n>]
                             Show the project's directories and files with their summaries
   tmb graph find <words>    Find where a symbol, file or topic lives in the code
@@ -169,6 +177,32 @@ function issueRequest(args: string[]): Request {
   }
 }
 
+/** A truest task's review: what to review, each verdict and waiver, and whether its pull request may open. */
+function truestReviewLines(brief: TaskBrief): string[] {
+  const review = brief.review!;
+  const cover =
+    review.to === null
+      ? "not in review: its work is not closed yet"
+      : review.coveredBy === null
+        ? "not yet: the reviewer has not passed this commit and no waiver holds it"
+        : `yes, by a ${review.coveredBy}`;
+  return [
+    ...(review.to === null ? [] : [`Review the diff: ${review.from ?? "?"}..${review.to}`]),
+    "Reviews:",
+    ...(review.reviews.length === 0
+      ? ["  (none)"]
+      : review.reviews.flatMap((each) => [
+          `  ${each.verdict.padEnd(4)}  at ${(each.commit ?? "?").slice(0, 12)}  by ${who(each.by)}  ${each.at}`,
+          ...each.findings.map((finding) => `    ${finding.blocking ? "blocking" : "note"}: ${finding.text}`),
+        ])),
+    ...review.waivers.map((waiver) => `Waived at ${waiver.commit.slice(0, 12)} by the Human: ${waiver.reason}`),
+    ...review.carries.map((carry) => `Review carried from ${carry.from.slice(0, 12)} to ${carry.to.slice(0, 12)} by a rebase that kept the patch`),
+    `Covered for its pull request: ${cover}`,
+    ...(review.prUrl ? [`Pull request: ${review.prUrl}`] : []),
+    `A reviewer's start prompt carries: ${review.reviewLine}`,
+  ];
+}
+
 function briefLines(brief: TaskBrief): string[] {
   const list = (items: string[]) => (items.length === 0 ? ["  (none)"] : items.map((item) => `  - ${item}`));
   return [
@@ -180,6 +214,7 @@ function briefLines(brief: TaskBrief): string[] {
     ...(brief.commitSha ? [`Closed at commit: ${brief.commitSha}`] : []),
     ...(brief.reviewMode ? [`Review mode: ${brief.reviewMode}`] : []),
     ...(brief.push ? [`Push: ${brief.push.result}, ${brief.push.detail}`] : []),
+    ...(brief.review ? truestReviewLines(brief) : []),
     "",
     brief.spec.intent.trimEnd(),
     "",
@@ -207,9 +242,9 @@ function formatTasks(state: string | undefined) {
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
 
-function formatClose({ brief, checks, fold, push, cleanupProblems }: TaskCloseResult): string {
+function formatClose({ brief, checks, fold, push, cleanupProblems, next }: TaskCloseResult): string {
   return [
-    `Closed task ${brief.id} at commit ${brief.commitSha}.`,
+    next === undefined ? `Closed task ${brief.id} at commit ${brief.commitSha}.` : `The checks passed at ${brief.commitSha}; ${next}.`,
     ...checks.map((check) => `  passed: ${check.command}`),
     ...(fold ? [`Folded into ${fold.feature}${fold.rebased ? `, rebased onto ${fold.from} and checked again` : ""}.`] : []),
     ...(push ? [`Push: ${push.result}, ${push.detail}`] : []),
@@ -318,8 +353,26 @@ function taskRequest(args: string[]): Request {
       const { values, positionals } = parse(rest, {});
       return { operation: "task_close", input: { id: only(positionals, "task id") }, json: values.json === true, format: formatClose };
     }
+    case "waive": {
+      const { values, positionals } = parse(rest, { reason: { type: "string" } });
+      if (values.reason === undefined) throw new UsageError("task waive needs --reason <text>: why the review is waived");
+      const format = (waiver: TaskWaiver) => `Waived the review of task ${waiver.task} at ${waiver.commit}; its pull request may open now.`;
+      return { operation: "task_waive", input: { id: only(positionals, "task id"), reason: values.reason }, json: values.json === true, format };
+    }
+    case "pr": {
+      const { values, positionals } = parse(rest, { title: { type: "string" }, body: { type: "string" } });
+      if (values.title === undefined) throw new UsageError("task pr needs --title <text>");
+      const input = { id: only(positionals, "task id"), title: values.title, ...(values.body === undefined ? {} : { body: values.body }) };
+      const format = (pr: TaskPrResult) =>
+        [
+          `Opened the pull request of task ${pr.task} (${pr.branch}) into ${pr.base} at ${pr.commit} (${pr.coveredBy}): ${pr.url}`,
+          ...(pr.rebasedOnto === null ? [] : [`Rebased onto ${pr.base} at ${pr.rebasedOnto} first; the patch was unchanged, so the review carried over.`]),
+          ...pr.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+        ].join("\n");
+      return { operation: "task_pr", input, json: values.json === true, format };
+    }
     default:
-      throw new UsageError(action === undefined ? "task needs an action: start, list, brief or close" : `unknown task action '${action}'`);
+      throw new UsageError(action === undefined ? "task needs an action: start, list, brief, close, waive or pr" : `unknown task action '${action}'`);
   }
 }
 

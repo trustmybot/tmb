@@ -3,8 +3,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { PROJECT_DIR_NAME } from "../../engine/index.ts";
-import { ignoreInGit } from "./git.ts";
-import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject } from "./json-file.ts";
+import { ignoreInGit } from "../common/git.ts";
+import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject } from "../common/json-file.ts";
 
 export const SERVER_KEY = "tmb";
 export const HOST_ID = "claude-code";

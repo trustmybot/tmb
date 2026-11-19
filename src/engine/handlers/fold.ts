@@ -19,11 +19,11 @@ export function isAncestor(cwd: string, ancestor: string, descendant: string): b
 }
 
 /**
- * Rebases the branch checked out in `worktree` onto `tip` and returns the rebased HEAD. On a
+ * Rebases the branch checked out in `worktree` onto `tip` of `featureName` (named in refusals as `what`) and returns the rebased HEAD. On a
  * conflict or any other failure the rebase is aborted, so the worktree is as it was, and the
  * refusal names the conflicting paths or what git said.
  */
-export function rebaseOnto(worktree: string, featureName: string, tip: string, taskId: string): string {
+export function rebaseOnto(worktree: string, featureName: string, tip: string, taskId: string, what = `the feature branch ${featureName}`): string {
   const rebased = runGit(worktree, ["rebase", "--quiet", tip], { GIT_EDITOR: "true" });
   if (!rebased.ok) {
     const conflicted = runGit(worktree, ["diff", "--name-only", "--diff-filter=U"]).stdout;
@@ -32,10 +32,10 @@ export function rebaseOnto(worktree: string, featureName: string, tip: string, t
     if (conflicted !== "") {
       throw new HandlerError(
         "refused",
-        `rebasing the task onto the feature branch ${featureName} at ${tip} conflicts in:\n${conflicted}\n${undone} Bring ${featureName} into the worktree (git rebase ${featureName}), resolve the conflicts, commit, then close again.`,
+        `rebasing the task onto ${what} at ${tip} conflicts in:\n${conflicted}\n${undone} Bring ${featureName} into the worktree (git rebase ${featureName}), resolve the conflicts, commit, then close again.`,
       );
     }
-    throw new HandlerError("refused", `git could not rebase the task onto the feature branch ${featureName} at ${tip}: ${gitFailure(rebased)}. ${undone}`);
+    throw new HandlerError("refused", `git could not rebase the task onto ${what} at ${tip}: ${gitFailure(rebased)}. ${undone}`);
   }
   const head = runGit(worktree, ["rev-parse", "HEAD"]);
   if (!head.ok) throw new HandlerError("refused", `git could not read the rebased commit in ${worktree}: ${gitFailure(head)}`);
@@ -107,7 +107,7 @@ export function removeTaskCheckout(projectDir: string, worktree: string, branch:
   return problems;
 }
 
-/** Pushes the feature branch to origin as a backup, never forced; with no origin, skips. */
+/** Pushes a branch (a feature branch as a backup, or a truest task's branch) to origin, never forced; with no origin, skips. */
 export function pushFeature(projectDir: string, featureName: string): PushOutcome {
   if (!runGit(projectDir, ["remote", "get-url", ORIGIN]).ok) return { result: "skipped", detail: `the repository has no remote named ${ORIGIN}` };
   const ref = branchRef(featureName);

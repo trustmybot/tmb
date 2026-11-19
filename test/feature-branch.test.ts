@@ -242,7 +242,7 @@ describe("folding a closed task into its feature branch", () => {
     expect(error.message).toContain("`test ! -f src/a/one.ts` exited 1 on the task rebased onto the feature branch");
     expect(error.message).toContain(`The worktree is back at ${secondHead}, as it was.`);
     expect(tip()).toBe(firstHead);
-    expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: null });
+    expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: "agile" });
     expect(git(second.worktree, "rev-parse", "HEAD")).toBe(secondHead);
     expect(git(second.worktree, "rev-parse", "--abbrev-ref", "HEAD")).toBe(second.branch);
     expect(git(second.worktree, "status", "--porcelain")).toBe("");
@@ -278,7 +278,7 @@ describe("folding a closed task into its feature branch", () => {
       expect(error.message).toContain(`task ${second.id} stays open`);
       if (rebased) expect(error.message).toContain(`The worktree is back at ${secondHead}, as it was.`);
       expect(tip()).toBe(firstHead);
-      expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: null });
+      expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: "agile" });
       expect(store.getTask(first.id)).toMatchObject({ state: "closed", commitSha: firstHead });
       expect(git(second.worktree, "rev-parse", "HEAD")).toBe(secondHead);
       expect(git(second.worktree, "rev-parse", "--abbrev-ref", "HEAD")).toBe(second.branch);

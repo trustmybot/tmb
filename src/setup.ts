@@ -2,10 +2,12 @@
 // questions the workflow needs and stores the answers in the record. It reaches a host only
 // through the adapter interface, so it names none.
 import { createInterface } from "node:readline";
-import type { HostAdapter } from "./adapters/index.ts";
+import { type HostAdapter, SUPPORTED_HOST_IDS } from "./adapters/index.ts";
 import {
   AVAILABLE_REVIEW_MODES,
+  DEFAULT_HOST_ROLE,
   detectBaseBranch,
+  type HostRole,
   detectChecks,
   openProjectStore,
   readSettings,
@@ -15,6 +17,7 @@ import {
   settingLines,
   type Settings,
   type SettingValues,
+  validateHostRole,
   validateSetting,
   writeSetting,
 } from "./engine/index.ts";
@@ -24,7 +27,7 @@ import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
 
 /** Answers given on the command line; each one is used without asking. */
-export type SetupFlags = { host?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
+export type SetupFlags = { host?: string; role?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
 
 /** Shows a prompt and reads one line; null once input has ended. */
 export type Ask = (prompt: string) => Promise<string | null>;
@@ -37,6 +40,8 @@ export type SetupOptions = {
   /** Asks on the terminal; null when there is none, so every question takes its default. */
   ask: Ask | null;
   out: (line: string) => void;
+  /** The ids of the hosts this release supports; setup warns for any other. SUPPORTED_HOST_IDS unless given. */
+  supportedHostIds?: readonly string[];
 };
 
 export class SetupError extends Error {
@@ -44,7 +49,7 @@ export class SetupError extends Error {
 }
 
 const HUMAN: Actor = { kind: "human" };
-const NO_SETTINGS: Settings = { host: null, base_branch: null, review_mode: null, checks: null };
+const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null };
 const DEFAULT_REVIEW_MODE: ReviewMode = "agile";
 
 /** "A", "A and B", "A, B and C". */
@@ -71,8 +76,9 @@ function storedSettings(projectDir: string): Settings {
 }
 
 /** Checks the flag answers before setup changes anything. Throws SettingError. */
-function validatedFlags(flags: SetupFlags): Partial<Omit<SettingValues, "host">> {
+function validatedFlags(flags: SetupFlags): Partial<Omit<SettingValues, "host" | "host_roles">> & { role?: HostRole } {
   return {
+    role: flags.role === undefined ? undefined : validateHostRole(flags.role),
     base_branch: flags.base === undefined ? undefined : validateSetting("base_branch", flags.base),
     review_mode: flags.reviewMode === undefined ? undefined : validateSetting("review_mode", flags.reviewMode),
     checks: flags.checks === undefined || flags.checks.length === 0 ? undefined : validateSetting("checks", flags.checks),
@@ -104,7 +110,7 @@ async function chooseHost(options: SetupOptions, ask: Ask | null, storedHost: st
     return fallback;
   }
   out("Several supported hosts are installed:");
-  installed.forEach((adapter, i) => out(`  ${i + 1}. ${adapter.name} (${adapter.id})`));
+  installed.forEach((adapter, i) => out(`  ${i + 1}. ${adapter.name} (${adapter.id})${(options.supportedHostIds ?? SUPPORTED_HOST_IDS).includes(adapter.id) ? "" : ", not supported yet"}`));
   for (;;) {
     const answer = (await ask(`Which host should tmb use? [${fallback.id}] `))?.trim();
     if (!answer) return fallback;
@@ -202,6 +208,12 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const ask = flags.yes === true ? null : options.ask;
 
   const adapter = await chooseHost(options, ask, stored.host);
+  const supported = options.supportedHostIds ?? SUPPORTED_HOST_IDS;
+  const unsupported = !supported.includes(adapter.id);
+  const notSupported = `${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
+  if (unsupported) out(`Warning: ${notSupported}`);
+  // The role is the host's main agent's: kept from an earlier setup of this host unless --role names another.
+  const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
 
@@ -219,10 +231,18 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const checks =
     answered.checks ?? (ask ? await askChecks(ask, checksFallback, stored.checks === null ? "Detected" : "Stored", out) : checksFallback);
 
-  storeAnswers(projectDir, { host: adapter.id, base_branch: base ?? undefined, review_mode: reviewMode, checks }, out);
+  const hostRoles = { ...(stored.host_roles ?? {}), [adapter.id]: role };
+  storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode, checks }, out);
   if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb setup --base <branch> to set one.");
   else await indexCodeGraph(projectDir, out);
-  out(`tmb is set up for ${adapter.name}. Open it in this project to start as the planner.`);
+  const steps = adapter.pendingSteps?.(projectDir) ?? [];
+  if (steps.length > 0) {
+    out(`Before ${adapter.name} runs tmb in this project, you need to:`);
+    for (const step of steps) out(`  - ${step}`);
+  }
+  out(`tmb is set up for ${adapter.name}. Open it in this project to start as the ${role}.`);
+  // Said again last, so it is not lost above setup's other lines.
+  if (unsupported) out(`Warning: ${notSupported}`);
 }
 
 /** Asks on the process's terminal, one line per question. */

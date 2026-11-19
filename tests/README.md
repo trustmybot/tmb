@@ -59,8 +59,10 @@ The Install, Agent run and Agent chain layers are plain scripts rather than `bun
 | [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
 | [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
 | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) | `bun run test:reviewer` | Agent run |
+| [tests/agent-run/truest.ts](agent-run/truest.ts) | `bun run test:truest` | Agent run |
 | [tests/agent-chain/run.ts](agent-chain/run.ts) | `bun run test:chain` | Agent chain |
 | [tests/agent-chain/feature.ts](agent-chain/feature.ts) | `bun run test:chain:feature` | Agent chain |
+| [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) | `bun run test:chain:second-host` | Agent chain |
 
 The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH), `TMB_AGENT_MODEL` (by default haiku) and, for one session, `TMB_AGENT_LOG` (where its answer is saved).
 
@@ -151,3 +153,24 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Install | [tests/install/smoke.ts](install/smoke.ts) (`bun run test:install [channel] [version]`) | The installer of each channel installs the release it should, on macOS, Linux and Windows. |
 | Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
 | Integration | [tests/integration/migrate.test.ts](integration/migrate.test.ts) | `tmb migrate` copies a plugin project's issues, notes and decisions, tasks, reviews, check runs and agent runs, with their original times, from a database at plugin schema v76; leaves the plugin's file byte for byte unchanged; carries nothing of other repos or dropped features; and refuses a second run, another schema version, an unnamed repo among several and a missing database. |
+
+## Level 9 tests
+
+Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmybot/tmb#18). Its tests without a model run in CI like any others, but no v1 release waits for or runs the agent chain with a second host.
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Lint | [tests/lint/host-neutral.test.ts](lint/host-neutral.test.ts) | The engine names no host, Codex included; only the adapters do. |
+| Unit | [test/host-roles.test.ts](../test/host-roles.test.ts) | Setup gives each host a role, planner by default. A host set up as the reviewer has its main agent briefed, guarded and recorded as the reviewer, is told which feature branches wait for a review at their tip, and has a run that opens at its session start, ends with its verdict or with no verdict at its session end, and opens again at its next brief. |
+| Unit | [test/codex-adapter.test.ts](../test/codex-adapter.test.ts) | Codex's config block, hooks file and agent files are added and removed leaving the Human's files byte for byte; a model the Human names, a local one included, reaches both hosts' role files; setup names the trust steps the Human must take; shell commands, each file of a patch and a spawned agent become tmb events in the host's role. |
+| Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | One shared set of tests that Claude Code and Codex both pass: setup and removal, session start, guarded tool calls, agent start and stop, and a host set up as the reviewer. |
+| Integration | [tests/integration/two-hosts.test.ts](integration/two-hosts.test.ts) | Two hosts write one record at once and nothing is lost. |
+| Agent chain | [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) (`bun run test:chain:second-host`) | Claude Code, set up as the planner, builds a feature branch, and Codex, set up as the reviewer in the same project, records a verdict at its tip in a run its own session start opened. Needs a logged-in claude and codex, and the Human's prompt in `prompts/second-host-reviewer.txt`; it exits 2 without them. |
+
+## Level 10 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/truest.test.ts](../test/truest.test.ts) | In truest mode a task is cut from the base branch and feature_start is refused; close runs the checks and leaves the task in review with its worktree, folding nothing; a fail reopens the task and a pass covers only the commit it names; only a reviewer run reviews and only the Human waives; task_pr is the planner's and needs a pass or a waiver and an origin; a task keeps the review mode of its start. |
+| Workflow simulation | [tests/workflow/truest.test.ts](workflow/truest.test.ts) | A task cannot be pushed unreviewed: task_pr and a push typed by hand through git's pre-push hook are refused. Review, fail, rework and pass on one task, then task_pr rebases onto a base branch that moved, carries the review over the unchanged patch, pushes the task branch and opens its pull request. A rebase that changes the patch needs a new review, a conflict reopens the task, and a Human waiver lets a task through. |
+| Agent run | [tests/agent-run/truest.ts](agent-run/truest.ts) (`bun run test:truest`) | One task from request to its pull request: bro has a worker fix add, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |

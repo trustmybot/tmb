@@ -1,12 +1,13 @@
-import { CheckCircleFillIcon, CircleIcon, DotFillIcon, type Icon } from '@primer/octicons-react';
+import { CheckCircleFillIcon, CircleIcon, DotFillIcon, EyeIcon, type Icon } from '@primer/octicons-react';
 import { LABEL_COLORS } from '../ui/Label.tsx';
 import { statusVariant } from './Badge.tsx';
 
-export const TASK_STATES = ['open', 'closed'] as const;
+export const TASK_STATES = ['open', 'in_review', 'closed'] as const;
 export type TaskState = (typeof TASK_STATES)[number];
 
 export const TASK_STATE_ICON: Record<TaskState, Icon> = {
   open: DotFillIcon,
+  in_review: EyeIcon,
   closed: CheckCircleFillIcon,
 };
 

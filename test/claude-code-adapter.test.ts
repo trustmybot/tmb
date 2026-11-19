@@ -52,9 +52,10 @@ const tmbHooks = (tmbCommand: readonly string[]) => ({
   SessionStart: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start") }] }],
   PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: hookCommand(tmbCommand, "pre-tool-use") }] }],
   SubagentStop: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "subagent-stop") }] }],
+  SessionEnd: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-end") }] }],
 });
 const tmbSettings = { hooks: tmbHooks(BINARY), enabledMcpjsonServers: ["tmb"] };
-const ALL_HOOKS = ["SessionStart", "PreToolUse", "SubagentStop"];
+const ALL_HOOKS = ["SessionStart", "PreToolUse", "SubagentStop", "SessionEnd"];
 
 describe("settings: setup", () => {
   test("on a fresh project creates the settings file with the three hooks and the enabled server", () => {
@@ -97,6 +98,7 @@ describe("settings: setup", () => {
         PreToolUse: [...prior.hooks.PreToolUse, ...ours.PreToolUse],
         SubagentStop: [...prior.hooks.SubagentStop, ...ours.SubagentStop],
         Stop: prior.hooks.Stop,
+        SessionEnd: ours.SessionEnd,
       },
     });
   });
@@ -159,7 +161,7 @@ describe("hook commands", () => {
   });
 
   test("recognises each of tmb's hooks from a binary and from source, quoted or not", () => {
-    for (const name of ["session-start", "pre-tool-use", "subagent-stop"] as const) {
+    for (const name of ["session-start", "pre-tool-use", "subagent-stop", "session-end"] as const) {
       expect(isTmbHookCommand(hookCommand(BINARY, name))).toBe(true);
       expect(isTmbHookCommand(hookCommand(SOURCE, name), name)).toBe(true);
       expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/tmb/src/cli.ts hook ${name}`)).toBe(true);
@@ -171,7 +173,7 @@ describe("hook commands", () => {
   test("leaves other commands alone", () => {
     expect(isTmbHookCommand(`"/bin/other" hook session-start`)).toBe(false);
     expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/app/src/main.ts hook pre-tool-use`)).toBe(false);
-    expect(isTmbHookCommand(`"${EXE}" hook session-end`)).toBe(false);
+    expect(isTmbHookCommand(`"${EXE}" hook session-stop`)).toBe(false);
   });
 
   test("remove finds the hooks a source-run setup wrote", () => {

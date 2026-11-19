@@ -7,6 +7,7 @@ import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
 import * as review from "./reviews.ts";
 import * as task from "./tasks.ts";
+import * as truest from "./truest.ts";
 
 export type Operation = {
   description: string;
@@ -96,7 +97,7 @@ export const OPERATIONS = {
   },
   task_start: {
     description:
-      "Start a task on an open issue once its spec is written: its kind (code for a worker, docs for you), the intent, the files it may touch, its success criteria and any checks of its own. tmb cuts the task's branch from the tip of its feature branch, the one named or else the only one open, adds its worktree and returns the brief, with the task_id=<id> line to put in the worker's start prompt. For the planner.",
+      "Start a task on an open issue once its spec is written: its kind (code for a worker, docs for you), the intent, the files it may touch, its success criteria and any checks of its own. tmb cuts the task's branch from the tip of its feature branch, the one named or else the only one open (in truest mode, from the base branch), adds its worktree and returns the brief, with the task_id=<id> line to put in the worker's start prompt. For the planner.",
     inputSchema: task.taskStartSchema,
     run: task.taskStart,
   },
@@ -108,9 +109,27 @@ export const OPERATIONS = {
   },
   task_close: {
     description:
-      "Close a task once its work is committed in its worktree. tmb runs the project's checks and the task's own on the worktree's commit and closes the task only when all pass; otherwise it refuses, naming the failing check and the end of its output. On a pass it folds the commit into the feature branch, first rebasing it and running the checks again when the feature branch moved, removes the task's branch and worktree, and pushes the feature branch to origin as a backup. For the worker or the planner.",
+      "Close a task once its work is committed in its worktree. tmb runs the project's checks and the task's own on the worktree's commit and closes the task only when all pass; otherwise it refuses, naming the failing check and the end of its output. On a pass it folds the commit into the feature branch, first rebasing it and running the checks again when the feature branch moved, removes the task's branch and worktree, and pushes the feature branch to origin as a backup. In truest mode a pass instead leaves the task in review at its commit, worktree kept, for the reviewer and then task_pr. For the worker or the planner.",
     inputSchema: task.taskCloseSchema,
     run: task.taskClose,
+  },
+  task_review: {
+    description:
+      "Record your verdict on a truest task at the commit you reviewed, the one its brief shows: pass when no finding blocks, fail with each blocking finding. A fail reopens the task for its worker. A review counts only for that commit. For the reviewer.",
+    inputSchema: truest.taskReviewSchema,
+    run: truest.taskReview,
+  },
+  task_waive: {
+    description:
+      "Waive the review of a truest task at its commit, with the reason, so its pull request may open unreviewed. Only the Human waives, from the command line (`tmb task waive <id> --reason <text>`); an agent is refused.",
+    inputSchema: truest.taskWaiveSchema,
+    run: truest.taskWaive,
+  },
+  task_pr: {
+    description:
+      "Open a truest task's own pull request into the base branch, once the reviewer passed it at its commit or the Human waived the review. When the base branch moved, tmb first rebases the task onto it and runs the checks again: an unchanged patch keeps its review, a changed one needs a new review, a conflict reopens the task. Then tmb pushes the task's branch and opens the pull request with the GitHub command line. For the planner.",
+    inputSchema: truest.taskPrSchema,
+    run: truest.taskPr,
   },
   task_list: {
     description:
@@ -175,3 +194,4 @@ export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
 export * from "./reviews.ts";
 export * from "./tasks.ts";
+export * from "./truest.ts";
