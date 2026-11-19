@@ -6,6 +6,7 @@ import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";
 import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
+import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 import { readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
@@ -426,7 +427,27 @@ export function committedHead(task: Task): string {
   if (!runGit(worktree, ["merge-base", "--is-ancestor", base, head]).ok) {
     throw new HandlerError("refused", `HEAD ${head} does not build on the task's base commit ${base}; the work must be committed on top of it`);
   }
+  if (task.kind === "docs") refuseProgrammingFiles(task, base, head);
   return head;
+}
+
+/**
+ * A docs task changes no code: refuses its close, naming each file, when its change from the base
+ * commit touches a file Linguist marks as written in a programming language. A code task is never checked this way.
+ */
+function refuseProgrammingFiles(task: Task, base: string, head: string): void {
+  const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
+  const programming = touched.flatMap((file) => {
+    const match = languageOf(file);
+    return match?.programming ? [`${file} (${match.languages.join(" or ")})`] : [];
+  });
+  if (programming.length === 0) return;
+  const shown = programming.slice(0, DIRTY_LINES_SHOWN).join("\n");
+  const more = programming.length > DIRTY_LINES_SHOWN ? `\n…and ${programming.length - DIRTY_LINES_SHOWN} more` : "";
+  throw new HandlerError(
+    "refused",
+    `task ${task.id} is a docs task, but its change touches files written in a programming language, so it stays open. Move that change to a code task:\n${shown}${more}`,
+  );
 }
 
 /** `onWhat` names the commit the checks ran on when it is not the worktree's own. */
