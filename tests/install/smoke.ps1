@@ -8,7 +8,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$installerUrl = "https://github.com/trustmybot/tmb-releases/releases/download/$Channel/install.ps1"
+$releasesUrl = 'https://github.com/trustmybot/tmb-releases'
+$installerUrl = switch ($Channel) {
+    'stable' { "$releasesUrl/releases/latest/download/install.ps1" }
+    'rc' {
+        if (-not $ExpectedVersion) { Write-Host 'FAIL the rc channel needs an expected version'; exit 1 }
+        "$releasesUrl/releases/download/v$ExpectedVersion/install.ps1"
+    }
+    default { "$releasesUrl/releases/download/$Channel/install.ps1" }
+}
 $script:failures = 0
 function Pass([string]$message) { Write-Host "PASS $message" }
 function Fail([string]$message) { Write-Host "FAIL $message"; $script:failures++ }

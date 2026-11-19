@@ -52,7 +52,7 @@ Proposed, for the Human's review.
 | When | Layers |
 |---|---|
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
-| Every build published to the dev channel | Install |
+| Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
 | Before an rc or stable release | All of them |
 
@@ -114,3 +114,12 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 |---|---|---|
 | Lint | `bun run typecheck` | The dashboard's pages type-check under their own [tsconfig](../dashboard/tsconfig.json), next to the engine. |
 | Integration | [tests/integration/dashboard.test.ts](integration/dashboard.test.ts) | `tmb dashboard`, started from outside the repository over a [prepared record](integration/dashboard-record.ts), serves the page with its bundled script and Tailwind styles. Every API read returns the record. The Human's notes, decisions, edits, closes and reopens go through the engine's operations. A request to another host name, a change without the token and an edit from a stale page are refused. Every page (overview, issues, one issue, tasks, one task, runs and gate decisions, audit) is rendered against the running server and shows its data. |
+
+## Level 8 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Install | [tests/install/update.ts](install/update.ts) (`bun run test:install:update <channel>`) | An older install on the channel, in a throwaway HOME, updates itself to the channel's newest release from the real release repo: the build is kept at a session's start, `tmb update` waits while a session runs, nothing swaps at a session's end while another session still runs, and the last session's end swaps it in, even with a task open. Runs after each dev build and each rc or stable release on macOS, Windows and Linux; a channel with no release yet is skipped. |
+| Install | [tests/install/smoke.sh](install/smoke.sh), [smoke.ps1](install/smoke.ps1) | The installer of each channel installs the release it should. |
+| Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
+| Integration | [tests/integration/migrate.test.ts](integration/migrate.test.ts) | `tmb migrate` copies a plugin project's issues, notes and decisions, tasks, reviews, check runs and agent runs, with their original times, from a database at plugin schema v76; leaves the plugin's file byte for byte unchanged; carries nothing of other repos or dropped features; and refuses a second run, another schema version, an unnamed repo among several and a missing database. |

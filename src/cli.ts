@@ -2,12 +2,13 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
-import { HOST_ADAPTERS, hostAdapter } from "./adapters/index.ts";
+import { findPluginDb, HOST_ADAPTERS, hostAdapter, migratePluginProject } from "./adapters/index.ts";
 import { CONFIG_USAGE, INDEX_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runIndexCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
-import { projectRootOf } from "./engine/project.ts";
+import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { runSetup, terminalAsk } from "./setup.ts";
+import { Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
@@ -16,9 +17,15 @@ const USAGE = `Usage:
                             Wire tmb into the project in the current directory and store
                             its settings; asks on a terminal, else takes the defaults
   tmb remove                Undo what setup added; the record is kept
+  tmb migrate [--from <plugin db>] [--repo <name>]
+                            Copy a tmb plugin project's records into this project's new
+                            record; the plugin's database is left untouched
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
 ${INDEX_USAGE}
+  tmb update [--check]      Look for a newer build on this install's channel now and apply it
+                            when no other tmb session is running; with
+                            --check, only report
   tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one
@@ -70,8 +77,77 @@ async function runToolServer(args: string[]): Promise<number> {
   });
   if (positionals.length > 0) throw new Error(`mcp takes no arguments, got ${positionals.join(" ")}`);
   if (values.host === undefined || values.host.trim() === "") throw new Error("mcp needs --host <id>, the host that runs it");
-  await serveTools({ projectDir: path.resolve(values.project ?? process.cwd()), host: values.host, version });
+  const projectDir = path.resolve(values.project ?? process.cwd());
+  const updater = new Updater(updaterOptions(version, COMPILED_ENTRY.test(Bun.main)));
+  if (!updater.active) {
+    await serveTools({ projectDir, host: values.host, version });
+    return 0;
+  }
+  // A session start looks for an update in the background; the session's end may apply it.
+  updater.tidy();
+  updater.startSession(projectDir);
+  const abort = new AbortController();
+  const checking = updater.check({ signal: abort.signal });
+  let ended = false;
+  const end = async () => {
+    if (ended) return;
+    ended = true;
+    abort.abort();
+    await checking;
+    updater.endSession();
+    const applied = updater.apply();
+    if (applied.outcome === "applied") process.stderr.write(`tmb: updated to ${applied.version}; the next session runs it\n`);
+  };
+  const onSignal = () => void end().finally(() => process.exit(0));
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, onSignal);
+  try {
+    await serveTools({ projectDir, host: values.host, version });
+  } finally {
+    await end();
+  }
   return 0;
+}
+
+async function runUpdateCommand(args: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({ args, options: { check: { type: "boolean" } }, allowPositionals: true, strict: true });
+  if (positionals.length > 0) throw new Error(`update takes no arguments, got ${positionals.join(" ")}`);
+  const updater = new Updater(updaterOptions(version, COMPILED_ENTRY.test(Bun.main)));
+  if (!updater.active) {
+    console.log(
+      updater.options.enabled ? `tmb ${version} runs from source and does not update itself.` : `Updates are turned off (TMB_NO_UPDATE=1); this is tmb ${version}.`,
+    );
+    return 0;
+  }
+  updater.tidy();
+  const checked = await updater.check({ force: true });
+  if (checked.outcome === "failed") {
+    console.error(`tmb update: could not reach the ${updater.channel} channel: ${checked.error}`);
+    return 1;
+  }
+  if (checked.outcome === "current") {
+    console.log(`tmb ${version} is the newest on the ${updater.channel} channel.`);
+    return 0;
+  }
+  const staged = updater.staged();
+  if (!staged) {
+    console.log(`tmb ${version} is the newest on the ${updater.channel} channel.`);
+    return 0;
+  }
+  if (values.check) {
+    console.log(`tmb ${staged.version} is ready on the ${updater.channel} channel; this is ${version}.`);
+    return 0;
+  }
+  const applied = updater.apply();
+  if (applied.outcome === "applied") {
+    console.log(`Updated tmb from ${version} to ${applied.version}.`);
+    return 0;
+  }
+  if (applied.outcome === "waiting") {
+    console.log(`tmb ${applied.version} is ready and applies once no tmb session is running: ${applied.reason}.`);
+    return 0;
+  }
+  console.error(`tmb update: could not apply ${applied.version}: ${applied.reason}`);
+  return 1;
 }
 
 async function runDashboard(args: string[]): Promise<number> {
@@ -127,6 +203,38 @@ async function runSetupCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+function runMigrateCommand(args: string[]): number {
+  const { values, positionals } = parseArgs({
+    args,
+    options: { from: { type: "string" }, repo: { type: "string" }, json: { type: "boolean" } },
+    allowPositionals: true,
+    strict: true,
+  });
+  if (positionals.length > 0) throw new Error(`migrate takes no arguments, got ${positionals.join(" ")}`);
+  const projectDir = projectRootOf(process.cwd());
+  const from = values.from === undefined ? findPluginDb(projectDir) : path.resolve(values.from);
+  if (from === null) throw new Error(`no plugin database in ${projectDir} or a folder above it; name one with --from`);
+  const opened = openProjectStore(projectDir, { create: true });
+  if (!opened.ok) throw opened.error;
+  try {
+    const result = migratePluginProject(opened.store, { pluginDbPath: from, projectDir, repo: values.repo });
+    if (values.json) {
+      console.log(JSON.stringify(result));
+    } else {
+      const { counts } = result;
+      console.log(`Copied from ${result.from}${result.repo === null ? "" : ` (repo ${result.repo})`}:`);
+      console.log(
+        `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
+          `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
+      );
+      console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
+    }
+  } finally {
+    opened.store.close();
+  }
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (isRecordCommand(command)) {
@@ -147,6 +255,10 @@ async function main(argv: string[]): Promise<number> {
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
       return 0;
+    case "update":
+      return runUpdateCommand(rest);
+    case "migrate":
+      return runMigrateCommand(rest);
     case "dashboard":
       return runDashboard(rest);
     case "mcp":

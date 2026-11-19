@@ -1,11 +1,27 @@
 # Installs tmb from the public release repo. No login needed.
 #   irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1 | iex
-# $env:TMB_CHANNEL picks the channel (default: dev).
+# $env:TMB_CHANNEL picks the channel: dev (default), rc or stable. The install then follows
+# that channel: tmb updates itself from it between sessions.
 # $env:TMB_NO_MODIFY_PATH = '1' leaves the user PATH alone and prints the line instead.
 $ErrorActionPreference = 'Stop'
 
 $channel = if ($env:TMB_CHANNEL) { $env:TMB_CHANNEL } else { 'dev' }
-$baseUrl = "https://github.com/trustmybot/tmb-releases/releases/download/$channel"
+$releasesUrl = if ($env:TMB_RELEASES_URL) { $env:TMB_RELEASES_URL } else { 'https://github.com/trustmybot/tmb-releases' }
+$releasesApi = if ($env:TMB_RELEASES_API) { $env:TMB_RELEASES_API } else { 'https://api.github.com/repos/trustmybot/tmb-releases' }
+# dev is a rolling release and stable is the release marked latest; rc's newest tag is read
+# from the public releases API, as tmb's own update check does.
+switch ($channel) {
+    'dev' { $baseUrl = "$releasesUrl/releases/download/dev" }
+    'stable' { $baseUrl = "$releasesUrl/releases/latest/download" }
+    'rc' {
+        $tags = (Invoke-RestMethod -UseBasicParsing -Uri "$releasesApi/releases?per_page=100") |
+            Where-Object { -not $_.draft -and $_.tag_name -match '^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$' } |
+            Sort-Object { $null = $_.tag_name -match '^v(\d+)\.(\d+)\.(\d+)-rc\.(\d+)$'; [version]"$($Matches[1]).$($Matches[2]).$($Matches[3]).$($Matches[4])" }
+        if (-not $tags) { throw 'the rc channel has no release yet' }
+        $baseUrl = "$releasesUrl/releases/download/$(@($tags)[-1].tag_name)"
+    }
+    default { throw "unknown channel $channel; use dev, rc or stable" }
+}
 $binDir = Join-Path $env:USERPROFILE '.local\bin'
 
 # Only an x64 build is published; Windows on Arm runs it under emulation.

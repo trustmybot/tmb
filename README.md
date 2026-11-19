@@ -21,7 +21,7 @@ Status: early. Install it and set up a project with [docs/reference](docs/refere
 
 ## Relation to the TMB plugin
 
-The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the first version of these ideas. tmb is a fresh start that is not tied to one agent program: Claude Code is supported first, through an adapter. A one-way migration tool will carry a plugin project's records over.
+The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the first version of these ideas. tmb is a fresh start that is not tied to one agent program: Claude Code is supported first, through an adapter. `tmb migrate` carries a plugin project's records over, one way ([docs/reference](docs/reference/README.md#move-a-plugin-project)).
 
 ## Docs
 
