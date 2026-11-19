@@ -3,6 +3,8 @@
 //   bun scripts/build.ts --local    this machine only, into dist/tmb[.exe]
 //   bun scripts/build.ts linux-x64  only the named targets
 // With TMB_VERSION set, the binary reports that version instead of package.json's.
+// It builds through Bun.build rather than `bun build`, so the dashboard's styles go through Tailwind.
+import tailwind from "bun-plugin-tailwind";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -14,13 +16,19 @@ function gitSha(): string {
   return result.status === 0 ? result.stdout.trim() : "unknown";
 }
 
-function compile(outfile: string, target?: string): void {
-  const args = ["build", "--compile", "--minify", "--define", `TMB_GIT_SHA=${JSON.stringify(sha)}`];
-  if (tmbVersion) args.push("--define", `TMB_VERSION=${JSON.stringify(tmbVersion)}`);
-  args.push("src/cli.ts", "--outfile", outfile);
-  if (target) args.push(`--target=bun-${target}`);
-  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", timeout: 600_000 });
-  if (result.status !== 0) throw new Error(`build failed for ${target ?? "this machine"}`);
+async function compile(outfile: string, target?: string): Promise<void> {
+  const define: Record<string, string> = { TMB_GIT_SHA: JSON.stringify(sha) };
+  if (tmbVersion) define.TMB_VERSION = JSON.stringify(tmbVersion);
+  const result = await Bun.build({
+    entrypoints: [path.join(root, "src", "cli.ts")],
+    compile: { outfile: path.join(root, outfile), ...(target ? { target: `bun-${target}` as Bun.Build.CompileTarget } : {}) },
+    minify: true,
+    define,
+    plugins: [tailwind],
+    throw: false,
+  });
+  for (const log of result.logs) console.error(log);
+  if (!result.success) throw new Error(`build failed for ${target ?? "this machine"}`);
 }
 
 const sha = gitSha();
@@ -29,11 +37,11 @@ const tmbVersion = process.env.TMB_VERSION?.trim();
 const args = process.argv.slice(2);
 
 if (args.includes("--local")) {
-  compile(path.join("dist", process.platform === "win32" ? "tmb.exe" : "tmb"));
+  await compile(path.join("dist", process.platform === "win32" ? "tmb.exe" : "tmb"));
 } else {
   const unknown = args.filter((t) => !TARGETS.includes(t));
   if (unknown.length > 0) throw new Error(`unknown targets: ${unknown.join(", ")}; known: ${TARGETS.join(", ")}`);
   for (const target of args.length > 0 ? args : TARGETS) {
-    compile(path.join("dist", `tmb-${target}${target.startsWith("windows") ? ".exe" : ""}`), target);
+    await compile(path.join("dist", `tmb-${target}${target.startsWith("windows") ? ".exe" : ""}`), target);
   }
 }

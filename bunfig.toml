@@ -1,3 +1,7 @@
 # The agent runs' fixture projects carry their own tests, which fail as shipped on purpose.
 [test]
 pathIgnorePatterns = ["tests/agent-run/fixtures/**"]
+
+# The dashboard's pages are bundled when it serves them from source; their styles need Tailwind.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]
