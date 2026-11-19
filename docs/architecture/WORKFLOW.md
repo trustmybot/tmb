@@ -26,9 +26,11 @@ How the host starts workers and the reviewer is in [HOSTS.md](HOSTS.md).
 | Code task | A worker | The change touches code. |
 | Docs task | The planner | The change is to docs or prompts and changes no behaviour. |
 
-- **The planner judges which kind a task is.** The engine holds no list of paths that count as docs: such a list is wrong for the next project and for the next file. The planner names the kind when it starts the task, and the record keeps it.
+- **The planner judges which kind a task is.** A project declares no list of paths that count as docs: such a list is wrong for the next project and for the next file. The planner names the kind when it starts the task, and the record keeps it.
+- **The engine checks the call by file type.** Planned. A docs task whose commit touches a file written in a programming language is refused at its close, and the refusal names the file. The engine tells a programming language from prose, markup and data with the language table of GitHub's Linguist, which it ships with. The table is maintained for every project, so tmb keeps no list of its own.
+- **The rest stays the planner's call.** The table marks config and data files as data, and cannot tell whether a change to one alters behaviour.
 - **A docs task is checked like any other.** Its checks run at close, and the reviewer sees it in the same review as the code tasks.
-- **A wrong call is caught in review.** A docs task that changed behaviour is a finding, and that part is redone as a code task. Proposed, for the Human's review.
+- **A wrong call the engine cannot see is caught in review.** A docs task that changed behaviour is a finding, and that part is redone as a code task. Proposed, for the Human's review.
 
 ## Review modes
 
