@@ -25,6 +25,13 @@ const TOOLS = [
   "task_brief",
   "task_close",
   "task_list",
+  "graph_map",
+  "graph_find",
+  "graph_symbol",
+  "graph_scope",
+  "graph_concept_upsert",
+  "graph_concepts",
+  "graph_miss",
 ];
 
 let scratch: string;

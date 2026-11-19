@@ -59,7 +59,10 @@ export function tmbProcesses(prefix: string) {
     // tmb's own git calls (the rebase in a close) commit too, and a CI runner has no global identity for them.
     git(project, "config", "user.name", "t");
     git(project, "config", "user.email", "t@example.com");
-    for (const [file, text] of Object.entries(files)) writeFileSync(path.join(project, file), text);
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
+      writeFileSync(path.join(project, file), text);
+    }
     git(project, "add", ".");
     git(project, "commit", "-q", "-m", "first");
     tmb(["setup", "--base", BASE_BRANCH, "--check", check, "--yes"], project);
