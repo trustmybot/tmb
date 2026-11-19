@@ -31,7 +31,7 @@ export const SUBAGENT_ROLES: readonly SubagentRole[] = [
   {
     name: "reviewer",
     description:
-      "Judges a finished change it did not write, a task's commit or a whole branch, for whether it breaks other behaviour, and returns a pass or fail verdict. It cannot edit files.",
+      "Judges a whole feature branch it did not write, before its pull request opens, for whether it breaks other behaviour, and records a pass or fail verdict with review_record. Start it with the feature=<name> line from feature_brief at the head of its prompt. It cannot edit files.",
     prompt: reviewerPrompt,
     capabilities: ["read-files", "run-commands"],
   },

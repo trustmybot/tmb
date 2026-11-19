@@ -5,6 +5,7 @@ import * as feature from "./features.ts";
 import * as graph from "./graph.ts";
 import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
+import * as review from "./reviews.ts";
 import * as task from "./tasks.ts";
 
 export type Operation = {
@@ -68,6 +69,30 @@ export const OPERATIONS = {
       "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. Use it before starting a task to see which feature branch it belongs on.",
     inputSchema: feature.featureListSchema,
     run: feature.featureList,
+  },
+  feature_brief: {
+    description:
+      "Read a feature branch's review brief: where it leaves the base branch, its tip, each task's commits on it as the groups to review in, every review and Human waiver, and whether a pass or a waiver covers the tip. The reviewer reads it first; the planner reads it before feature_pr.",
+    inputSchema: review.featureBriefSchema,
+    run: review.featureBrief,
+  },
+  review_record: {
+    description:
+      "Record your verdict on a feature branch at the commit you reviewed, its tip: pass when no finding blocks, fail with each blocking finding. A review counts only for that commit, so a branch that moves needs a new one. For the reviewer.",
+    inputSchema: review.reviewRecordSchema,
+    run: review.reviewRecord,
+  },
+  feature_waive: {
+    description:
+      "Waive the review of a feature branch at its tip, with the reason, so its pull request may open unreviewed. Only the Human waives, from the command line (`tmb feature waive <name> --reason <text>`); an agent is refused.",
+    inputSchema: review.featureWaiveSchema,
+    run: review.featureWaive,
+  },
+  feature_pr: {
+    description:
+      "Open the one pull request of a feature branch into the base branch, once the reviewer passed the branch at its tip or the Human waived the review: tmb pushes the branch to origin and opens the pull request with the GitHub command line. Refused while neither covers the tip. For the planner.",
+    inputSchema: review.featurePrSchema,
+    run: review.featurePr,
   },
   task_start: {
     description:
@@ -148,4 +173,5 @@ export * from "./features.ts";
 export * from "./graph.ts";
 export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
+export * from "./reviews.ts";
 export * from "./tasks.ts";

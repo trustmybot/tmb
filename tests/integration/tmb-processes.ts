@@ -52,8 +52,12 @@ export function tmbProcesses(prefix: string) {
     return JSON.parse(tmb([...args, "--json"], cwd)) as T;
   }
 
-  /** A git project whose first commit on the base branch holds `files` (a README when none), set up with the given check. */
-  function setUpProject(check: string, files: Record<string, string> = { "README.md": "hello\n" }): string {
+  /**
+   * A git project whose first commit on the base branch holds `files` (a README when none), set
+   * up with the given check. With `origin`, a bare repository is its origin and holds the base
+   * branch before setup, as a project that is already on a remote does.
+   */
+  function setUpProject(check: string, files: Record<string, string> = { "README.md": "hello\n" }, options: { origin?: boolean } = {}): string {
     const project = mkdtempSync(path.join(scratch, "project-"));
     git(project, "init", "-q", "-b", BASE_BRANCH);
     // tmb's own git calls (the rebase in a close) commit too, and a CI runner has no global identity for them.
@@ -65,6 +69,12 @@ export function tmbProcesses(prefix: string) {
     }
     git(project, "add", ".");
     git(project, "commit", "-q", "-m", "first");
+    if (options.origin) {
+      const origin = `${project}-origin.git`;
+      git(scratch, "init", "-q", "--bare", origin);
+      git(project, "remote", "add", "origin", origin);
+      git(project, "push", "-q", "-u", "origin", BASE_BRANCH);
+    }
     tmb(["setup", "--base", BASE_BRANCH, "--check", check, "--yes"], project);
     return project;
   }
@@ -86,6 +96,25 @@ export function tmbProcesses(prefix: string) {
     return (JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
   }
 
+  /** Runs a host hook as the host would, with `input` as its JSON event; the hook's stdout, empty for an allow. */
+  function hook(project: string, event: string, input: Record<string, unknown>): string {
+    const json = JSON.stringify({ session_id: "workflow", cwd: project, ...input });
+    const result = spawnSync(process.execPath, [CLI, "hook", event], { cwd: project, env, input: json, encoding: "utf8", timeout: 30_000 });
+    if (result.status !== 0 || result.stderr !== "") throw new Error(`tmb hook ${event} exited ${result.status}: ${result.stderr}`);
+    return result.stdout.trim();
+  }
+
+  /** Starts a subagent of the role through the host's hook, as the planner's Agent call would; returns the deny reason, or null when allowed. */
+  function startSubagent(project: string, role: string, prompt: string): string | null {
+    const out = hook(project, "pre-tool-use", { hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: role, prompt } });
+    return out === "" ? null : (JSON.parse(out).hookSpecificOutput.permissionDecisionReason as string);
+  }
+
+  /** Ends a subagent of the role through the host's hook. */
+  function stopSubagent(project: string, role: string): void {
+    hook(project, "subagent-stop", { hook_event_name: "SubagentStop", agent_type: role });
+  }
+
   /** A connected client on the project's tool server, acting for the host `test`. */
   async function connect(project: string): Promise<Client> {
     const client = new Client({ name: "tmb-processes-test", version: "0.0.0" });
@@ -97,7 +126,7 @@ export function tmbProcesses(prefix: string) {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  return { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, connect, cleanup };
+  return { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
 }
 
 /** Calls a tool that must succeed and parses its JSON answer. */
