@@ -142,6 +142,8 @@ The same three building blocks exist in both hosts checked so far, which is what
 
 Setup never trusts a project or its hooks on the Human's behalf: it says what the Human must trust, and the adapter reports when that has not happened yet. Checked against Codex's docs on 2026-11-19; nothing was run.
 
+Codex does not say which agent makes a tool call. A call is judged under the role its host was set up with, so a Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a worker's write from the planner's, and that rule falls back to the close and the push. Proposed, for the Human's review, and to be confirmed on a real Codex.
+
 When a host cannot deny an action, the engine's own layers still hold: checks at close, and git's pre-push hook ([WORKFLOW.md](WORKFLOW.md#the-gate)).
 
 ## What tmb leaves to the host
