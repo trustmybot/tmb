@@ -18,9 +18,11 @@ Windows, in PowerShell:
 irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1 | iex
 ```
 
-The script downloads the file for your platform, checks it against the published checksums, refuses to install on a mismatch, and puts tmb in `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). If that folder is not on your PATH, it prints the line to add. Run the same command again to upgrade.
+The script downloads the file for your platform, checks it against the published checksums, refuses to install on a mismatch, and puts tmb in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`), the folder Claude Code also installs to. If that folder is not on your PATH, the script adds it to your shell profile (Windows: your user PATH) and says where; open a new terminal afterwards. Set `TMB_NO_MODIFY_PATH=1` to skip that and have it print the line to add instead. Run the same command again to upgrade.
 
-`tmb --version` prints the version and the source commit it was built from.
+Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb setup` again in any project you set up with it.
+
+`tmb --version` prints the version and the source commit it was built from. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
 ## Set up a project
 
