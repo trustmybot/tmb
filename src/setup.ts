@@ -21,6 +21,7 @@ import {
   settingLines,
   type Settings,
   type SettingValues,
+  tieProgram,
   validateHostRole,
   validateSetting,
   writeSetting,
@@ -30,6 +31,7 @@ import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
+import { version as packageVersion } from "./version.ts";
 
 /** Answers given on the command line; each one is used without asking. */
 export type SetupFlags = { host?: string; role?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
@@ -47,6 +49,8 @@ export type SetupOptions = {
   out: (line: string) => void;
   /** The ids of the hosts this release supports; init warns for any other. SUPPORTED_HOST_IDS unless given. */
   supportedHostIds?: readonly string[];
+  /** The tmb program running setup, which the project is tied to; plain tmb at its package version unless given. */
+  program?: { name: string; version: string };
 };
 
 export class SetupError extends Error {
@@ -165,6 +169,19 @@ async function askChecks(ask: Ask, fallback: string[], source: string, out: (lin
   }
 }
 
+/** Ties the project to the program running init, and says so when it moved from another. */
+function tieToProgram(projectDir: string, program: { name: string; version: string }, command: readonly string[], out: (line: string) => void): void {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) throw new SetupError(`cannot tie the project to ${program.name}: ${opened.error.message}`);
+  try {
+    const { changed, from } = tieProgram(opened.store, HUMAN, { program: program.name, version: program.version, command: [...command] });
+    if (from !== null && from.program !== program.name) out(`Moved this project from ${from.program} ${from.version} to ${program.name} ${program.version}.`);
+    if (changed || from === null) out(`This project runs ${program.name}: its hooks and tool server call ${command.join(" ")}.`);
+  } finally {
+    opened.store.close();
+  }
+}
+
 /** Records each answer that differs from the stored one; returns how many it recorded. */
 function storeAnswers(projectDir: string, answers: Partial<SettingValues>): number {
   const opened = openProjectStore(projectDir, { create: false });
@@ -236,6 +253,7 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
   // The wiring: the host's registrations, which create the record, then git's push hook.
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
+  tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);
 
   // The role is the host's main agent's: kept from an earlier init of this host unless --role names another.
   const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;

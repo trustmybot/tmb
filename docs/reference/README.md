@@ -18,32 +18,37 @@ Windows, in PowerShell:
 irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1 | iex
 ```
 
-The script downloads the file for your platform, checks it against the published checksums, refuses to install on a mismatch, and puts tmb in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`), the folder Claude Code also installs to. If that folder is not on your PATH, the script adds it to your shell profile (Windows: your user PATH) and says where; open a new terminal afterwards. Set `TMB_NO_MODIFY_PATH=1` to skip that and have it print the line to add instead. Run the same command again to upgrade.
+The script downloads the file for your platform, checks it against the published checksums, refuses to install on a mismatch, and puts the program in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`) under its channel's name ([Channels and updates](#channels-and-updates)), the folder Claude Code also installs to. If that folder is not on your PATH, the script adds it to your shell profile (Windows: your user PATH) and says where; open a new terminal afterwards. Set `TMB_NO_MODIFY_PATH=1` to skip that and have it print the line to add instead. Run the same command again to upgrade.
 
 ## Channels and updates
 
-An install follows one channel, picked with `TMB_CHANNEL` when you install:
+Each channel installs as a program of its own name, so channels and versions live side by side on one machine. Pick the channel with `TMB_CHANNEL`, or one exact release with `TMB_INSTALL_VERSION`, when you install:
 
-| Channel | Holds | Install |
+| Program | Follows | Install |
 |---|---|---|
-| dev (default) | A build of every merge to the base branch. | The commands above. |
-| rc | Release candidates, tagged `vX.Y.Z-rc.N`. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_CHANNEL=rc sh` |
-| stable | Releases, tagged `vX.Y.Z`. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_CHANNEL=stable sh` |
+| `tmb-dev` | dev (default): a build of every merge to the base branch. | The commands above. |
+| `tmb-rc` | rc: release candidates, tagged `vX.Y.Z-rc.N`. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_CHANNEL=rc sh` |
+| `tmb` | stable: releases, tagged `vX.Y.Z`. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_CHANNEL=stable sh` |
+| `tmb-<version>` | One rc or stable release. It never updates itself. | `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh \| TMB_INSTALL_VERSION=1.0.0 sh` |
 
-On Windows, set `$env:TMB_CHANNEL` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
+On Windows, set `$env:TMB_CHANNEL` or `$env:TMB_INSTALL_VERSION` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
 
-tmb keeps itself up to date on its channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other tmb session is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. Until then it keeps running the version it has, and with no network it simply runs that version.
+The examples on this page say `tmb`; use the name of the program you installed. A project runs the program that initialised it: its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it. A program refuses a project whose record a newer tmb has reshaped, and names the program and version that did; run that one, or a newer one, there.
+
+Before the channels had their own names, every channel installed as `tmb`. Such a `tmb` keeps following the channel it was on, and the installer points it out when it installs the channel's new name.
+
+Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. Until then it keeps running the version it has, and with no network it simply runs that version.
 
 | Command | Does |
 |---|---|
 | `tmb update` | Look for a newer build now and install it when no session is running and no task is open; otherwise keep it for the next swap and say so |
 | `tmb update --check` | Only say whether a newer build is out |
 
-Set `TMB_NO_UPDATE=1` to turn updates off. tmb keeps the kept build, the time of the last look and its session markers in `~/.local/state/tmb` (`$XDG_STATE_HOME/tmb` when that is set; Windows: `%LOCALAPPDATA%\tmb`). A tmb run from source never updates itself.
+Set `TMB_NO_UPDATE=1` to turn updates off. Each program keeps the kept build, the time of the last look and its session markers in a folder of its own name, such as `~/.local/state/tmb-dev` (`$XDG_STATE_HOME/tmb-dev` when that is set; Windows: `%LOCALAPPDATA%\tmb-dev`), so one never swaps another. A tmb run from source never updates itself.
 
 Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb init` again in any project you set up with it.
 
-`tmb --version` prints the version and the source commit it was built from. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
+`tmb --version` prints the program's name, its version, the source commit it was built from and the channel it follows. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
 ## Set up a project
 

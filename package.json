@@ -11,6 +11,7 @@
     "lint:links": "bun tests/lint/links.ts",
     "test:install": "bun tests/install/smoke.ts",
     "test:install:update": "bun tests/install/update.ts",
+    "test:install:channels": "bun tests/install/channels.ts",
     "test:agent": "bun tests/agent-run/run.ts",
     "test:chain": "bun tests/agent-chain/run.ts",
     "test:chain:feature": "bun tests/agent-chain/feature.ts",

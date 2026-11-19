@@ -72,8 +72,11 @@ describe("renderManifests", () => {
         for (const asset of ["tmb-darwin-arm64", "tmb-darwin-x64", "tmb-linux-arm64", "tmb-linux-x64"]) {
           // Homebrew wants sha256 before url inside an on_<arch> block.
           expect(cask).toContain(`sha256 "${SUMS.get(asset)}"\n      url "${c.download}/${asset}"`);
-          expect(cask).toContain(`binary "${asset}", target: "${c.program}"`);
         }
+        // The file itself takes the program's name, since a program knows itself by its file's name, not a symlink's.
+        expect(cask).toContain(`File.rename(file, "#{staged_path}/${c.program}")`);
+        expect(cask).toMatch(new RegExp(`^  binary "${c.program}"$`, "m"));
+        expect(cask).toContain(`Run \`${c.program} init\``);
         expect(cask).not.toContain("windows");
       });
 

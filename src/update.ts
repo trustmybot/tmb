@@ -1,4 +1,4 @@
-// Pushed updates: an install follows the channel its version names, looks for a newer build
+// Pushed updates: a program follows its own channel (program.ts), looks for a newer build
 // there when a session starts, keeps a verified copy next to it, and swaps it in only when
 // no tmb session is running and no task is open, so no session or task ever mixes versions.
 import { createHash } from "node:crypto";
@@ -6,9 +6,9 @@ import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, re
 import { homedir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "./engine/project.ts";
+import { type Channel, channelOf, type Program, programOf } from "./program.ts";
 
-export const CHANNELS = ["dev", "rc", "stable"] as const;
-export type Channel = (typeof CHANNELS)[number];
+export { CHANNELS, type Channel, channelOf, isCompiledEntry } from "./program.ts";
 
 const DEFAULT_RELEASES_URL = "https://github.com/trustmybot/tmb-releases";
 const DEFAULT_RELEASES_API = "https://api.github.com/repos/trustmybot/tmb-releases";
@@ -18,21 +18,6 @@ const FETCH_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const RC_TAG = /^v(\d+\.\d+\.\d+-rc\.\d+)$/;
 const IS_WINDOWS = process.platform === "win32";
-
-/**
- * Whether Bun's entry point is a compiled tmb's embedded file rather than a source file. Compiled,
- * it is /$bunfs/root/... on macOS and Linux and B:/~BUN/root/... on Windows (seen with either slash).
- */
-export function isCompiledEntry(main: string): boolean {
-  return /^(?:\/\$bunfs\/|[A-Z]:[\\/]~BUN[\\/])/i.test(main);
-}
-
-/** The channel a version follows: its stamp names it. */
-export function channelOf(version: string): Channel {
-  if (/-dev\./.test(version)) return "dev";
-  if (/-rc\./.test(version)) return "rc";
-  return "stable";
-}
 
 type Parsed = { core: number[]; pre: (number | string)[] };
 
@@ -85,17 +70,23 @@ export type UpdaterOptions = {
   releasesApi: string;
   /** False when the Human turned updates off. */
   enabled: boolean;
+  /** The program this tmb is, named by its installed file; worked out from `target` when not given. */
+  program?: Program;
 };
 
 /** The updater's settings from the environment, for the tmb that is running. */
 export function updaterOptions(version: string, compiled: boolean, env: NodeJS.ProcessEnv = process.env): UpdaterOptions {
   const home = env.HOME || env.USERPROFILE || homedir();
   const stateRoot = IS_WINDOWS ? env.LOCALAPPDATA || path.join(home, "AppData", "Local") : env.XDG_STATE_HOME || path.join(home, ".local", "state");
+  // TMB_UPDATE_FILE names the file to update in place of the running executable, for a run from source.
+  const target = env.TMB_UPDATE_FILE || (compiled ? process.execPath : null);
+  const program = programOf(target, version);
   return {
     version,
-    // TMB_UPDATE_FILE names the file to update in place of the running executable, for a run from source.
-    target: env.TMB_UPDATE_FILE || (compiled ? process.execPath : null),
-    stateDir: env.TMB_STATE_DIR || path.join(stateRoot, "tmb"),
+    target,
+    program,
+    // Each program keeps its own machine-wide state, so one never swaps another's build in.
+    stateDir: env.TMB_STATE_DIR || path.join(stateRoot, program.name),
     releasesUrl: (env.TMB_RELEASES_URL || DEFAULT_RELEASES_URL).replace(/\/+$/, ""),
     releasesApi: (env.TMB_RELEASES_API || DEFAULT_RELEASES_API).replace(/\/+$/, ""),
     enabled: env.TMB_NO_UPDATE !== "1",
@@ -135,10 +126,20 @@ async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
 }
 
 export class Updater {
-  constructor(readonly options: UpdaterOptions) {}
+  readonly program: Program;
 
+  constructor(readonly options: UpdaterOptions) {
+    this.program = options.program ?? programOf(options.target, options.version);
+  }
+
+  /** The channel this program updates from; a pinned one reports its version's, and never updates. */
   get channel(): Channel {
-    return channelOf(this.options.version);
+    return this.program.channel ?? channelOf(this.options.version);
+  }
+
+  /** True for a program pinned to one version: tmb-<version>. */
+  get pinned(): boolean {
+    return this.program.channel === null;
   }
 
   private file(name: string): string {
@@ -149,9 +150,9 @@ export class Updater {
     return this.file("sessions");
   }
 
-  /** False when this tmb cannot update itself: run from source, or updates turned off. */
+  /** False when this tmb cannot update itself: run from source, pinned to one version, or updates turned off. */
   get active(): boolean {
-    return this.options.enabled && this.options.target !== null;
+    return this.options.enabled && this.options.target !== null && !this.pinned;
   }
 
   /** The newest build on this install's channel. dev and stable are plain downloads; rc's newest tag is read from the public releases API. */

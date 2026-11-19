@@ -51,6 +51,14 @@ As built at level 8, as agreed on trustmybot/tmb#16 (pending the Human's review)
 - dev is the rolling `dev` prerelease, published on every push to the base branch. rc and stable are published only when a `vX.Y.Z-rc.N` or `vX.Y.Z` tag is pushed: rc as a prerelease, stable as the release marked latest. rc's newest release is found through the public releases API.
 - When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no task is open in any project tmb has served. A task is one agent's run and is short, so an open task holds the swap back only briefly, and a half-done task never meets a new build. `tmb update` does the same on request.
 
+Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2):
+
+- Each channel is a program of its own name: `tmb` follows stable, `tmb-rc` rc, `tmb-dev` dev, and `tmb-<version>` is one rc or stable release that never updates itself. The name is the installed file's. A `tmb` follows the channel its version names, so a dev build installed as `tmb` before the names were split keeps following dev.
+- Each program updates itself only from its own channel and keeps its machine-wide state in a folder of its own name, so one never swaps another.
+- A project is tied to the program whose init last wired it: its hooks, its tool server and git's push hook call that program, and the record's audit trail keeps every move from one program to another.
+- The record's shape is signed with the version and program that wrote it. A tmb that finds a newer shape than it knows refuses the record and names them.
+- The installers take `TMB_CHANNEL` and, to pin one release, `TMB_INSTALL_VERSION`, and install under the matching name.
+
 ## Package managers
 
 The installer scripts stay. Package managers are added beside them (trustmybot/tmb#89, Part 3).
