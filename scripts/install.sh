@@ -1,12 +1,20 @@
 #!/bin/sh
 # Installs tmb from the public release repo. No login needed.
 #   curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh | sh
-# TMB_CHANNEL picks the channel: dev (default), rc or stable. The install then follows that
-# channel: tmb updates itself from it between sessions.
+# TMB_CHANNEL picks the channel: dev (default), rc or stable. Each channel installs under its
+# own name, so they live side by side: tmb follows stable, tmb-rc rc and tmb-dev dev, and each
+# updates itself from its own channel between sessions.
+# TMB_INSTALL_VERSION=X.Y.Z (or X.Y.Z-rc.N) installs that one release as tmb-X.Y.Z instead,
+# which never updates itself.
 # TMB_NO_MODIFY_PATH=1 leaves shell profiles alone and prints the PATH line instead.
 set -eu
 
-channel="${TMB_CHANNEL:-dev}"
+# The channel installed when TMB_CHANNEL is unset. dev until a stable release exists; then
+# change it to stable, here and in install.ps1.
+default_channel=dev
+
+channel="${TMB_CHANNEL:-$default_channel}"
+pinned="${TMB_INSTALL_VERSION:-}"
 releases_url="${TMB_RELEASES_URL:-https://github.com/trustmybot/tmb-releases}"
 releases_api="${TMB_RELEASES_API:-https://api.github.com/repos/trustmybot/tmb-releases}"
 bin_dir="${HOME}/.local/bin"
@@ -33,6 +41,27 @@ asset="tmb-${os}-${arch}"
 # dev is a rolling release and stable is the release marked latest; rc's newest tag is read
 # from the public releases API, as tmb's own update check does.
 case "$channel" in
+  dev | rc | stable) ;;
+  *) fail "unknown channel ${channel}; use dev, rc or stable" ;;
+esac
+if [ -n "$pinned" ]; then
+  pinned="${pinned#v}"
+  # dev is one rolling release, so only rc and stable releases can be pinned.
+  printf '%s' "$pinned" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' ||
+    fail "cannot pin ${pinned}: name a stable X.Y.Z or rc X.Y.Z-rc.N release"
+  name="tmb-${pinned}"
+  label="release v${pinned}"
+  channel=pinned
+elif [ "$channel" = stable ]; then
+  name="tmb"
+  label="${channel} channel"
+else
+  name="tmb-${channel}"
+  label="${channel} channel"
+fi
+
+case "$channel" in
+  pinned) base_url="${releases_url}/releases/download/v${pinned}" ;;
   dev) base_url="${releases_url}/releases/download/dev" ;;
   stable) base_url="${releases_url}/releases/latest/download" ;;
   rc)
@@ -44,7 +73,6 @@ case "$channel" in
     [ -n "$rc_tag" ] || fail "the rc channel has no release yet"
     base_url="${releases_url}/releases/download/${rc_tag}"
     ;;
-  *) fail "unknown channel ${channel}; use dev, rc or stable" ;;
 esac
 
 sha256() {
@@ -60,7 +88,7 @@ sha256() {
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/tmb-install.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
-echo "Downloading ${asset} from the ${channel} channel..."
+echo "Downloading ${asset} from the ${label}..."
 curl -fsSL "${base_url}/${asset}" -o "${tmp}/${asset}" || fail "download of ${asset} failed"
 curl -fsSL "${base_url}/SHA256SUMS" -o "${tmp}/SHA256SUMS" || fail "download of SHA256SUMS failed"
 
@@ -70,10 +98,24 @@ actual="$(sha256 "${tmp}/${asset}")"
 [ "$expected" = "$actual" ] || fail "checksum mismatch for ${asset}: expected ${expected}, got ${actual}"
 
 mkdir -p "$bin_dir"
-mv "${tmp}/${asset}" "${bin_dir}/tmb"
-chmod +x "${bin_dir}/tmb"
+mv "${tmp}/${asset}" "${bin_dir}/${name}"
+chmod +x "${bin_dir}/${name}"
 
-echo "Installed $("${bin_dir}/tmb" --version) to ${bin_dir}/tmb"
+installed="$("${bin_dir}/${name}" --version)"
+if [ -n "$pinned" ] && [ "$(printf '%s' "$installed" | cut -d ' ' -f 2)" != "$pinned" ]; then
+  rm -f "${bin_dir}/${name}"
+  fail "release v${pinned} holds ${installed}, not ${pinned}"
+fi
+echo "Installed ${name} at ${bin_dir}/${name}: ${installed}"
+
+# Before the channels had their own names, every channel installed as tmb. Such a tmb keeps
+# following the channel it was on, and projects set up with it keep calling it.
+if [ "$name" != tmb ] && [ -x "${bin_dir}/tmb" ]; then
+  legacy_version="$("${bin_dir}/tmb" --version 2>/dev/null | cut -d ' ' -f 2)" || legacy_version=""
+  case "$legacy_version" in
+    *-dev.* | *-rc.*) echo "${bin_dir}/tmb is ${legacy_version}, installed before the channels had their own names; it keeps following its channel. Run ${name} init in a project to move it to ${name}." ;;
+  esac
+fi
 
 legacy_dir="${HOME}/.tmb/bin"
 if [ -e "${legacy_dir}/tmb" ]; then
@@ -115,4 +157,4 @@ case ":${PATH}:" in
     ;;
 esac
 
-echo "Run tmb init in a project, then start claude there."
+echo "Run ${name} init in a project, then start claude there."

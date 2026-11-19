@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "../src/adapters/index.ts";
-import { openProjectStore, readSettings, SettingError, type Settings, TMB_EVENT_TYPES } from "../src/engine/index.ts";
+import { openProjectStore, readSettings, SettingError, type Settings, tiedProgram, TMB_EVENT_TYPES } from "../src/engine/index.ts";
 import type { AuditEntry } from "../src/engine/store/index.ts";
 import { type Ask, runInit, runOnboard, runSetup, SetupError, type SetupFlags, type SetupOptions } from "../src/setup.ts";
 
@@ -56,13 +56,21 @@ function scripted(answers: (string | null)[]): Ask & { prompts: string[] } {
   return Object.assign(ask, { prompts });
 }
 
-type RunOptions = { adapters?: HostAdapter[]; flags?: SetupFlags; ask?: Ask | null; supportedHostIds?: string[] };
+type RunOptions = {
+  adapters?: HostAdapter[];
+  flags?: SetupFlags;
+  ask?: Ask | null;
+  supportedHostIds?: string[];
+  program?: { name: string; version: string };
+  tmbCommand?: string[];
+};
 
 function optionsOf(options: RunOptions): SetupOptions {
   const adapters = options.adapters ?? [A];
   return {
     projectDir: project,
-    tmbCommand: ["tmb"],
+    tmbCommand: options.tmbCommand ?? ["tmb"],
+    program: options.program,
     adapters,
     supportedHostIds: options.supportedHostIds ?? adapters.map((adapter) => adapter.id),
     flags: options.flags ?? {},
@@ -279,7 +287,8 @@ describe("the questions", () => {
     writeFileSync(path.join(project, "go.mod"), "");
     await setup({ flags: { base: "develop", checks: ["make check"] } });
     const recorded = auditCount();
-    expect(recorded).toBe(5);
+    // Five settings, and the program the project is tied to.
+    expect(recorded).toBe(6);
     output = [];
     const ask = scripted([]);
     await setup({ ask });
@@ -287,6 +296,31 @@ describe("the questions", () => {
     expect(output).toContain("    make check");
     expect(output).toContain("No setting changed, so nothing was recorded.");
     expect(auditCount()).toBe(recorded);
+  });
+});
+
+describe("the program the project is tied to (trustmybot/tmb#89)", () => {
+  test("is the one whose init wired it, and moves only when another program's init runs", async () => {
+    await init({ program: { name: "tmb-dev", version: "1.0.0-dev.3" }, tmbCommand: ["/bin/tmb-dev"] });
+    expect(output).toContain("This project runs tmb-dev: its hooks and tool server call /bin/tmb-dev.");
+    const opened = openProjectStore(project, { create: false });
+    if (!opened.ok) throw opened.error;
+    try {
+      expect(tiedProgram(opened.store)).toEqual({ program: "tmb-dev", version: "1.0.0-dev.3", command: ["/bin/tmb-dev"] });
+    } finally {
+      opened.store.close();
+    }
+
+    output = [];
+    const before = auditCount();
+    await init({ program: { name: "tmb-dev", version: "1.0.0-dev.4" }, tmbCommand: ["/bin/tmb-dev"] });
+    expect(output.some((line) => line.startsWith("This project runs") || line.startsWith("Moved"))).toBe(false);
+    expect(auditCount()).toBe(before);
+
+    output = [];
+    await init({ program: { name: "tmb", version: "1.0.0" }, tmbCommand: ["/bin/tmb"] });
+    expect(output).toContain("Moved this project from tmb-dev 1.0.0-dev.3 to tmb 1.0.0.");
+    expect(output).toContain("This project runs tmb: its hooks and tool server call /bin/tmb.");
   });
 });
 

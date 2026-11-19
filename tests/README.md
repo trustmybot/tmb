@@ -55,6 +55,7 @@ The Install, Agent run and Agent chain layers are plain scripts rather than `bun
 |---|---|---|
 | [tests/install/smoke.ts](install/smoke.ts) | `bun run test:install` | Install |
 | [tests/install/update.ts](install/update.ts) | `bun run test:install:update` | Install |
+| [tests/install/channels.ts](install/channels.ts) | `bun run test:install:channels` | Install |
 | [tests/agent-run/run.ts](agent-run/run.ts) | `bun run test:agent` | Agent run |
 | [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
 | [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
@@ -154,6 +155,17 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Install | [tests/install/smoke.ts](install/smoke.ts) (`bun run test:install [channel] [version]`) | The installer of each channel installs the release it should, on macOS, Linux and Windows. |
 | Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, an open task holding the update back until it closes, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
 | Integration | [tests/integration/migrate.test.ts](integration/migrate.test.ts) | `tmb migrate` copies a plugin project's issues, notes and decisions, tasks, reviews, check runs and agent runs, with their original times, from a database at plugin schema v76; leaves the plugin's file byte for byte unchanged; carries nothing of other repos or dropped features; and refuses a second run, another schema version, an unnamed repo among several and a missing database. |
+
+## Channels side by side tests
+
+trustmybot/tmb#89, Part 2: `tmb`, `tmb-rc`, `tmb-dev` and `tmb-<version>` on one machine.
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/store.test.ts](../test/store.test.ts) | A new or upgraded record is signed with the version and program that wrote its shape; an older tmb refuses a newer record and names them. |
+| Unit | [test/setup.test.ts](../test/setup.test.ts) | init ties the project to the program running it, records the tie once, and says when another program's init moves it. |
+| Integration | [tests/integration/update.test.ts](integration/update.test.ts) | A program's name says what it follows and where it keeps its state. `tmb`, `tmb-rc`, `tmb-dev` and a pinned `tmb-<version>` installed in one home each report their own channel and update only themselves from a local release repo; the pinned one never does. A project initialised with `tmb-dev` has its tool server, hooks and push hook call `tmb-dev`, until `tmb init` moves it. |
+| Install | [tests/install/channels.ts](install/channels.ts) (`bun run test:install:channels`) | The published installer puts `tmb`, `tmb-rc` and `tmb-dev` side by side in one throwaway home; each reports its own channel, looks for updates only there, keeps its own state and leaves the others' files alone. A channel with no release yet is skipped. |
 
 ## Package manager tests
 
