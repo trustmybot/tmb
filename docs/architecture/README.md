@@ -59,9 +59,24 @@ Decided by the Human on 2026-11-18.
 | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
 | Version 1 scope | What the TMB plugin does today, without the features the plugin has dropped and without anything that exists only for Claude Code outside its adapter. |
 | Review modes | Agile is the default and is built first. Truest is built last. |
-| Dashboard | Version 1 serves it as a local web page. Version 2 is a desktop program with the dashboard built in. |
+| Dashboard | Version 1 serves it as a local web page. Version 2 is a desktop program with the dashboard built in, to watch the work. |
 | License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
 | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
+
+## Versions
+
+What each version delivers. Decided by the Human on 2026-11-19. Each version is a GitHub milestone.
+
+| Version | Delivers | Holds |
+|---|---|---|
+| v1 | A complete tmb on Claude Code: what the plugin ships today, with the dashboard as a local web page. | Levels 0 to 8 and level 10 of the build order, and the fixes decided on the way. |
+| v1.x | A record that stays true when several sessions work on one project, and when work moves on the remote. | Which session made each entry, a freeze for all sessions, a check of open tasks at session start, and a syncer that brings what happened on the remote into the record. Planned. Proposed, for the Human's review: the Human asked for each, and how they are designed is bro's proposal. |
+| v2 | Mixed agents on one task, such as Claude as the planner, Codex as the reviewer and a local model as a worker. A desktop program to watch the work live. | Level 9 of the build order, and the desktop program. Planned. |
+| v3 | Undecided: managing agents from the desktop. | It would make tmb the program that starts hosts, which tmb does not do today ([HOSTS.md](HOSTS.md#what-tmb-leaves-to-the-host)). |
+
+- Level 9 can land before v1 is released. It does not hold v1 back.
+- The desktop program of v2 only watches. It reads the record, which already holds every session, agent start and stop, and gate decision, so tmb still starts no agent.
+- A pending feature of the plugin is not a version of its own. Each one is placed in a version above or left out.
 
 ## Build order
 
@@ -80,10 +95,9 @@ tmb is built in levels, from easy to hard. Each level unlocks one ability and en
 | 8. Distribution | Three channels, pushed updates, the migration tool. | An install updates itself and a plugin project's records carry over. |
 | 9. More hosts | A second host adapter, two hosts on one record, local models. | A second host reviews work on the same record. |
 | 10. Truest mode | Review of every task before its push. | A task cannot be pushed unreviewed. |
-| 11. Syncer | A check of open tasks at session start, a syncer that brings what happened on the remote into the record, which session made each entry, and a freeze for all sessions. Proposed, for the Human's review: the Human named the level, and its content is bro's proposal. | A pull request merged in the browser shows as merged in the record at the next session start. |
 
 - A level is done only when its tests pass with no manual step. The last column is one of those tests ([tests/README.md](../../tests/README.md)).
-- After level 4, tmb's own development moves onto tmb. After level 10, version 1 is complete. Level 11 comes after version 1.
+- After level 4, tmb's own development moves onto tmb. The levels are grouped into versions ([Versions](#versions)).
 - Enforcement arrives in steps: the planner is guided by its prompt alone until level 3 brings checks at close, and level 6 brings the push gate.
 - The packaging test runs at level 0, ahead of the levels that need what it tests, because a failure reopens the language decision ([DISTRIBUTION.md](DISTRIBUTION.md)).
 
