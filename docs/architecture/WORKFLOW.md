@@ -74,12 +74,28 @@ Planned, last in the build order.
 
 ```mermaid
 flowchart TD
-    A[Task's checks pass] --> B[Reviewer reviews the task's commit]
+    S[Engine cuts the task branch from the base branch] --> W[Worker changes code, or the planner writes docs]
+    W --> A[Task's checks pass; the task waits in review]
+    A --> B[Reviewer reviews the task's commit]
     B -- fail --> C[Task reopens; the worker reworks it]
     C --> A
-    B -- pass --> D[Engine pushes the task branch and opens its pull request]
+    B -- pass, or Human waiver --> R{Base branch moved?}
+    R -- no --> D[Engine pushes the task branch, opens its pull request and closes the task]
+    R -- yes --> RB[Engine rebases the task's commit]
+    RB -- conflict --> C
+    RB -- same change, checks pass --> D
+    RB -- change differs --> B
     D --> E[Human merges]
 ```
+
+- **No feature branch.** A truest task is cut from the base branch, and starting a feature branch is refused.
+- **In review.** After its checks pass, a task waits at its commit and keeps its worktree. Nothing is pushed. Only a reviewer run records the verdict, and only on that commit.
+- **The pull request is tmb's own step.** After a pass the planner asks the engine for it without being told by the Human.
+- **A waiver is the Human's.** It is given per task, with a reason, and counts as a pass on the task's current commit.
+- **Rebase before the first push only.** When the base branch moved since the task was cut, the engine rebases the reviewed commit. A conflict reopens the task. A change that differs after the rebase needs a fresh review. An open pull request is never rebased, because that would rewrite what was pushed.
+- **The same change keeps its pass.** When the rebased commit makes the same change, the checks run again and the earlier pass carries over. Proposed, for the Human's review: the alternative is a fresh review after every rebase.
+- **The push gate covers every task.** A push to the base branch is refused when it carries a commit no pass or waiver covers, as in agile. So is a push to any other branch that carries a task's commit without one. A commit that belongs to no task, pushed to another branch, goes through. Proposed, for the Human's review: the alternative refuses every uncovered commit on every branch, which also stops the Human's own branches.
+- **A task keeps the review mode it was started in.** A change of mode applies to tasks started after it.
 
 ## The gate
 
@@ -97,4 +113,4 @@ The engine, not an agent, creates branches and worktrees, runs checks, folds a t
 
 ## Carried over from the plugin
 
-The plugin's design for retry and escalation, rebasing a reviewed task, pull request comment triage and multi-repo workspaces is carried over unchanged in intent. Each gets its section here when its level starts.
+The plugin's design for retry and escalation, pull request comment triage and multi-repo workspaces is carried over unchanged in intent. Each gets its section here when its level starts.
