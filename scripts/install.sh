@@ -1,12 +1,14 @@
 #!/bin/sh
 # Installs tmb from the public release repo. No login needed.
 #   curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh | sh
-# TMB_CHANNEL picks the channel (default: dev).
+# TMB_CHANNEL picks the channel: dev (default), rc or stable. The install then follows that
+# channel: tmb updates itself from it between sessions.
 # TMB_NO_MODIFY_PATH=1 leaves shell profiles alone and prints the PATH line instead.
 set -eu
 
 channel="${TMB_CHANNEL:-dev}"
-base_url="https://github.com/trustmybot/tmb-releases/releases/download/${channel}"
+releases_url="${TMB_RELEASES_URL:-https://github.com/trustmybot/tmb-releases}"
+releases_api="${TMB_RELEASES_API:-https://api.github.com/repos/trustmybot/tmb-releases}"
 bin_dir="${HOME}/.local/bin"
 
 fail() {
@@ -27,6 +29,22 @@ case "$(uname -m)" in
 esac
 
 asset="tmb-${os}-${arch}"
+
+# dev is a rolling release and stable is the release marked latest; rc's newest tag is read
+# from the public releases API, as tmb's own update check does.
+case "$channel" in
+  dev) base_url="${releases_url}/releases/download/dev" ;;
+  stable) base_url="${releases_url}/releases/latest/download" ;;
+  rc)
+    rc_tag="$(curl -fsSL "${releases_api}/releases?per_page=100" | tr ',' '\n' |
+      sed -n 's/.*"tag_name": *"\(v[0-9]*\.[0-9]*\.[0-9]*-rc\.[0-9]*\)".*/\1/p' |
+      awk '{ split(substr($0, 2), n, /[.]|-rc[.]/); printf "%09d%09d%09d%09d %s\n", n[1], n[2], n[3], n[4], $0 }' |
+      sort | tail -n 1 | cut -d ' ' -f 2)" || fail "could not read the rc releases"
+    [ -n "$rc_tag" ] || fail "the rc channel has no release yet"
+    base_url="${releases_url}/releases/download/${rc_tag}"
+    ;;
+  *) fail "unknown channel ${channel}; use dev, rc or stable" ;;
+esac
 
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then

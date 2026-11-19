@@ -1,0 +1,142 @@
+name: release
+
+# Publishes an rc or stable release to the public trustmybot/tmb-releases repo when a
+# version tag is pushed: vX.Y.Z-rc.N is an rc (a prerelease), vX.Y.Z is stable (marked
+# latest). Nothing publishes on a merge; only a pushed tag does. Installs on the rc channel
+# find the newest rc tag through the public releases API; stable installs read the latest
+# release's VERSION asset.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tmb_version: ${{ steps.version.outputs.tmb_version }}
+      channel: ${{ steps.version.outputs.channel }}
+    steps:
+      - id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'; then
+            channel=rc
+          elif printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            channel=stable
+          else
+            echo "tag ${GITHUB_REF_NAME} is neither vX.Y.Z nor vX.Y.Z-rc.N" >&2
+            exit 1
+          fi
+          echo "tmb_version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            targets: darwin-arm64 darwin-x64
+            sign: true
+          - runner: ubuntu-latest
+            targets: linux-x64 linux-arm64 windows-x64
+            sign: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun scripts/build.ts ${{ matrix.targets }}
+        env:
+          TMB_VERSION: ${{ needs.version.outputs.tmb_version }}
+      - name: Ad-hoc sign
+        if: matrix.sign
+        run: for f in dist/tmb-darwin-*; do codesign --force --sign - "$f"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tmb-${{ matrix.runner }}
+          path: dist/tmb-*
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.TMB_RELEASES_TOKEN }}
+      RELEASES_REPO: trustmybot/tmb-releases
+      TMB_VERSION: ${{ needs.version.outputs.tmb_version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Collect assets and checksums
+        run: |
+          cp scripts/install.sh scripts/install.ps1 dist/
+          echo "$TMB_VERSION" > dist/VERSION
+          cd dist
+          for f in tmb-darwin-arm64 tmb-darwin-x64 tmb-linux-x64 tmb-linux-arm64 tmb-windows-x64.exe; do
+            test -f "$f" || { echo "missing asset $f" >&2; exit 1; }
+          done
+          sha256sum tmb-* install.sh install.ps1 VERSION > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create the release
+        run: |
+          if [ "$CHANNEL" = rc ]; then flags="--prerelease --latest=false"; else flags="--latest"; fi
+          # A release is never replaced: a second push of the same tag fails here.
+          gh release create "v${TMB_VERSION}" --repo "$RELEASES_REPO" $flags --title "tmb ${TMB_VERSION}" \
+            --notes "tmb ${TMB_VERSION} (${CHANNEL}) from trustmybot/tmb@${GITHUB_SHA}." \
+            dist/tmb-* dist/install.sh dist/install.ps1 dist/VERSION dist/SHA256SUMS
+
+  # Installs the release just published, the way a user does, on every OS. Needs no secret.
+  install-test:
+    needs: [version, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    env:
+      TMB_CHANNEL: ${{ needs.version.outputs.channel }}
+      TMB_EXPECTED_VERSION: ${{ needs.version.outputs.tmb_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install smoke (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: sh tests/install/smoke.sh "$TMB_CHANNEL" "$TMB_EXPECTED_VERSION"
+      - name: Install smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/install/smoke.ps1 -Channel $env:TMB_CHANNEL -ExpectedVersion $env:TMB_EXPECTED_VERSION
+
+  # An older install on the channel updates itself to the release just published.
+  install-update:
+    needs: [version, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: bun tests/install/update.ts "${{ needs.version.outputs.channel }}" "${{ needs.version.outputs.tmb_version }}"
+        shell: bash
