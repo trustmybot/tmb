@@ -9,6 +9,8 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 | Code graph | World model | The common name for an index of symbols and their links. |
 | Index (`tmb index`) | Scan | What building a code graph is usually called. |
 | Setup (`tmb setup`) | Onboard | The common name for a first-run step. |
+| Init (`tmb init`), planned | The first half of onboard | The word git, npm and cargo use for preparing a folder. It asks nothing. |
+| Onboard (`tmb onboard`), planned | Onboard | Kept from the plugin, for the questions about tmb's settings only. |
 | Planner | bro, as a role | Says what the role does. bro stays as the planner's name in conversation. |
 | Worker | swe | Says what the role does, for any kind of task. |
 | Reviewer | code-reviewer | Shorter. |
