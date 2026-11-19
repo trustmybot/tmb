@@ -21,6 +21,16 @@ One step per platform. After it, two commands inside a project:
 
 Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
 
+tmb is one program for the whole machine. Only the database and the host wiring are per project.
+
+Planned (trustmybot/tmb#89), decided by the Human on 2026-11-19:
+
+- **Setup splits in two.** `tmb init` prepares the project and asks nothing: the database, the host wiring, git's push hook and the code graph. `tmb onboard` sets tmb's settings, such as the base branch, the review mode and the checks. `tmb setup` is removed once both have shipped.
+- **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the planner works out the settings it recommends for that project, applies them and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked.
+- **Channels live side by side.** Each channel installs under its own name, updates only itself, and keeps its own machine-wide state. A project is run by the program that initialised it.
+- **An older tmb refuses a newer database.** It stops and says which version wrote it. That is the only refusal: a project can be moved to another channel, in either direction, whenever that channel's program can read the database.
+- **tmb's own installer and updater come first.** Install through a package manager is later (trustmybot/tmb#91).
+
 ## Channels and updates
 
 | Channel | Holds |
@@ -29,7 +39,7 @@ Removing tmb from a project (`tmb remove`) undoes exactly what init added and le
 | rc | Release candidates. |
 | stable | Releases. |
 
-Planned: release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo stays private for now. How the three channels map onto that repo is proposed, for the Human's review: stable as normal releases, rc as prereleases, dev as one rolling prerelease.
+Release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo stays private for now. On that repo, stable is a normal release, rc is a prerelease, and dev is one rolling prerelease.
 
 A compiled file is not secret: its bundled code can be read. The public repo hides the source repo's docs, issues and history, not the code.
 

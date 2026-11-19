@@ -123,8 +123,6 @@ flowchart LR
 | Before a push | Commits are about to leave the machine | git, and the host for a push an agent types |
 | After a branch moves | A merge, a fetch or a checkout moved a branch | git |
 
-The event list is proposed, for the Human's review.
-
 - An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
 - A rule answers allow or deny, and a deny always says why and what would be allowed.
 - Version 1 ships tmb's own rules only. Users cannot add rules of their own on these events.

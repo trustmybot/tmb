@@ -73,13 +73,13 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
 | Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
-| Before an rc or stable release | All of them |
+| Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
 
 No test fixes the OS, the model or the machine's setup. Each is a setting of the run, so the same test runs unchanged on another OS, with another model, or on a machine set up differently. A test that only passes with one of them names it and says why.
 
 ## Tests each level adds
 
-Each level's milestone holds one test issue with this list. A later level keeps every earlier level's tests passing.
+Each level has one test issue with this list. A later level keeps every earlier level's tests passing.
 
 | Level | Tests it adds |
 |---|---|
@@ -94,6 +94,7 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 | 8. Distribution | **Install:** an install updates itself on each channel, and never in the middle of a task. **Integration:** a plugin project's records carry over. |
 | 9. More hosts | **Integration:** one shared set of adapter tests that every host adapter must pass. **Agent chain:** a second host reviews work on the same record. |
 | 10. Truest mode | **Workflow simulation:** a task cannot be pushed unreviewed. **Agent run:** one task from request to its pull request. |
+| After level 10, in v1.x: sessions and the syncer | **Unit:** each change the session start check looks for. **Integration:** the syncer against a local remote, and with no network. **Workflow simulation:** a pull request merged outside tmb closes its feature branch and issue in the record; a freeze from one session holds in a second. **Agent chain:** a task left half done is reported at the next session's start. |
 
 ## Level 5 tests
 
