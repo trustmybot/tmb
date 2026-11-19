@@ -135,7 +135,7 @@ The event list is proposed, for the Human's review.
 | Host | Status | Tools | Roles | Events that can deny |
 |---|---|---|---|---|
 | Claude Code, command line and desktop app | First | Tool server from the project's settings | Agent files in the project | Yes, from the project's settings, inside subagents too |
-| Codex | Second, planned at level 9. Proposed, for the Human's review. | Tool server from the project's config | Agent files in the project | Yes, for commands, file writes, tmb's tools and a subagent's start, after the Human trusts the project and its hooks |
+| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from the project's config | Agent files in the project | Yes, for commands, file writes, tmb's tools and a subagent's start, after the Human trusts the project and its hooks |
 | Others | Planned | | | |
 
 The same three building blocks exist in both hosts checked so far, which is what makes one adapter shape enough.
