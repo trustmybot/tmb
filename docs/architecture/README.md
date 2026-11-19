@@ -36,6 +36,7 @@ flowchart TD
 | [TRAJECTORY.md](TRAJECTORY.md) | What is recorded, and how is work resumed from it? |
 | [CODE_GRAPH.md](CODE_GRAPH.md) | How is the code graph built and queried? |
 | [DISTRIBUTION.md](DISTRIBUTION.md) | How is tmb packaged, installed and updated? |
+| [tests/README.md](../../tests/README.md) | How is tmb tested, and which tests does each level add? |
 | [GLOSSARY.md](GLOSSARY.md) | What does each word mean, and what did the plugin call it? |
 
 ## Decided
@@ -69,8 +70,8 @@ tmb is built in levels, from easy to hard. Each level unlocks one ability and en
 | Level | Unlocks | The Human sees it when |
 |---|---|---|
 | 0. Wake up | Download, install and cold start, with the smallest setup: one session start event. | Claude Code, opened in a project, answers as bro. |
-| 1. Memory | The trajectory record and tmb's tools. | Bro records an issue and a new session picks it up. |
-| 2. Setup | Full setup with its questions, the project's database and the complete Claude Code adapter. | One command sets up a fresh project and another undoes it. |
+| 1. Memory | The trajectory record, the project's database and tmb's tools. | Bro records an issue and a new session picks it up. |
+| 2. Setup | Full setup with its questions, and the complete Claude Code adapter. | One command sets up a fresh project and another undoes it. |
 | 3. Workers | Tasks, worktrees, workers as subagents, checks at close. | Bro hands a code task to a worker and it closes only when its checks pass. |
 | 4. Agile mode | Feature branches, docs tasks written by the planner, contract tests. | A feature branch collects several tasks. |
 | 5. Code graph | Indexing, lookups, and their use in scoping a task. | Bro scopes a task from the graph, not by reading files. |
@@ -80,6 +81,7 @@ tmb is built in levels, from easy to hard. Each level unlocks one ability and en
 | 9. More hosts | A second host adapter, two hosts on one record, local models. | A second host reviews work on the same record. |
 | 10. Truest mode | Review of every task before its push. | A task cannot be pushed unreviewed. |
 
+- A level is done only when its tests pass with no manual step. The last column is one of those tests ([tests/README.md](../../tests/README.md)).
 - After level 4, tmb's own development moves onto tmb. After level 10, version 1 is complete.
 - Enforcement arrives in steps: the planner is guided by its prompt alone until level 3 brings checks at close, and level 6 brings the push gate.
 - The packaging test runs at level 0, ahead of the levels that need what it tests, because a failure reopens the language decision ([DISTRIBUTION.md](DISTRIBUTION.md)).
