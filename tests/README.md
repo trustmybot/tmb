@@ -23,7 +23,21 @@ tmb keeps the plugin's layers, ordered from cheap to costly. They are named here
 - A lower layer passing says nothing about the layer above it. Each layer catches what the ones below cannot see.
 - Tests run from cheap to costly, and a failure stops the run.
 - The layers from Install to Workflow simulation use no model and cost nothing. An agent run and an agent chain use the host under a subscription login, so they cost time and usage.
-- The prompts of an agent run are written by the Human, in the words a real user would type. An agent never edits one to make a test pass.
+- The prompts of an agent run are written by the Human, in the words a real user would type ([Prompts](#prompts)). An agent never edits one to make a test pass.
+
+## Prompts
+
+tmb is a product for users, so an agent run tests what a user would really type, not what the engine expects to hear.
+
+- **Write as a user would.** Short and loose. Name the goal, not tmb's tools, records or steps.
+- **Do not ask for a step tmb should take by itself.** If bro should record a goal without being told, a prompt that says "record this" tests nothing.
+- **Be specific only where the test needs it.** A detail belongs in a prompt only when the check has to find it afterwards.
+- **End with "Don't ask questions."** on its own line. No one is there to answer, so bro must apply its defaults and go on.
+
+| A user would type | Reads like a spec |
+|---|---|
+| `@bro we need a dark mode toggle` | `@bro record an issue titled "Dark mode toggle"` |
+| `@bro where were we?` | `@bro what open work is in the record?` |
 
 ## When each layer runs
 
