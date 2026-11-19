@@ -47,7 +47,7 @@ tmb is a harness that is not built into the agent. The host runs the agent's loo
 | See an agent's reasoning or steer the model in the middle of a turn | No design depends on it. |
 
 - **Prompts guide, the gate holds.** When a rule matters, it is a refusal or a tool, with a prompt only to explain it.
-- **tmb runs when something calls it.** A session, a hook, git, the command line or the dashboard. Background work is done by a tmb program that is already open for that project, and stops when it closes. Proposed, for the Human's review.
+- **tmb runs when something calls it.** A session, a hook, git, the command line or the dashboard. There is no background program that could be left running. Work that has to happen now and then, such as the sync with the remote, is triggered by a write to the record, at most once every few minutes. Planned (trustmybot/tmb#70).
 
 ## Docs in this folder
 
