@@ -2,7 +2,7 @@
 
 tmb is a harness for coding agents: a standalone engine that adds a record, a code graph and an enforced workflow to the agent program you already use. Your agent program still runs the agents: it plans the work and starts the workers and the reviewer. tmb records every step and lets nothing be pushed until it has passed the gate.
 
-Status: design stage. No code yet. The design lives in [docs/architecture](docs/architecture/README.md).
+Status: early. Install it and set up a project with [docs/reference](docs/reference/README.md); the design lives in [docs/architecture](docs/architecture/README.md).
 
 ## Three pillars
 
