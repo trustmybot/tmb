@@ -1,0 +1,79 @@
+name: package managers
+
+# Fills in the Homebrew cask, the Scoop manifest and the winget manifests of one release from
+# its SHA256SUMS, and pushes the cask to the tap and the manifest to the bucket
+# (trustmybot/tmb#89, Part 3). Called by the dev, rc and stable release workflows once a
+# release is published; can be run by hand for a version already published.
+#
+# Skips cleanly, and never fails a release, when TMB_PACKAGING_TOKEN is not set or the tap or
+# bucket repo does not exist yet. winget is never submitted from here: its manifests are kept
+# as a workflow artifact for a submission to microsoft/winget-pkgs.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    secrets:
+      TMB_PACKAGING_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: A published version, such as 1.0.0, 1.0.0-rc.1 or 1.0.0-dev.3.gh90
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    # One run at a time per channel. A queued run is replaced only by a newer one on its own
+    # channel; runs of different channels that push at once are rebased by the publish step.
+    concurrency:
+      group: package-managers-${{ contains(inputs.version, '-dev.') && 'dev' || contains(inputs.version, '-rc.') && 'rc' || 'stable' }}
+      cancel-in-progress: false
+    env:
+      TMB_VERSION: ${{ inputs.version }}
+      RELEASES_URL: https://github.com/trustmybot/tmb-releases
+      HOMEBREW_TAP: trustmybot/homebrew-tmb
+      SCOOP_BUCKET: trustmybot/scoop-tmb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      # A release that is no longer its channel's newest (a later dev build, a fix on an older
+      # stable line) must not overwrite the manifests of a newer one.
+      - id: current
+        run: echo "current=$(bun scripts/package-managers.ts current "$TMB_VERSION")" >> "$GITHUB_OUTPUT"
+      - name: Not the newest on its channel
+        if: steps.current.outputs.current != 'yes'
+        run: echo "::notice::${TMB_VERSION} is no longer the newest build on its channel; manifests left as they are"
+      - name: Render the manifests
+        if: steps.current.outputs.current == 'yes'
+        run: |
+          case "$TMB_VERSION" in
+            *-dev.*) tag=dev ;;
+            *) tag="v${TMB_VERSION}" ;;
+          esac
+          curl -fsSL "${RELEASES_URL}/releases/download/${tag}/SHA256SUMS" -o SHA256SUMS
+          bun scripts/package-managers.ts render "$TMB_VERSION" SHA256SUMS packaging-out
+      - uses: actions/upload-artifact@v4
+        if: steps.current.outputs.current == 'yes'
+        with:
+          name: package-manifests-${{ inputs.version }}
+          path: packaging-out
+          if-no-files-found: error
+      - name: Update the Homebrew tap and the Scoop bucket
+        if: steps.current.outputs.current == 'yes'
+        env:
+          TMB_PACKAGING_TOKEN: ${{ secrets.TMB_PACKAGING_TOKEN }}
+          TMB_PACKAGING_MESSAGE: "tmb ${{ inputs.version }}"
+        run: |
+          bun scripts/package-managers.ts publish "$HOMEBREW_TAP" packaging-out/homebrew
+          bun scripts/package-managers.ts publish "$SCOOP_BUCKET" packaging-out/scoop

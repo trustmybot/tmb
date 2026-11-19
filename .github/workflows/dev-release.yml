@@ -135,3 +135,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun tests/install/update.ts dev "${{ needs.version.outputs.tmb_version }}"
         shell: bash
+
+  # Fills in the Homebrew cask, the Scoop manifest and the winget manifests from this release.
+  # Skips cleanly while the tap, the bucket or their token do not exist.
+  package-managers:
+    needs: [version, publish]
+    uses: ./.github/workflows/package-managers.yml
+    with:
+      version: ${{ needs.version.outputs.tmb_version }}
+    secrets:
+      TMB_PACKAGING_TOKEN: ${{ secrets.TMB_PACKAGING_TOKEN }}

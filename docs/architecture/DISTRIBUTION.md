@@ -39,6 +39,20 @@ As built at level 8, as agreed on trustmybot/tmb#16 (pending the Human's review)
 - dev is the rolling `dev` prerelease, published on every push to the base branch. rc and stable are published only when a `vX.Y.Z-rc.N` or `vX.Y.Z` tag is pushed: rc as a prerelease, stable as the release marked latest. rc's newest release is found through the public releases API.
 - When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no task is open in any project tmb has served. A task is one agent's run and is short, so an open task holds the swap back only briefly, and a half-done task never meets a new build. `tmb update` does the same on request. Planned: the build on dev still swaps while a task is open.
 
+## Package managers
+
+The installer scripts stay. Package managers are added beside them (trustmybot/tmb#89, Part 3).
+
+| Where | Route | Channels |
+|---|---|---|
+| macOS and Linux | tmb's own Homebrew tap, as a cask | `tmb`, `tmb@rc` and `tmb@dev`, installing `tmb`, `tmb-rc` and `tmb-dev` |
+| Windows | tmb's own Scoop bucket, then winget's community list | Scoop: `tmb`, `tmb-rc` and `tmb-dev`. winget: one package per channel. |
+| Linux without Homebrew | The installer script | |
+
+- **Who updates.** tmb keeps its own updater on every route. The cask says so with `auto_updates`, and the winget package refuses winget's own upgrade, so the package manager leaves upgrades to tmb.
+- **How a manifest is filled.** Every manifest is a template in the source repo. When a release is published, the release workflow fills in its version and the checksums from its `SHA256SUMS`, and pushes the cask to the tap and the Scoop manifest to the bucket. A release that is no longer the newest on its channel leaves them as they are. The winget manifests are kept with the workflow run, for a submission to winget's list.
+- **Until the tap and the bucket exist.** The step skips, and the release still succeeds. Planned: the Human creates the tap, the bucket and their token, and submits to winget.
+
 A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
 
 ## Offline

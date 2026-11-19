@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+PackageIdentifier: {{WINGET_ID}}
+PackageVersion: {{VERSION}}
+InstallerType: portable
+Commands:
+  - {{PROGRAM}}
+# tmb updates itself from its channel between sessions, so winget leaves upgrades to it.
+UpgradeBehavior: deny
+Installers:
+  - Architecture: x64
+    InstallerUrl: {{DOWNLOAD}}/tmb-windows-x64.exe
+    InstallerSha256: {{SHA256_WINDOWS_X64_UPPER}}
+ManifestType: installer
+ManifestVersion: 1.10.0
