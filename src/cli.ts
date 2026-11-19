@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
 import { HOST_ADAPTERS, hostAdapter } from "./adapters/index.ts";
-import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
+import { CONFIG_USAGE, INDEX_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runIndexCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { projectRootOf } from "./engine/project.ts";
@@ -19,6 +19,7 @@ const USAGE = `Usage:
   tmb remove                Undo what setup added; the record is kept
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
+${INDEX_USAGE}
   tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one
@@ -157,6 +158,8 @@ async function main(argv: string[]): Promise<number> {
       return runSetupCommand(rest);
     case "config":
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
+    case "index":
+      return runIndexCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
       for (const line of removePushGate(process.cwd())) console.log(line);

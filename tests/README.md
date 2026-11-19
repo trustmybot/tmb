@@ -74,6 +74,14 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 | 9. More hosts | **Integration:** one shared set of adapter tests that every host adapter must pass. **Agent chain:** a second host reviews work on the same record. |
 | 10. Truest mode | **Workflow simulation:** a task cannot be pushed unreviewed. **Agent run:** one task from request to its pull request. |
 
+## Level 5 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/graph.test.ts](../test/graph.test.ts) | Each language is parsed and looked up from the base branch commit, never the working folder; a reference links only on proof; a concept whose code is gone is marked broken and kept; a task's commit is laid on top for its reads and dropped once it closes; misses are recorded. |
+| Integration | [tests/integration/code-graph.test.ts](integration/code-graph.test.ts) | Through `tmb index`, `tmb graph` and the tool server, the graph is current after a change lands on the base branch, with no index run. |
+| Agent run | [tests/agent-run/scope.sh](agent-run/scope.sh) (`bun run test:scope`) | Asked to change the loyalty discount, bro looks the code up in the code graph before it starts the task, and the task's files hold the file that defines the discount. |
+
 ## Level 4 tests
 
 | Layer | Test | What it proves |
