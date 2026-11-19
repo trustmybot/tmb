@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { CHANNELS, programName } from "../../src/program.ts";
+import { type Channel, CHANNELS, programName } from "../../src/program.ts";
 import { IS_WINDOWS, run, runToFile, tempDir, withEnv } from "../lib/driver.ts";
 
 const releasesUrl = "https://github.com/trustmybot/tmb-releases";
@@ -48,7 +48,7 @@ async function channels(): Promise<void> {
     return;
   }
 
-  const installed: string[] = [];
+  const installed: Channel[] = [];
   for (const channel of CHANNELS) {
     const name = programName(channel);
     const log = path.join(work, `install-${channel}.log`);
@@ -88,7 +88,7 @@ async function channels(): Promise<void> {
     if (others.every((file, i) => sha(file) === before[i])) pass(`${name} left the other programs alone`);
     else fail(`${name} changed another program's file`);
   }
-  const expected = installed.map(programName).sort();
+  const expected = installed.map((channel) => programName(channel)).sort();
   const states = existsSync(stateRoot) ? readdirSync(stateRoot).sort() : [];
   if (JSON.stringify(states) === JSON.stringify(expected)) pass(`each program keeps its own state: ${states.join(", ")}`);
   else fail(`each program keeps its own state: expected ${expected.join(", ")}, found ${states.join(", ")}`);
