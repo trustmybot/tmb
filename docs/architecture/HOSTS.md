@@ -72,11 +72,11 @@ All rules stay in the engine. An adapter that grows a rule is a defect.
 
 ## Cold start
 
-How a plain host agent becomes the planner. The agent does not work this out itself: tmb tells it at the start of every session, through what setup wired once.
+How a plain host agent becomes the planner. The agent does not work this out itself: tmb tells it at the start of every session, through what `tmb init` wired once.
 
 ```mermaid
 flowchart TD
-    S[Once: the Human runs tmb setup] --> W[The adapter writes the tool registration, the role files and the event wiring into the project]
+    S[Once: the Human runs tmb init] --> W[The adapter writes the tool registration, the role files and the event wiring into the project]
     W --> O[The Human opens the host in the project]
     O --> SS[The host raises its session start event]
     SS --> E[The engine answers: you are the planner, with the rules and the open work from the record]

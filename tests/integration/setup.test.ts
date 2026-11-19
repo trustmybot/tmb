@@ -128,10 +128,10 @@ describe("tmb setup", () => {
 });
 
 describe("tmb config", () => {
-  test("in a project with no record, says setup has not run and exits 1", () => {
+  test("in a project with no record, says tmb init has not run and exits 1", () => {
     const project = newBunProject();
     const result = run(["config"], project);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("setup has not run");
+    expect(result.stderr).toContain("tmb init has not run");
   });
 });

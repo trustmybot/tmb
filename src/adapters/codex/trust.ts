@@ -38,7 +38,7 @@ export function pendingSteps(projectDir: string): string[] {
     steps.push("Trust this project in Codex: start codex here and accept its prompt to trust the folder. Codex reads .codex/ only in a project you trust.");
   }
   steps.push(
-    "Review and trust tmb's hooks: run /hooks in Codex. Codex runs a project hook only after you trust it, and asks again whenever tmb setup changes one.",
+    "Review and trust tmb's hooks: run /hooks in Codex. Codex runs a project hook only after you trust it, and asks again whenever tmb init changes one.",
   );
   return steps;
 }

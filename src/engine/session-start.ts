@@ -5,15 +5,18 @@ import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
 import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
 import { featureBriefOf, reviewLine } from "./handlers/reviews.ts";
+import { detectedSettings, emptySettings } from "./handlers/settings.ts";
 import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
+import { readSettings } from "./settings.ts";
 import { type Store, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
 export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
+export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
 const PROJECT_MAP_DEPTH = 2;
@@ -93,6 +96,33 @@ function projectMapSection(projectDir: string): string {
   }
 }
 
+const REVIEW_MODE_MEANING: Record<string, string> = { agile: "one review per feature branch", truest: "a review of every task before its push" };
+const SETTING_LABELS = { base_branch: "base branch", review_mode: "review mode", checks: "checks" } as const;
+
+/**
+ * When the project's settings are empty, as `tmb init` leaves them, the planner onboards the
+ * project itself: it applies the settings it recommends and shows them. Empty when all are set.
+ */
+function emptySettingsSection(store: Store, projectDir: string, unattended: boolean): string {
+  const empty = emptySettings(readSettings(store));
+  if (empty.length === 0) return "";
+  const detected = detectedSettings(projectDir);
+  const checks = detected.checks.length === 0 ? "none found" : detected.checks.map((check) => `\`${oneLineText(check)}\``).join(", ");
+  const found = [
+    `base branch: ${detected.base_branch === null ? "none found, as this is not a git work tree" : `\`${oneLineText(detected.base_branch)}\``}`,
+    `checks: ${checks}`,
+    `review modes: ${detected.review_modes.map((mode) => `${mode} (${REVIEW_MODE_MEANING[mode]})`).join(" or ")}`,
+  ];
+  const after = unattended
+    ? "Name each value you applied in your answer."
+    : "Then show the Human what you applied, and remind them that `tmb onboard` can be run again at any time to change the settings, and that you can change a value when they ask.";
+  return (
+    `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ` +
+    "Before other work, work out the settings you recommend for this project, reading what you need of it, and apply them with settings_set. " +
+    `${after}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`
+  );
+}
+
 function withRole(section: string): string {
   return `${plannerRole.trimEnd()}\n\n${section}\n`;
 }
@@ -155,18 +185,18 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
  * instruction for it. Nothing about the mode is stored in the project.
  */
 export function sessionStartContext(projectDir: string, unattended: boolean, host?: string): string {
-  const context = reviewsHere(projectDir, host) ? reviewerContext(projectDir, host!) : attendedContext(projectDir);
+  const context = reviewsHere(projectDir, host) ? reviewerContext(projectDir, host!) : plannerContext(projectDir, unattended);
   return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
 }
 
 /** Never throws: a missing record gives the role alone, a bad one the role and a line naming the problem. */
-function attendedContext(projectDir: string): string {
+function plannerContext(projectDir: string, unattended: boolean): string {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     return opened.error.failure === "missing" ? plannerRole : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
   }
   try {
-    return withRole(`${openWork(opened.store)}${projectMapSection(projectDir)}`);
+    return withRole(`${openWork(opened.store)}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir)}`);
   } catch (error) {
     return withRole(`tmb could not read the record: ${oneLine(error)}`);
   } finally {

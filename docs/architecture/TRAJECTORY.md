@@ -27,11 +27,11 @@ The record of the work: what was asked, what was decided, what each agent did an
 
 ## Where it lives
 
-One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one. The engine creates it at setup, and is the only program that migrates it.
+One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one. The engine creates it at `tmb init`, and is the only program that migrates it.
 
 | State | Gate | Other commands |
 |---|---|---|
-| No database | Allows: tmb stays out of projects it was never set up in | Offer setup |
+| No database | Allows: tmb stays out of projects it was never set up in | Offer `tmb init` |
 | Readable | Decides normally | Run normally |
 | Unreadable, or made by a newer tmb | Denies, naming the cause | Only the health check and repair run |
 

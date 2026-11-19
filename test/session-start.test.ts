@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  EMPTY_SETTINGS_HEADING,
   handleEvent,
   OPEN_WORK_HEADING,
   OPEN_WORK_MAX,
@@ -11,6 +12,7 @@ import {
   plannerRole,
   projectDbPath,
   UNATTENDED_INSTRUCTION,
+  writeSetting,
 } from "../src/engine/index.ts";
 import type { Store } from "../src/engine/store/index.ts";
 
@@ -118,6 +120,15 @@ describe("session start", () => {
   });
 });
 
+const HUMAN = { kind: "human" } as const;
+
+/** The project settings onboarding fills, so a session start has none to ask for. */
+function onboarded(store: Store): void {
+  writeSetting(store, HUMAN, "base_branch", "main");
+  writeSetting(store, HUMAN, "review_mode", "agile");
+  writeSetting(store, HUMAN, "checks", ["bun test"]);
+}
+
 describe("unattended mode", () => {
   function contextWith(unattended: boolean): string {
     return handleEvent({ type: "session-start", projectDir: project, unattended }).context;
@@ -125,6 +136,7 @@ describe("unattended mode", () => {
 
   test("when on, the answer is the attended one followed by the unattended instruction", () => {
     withStore((store) => {
+      onboarded(store);
       store.createIssue({ kind: "human" }, { title: "Open issue" });
     });
     const attended = contextWith(false);
@@ -141,7 +153,44 @@ describe("unattended mode", () => {
   });
 
   test("when off, the answer is the role and the open work alone", () => {
-    withStore(() => {});
+    withStore(onboarded);
     expect(contextWith(false)).toBe(`${plannerRole.trimEnd()}\n\n${OPEN_WORK_HEADING}\n\nNo open issues.\n`);
+  });
+});
+
+describe("empty settings", () => {
+  function contextWith(unattended: boolean): string {
+    return handleEvent({ type: "session-start", projectDir: project, unattended }).context;
+  }
+
+  test("tell the planner to apply the settings it recommends, show them and remind the Human of tmb onboard", () => {
+    writeFileSync(path.join(project, "go.mod"), "module x\n");
+    withStore(() => {});
+    const text = contextWith(false);
+    expect(text).toContain(`${EMPTY_SETTINGS_HEADING}\n\nNot set yet: base branch, review mode, checks.`);
+    expect(text).toContain("apply them with settings_set");
+    expect(text).toContain("remind them that `tmb onboard` can be run again at any time");
+    expect(text).toContain("you can change a value when they ask");
+    expect(text).toContain("- checks: `go test ./...`");
+    expect(text).toContain("- review modes: agile (one review per feature branch) or truest (a review of every task before its push)");
+    expect(text.indexOf(OPEN_WORK_HEADING)).toBeLessThan(text.indexOf(EMPTY_SETTINGS_HEADING));
+  });
+
+  test("name only the settings still empty", () => {
+    withStore((store) => writeSetting(store, HUMAN, "base_branch", "main"));
+    expect(contextWith(false)).toContain("Not set yet: review mode, checks.");
+  });
+
+  test("in an unattended run, are applied and named, with no one to remind", () => {
+    withStore(() => {});
+    const text = contextWith(true);
+    expect(text).toContain("apply them with settings_set");
+    expect(text).toContain("Name each value you applied in your answer.");
+    expect(text).not.toContain("tmb onboard");
+  });
+
+  test("are not mentioned once set", () => {
+    withStore(onboarded);
+    expect(contextWith(false)).not.toContain(EMPTY_SETTINGS_HEADING);
   });
 });

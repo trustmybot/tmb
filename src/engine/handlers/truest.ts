@@ -439,7 +439,7 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   requireRole(actor, "task_pr", ["planner"]);
   let task = requireInReview(store, given.id, "its pull request does not open");
   const baseBranch = readSettings(store).base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so setup has not run here; run `tmb setup` in the project first");
+  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so tmb init has not run here; run `tmb init` in the project first");
   if (!worktreeReady({ ...task, state: OPEN }) || task.branch === null) {
     throw new HandlerError("refused", `task ${task.id}'s worktree ${task.worktree ?? "(none)"} is missing, so tmb cannot bring it onto the base branch`);
   }
