@@ -8,7 +8,11 @@
 # $env:TMB_NO_MODIFY_PATH = '1' leaves the user PATH alone and prints the line instead.
 $ErrorActionPreference = 'Stop'
 
-$channel = if ($env:TMB_CHANNEL) { $env:TMB_CHANNEL } else { 'dev' }
+# The channel installed when TMB_CHANNEL is unset. dev until a stable release exists; then
+# change it to stable, here and in install.sh.
+$defaultChannel = 'dev'
+
+$channel = if ($env:TMB_CHANNEL) { $env:TMB_CHANNEL } else { $defaultChannel }
 $pinned = if ($env:TMB_INSTALL_VERSION) { $env:TMB_INSTALL_VERSION.TrimStart('v') } else { '' }
 if ($channel -notin @('dev', 'rc', 'stable')) { throw "unknown channel $channel; use dev, rc or stable" }
 if ($pinned) {

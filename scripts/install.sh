@@ -9,7 +9,11 @@
 # TMB_NO_MODIFY_PATH=1 leaves shell profiles alone and prints the PATH line instead.
 set -eu
 
-channel="${TMB_CHANNEL:-dev}"
+# The channel installed when TMB_CHANNEL is unset. dev until a stable release exists; then
+# change it to stable, here and in install.ps1.
+default_channel=dev
+
+channel="${TMB_CHANNEL:-$default_channel}"
 pinned="${TMB_INSTALL_VERSION:-}"
 releases_url="${TMB_RELEASES_URL:-https://github.com/trustmybot/tmb-releases}"
 releases_api="${TMB_RELEASES_API:-https://api.github.com/repos/trustmybot/tmb-releases}"
