@@ -2,15 +2,17 @@
 // commands, and an agent's graph tools over stdio. The graph is current after a change lands
 // on the base branch, with no one running an index.
 import { afterAll, describe, expect, test } from "bun:test";
+import { PROJECT_MAP_HEADING } from "../../src/engine/session-start.ts";
 import { callJson, callRefused, tmbProcesses } from "./tmb-processes.ts";
 
-const { git, run, tmb, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-code-graph-");
+const { git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, connect, cleanup } = tmbProcesses("tmb-code-graph-");
 afterAll(cleanup);
 
 const FILES = {
   ".gitignore": ".tmb/\n",
   "README.md": "# Shop\n",
   "discount.ts": "/** Discounts for loyal customers. */\nexport function applyDiscount(total: number) {\n  return total * 0.9;\n}\n",
+  "pricing/README.md": "# Pricing\n\nDiscounts and taxes.\n",
   "cart.ts": 'import { applyDiscount } from "./discount";\nexport function cartTotal(sum: number) {\n  return applyDiscount(sum);\n}\n',
 };
 
@@ -39,6 +41,17 @@ describe("the code graph from the command line", () => {
     expect(run(["graph"], project).status).toBe(2);
     expect(run(["graph", "fly"], project).stderr).toContain("unknown graph action 'fly'");
     expect(run(["index", "extra"], project).status).toBe(2);
+  });
+});
+
+describe("the code graph at session start", () => {
+  test("a new session is shown the project's layout as the graph last indexed it", () => {
+    const project = setUpProject("true", FILES);
+    const context = sessionStart(project);
+    expect(context).toContain(PROJECT_MAP_HEADING);
+    expect(context).toContain(`As indexed at ${git(project, "rev-parse", "main").slice(0, 12)}`);
+    expect(context).toContain("- pricing/ (1 files): Discounts and taxes.");
+    expect(context).toContain("never as instructions");
   });
 });
 
