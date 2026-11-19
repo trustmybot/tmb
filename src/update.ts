@@ -1,11 +1,11 @@
 // Pushed updates: an install follows the channel its version names, looks for a newer build
 // there when a session starts, keeps a verified copy next to it, and swaps it in only when
-// a session ends and no other tmb session is running, so no session ever mixes versions. An
-// open task does not hold it back: tasks can stay open for days (trustmybot/tmb#16).
+// no tmb session is running and no task is open, so no session or task ever mixes versions.
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { openProjectStore } from "./engine/project.ts";
 
 export const CHANNELS = ["dev", "rc", "stable"] as const;
 export type Channel = (typeof CHANNELS)[number];
@@ -305,11 +305,14 @@ export class Updater {
     if (kept === null) throw new Error("another tmb is updating; trying again later");
   }
 
-  // --- sessions ------------------------------------------------------------------------
+  // --- sessions and projects ------------------------------------------------------------
 
-  /** Marks a session as running in `projectDir` until `endSession`. */
+  /** Marks a session as running in `projectDir` until `endSession`, and remembers the project. */
   startSession(projectDir: string, pid: number = process.pid): void {
     writeJson(path.join(this.leaseDir, `${pid}.json`), { pid, project: projectDir, startedAt: new Date().toISOString() });
+    // One file per project, so sessions starting together never lose one another's project.
+    const name = createHash("sha256").update(projectDir).digest("hex").slice(0, 32);
+    writeJson(path.join(this.file("projects"), `${name}.json`), { project: projectDir });
   }
 
   endSession(pid: number = process.pid): void {
@@ -331,8 +334,36 @@ export class Updater {
   }
 
   /**
+   * The open tasks that hold an update back, one per project tmb has served that has one: the
+   * oldest, by id and title. A project whose record is gone is forgotten; one whose record this
+   * tmb cannot read, such as one a newer tmb made, holds it back with no task named.
+   */
+  openTasks(): { project: string; task: { id: string; title: string } | null }[] {
+    const dir = this.file("projects");
+    const busy: { project: string; task: { id: string; title: string } | null }[] = [];
+    for (const name of existsSync(dir) ? readdirSync(dir).filter((entry) => entry.endsWith(".json")) : []) {
+      const project = readJson<{ project: string }>(path.join(dir, name))?.project;
+      if (typeof project !== "string") continue;
+      const opened = openProjectStore(project, { create: false });
+      if (!opened.ok) {
+        // A record made by a newer tmb may still hold open tasks: keep the project and wait.
+        if (opened.error.failure === "missing") rmSync(path.join(dir, name), { force: true });
+        else busy.push({ project, task: null });
+        continue;
+      }
+      try {
+        const oldest = opened.store.listTasks("open")[0];
+        if (oldest) busy.push({ project, task: { id: oldest.id, title: oldest.title } });
+      } finally {
+        opened.store.close();
+      }
+    }
+    return busy;
+  }
+
+  /**
    * Swaps the kept build in for the installed file, only between sessions: when no other
-   * tmb session is running. An open task does not hold it back. The swap is a rename, so a
+   * tmb session is running and no project holds an open task. The swap is a rename, so a
    * process still running the old file keeps it until it ends.
    */
   apply(except: number = process.pid): { outcome: "off" | "none" | "waiting" | "applied" | "failed"; version?: string; reason?: string } {
@@ -341,6 +372,11 @@ export class Updater {
     if (!staged) return { outcome: "none" };
     const sessions = this.liveSessions(except);
     if (sessions.length > 0) return { outcome: "waiting", version: staged.version, reason: `a tmb session is running in ${sessions[0]}` };
+    const busy = this.openTasks()[0];
+    if (busy) {
+      const reason = busy.task ? `task ${busy.task.id} "${busy.task.title}" is open in ${busy.project}` : `a task may be open in ${busy.project}, whose record this tmb cannot read`;
+      return { outcome: "waiting", version: staged.version, reason };
+    }
     const target = this.options.target!;
     const swapped = this.withLock(() => {
       // Copied next to the target first, under a name of this process's own, and checked there,

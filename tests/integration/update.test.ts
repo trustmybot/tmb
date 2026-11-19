@@ -88,12 +88,12 @@ function releaseEnv(): Record<string, string> {
 
 describe("an install updates itself", () => {
   for (const [channel, { old, next }] of Object.entries(CHANNELS)) {
-    test(`on the ${channel} channel, between sessions, never while one runs`, async () => {
+    test(`on the ${channel} channel, between sessions and never with a task open`, async () => {
       const scenario = install(old, releaseEnv());
       {
         const steps: string[] = [];
         await updatesItself(scenario, next, (line) => steps.push(line));
-        expect(steps).toHaveLength(6);
+        expect(steps).toHaveLength(7);
         expect(installedVersion(scenario)).toBe(next);
       }
     }, 120_000);
@@ -146,7 +146,7 @@ describe("tmb update", () => {
     expect(reinstalled.apply()).toEqual({ outcome: "none" });
   }, 60_000);
 
-  test("with no session running, applies at once", async () => {
+  test("with no task open and no session running, applies at once", async () => {
     const scenario = install(CHANNELS.stable.old, releaseEnv());
     const updated = await runUpdate(scenario);
     expect(updated).toMatchObject({ status: 0 });

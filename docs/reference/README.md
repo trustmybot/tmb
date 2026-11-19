@@ -32,11 +32,11 @@ An install follows one channel, picked with `TMB_CHANNEL` when you install:
 
 On Windows, set `$env:TMB_CHANNEL` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
 
-tmb keeps itself up to date on its channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends and no other tmb session is running, so no session ever runs on two versions. An open task does not hold it back, since a task can stay open for days; a build that changes the record's layout upgrades it at the next start. Until then it keeps running the version it has, and with no network it simply runs that version.
+tmb keeps itself up to date on its channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other tmb session is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. Until then it keeps running the version it has, and with no network it simply runs that version.
 
 | Command | Does |
 |---|---|
-| `tmb update` | Look for a newer build now and install it when no tmb session is running; otherwise keep it for the next swap and say so |
+| `tmb update` | Look for a newer build now and install it when no session is running and no task is open; otherwise keep it for the next swap and say so |
 | `tmb update --check` | Only say whether a newer build is out |
 
 Set `TMB_NO_UPDATE=1` to turn updates off. tmb keeps the kept build, the time of the last look and its session markers in `~/.local/state/tmb` (`$XDG_STATE_HOME/tmb` when that is set; Windows: `%LOCALAPPDATA%\tmb`). A tmb run from source never updates itself.
@@ -129,7 +129,7 @@ A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can b
 tmb migrate
 ```
 
-tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into this project's new record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working.
+tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into this project's new record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
 
 The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. Run `tmb setup` afterwards if you have not.
 
