@@ -4,7 +4,7 @@ How work on this repo is done.
 
 ## Branches
 
-- `dev` is the working branch and the default. Every change reaches it through a pull request.
+- `dev` is the base branch and the default. Every change reaches it through a pull request.
 - `main` holds releases only.
 - Release tags start with `v`.
 
