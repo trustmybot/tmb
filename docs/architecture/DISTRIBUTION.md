@@ -23,7 +23,7 @@ Removing tmb from a project undoes exactly what setup added and leaves the Human
 
 | Channel | Holds |
 |---|---|
-| dev | Every merge to the working branch. |
+| dev | Every merge to the base branch. |
 | rc | Release candidates. |
 | stable | Releases. |
 
