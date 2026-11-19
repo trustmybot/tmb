@@ -45,6 +45,24 @@ An agent run has no one to answer a question, so it runs tmb in unattended mode 
 
 Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. Planned, for the first level that depends on a question.
 
+## Test drivers
+
+Every test is TypeScript run by bun, the same on every OS. Only the installers ([scripts/install.sh](../scripts/install.sh), [scripts/install.ps1](../scripts/install.ps1)) stay shell, because they run before tmb or bun is on the machine.
+
+The Install, Agent run and Agent chain layers are plain scripts rather than `bun test` files: each prints `PASS` or `FAIL` lines and exits 0 when it passes, 1 when it fails and 2 when it cannot run (no claude, tmb, git or bun). They share one module, [tests/lib/driver.ts](lib/driver.ts): temp folders removed on exit, a fixture copied into a fresh git project, `claude -p` in unattended mode with its answer saved, `tmb ... --json` read back, and git checks.
+
+| Driver | Script | Layer |
+|---|---|---|
+| [tests/install/smoke.ts](install/smoke.ts) | `bun run test:install` | Install |
+| [tests/install/update.ts](install/update.ts) | `bun run test:install:update` | Install |
+| [tests/agent-run/run.ts](agent-run/run.ts) | `bun run test:agent` | Agent run |
+| [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
+| [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
+| [tests/agent-chain/run.ts](agent-chain/run.ts) | `bun run test:chain` | Agent chain |
+| [tests/agent-chain/feature.ts](agent-chain/feature.ts) | `bun run test:chain:feature` | Agent chain |
+
+The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH), `TMB_AGENT_MODEL` (by default haiku) and, for one session, `TMB_AGENT_LOG` (where its answer is saved).
+
 ## When each layer runs
 
 Proposed, for the Human's review.
@@ -80,7 +98,7 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 |---|---|---|
 | Unit | [test/graph.test.ts](../test/graph.test.ts) | Each language is parsed and looked up from the base branch commit, never the working folder; a reference links only on proof; a concept whose code is gone is marked broken and kept; a task's commit is laid on top for its reads and dropped once it closes; misses are recorded. |
 | Integration | [tests/integration/code-graph.test.ts](integration/code-graph.test.ts) | Through `tmb index`, `tmb graph` and the tool server, the graph is current after a change lands on the base branch, with no index run. |
-| Agent run | [tests/agent-run/scope.sh](agent-run/scope.sh) (`bun run test:scope`) | Asked to change the loyalty discount, bro looks the code up in the code graph before it starts the task, and the task's files hold the file that defines the discount. |
+| Agent run | [tests/agent-run/scope.ts](agent-run/scope.ts) (`bun run test:scope`) | Asked to change the loyalty discount, bro looks the code up in the code graph before it starts the task, and the task's files hold the file that defines the discount. |
 
 ## Level 4 tests
 
@@ -89,7 +107,7 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 | Unit | [test/feature-branch.test.ts](../test/feature-branch.test.ts) | feature_start, the fold on close, the refusal of a task whose work is already on the feature branch, and the backup push. |
 | Workflow simulation | [tests/workflow/feature-fold.test.ts](workflow/feature-fold.test.ts) | A code task and then a docs task fold into one feature branch in order. |
 | Workflow simulation | The ported plugin flows, below. | Each flow's steps, refusals and record, through the tool server. |
-| Agent chain | [tests/agent-chain/feature.sh](agent-chain/feature.sh) (`bun run test:chain:feature`) | Two sessions each ask for one more function; one feature branch collects both tasks, passes its tests and is backed up on origin. |
+| Agent chain | [tests/agent-chain/feature.ts](agent-chain/feature.ts) (`bun run test:chain:feature`) | Two sessions each ask for one more function; one feature branch collects both tasks, passes its tests and is backed up on origin. |
 
 ### The plugin's workflow flows
 
@@ -120,6 +138,6 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Layer | Test | What it proves |
 |---|---|---|
 | Install | [tests/install/update.ts](install/update.ts) (`bun run test:install:update <channel>`) | An older install on the channel, in a throwaway HOME, updates itself to the channel's newest release from the real release repo: the build is kept at a session's start, `tmb update` waits while a session runs, nothing swaps at a session's end while another session still runs, and the last session's end swaps it in, even with a task open. Runs after each dev build and each rc or stable release on macOS, Windows and Linux; a channel with no release yet is skipped. |
-| Install | [tests/install/smoke.sh](install/smoke.sh), [smoke.ps1](install/smoke.ps1) | The installer of each channel installs the release it should. |
+| Install | [tests/install/smoke.ts](install/smoke.ts) (`bun run test:install [channel] [version]`) | The installer of each channel installs the release it should, on macOS, Linux and Windows. |
 | Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
 | Integration | [tests/integration/migrate.test.ts](integration/migrate.test.ts) | `tmb migrate` copies a plugin project's issues, notes and decisions, tasks, reviews, check runs and agent runs, with their original times, from a database at plugin schema v76; leaves the plugin's file byte for byte unchanged; carries nothing of other repos or dropped features; and refuses a second run, another schema version, an unnamed repo among several and a missing database. |

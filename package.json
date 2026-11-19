@@ -9,13 +9,13 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p dashboard",
     "lint:links": "bun tests/lint/links.ts",
-    "test:install": "sh tests/install/smoke.sh",
+    "test:install": "bun tests/install/smoke.ts",
     "test:install:update": "bun tests/install/update.ts",
-    "test:agent": "sh tests/agent-run/run.sh",
-    "test:chain": "sh tests/agent-chain/run.sh",
-    "test:chain:feature": "sh tests/agent-chain/feature.sh",
-    "test:worker": "sh tests/agent-run/worker.sh",
-    "test:scope": "sh tests/agent-run/scope.sh"
+    "test:agent": "bun tests/agent-run/run.ts",
+    "test:chain": "bun tests/agent-chain/run.ts",
+    "test:chain:feature": "bun tests/agent-chain/feature.ts",
+    "test:worker": "bun tests/agent-run/worker.ts",
+    "test:scope": "bun tests/agent-run/scope.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
