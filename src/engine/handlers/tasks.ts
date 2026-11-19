@@ -6,6 +6,7 @@ import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";
 import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
+import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 import { readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
@@ -426,7 +427,27 @@ export function committedHead(task: Task): string {
   if (!runGit(worktree, ["merge-base", "--is-ancestor", base, head]).ok) {
     throw new HandlerError("refused", `HEAD ${head} does not build on the task's base commit ${base}; the work must be committed on top of it`);
   }
+  if (task.kind === "docs") refuseProgrammingFiles(task, base, head);
   return head;
+}
+
+/**
+ * A docs task changes no code: refuses its close, naming each file, when its change from the base
+ * commit touches a file Linguist marks as written in a programming language. A code task is never checked this way.
+ */
+function refuseProgrammingFiles(task: Task, base: string, head: string): void {
+  const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
+  const programming = touched.flatMap((file) => {
+    const match = languageOf(file);
+    return match?.programming ? [`${file} (${match.languages.join(" or ")})`] : [];
+  });
+  if (programming.length === 0) return;
+  const shown = programming.slice(0, DIRTY_LINES_SHOWN).join("\n");
+  const more = programming.length > DIRTY_LINES_SHOWN ? `\n…and ${programming.length - DIRTY_LINES_SHOWN} more` : "";
+  throw new HandlerError(
+    "refused",
+    `task ${task.id} is a docs task, but its change touches files written in a programming language, so it stays open. Move that change to a code task:\n${shown}${more}`,
+  );
 }
 
 /** `onWhat` names the commit the checks ran on when it is not the worktree's own. */
@@ -498,6 +519,33 @@ export function closeChecks(store: Store, task: Task): string[] {
   return commands;
 }
 
+/**
+ * Closes a task whose commit the feature branch already holds at its tip, folded by an earlier close that
+ * stopped before it recorded the task closed: records the close, then cleans up and pushes as a fold does.
+ */
+function finishFold(
+  store: Store,
+  actor: Actor,
+  task: Task,
+  head: string,
+  reviewMode: string,
+  featureName: string,
+  runs: CheckRunOutcome[],
+  context: OperationContext,
+): TaskCloseResult {
+  const id = task.id;
+  const worktree = task.worktree!;
+  store.transaction(() => {
+    if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
+    requireHeadAt(worktree, head);
+    store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
+  });
+  const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
+  const push = pushFeature(context.projectDir, featureName);
+  store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
+  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems });
+}
+
 export async function taskClose(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> {
   const { id } = validateInput<{ id: string }>("task_close", taskCloseSchema, input);
   requireRole(actor, "task_close", ["worker", "planner"]);
@@ -532,7 +580,12 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
   // A fold that adds no commit would record the feature's tip, another task's commit, as this task's.
   const alreadyOnFeature = () =>
     new HandlerError("refused", `the task's work is already on the feature branch ${feature.name} at ${from}, so folding it would add no commit of the task's own, and task ${id} stays open`);
-  if (head === from) throw alreadyOnFeature();
+  if (head === from) {
+    // The tip is this task's own commit when an earlier close moved the feature branch and stopped before
+    // it recorded the task closed. Only another task recording the commit makes it not the task's own.
+    if (store.listTasks().some((other) => other.id !== id && other.commitSha === head)) throw alreadyOnFeature();
+    return finishFold(store, actor, task, head, reviewMode, feature.name, runs, context);
+  }
   let folded = head;
   if (rebased) {
     folded = rebaseOnto(worktree, feature.name, from, id);

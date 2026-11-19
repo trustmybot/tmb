@@ -5,13 +5,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, type CallToolResult, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { HandlerError, isOperationName, OPERATIONS } from "../handlers/index.ts";
 import { openProjectStore } from "../project.ts";
+import { hostRole } from "../settings.ts";
 import { type Actor, ROLES, type Role, type Store } from "../store/index.ts";
 
 export const SERVER_NAME = "tmb";
-const DEFAULT_ROLE: Role = "planner";
 const ROLE_FIELD = {
   type: "string",
-  description: `Your role in tmb's workflow: ${ROLES.join(", ")}. Defaults to ${DEFAULT_ROLE}; a worker or the reviewer passes its own.`,
+  description: `Your role in tmb's workflow: ${ROLES.join(", ")}. Defaults to the role this host was set up in, the planner unless setup named another; a worker or a reviewer subagent passes its own.`,
   enum: ROLES,
 } as const;
 
@@ -62,11 +62,12 @@ export class ToolSession {
 
   async call(name: string, args: Record<string, unknown> | undefined): Promise<CallToolResult> {
     if (!isOperationName(name)) return textResult(`unknown tool ${name}; the tools are ${Object.keys(OPERATIONS).join(", ")}`, true);
-    const { role = DEFAULT_ROLE, ...input } = args ?? {};
-    if (!ROLES.includes(role as Role)) return textResult(`role must be one of ${ROLES.join(", ")}, got ${JSON.stringify(role)}`, true);
-    const actor: Actor = { kind: "agent", role: role as Role, host: this.host };
+    const { role, ...input } = args ?? {};
+    if (role !== undefined && !ROLES.includes(role as Role)) return textResult(`role must be one of ${ROLES.join(", ")}, got ${JSON.stringify(role)}`, true);
     try {
-      const result = await OPERATIONS[name].run(this.openStore(), actor, input, { projectDir: this.projectDir });
+      const store = this.openStore();
+      const actor: Actor = { kind: "agent", role: (role as Role | undefined) ?? hostRole(store, this.host), host: this.host };
+      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir });
       return textResult(JSON.stringify(result));
     } catch (error) {
       return textResult(error instanceof HandlerError ? error.message : describe(error), true);

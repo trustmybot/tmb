@@ -1,6 +1,6 @@
 // Opens the project's database file, or refuses it with a named cause. The caller passes
 // the path; the store never works out where the file lives.
-import { Database } from "bun:sqlite";
+import { Database, SQLiteError } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { SCHEMA_STEPS, SCHEMA_VERSION } from "./schema.ts";
 import { Store } from "./store.ts";
@@ -34,6 +34,29 @@ function readHeader(db: Database): { version: number; tables: number } {
   const { user_version: version } = db.query("PRAGMA user_version").get() as { user_version: number };
   const { tables } = db.query("SELECT count(*) AS tables FROM sqlite_master").get() as { tables: number };
   return { version, tables };
+}
+
+function isBusy(error: unknown): boolean {
+  return error instanceof SQLiteError && (error.code === "SQLITE_BUSY" || error.code?.startsWith("SQLITE_BUSY_") === true);
+}
+
+/**
+ * Puts the database in WAL mode. The switch needs the file to itself, and SQLite answers
+ * busy at once, without waiting, when another process opening the same new file holds it
+ * too. So it is tried again until the busy timeout runs out. A database already in WAL
+ * mode needs no switch and answers at once.
+ */
+function useWal(db: Database): void {
+  const deadline = Date.now() + BUSY_TIMEOUT_MS;
+  for (;;) {
+    try {
+      db.run("PRAGMA journal_mode = WAL");
+      return;
+    } catch (error) {
+      if (!isBusy(error) || Date.now() >= deadline) throw error;
+      Bun.sleepSync(5 + Math.floor(Math.random() * 20));
+    }
+  }
 }
 
 /**
@@ -91,7 +114,7 @@ export function openStore(dbPath: string, options: { create: boolean }): OpenRes
       return failed("missing", `${dbPath} is empty: no tmb database has been set up in it`);
     }
 
-    db.run("PRAGMA journal_mode = WAL");
+    useWal(db);
     db.run("PRAGMA foreign_keys = ON");
     if (header.version < SCHEMA_VERSION) upgrade(db);
     return { ok: true, store: new Store(db) };
