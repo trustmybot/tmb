@@ -60,6 +60,8 @@ export type NewTask = {
   commitSha?: string | null;
   worktree?: string | null;
   baseCommit?: string | null;
+  featureId?: string | null;
+  kind?: string | null;
 };
 export type Task = {
   id: string;
@@ -71,11 +73,33 @@ export type Task = {
   worktree: string | null;
   baseCommit: string | null;
   commitSha: string | null;
+  featureId: string | null;
+  kind: string | null;
+  reviewMode: string | null;
+  pushResult: string | null;
+  pushDetail: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
 };
-export type TaskChanges = { state?: string; commitSha?: string | null };
+export type TaskChanges = {
+  state?: string;
+  commitSha?: string | null;
+  reviewMode?: string | null;
+  pushResult?: string | null;
+  pushDetail?: string | null;
+};
+export type NewFeature = { name: string; baseBranch: string; baseCommit: string };
+export type Feature = {
+  id: string;
+  name: string;
+  baseBranch: string;
+  baseCommit: string;
+  state: string;
+  createdBy: Actor;
+  createdAt: string;
+  updatedAt: string;
+};
 export type Run = {
   id: string;
   taskId: string | null;
@@ -141,6 +165,21 @@ type TaskRow = {
   worktree: string | null;
   base_commit: string | null;
   commit_sha: string | null;
+  feature_id: string | null;
+  kind: string | null;
+  review_mode: string | null;
+  push_result: string | null;
+  push_detail: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+type FeatureRow = {
+  id: string;
+  name: string;
+  base_branch: string;
+  base_commit: string;
+  state: string;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -215,6 +254,24 @@ function toTask(row: TaskRow): Task {
     worktree: row.worktree,
     baseCommit: row.base_commit,
     commitSha: row.commit_sha,
+    featureId: row.feature_id,
+    kind: row.kind,
+    reviewMode: row.review_mode,
+    pushResult: row.push_result,
+    pushDetail: row.push_detail,
+    createdBy: JSON.parse(row.created_by) as Actor,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toFeature(row: FeatureRow): Feature {
+  return {
+    id: row.id,
+    name: row.name,
+    baseBranch: row.base_branch,
+    baseCommit: row.base_commit,
+    state: row.state,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -341,11 +398,19 @@ export class Store {
       commit_sha: task.commitSha ?? null,
       worktree: task.worktree ?? null,
       base_commit: task.baseCommit ?? null,
+      feature_id: task.featureId ?? null,
+      kind: task.kind ?? null,
     }, task.id);
   }
 
   updateTask(actor: Actor, id: string, changes: TaskChanges): void {
-    this.append(actor, "task", id, "updated", { state: changes.state, commit_sha: changes.commitSha });
+    this.append(actor, "task", id, "updated", {
+      state: changes.state,
+      commit_sha: changes.commitSha,
+      review_mode: changes.reviewMode,
+      push_result: changes.pushResult,
+      push_detail: changes.pushDetail,
+    });
   }
 
   getTask(id: string): Task | null {
@@ -361,6 +426,38 @@ export class Store {
         : this.db.query("SELECT * FROM tasks WHERE state = ? ORDER BY id").all(state)
     ) as TaskRow[];
     return rows.map(toTask);
+  }
+
+  /** A feature branch's tasks, oldest first. */
+  listFeatureTasks(featureId: string): Task[] {
+    const rows = this.db.query("SELECT * FROM tasks WHERE feature_id = ? ORDER BY id").all(featureId) as TaskRow[];
+    return rows.map(toTask);
+  }
+
+  // --- feature branches ---------------------------------------------------------------
+
+  createFeature(actor: Actor, feature: NewFeature): string {
+    return this.create(actor, "feature", { name: feature.name, base_branch: feature.baseBranch, base_commit: feature.baseCommit });
+  }
+
+  getFeature(id: string): Feature | null {
+    const row = this.db.query("SELECT * FROM features WHERE id = ?").get(id) as FeatureRow | null;
+    return row ? toFeature(row) : null;
+  }
+
+  findFeature(name: string): Feature | null {
+    const row = this.db.query("SELECT * FROM features WHERE name = ?").get(name) as FeatureRow | null;
+    return row ? toFeature(row) : null;
+  }
+
+  /** Feature branches in one state, or in any state when none is given, oldest first. */
+  listFeatures(state?: string): Feature[] {
+    const rows = (
+      state === undefined
+        ? this.db.query("SELECT * FROM features ORDER BY id").all()
+        : this.db.query("SELECT * FROM features WHERE state = ? ORDER BY id").all(state)
+    ) as FeatureRow[];
+    return rows.map(toFeature);
   }
 
   appendRun(actor: Actor, run: NewRun): string {

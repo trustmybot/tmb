@@ -87,14 +87,18 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
 | `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where setup has not run, it says so. |
-| `tmb task start <issue-id> --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the base branch, and adds its worktree under `.tmb/worktrees/`. It refuses when setup has not set a base branch, or when a file overlaps one held by another open task. |
+| `tmb feature start <name>` | Start a feature branch: tmb cuts it from the latest commit of the base branch, without checking it out anywhere, and records it. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project where setup has not set a base branch. |
+| `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks |
+| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. It also refuses when setup has not set a base branch, or when a file overlaps one held by another open task. |
 | `tmb task list [--state open\|closed\|all]` | List the open tasks, or the closed ones, each with the commit it closed at, or all |
-| `tmb task brief <id>` | Show a task's spec, branch, worktree and the checks that run when it closes |
-| `tmb task close <id>` | Run the checks on the task's commit, and close the task when they all pass |
+| `tmb task brief <id>` | Show a task's kind, feature branch, spec, branch, worktree and the checks that run when it closes |
+| `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin` |
 
 Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
 
 A task closes only when its worktree has no uncommitted changes and has at least one commit past the point it was cut from. tmb then runs the project's checks, followed by the task's own, one after another in the worktree. Each check gets 10 minutes. Every run is recorded with its start, its end, each command's exit code and the end of its output. If a check fails, the task stays open, and tmb names the command and shows the end of its output. A task with no checks at all never closes.
+
+When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode `agile` and the commit it folded. tmb then removes the task's worktree and branch, and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
 
 ## Remove
 

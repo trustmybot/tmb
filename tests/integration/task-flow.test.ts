@@ -10,6 +10,7 @@ import type { Run, Store } from "../../src/engine/store/index.ts";
 import { callJson, type ToolResult, tmbProcesses } from "./tmb-processes.ts";
 
 const WORK_FILE = "src/a/work.ts";
+const FEATURE = "feat/thing";
 
 const { env, git, run, tmb, tmbJson, setUpProject, connect, cleanup } = tmbProcesses("tmb-task-flow-");
 afterAll(cleanup);
@@ -32,28 +33,72 @@ function withStore<T>(project: string, use: (store: Store) => T): T {
   }
 }
 
+describe("feature branches", () => {
+  test("the Human starts and lists feature branches from the command line, and a bad name is refused", () => {
+    const project = setUpProject("true");
+    const main = git(project, "rev-parse", "main");
+    expect(tmb(["feature", "list"], project)).toContain("No feature branches.");
+
+    expect(tmb(["feature", "start", FEATURE], project)).toContain(`Started feature branch ${FEATURE} from main at ${main}.`);
+    expect(git(project, "rev-parse", FEATURE)).toBe(main);
+    expect(git(project, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+    const listed = tmbJson<any[]>(["feature", "list"], project);
+    expect(listed).toMatchObject([{ name: FEATURE, baseBranch: "main", baseCommit: main, state: "open", tasks: [] }]);
+    expect(tmb(["feature", "list"], project)).toContain(`${FEATURE}  open    from main at ${main}`);
+
+    const again = run(["feature", "start", FEATURE], project);
+    expect(again.status).toBe(1);
+    expect(again.stderr).toContain(`already holds a feature branch ${FEATURE}`);
+    const bad = run(["feature", "start", "bad..name"], project);
+    expect(bad.status).toBe(1);
+    expect(bad.stderr).toContain("is not a feature branch name");
+    expect(run(["feature"], project).status).toBe(2);
+    expect(run(["feature", "start"], project).stderr).toContain("expected one feature branch name");
+  });
+
+  test("the planner starts and lists feature branches through the tool server; a worker may not start one", async () => {
+    const project = setUpProject("true");
+    const client = await connect(project);
+    try {
+      const started = await callJson(client, "feature_start", { name: FEATURE });
+      expect(started).toMatchObject({ name: FEATURE, baseBranch: "main", baseCommit: git(project, "rev-parse", "main"), state: "open" });
+      expect(git(project, "rev-parse", FEATURE)).toBe(started.baseCommit);
+      expect(await callJson(client, "feature_list", {})).toEqual([started]);
+      const refused = (await client.callTool({ name: "feature_start", arguments: { name: "feat/mine", role: "worker" } })) as ToolResult;
+      expect(refused.isError).toBe(true);
+      expect(refused.content[0]!.text).toContain("feature_start is for the planner");
+    } finally {
+      await client.close();
+    }
+    withStore(project, (store) => expect(store.findFeature(FEATURE)!.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" }));
+  });
+});
+
 describe("task commands", () => {
   test("start, list, brief and close a task as the Human, refusing a close whose check fails", () => {
     const project = setUpProject(`test -f ${WORK_FILE}`);
     const issue = tmbJson(["issue", "create", "Build the thing"], project);
+    tmb(["feature", "start", FEATURE], project);
 
     const started = tmbJson(
-      ["task", "start", issue.id, "--intent", "Add the work file", "--file", "src/a", "--criterion", "SC1: the file exists", "--check", "true"],
+      ["task", "start", issue.id, "--kind", "code", "--intent", "Add the work file", "--file", "src/a", "--criterion", "SC1: the file exists", "--check", "true"],
       project,
     );
     expect(started.branch).toMatch(/^tmb\/[0-9a-z]{8}$/);
     expect(started.worktree).toBe(path.join(project, ".tmb", "worktrees", started.branch.slice(4)));
-    expect(git(started.worktree, "rev-parse", "HEAD")).toBe(git(project, "rev-parse", "main"));
+    expect(git(started.worktree, "rev-parse", "HEAD")).toBe(git(project, "rev-parse", FEATURE));
 
     expect(tmb(["task", "list"], project)).toContain(`${started.id}  ${started.branch}  Add the work file`);
     expect(tmbJson<any[]>(["task", "list"], project).map((task) => task.id)).toEqual([started.id]);
     const brief = tmb(["task", "brief", started.id], project);
     expect(brief).toContain(`Worktree: ${started.worktree}`);
+    expect(brief).toContain(`Feature branch: ${FEATURE}`);
+    expect(brief).toContain("Kind: code");
     expect(brief).toContain(`- test -f ${WORK_FILE}`);
     expect(brief).toContain(`task_id=${started.id}`);
     expect(tmbJson(["task", "brief", started.id], project).checks).toEqual([`test -f ${WORK_FILE}`, "true"]);
 
-    const overlapping = run(["task", "start", issue.id, "--intent", "Other", "--file", "src", "--criterion", "SC1"], project);
+    const overlapping = run(["task", "start", issue.id, "--kind", "code", "--intent", "Other", "--file", "src", "--criterion", "SC1"], project);
     expect(overlapping.status).toBe(1);
     expect(overlapping.stderr).toContain(started.id);
 
@@ -69,6 +114,9 @@ describe("task commands", () => {
     const head = commitWork(started.worktree);
     const closed = tmb(["task", "close", started.id], project);
     expect(closed).toContain(`Closed task ${started.id} at commit ${head}.`);
+    expect(closed).toContain(`Folded into ${FEATURE}.`);
+    expect(closed).toContain("Push: skipped, the repository has no remote named origin");
+    expect(git(project, "rev-parse", FEATURE)).toBe(head);
     expect(tmb(["task", "list"], project)).toContain("No open tasks.");
     expect(tmbJson(["task", "brief", started.id], project)).toMatchObject({ state: "closed", commitSha: head });
     expect(tmbJson<any[]>(["task", "list", "--state", "closed"], project)).toMatchObject([{ id: started.id, state: "closed", commitSha: head }]);
@@ -89,7 +137,14 @@ describe("task commands", () => {
     expect(run(["task"], project).status).toBe(2);
     expect(run(["task", "start"], project).stderr).toContain("expected one issue id");
     const issue = tmbJson(["issue", "create", "x"], project);
-    const noFiles = run(["task", "start", issue.id, "--intent", "x", "--criterion", "SC1"], project);
+    const noFeature = run(["task", "start", issue.id, "--kind", "code", "--intent", "x", "--file", "src", "--criterion", "SC1"], project);
+    expect(noFeature.status).toBe(1);
+    expect(noFeature.stderr).toContain("no feature branch is open");
+    tmb(["feature", "start", FEATURE], project);
+    const noKind = run(["task", "start", issue.id, "--intent", "x", "--file", "src", "--criterion", "SC1"], project);
+    expect(noKind.status).toBe(1);
+    expect(noKind.stderr).toContain("task_start needs kind");
+    const noFiles = run(["task", "start", issue.id, "--kind", "code", "--intent", "x", "--criterion", "SC1"], project);
     expect(noFiles.status).toBe(1);
     expect(noFiles.stderr).toContain("files must be a list of at least 1");
   });
@@ -101,7 +156,8 @@ describe("task tools", () => {
     const issue = tmbJson(["issue", "create", "Build the thing"], project);
     const client = await connect(project);
     try {
-      const started = await callJson(client, "task_start", { issue_id: issue.id, intent: "Add the work file", files: ["src/a"], criteria: ["SC1"] });
+      await callJson(client, "feature_start", { name: FEATURE });
+      const started = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add the work file", files: ["src/a"], criteria: ["SC1"] });
       expect(started.brief.startLine).toBe(`task_id=${started.id}`);
       expect((await callJson<any[]>(client, "task_list", {})).map((task) => task.id)).toEqual([started.id]);
       const brief = await callJson(client, "task_brief", { id: started.id, role: "worker" });
@@ -153,7 +209,8 @@ describe("the worker gate through the hook process", () => {
   test("denies a worker start with no open task, allows one naming its task and records the run from start to stop", () => {
     const project = setUpProject("true");
     const issue = tmbJson(["issue", "create", "Build the thing"], project);
-    const started = tmbJson(["task", "start", issue.id, "--intent", "Do it", "--file", "src", "--criterion", "SC1"], project);
+    tmb(["feature", "start", FEATURE], project);
+    const started = tmbJson(["task", "start", issue.id, "--kind", "code", "--intent", "Do it", "--file", "src", "--criterion", "SC1"], project);
 
     const denied = JSON.parse(startWorker(project, "Do the work, no task named."));
     expect(denied.hookSpecificOutput).toMatchObject({ hookEventName: "PreToolUse", permissionDecision: "deny" });

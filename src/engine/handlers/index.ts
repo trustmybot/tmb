@@ -1,6 +1,7 @@
 // The record's operations by name, each with the input schema it enforces and a description
 // telling an agent when to use it. The tool server publishes these as its tools.
 import type { Actor, Store } from "../store/index.ts";
+import * as feature from "./features.ts";
 import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
 import * as task from "./tasks.ts";
@@ -55,9 +56,21 @@ export const OPERATIONS = {
     inputSchema: op.historySchema,
     run: op.history,
   },
+  feature_start: {
+    description:
+      "Start a feature branch for a milestone's work, before its first task: tmb cuts it from the base branch's latest commit, checking it out nowhere, and records it. Every task is cut from a feature branch and folds back into it when it closes. For the planner.",
+    inputSchema: feature.featureStartSchema,
+    run: feature.featureStart,
+  },
+  feature_list: {
+    description:
+      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. Use it before starting a task to see which feature branch it belongs on.",
+    inputSchema: feature.featureListSchema,
+    run: feature.featureList,
+  },
   task_start: {
     description:
-      "Start a task on an open issue once its spec is written: the intent, the files it may touch, its success criteria and any checks of its own. tmb cuts the task's branch from the base branch, adds its worktree and returns the brief, with the task_id=<id> line to put in the worker's start prompt. For the planner.",
+      "Start a task on an open issue once its spec is written: its kind (code for a worker, docs for you), the intent, the files it may touch, its success criteria and any checks of its own. tmb cuts the task's branch from the tip of its feature branch, the one named or else the only one open, adds its worktree and returns the brief, with the task_id=<id> line to put in the worker's start prompt. For the planner.",
     inputSchema: task.taskStartSchema,
     run: task.taskStart,
   },
@@ -69,7 +82,7 @@ export const OPERATIONS = {
   },
   task_close: {
     description:
-      "Close a task once its work is committed in its worktree. tmb runs the project's checks and the task's own on the worktree's commit and closes the task only when all pass; otherwise it refuses, naming the failing check and the end of its output. For the worker or the planner.",
+      "Close a task once its work is committed in its worktree. tmb runs the project's checks and the task's own on the worktree's commit and closes the task only when all pass; otherwise it refuses, naming the failing check and the end of its output. On a pass it folds the commit into the feature branch, first rebasing it and running the checks again when the feature branch moved, removes the task's branch and worktree, and pushes the feature branch to origin as a backup. For the worker or the planner.",
     inputSchema: task.taskCloseSchema,
     run: task.taskClose,
   },
@@ -89,5 +102,7 @@ export function isOperationName(name: unknown): name is OperationName {
 
 export { HandlerError, type HandlerErrorCode } from "./errors.ts";
 export { type FieldSchema, type InputSchema } from "./input.ts";
+export * from "./features.ts";
+export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
 export * from "./tasks.ts";

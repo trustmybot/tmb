@@ -12,6 +12,7 @@ export const PROJECTION_TABLES = [
   "guard_decisions",
   "audit",
   "tasks",
+  "features",
   "issues",
 ] as const;
 
@@ -150,7 +151,56 @@ ALTER TABLE check_runs ADD COLUMN commands TEXT NOT NULL DEFAULT '[]' CHECK (jso
 CREATE INDEX idx_runs_open ON runs(role, ended_at, id);
 `;
 
+// Version 3: feature branches. A feature is a new record kind, and SQLite cannot change a
+// CHECK in place, so the events are copied into a table that allows it, rows and ids kept.
+// A task records its feature branch, its kind, and at close its review mode and its push.
+const VERSION_3_SQL = `
+CREATE TABLE events_v3 (
+  id          TEXT PRIMARY KEY,
+  record_kind TEXT NOT NULL CHECK (record_kind IN ('issue','discussion','task','run','check_run','review','guard_decision','audit','feature')),
+  record_id   TEXT NOT NULL,
+  type        TEXT NOT NULL,
+  data        TEXT NOT NULL CHECK (json_valid(data)),
+  actor_kind  TEXT NOT NULL CHECK (actor_kind IN ('human','agent')),
+  actor_role  TEXT CHECK (actor_role IN ('planner','worker','reviewer')),
+  actor_host  TEXT,
+  at          TEXT NOT NULL,
+  CHECK (
+    (actor_kind = 'human' AND actor_role IS NULL AND actor_host IS NULL)
+    OR (actor_kind = 'agent' AND actor_role IS NOT NULL AND length(trim(actor_host)) > 0)
+  )
+);
+INSERT INTO events_v3 (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at)
+  SELECT id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at FROM events ORDER BY id;
+DROP TABLE events;
+ALTER TABLE events_v3 RENAME TO events;
+CREATE INDEX idx_events_record ON events(record_id, id);
+CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+BEGIN SELECT RAISE(ABORT, 'events are append-only: UPDATE is refused'); END;
+CREATE TRIGGER events_no_delete BEFORE DELETE ON events
+BEGIN SELECT RAISE(ABORT, 'events are append-only: DELETE is refused'); END;
+
+CREATE TABLE features (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE CHECK (length(trim(name)) > 0),
+  base_branch TEXT NOT NULL,
+  base_commit TEXT NOT NULL,
+  state       TEXT NOT NULL DEFAULT 'open',
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX idx_features_state ON features(state, id);
+
+ALTER TABLE tasks ADD COLUMN feature_id TEXT REFERENCES features(id);
+ALTER TABLE tasks ADD COLUMN kind TEXT;
+ALTER TABLE tasks ADD COLUMN review_mode TEXT;
+ALTER TABLE tasks ADD COLUMN push_result TEXT;
+ALTER TABLE tasks ADD COLUMN push_detail TEXT;
+CREATE INDEX idx_tasks_feature ON tasks(feature_id, id);
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

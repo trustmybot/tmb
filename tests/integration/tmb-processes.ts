@@ -3,7 +3,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathWithFakeClaude } from "./fake-host.ts";
@@ -56,11 +56,31 @@ export function tmbProcesses(prefix: string) {
   function setUpProject(check: string, files: Record<string, string> = { "README.md": "hello\n" }): string {
     const project = mkdtempSync(path.join(scratch, "project-"));
     git(project, "init", "-q", "-b", BASE_BRANCH);
+    // tmb's own git calls (the rebase in a close) commit too, and a CI runner has no global identity for them.
+    git(project, "config", "user.name", "t");
+    git(project, "config", "user.email", "t@example.com");
     for (const [file, text] of Object.entries(files)) writeFileSync(path.join(project, file), text);
     git(project, "add", ".");
     git(project, "commit", "-q", "-m", "first");
     tmb(["setup", "--base", BASE_BRANCH, "--check", check, "--yes"], project);
     return project;
+  }
+
+  /** Writes and commits one file in a worktree, as the one doing a task would; returns the commit. */
+  function commitFile(worktree: string, file: string, text: string, message: string): string {
+    mkdirSync(path.dirname(path.join(worktree, file)), { recursive: true });
+    writeFileSync(path.join(worktree, file), text);
+    git(worktree, "add", file);
+    git(worktree, "commit", "-q", "-m", message);
+    return git(worktree, "rev-parse", "HEAD");
+  }
+
+  /** What a new host session in the project is told: its session start event, answered by `tmb hook session-start`. */
+  function sessionStart(project: string): string {
+    const event = JSON.stringify({ session_id: "workflow", hook_event_name: "SessionStart", source: "startup", cwd: project });
+    const result = spawnSync(process.execPath, [CLI, "hook", "session-start"], { cwd: project, env, input: event, encoding: "utf8", timeout: 30_000 });
+    if (result.status !== 0 || result.stderr !== "") throw new Error(`tmb hook session-start exited ${result.status}: ${result.stderr}`);
+    return (JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
   }
 
   /** A connected client on the project's tool server, acting for the host `test`. */
@@ -74,7 +94,7 @@ export function tmbProcesses(prefix: string) {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  return { scratch, env, git, run, tmb, tmbJson, setUpProject, connect, cleanup };
+  return { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, connect, cleanup };
 }
 
 /** Calls a tool that must succeed and parses its JSON answer. */

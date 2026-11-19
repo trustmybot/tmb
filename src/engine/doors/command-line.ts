@@ -2,6 +2,7 @@
 // calls the same operation an agent's tool call does, acting as the Human.
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
+  type FeatureSummary,
   HandlerError,
   type IssueDetail,
   type IssueUpdateResult,
@@ -16,7 +17,7 @@ import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
 import type { Actor, Discussion, Issue, IssueSummary, SearchHit, StoredEvent } from "../store/index.ts";
 
-export const RECORD_COMMANDS = ["issue", "note", "search", "history", "task"] as const;
+export const RECORD_COMMANDS = ["issue", "note", "search", "history", "feature", "task"] as const;
 export type RecordCommand = (typeof RECORD_COMMANDS)[number];
 
 export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--milestone <name>]
@@ -30,12 +31,17 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
                             Add a note, or with --decision a decision, to an issue
   tmb search <query>        Search issues, notes and decisions
   tmb history <id>          Show every recorded change to an issue or note
-  tmb task start <issue-id> --intent <text> --file <path>... --criterion <text>... [--check <command>]...
-                            Start a task: cut its branch and worktree and record its spec
+  tmb feature start <name>  Cut a feature branch from the base branch and record it
+  tmb feature list          List the feature branches with their base, state and tasks
+  tmb task start <issue-id> --kind code|docs [--feature <name>] --intent <text> --file <path>...
+                 --criterion <text>... [--check <command>]...
+                            Start a task: cut its branch and worktree from the feature
+                            branch and record its spec
   tmb task list [--state open|closed|all]
                             List the open tasks, or the closed ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
-  tmb task close <id>       Run the checks on the task's commit; close it when all pass
+  tmb task close <id>       Run the checks on the task's commit; when all pass, close it,
+                            fold it into its feature branch and push that to origin
   Add --json to any of these for JSON output.`;
 
 const HUMAN: Actor = { kind: "human" };
@@ -144,9 +150,13 @@ function briefLines(brief: TaskBrief): string[] {
   const list = (items: string[]) => (items.length === 0 ? ["  (none)"] : items.map((item) => `  - ${item}`));
   return [
     `Task ${brief.id}  ${brief.state}  on issue ${brief.issueId}`,
+    `Kind: ${brief.kind ?? "(not recorded)"}`,
+    `Feature branch: ${brief.feature ?? "(none)"}`,
     `Branch: ${brief.branch ?? "(none)"}`,
     `Worktree: ${brief.worktree ?? "(none)"}`,
     ...(brief.commitSha ? [`Closed at commit: ${brief.commitSha}`] : []),
+    ...(brief.reviewMode ? [`Review mode: ${brief.reviewMode}`] : []),
+    ...(brief.push ? [`Push: ${brief.push.result}, ${brief.push.detail}`] : []),
     "",
     brief.spec.intent.trimEnd(),
     "",
@@ -174,8 +184,38 @@ function formatTasks(state: string | undefined) {
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
 
-function formatClose({ brief, checks }: TaskCloseResult): string {
-  return [`Closed task ${brief.id} at commit ${brief.commitSha}.`, ...checks.map((check) => `  passed: ${check.command}`)].join("\n");
+function formatClose({ brief, checks, fold, push, cleanupProblems }: TaskCloseResult): string {
+  return [
+    `Closed task ${brief.id} at commit ${brief.commitSha}.`,
+    ...checks.map((check) => `  passed: ${check.command}`),
+    ...(fold ? [`Folded into ${fold.feature}${fold.rebased ? `, rebased onto ${fold.from} and checked again` : ""}.`] : []),
+    ...(push ? [`Push: ${push.result}, ${push.detail}`] : []),
+    ...cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+  ].join("\n");
+}
+
+function featureLine(feature: FeatureSummary): string {
+  const tasks = feature.tasks.length === 0 ? "no tasks" : `tasks: ${feature.tasks.join(", ")}`;
+  return `${feature.name}  ${feature.state.padEnd(6)}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
+}
+
+function featureRequest(args: string[]): Request {
+  const [action, ...rest] = args;
+  switch (action) {
+    case "start": {
+      const { values, positionals } = parse(rest, {});
+      const format = (feature: FeatureSummary) => `Started feature branch ${feature.name} from ${feature.baseBranch} at ${feature.baseCommit}.`;
+      return { operation: "feature_start", input: { name: only(positionals, "feature branch name") }, json: values.json === true, format };
+    }
+    case "list": {
+      const { values, positionals } = parse(rest, {});
+      if (positionals.length > 0) throw new UsageError(`feature list takes no arguments, got ${positionals.join(" ")}`);
+      const format = (features: FeatureSummary[]) => (features.length === 0 ? "No feature branches." : features.map(featureLine).join("\n"));
+      return { operation: "feature_list", input: {}, json: values.json === true, format };
+    }
+    default:
+      throw new UsageError(action === undefined ? "feature needs an action: start or list" : `unknown feature action '${action}'`);
+  }
 }
 
 function taskRequest(args: string[]): Request {
@@ -183,6 +223,8 @@ function taskRequest(args: string[]): Request {
   switch (action) {
     case "start": {
       const { values, positionals } = parse(rest, {
+        kind: { type: "string" },
+        feature: { type: "string" },
         intent: { type: "string" },
         file: { type: "string", multiple: true },
         criterion: { type: "string", multiple: true },
@@ -190,6 +232,8 @@ function taskRequest(args: string[]): Request {
       });
       const input = {
         issue_id: only(positionals, "issue id"),
+        kind: values.kind,
+        feature: values.feature,
         intent: values.intent,
         files: values.file ?? [],
         criteria: values.criterion ?? [],
@@ -221,6 +265,8 @@ function toRequest(command: RecordCommand, args: string[]): Request {
   switch (command) {
     case "issue":
       return issueRequest(args);
+    case "feature":
+      return featureRequest(args);
     case "task":
       return taskRequest(args);
     case "note": {
