@@ -8,7 +8,7 @@ export type SettingName = (typeof SETTING_NAMES)[number];
 export const REVIEW_MODES = ["agile", "truest"] as const;
 export type ReviewMode = (typeof REVIEW_MODES)[number];
 /** The review modes built so far; the others are refused until their level. */
-export const AVAILABLE_REVIEW_MODES: readonly ReviewMode[] = ["agile"];
+export const AVAILABLE_REVIEW_MODES: readonly ReviewMode[] = ["agile", "truest"];
 
 /** The roles a host's main agent can take: it plans, or it only reviews. A worker is always a subagent. */
 export const HOST_ROLES = ["planner", "reviewer"] as const satisfies readonly Role[];
@@ -34,7 +34,6 @@ function nonEmptyText(name: string, value: unknown): string {
 }
 
 function reviewMode(value: unknown): ReviewMode {
-  if (value === "truest") throw new SettingError("review mode truest arrives at level 10; only agile is available now");
   if (!AVAILABLE_REVIEW_MODES.includes(value as ReviewMode)) {
     throw new SettingError(`review mode must be ${AVAILABLE_REVIEW_MODES.join(" or ")}, got ${JSON.stringify(value)}`);
   }

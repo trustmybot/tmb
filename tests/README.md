@@ -59,6 +59,7 @@ The Install, Agent run and Agent chain layers are plain scripts rather than `bun
 | [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
 | [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
 | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) | `bun run test:reviewer` | Agent run |
+| [tests/agent-run/truest.ts](agent-run/truest.ts) | `bun run test:truest` | Agent run |
 | [tests/agent-chain/run.ts](agent-chain/run.ts) | `bun run test:chain` | Agent chain |
 | [tests/agent-chain/feature.ts](agent-chain/feature.ts) | `bun run test:chain:feature` | Agent chain |
 | [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) | `bun run test:chain:second-host` | Agent chain |
@@ -155,6 +156,8 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 
 ## Level 9 tests
 
+Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmybot/tmb#18). Its tests without a model run in CI like any others, but no v1 release waits for or runs the agent chain with a second host.
+
 | Layer | Test | What it proves |
 |---|---|---|
 | Lint | [tests/lint/host-neutral.test.ts](lint/host-neutral.test.ts) | The engine names no host, Codex included; only the adapters do. |
@@ -163,3 +166,11 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | One shared set of tests that Claude Code and Codex both pass: setup and removal, session start, guarded tool calls, agent start and stop, and a host set up as the reviewer. |
 | Integration | [tests/integration/two-hosts.test.ts](integration/two-hosts.test.ts) | Two hosts write one record at once and nothing is lost. |
 | Agent chain | [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) (`bun run test:chain:second-host`) | Claude Code, set up as the planner, builds a feature branch, and Codex, set up as the reviewer in the same project, records a verdict at its tip in a run its own session start opened. Needs a logged-in claude and codex, and the Human's prompt in `prompts/second-host-reviewer.txt`; it exits 2 without them. |
+
+## Level 10 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/truest.test.ts](../test/truest.test.ts) | In truest mode a task is cut from the base branch and feature_start is refused; close runs the checks and leaves the task in review with its worktree, folding nothing; a fail reopens the task and a pass covers only the commit it names; only a reviewer run reviews and only the Human waives; task_pr is the planner's and needs a pass or a waiver and an origin; a task keeps the review mode of its start. |
+| Workflow simulation | [tests/workflow/truest.test.ts](workflow/truest.test.ts) | A task cannot be pushed unreviewed: task_pr and a push typed by hand through git's pre-push hook are refused. Review, fail, rework and pass on one task, then task_pr rebases onto a base branch that moved, carries the review over the unchanged patch, pushes the task branch and opens its pull request. A rebase that changes the patch needs a new review, a conflict reopens the task, and a Human waiver lets a task through. |
+| Agent run | [tests/agent-run/truest.ts](agent-run/truest.ts) (`bun run test:truest`) | One task from request to its pull request: bro has a worker fix add, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |

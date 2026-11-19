@@ -3,7 +3,7 @@
 import { gitFailure, runGit } from "../git.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX } from "./common.ts";
+import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { branchRef } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -108,8 +108,15 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
   const { name } = validateInput<{ name: string }>("feature_start", featureStartSchema, input);
   requireRole(actor, "feature_start", ["planner"]);
   requireBranchName(context.projectDir, name);
-  const baseBranch = readSettings(store).base_branch;
+  const settings = readSettings(store);
+  const baseBranch = settings.base_branch;
   if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so setup has not run here; run `tmb setup` in the project first");
+  if (settings.review_mode === TRUEST) {
+    throw new HandlerError(
+      "refused",
+      `the project is in truest mode, which has no feature branches: each task is cut from the base branch ${baseBranch}, reviewed on its own and opened as its own pull request. Start the task with task_start.`,
+    );
+  }
   refuseRecorded(store, name);
   const ref = branchRef(name);
   if (runGit(context.projectDir, ["rev-parse", "--verify", "--quiet", ref]).ok) {

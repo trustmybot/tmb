@@ -48,19 +48,22 @@ async function bringForward(db: Database, projectDir: string, layer: string, com
   return { from: from ?? "none", stats };
 }
 
-/** Drops the layers of tasks that are no longer open: their work is on a feature branch or gone. */
+/** A task's work is laid on the graph while it is open, or in review in truest mode, where the reviewer reads it. */
+const LAYERED_STATES = new Set(["open", "in_review"]);
+
+/** Drops the layers of tasks that are no longer open or in review: their work is on a feature branch, in a pull request, or gone. */
 function dropClosedTaskLayers(db: Database, store: Store): void {
   const layers = db.query("SELECT layer FROM layers WHERE layer LIKE 'task:%'").all() as { layer: string }[];
   for (const { layer } of layers) {
     const task = store.getTask(layer.slice("task:".length));
-    if (task === null || task.state !== "open") db.transaction(() => dropLayer(db, layer))();
+    if (task === null || !LAYERED_STATES.has(task.state)) db.transaction(() => dropLayer(db, layer))();
   }
 }
 
 function taskCommit(store: Store, taskId: string): string {
   const task = store.getTask(taskId);
   if (task === null) throw new HandlerError("not_found", `no task ${taskId}`);
-  if (task.state !== "open" || task.worktree === null) {
+  if (!LAYERED_STATES.has(task.state) || task.worktree === null) {
     throw new HandlerError("refused", `task ${taskId} is ${task.state}; its work is no longer laid on top of the graph, so look it up without task_id`);
   }
   const commit = resolveCommit(task.worktree, "HEAD");

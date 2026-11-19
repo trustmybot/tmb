@@ -11,6 +11,7 @@ import { OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureTip } from "./features.ts";
 import { pushFeature } from "./fold.ts";
+import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
 export const VERDICTS = ["pass", "fail"] as const;
@@ -86,7 +87,7 @@ function findingsOf(review: Review): Finding[] {
   return review.findings.filter((item): item is Finding => typeof item === "object" && item !== null && typeof (item as Finding).text === "string");
 }
 
-function summaryOf(review: Review): ReviewSummary {
+export function summaryOf(review: Review): ReviewSummary {
   return { id: review.id, verdict: review.verdict, commit: review.commitSha, findings: findingsOf(review), by: review.createdBy, at: review.createdAt };
 }
 
@@ -111,10 +112,10 @@ function coverageAt(reviews: readonly Review[], waivers: readonly { commit: stri
   return newest?.verdict === "pass" ? "review" : null;
 }
 
-/** Every commit the record lets reach the base branch: each feature branch commit a pass or a waiver covers. */
+/** Every commit the record lets through the push gate: each feature branch commit a pass or a waiver covers, and each truest task commit one covers. */
 export function coveredCommits(store: Store): string[] {
   const waivers = allWaivers(store);
-  const commits = new Set(waivers.map((waiver) => waiver.commit));
+  const commits = new Set([...waivers.map((waiver) => waiver.commit), ...truestCoveredCommits(store)]);
   const byFeature = new Map<string, Review[]>();
   for (const review of store.listReviews()) {
     if (review.featureId === null || review.commitSha === null) continue;
@@ -305,7 +306,7 @@ export const featurePrSchema: InputSchema = {
 };
 
 /** Opens the pull request with the GitHub command line; returns its address or what went wrong. */
-function openPullRequest(projectDir: string, args: readonly string[]): { ok: true; url: string } | { ok: false; why: string } {
+export function openPullRequest(projectDir: string, args: readonly string[]): { ok: true; url: string } | { ok: false; why: string } {
   const result = spawnSync("gh", ["pr", "create", ...args], {
     cwd: projectDir,
     encoding: "utf8",
