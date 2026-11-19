@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
@@ -26,7 +27,12 @@ function run(command: string, args: string[], cwd: string, input?: string) {
     encoding: "utf8",
     timeout: 30_000,
     // Keep the machine's global git ignore rules out of the project under test.
-    env: { ...process.env, XDG_CONFIG_HOME: path.join(scratch, "no-xdg"), GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig") },
+    env: {
+      ...process.env,
+      XDG_CONFIG_HOME: path.join(scratch, "no-xdg"),
+      GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig"),
+      PATH: pathWithFakeClaude(scratch),
+    },
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -73,9 +79,13 @@ describe("tmb setup and remove", () => {
     expect(setup.status).toBe(0);
     const afterSetup = readSettings();
     expect(afterSetup.permissions).toEqual(original.permissions);
-    expect(afterSetup.hooks.PreToolUse).toEqual([otherHook]);
-    const hookCommand = `"${process.execPath}" "${CLI}" hook session-start`;
-    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand }] }]);
+    const hookCommand = (name: string) => `"${process.execPath}" "${CLI}" hook ${name}`;
+    expect(afterSetup.hooks.PreToolUse).toEqual([
+      otherHook,
+      { matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
+    ]);
+    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
+    expect(afterSetup.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
 
     const remove = run(process.execPath, [CLI, "remove"], project);
     expect(remove.status).toBe(0);

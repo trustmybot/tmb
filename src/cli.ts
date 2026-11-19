@@ -1,15 +1,19 @@
 #!/usr/bin/env bun
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { adapter } from "#host-adapter";
-import { isRecordCommand, RECORD_USAGE, runRecordCommand } from "./engine/doors/command-line.ts";
+import { HOST_ADAPTERS, hostAdapter } from "./adapters/index.ts";
+import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
+import { runSetup, terminalAsk } from "./setup.ts";
 import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
   tmb --version             Print the version
-  tmb setup                 Wire tmb into the project in the current directory
+  tmb setup [--host <id>] [--base <branch>] [--review-mode <mode>] [--check <command>]... [--yes]
+                            Wire tmb into the project in the current directory and store
+                            its settings; asks on a terminal, else takes the defaults
   tmb remove                Undo what setup added; the record is kept
+${CONFIG_USAGE}
 ${RECORD_USAGE}
   tmb mcp --host <id> [--project <dir>]
                             Serve the record's tools over stdio (the host runs this)
@@ -17,6 +21,8 @@ ${RECORD_USAGE}
 
 // A compiled tmb runs its entry from Bun's embedded file system; from source, Bun runs this file.
 const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:\\~BUN\\)/i;
+
+const adapter = hostAdapter();
 
 /** The command that runs this tmb: the executable, plus this file when run from source. */
 function tmbCommand(): string[] {
@@ -28,7 +34,9 @@ async function runHook(event: string | undefined): Promise<number> {
   try {
     if (!event) throw new Error("missing event name");
     const stdinText = await Bun.stdin.text();
-    process.stdout.write(adapter.answerHook(event, stdinText) + "\n");
+    const output = adapter.answerHook(event, stdinText);
+    // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
+    if (output !== "") process.stdout.write(output + "\n");
   } catch (error) {
     process.stderr.write(`tmb hook: ${error instanceof Error ? error.message : String(error)}\n`);
   }
@@ -48,6 +56,37 @@ async function runToolServer(args: string[]): Promise<number> {
   return 0;
 }
 
+async function runSetupCommand(args: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      host: { type: "string" },
+      base: { type: "string" },
+      "review-mode": { type: "string" },
+      check: { type: "string", multiple: true },
+      yes: { type: "boolean", short: "y" },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
+  if (positionals.length > 0) throw new Error(`setup takes no arguments, got ${positionals.join(" ")}`);
+  // Ask only when a person is at both ends; otherwise never wait for input.
+  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  try {
+    await runSetup({
+      projectDir: process.cwd(),
+      tmbCommand: tmbCommand(),
+      adapters: HOST_ADAPTERS,
+      flags: { host: values.host, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes: values.yes },
+      ask: terminal?.ask ?? null,
+      out: (line) => console.log(line),
+    });
+  } finally {
+    terminal?.close();
+  }
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (isRecordCommand(command)) {
@@ -60,9 +99,9 @@ async function main(argv: string[]): Promise<number> {
       console.log(versionLine());
       return 0;
     case "setup":
-      for (const line of adapter.setup(process.cwd(), tmbCommand())) console.log(line);
-      console.log(`tmb is set up for ${adapter.name}. Open it in this project to start as the planner.`);
-      return 0;
+      return runSetupCommand(rest);
+    case "config":
+      return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
       return 0;

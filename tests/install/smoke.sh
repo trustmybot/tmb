@@ -63,7 +63,11 @@ else
   pass "tmb --version: ${version_line}"
 fi
 
-if (cd "$project" && HOME="$home" git init -q && HOME="$home" "$tmb" setup >"${work}/setup.log" 2>&1) &&
+# Setup needs an installed host, and a clean machine has none: a copy of tmb named claude
+# stands in, since setup only needs `claude --version` to answer.
+fake_host="${work}/fake-host"
+mkdir -p "$fake_host" && cp "$tmb" "${fake_host}/claude"
+if (cd "$project" && HOME="$home" git init -q && PATH="${fake_host}:${PATH}" HOME="$home" "$tmb" setup >"${work}/setup.log" 2>&1) &&
   grep -q 'hook session-start' "${project}/.claude/settings.local.json" 2>/dev/null; then
   pass "tmb setup wired the SessionStart hook in a fresh git repo"
 else

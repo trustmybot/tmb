@@ -12,5 +12,23 @@ export function handleEvent(event: EngineEvent): EngineAnswer {
   }
 }
 
+export { type Decision, decide, TMB_EVENT_TYPES, type TmbEvent, type TmbEventType } from "./decide.ts";
+export { SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
 export { OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole } from "./session-start.ts";
-export { openProjectStore, PROJECT_DIR_NAME, projectDbPath } from "./project.ts";
+export { openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "./project.ts";
+export { detectBaseBranch, FALLBACK_BASE_BRANCH } from "./base-branch.ts";
+export { detectChecks } from "./check-detection.ts";
+export {
+  AVAILABLE_REVIEW_MODES,
+  readSettings,
+  REVIEW_MODES,
+  type ReviewMode,
+  SETTING_NAMES,
+  SettingError,
+  type SettingName,
+  settingLines,
+  type Settings,
+  type SettingValues,
+  validateSetting,
+  writeSetting,
+} from "./settings.ts";

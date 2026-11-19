@@ -32,6 +32,21 @@ if ! (cd "$project" && git init -q && "$tmb_bin" setup); then
   exit 1
 fi
 
+# With no terminal, setup takes each default: the host, the project's branch and agile.
+if ! settings="$(cd "$project" && "$tmb_bin" config)"; then
+  echo "FAIL tmb config failed after setup in ${project}"
+  exit 1
+fi
+for line in '^host: [^ ]' '^base branch: [^ ]' '^review mode: agile$'; do
+  if ! printf '%s\n' "$settings" | grep -Eq "$line"; then
+    echo "FAIL tmb config after setup has no line matching '${line}'; it showed:"
+    printf '%s\n' "$settings"
+    exit 1
+  fi
+done
+echo "tmb config after setup:"
+printf '%s\n' "$settings"
+
 echo "Asking claude (${model}): $(cat "$prompt_file")"
 (cd "$project" && claude -p "$(cat "$prompt_file")" --model "$model") >"$log" 2>&1
 claude_status=$?
