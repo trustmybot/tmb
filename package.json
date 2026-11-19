@@ -1,0 +1,19 @@
+{
+  "name": "tmb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#host-adapter": "./src/adapters/claude-code/index.ts"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "build:local": "bun scripts/build.ts --local",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
