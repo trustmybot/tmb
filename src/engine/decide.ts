@@ -1,7 +1,13 @@
 // The gate's answer to a host event. Every host raises the same tmb events, and every rule
 // is written against them here. A worker starts only on an open task with its worktree
-// ready, and its start and stop are recorded as a run; a record tmb cannot read denies, so
-// nothing runs unguarded in a project whose record is broken.
+// ready; a worker's and a reviewer's start and stop are recorded as a run. No agent turns
+// git's pre-push hook off or opens a pull request by hand, a worker and the reviewer never
+// push, a worker writes only in an open task's worktree and the reviewer writes nothing. A
+// record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
+import { existsSync, realpathSync } from "node:fs";
+import path from "node:path";
+import { toolCalls } from "./commands.ts";
+import { OPEN } from "./handlers/common.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
 import { type Actor, ROLES, type Role, type Store, type StoreOpenError } from "./store/index.ts";
@@ -51,6 +57,7 @@ function recordedEvent(event: TmbEvent): string {
 }
 
 const WORKER: Role = "worker";
+const REVIEWER: Role = "reviewer";
 const HOW_TO_START = `Start the task first with the task_start tool, or \`tmb task start\` from the command line, then start the worker with the ${taskStartLine("<id>")} line from its brief in the start prompt.`;
 
 /** A worker starts only when its start prompt names an open task whose worktree is ready; the start is recorded as a run. */
@@ -69,26 +76,107 @@ function workerStart(store: Store, event: TmbEvent): Decision {
   return { decision: "allow", reason: `worker run ${runId} started on open task ${taskId}` };
 }
 
+/** The reviewer may start on any change; its start is recorded as a run, which a review needs. */
+function reviewerStart(store: Store, event: TmbEvent): Decision {
+  const runId = store.appendRun(actorOf(event), { role: REVIEWER });
+  return { decision: "allow", reason: `reviewer run ${runId} started` };
+}
+
 /**
- * Ends the worker's run. Without a task to match on, it ends a run only when exactly one
- * worker run is open: guessing among several would record a false end, and a start left
- * without an end is shown as a finding instead.
+ * Ends a worker's or the reviewer's run. Without a task to match on, it ends a run only when
+ * exactly one run of the role is open: guessing among several would record a false end, and a
+ * start left without an end is shown as a finding instead.
  */
-function workerStop(store: Store, event: TmbEvent): Decision {
-  const open = store.openRuns(WORKER, event.task);
+function runStop(store: Store, event: TmbEvent, role: Role): Decision {
+  const open = store.openRuns(role, event.task);
   if (open.length !== 1) {
     const which = event.task === undefined ? "" : ` on task ${event.task}`;
     const reason =
-      open.length === 0 ? `no open worker run${which} to end` : `${open.length} worker runs are open and the stop names no task, so none was ended`;
+      open.length === 0 ? `no open ${role} run${which} to end` : `${open.length} ${role} runs are open and the stop names no task, so none was ended`;
     return { decision: "allow", reason };
   }
   store.endRun(actorOf(event), open[0]!.id, { outcome: "stopped" });
-  return { decision: "allow", reason: `worker run ${open[0]!.id} ended` };
+  return { decision: "allow", reason: `${role} run ${open[0]!.id} ended` };
+}
+
+// --- commands -----------------------------------------------------------------------------
+
+const PUSH_GATE = "git's pre-push hook is the push gate";
+
+function deny(reason: string): Decision {
+  return { decision: "deny", reason };
+}
+
+/** A command that turns git's hooks off, keeps a push from asking the gate, pushes from a subagent, or opens a pull request by hand. */
+function commandRule(event: TmbEvent): Decision | null {
+  if (/core\.hookspath/i.test(event.action)) {
+    return deny(`This command names core.hooksPath, and ${PUSH_GATE}: no agent changes where git looks for its hooks. Run the command without it.`);
+  }
+  for (const call of toolCalls(event.action)) {
+    if (call.subcommand === null) {
+      return deny(`tmb cannot tell which ${call.tool} subcommand this runs, because it is not written as plain text. Write the subcommand out, such as \`${call.tool} ${call.tool === "git" ? "status" : "pr view"}\`.`);
+    }
+    if (call.tool === "git" && call.subcommand === "push") {
+      if (event.role === WORKER || event.role === REVIEWER) {
+        return deny(`A ${event.role} never pushes: tmb pushes a task's work itself when the task closes (task_close).`);
+      }
+      if (call.args.includes("--no-verify")) return deny(`git push --no-verify skips the pre-push hook, and ${PUSH_GATE}. Push without --no-verify.`);
+    }
+    if (call.tool === "gh" && (call.subcommand === "pr create" || call.subcommand === "pr merge")) {
+      return deny(
+        call.subcommand === "pr create"
+          ? "tmb opens a feature branch's pull request itself once the reviewer passed it or the Human waived the review: call feature_pr instead of gh pr create."
+          : "The Human merges pull requests; no agent runs gh pr merge.",
+      );
+    }
+  }
+  return null;
+}
+
+// --- file writes --------------------------------------------------------------------------
+
+/** The path with every link in its existing part resolved, so /tmp and /private/tmp compare equal. */
+function canonical(file: string): string {
+  let existing = path.resolve(file);
+  const rest: string[] = [];
+  while (!existsSync(existing) && path.dirname(existing) !== existing) {
+    rest.unshift(path.basename(existing));
+    existing = path.dirname(existing);
+  }
+  try {
+    return path.join(realpathSync(existing), ...rest);
+  } catch {
+    return path.resolve(file);
+  }
+}
+
+function inside(file: string, dir: string): boolean {
+  const relative = path.relative(dir, file);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/** The reviewer writes nothing; a worker writes in the project only inside an open task's worktree. */
+function fileWriteRule(store: Store, event: TmbEvent): Decision | null {
+  if (event.role === REVIEWER) return deny("The reviewer judges a change and never edits one: report what you found in your verdict instead.");
+  if (event.role !== WORKER) return null;
+  const projectDir = canonical(event.projectDir);
+  const file = canonical(path.resolve(event.projectDir, event.action));
+  if (!inside(file, projectDir)) return null;
+  const worktrees = store
+    .listTasks(OPEN)
+    .map((task) => task.worktree)
+    .filter((worktree): worktree is string => worktree !== null)
+    .map(canonical);
+  if (worktrees.some((worktree) => inside(file, worktree))) return null;
+  return deny(`A worker writes only inside its task's worktree, and ${event.action} is in no open task's worktree. Read the worktree from task_brief and write there.`);
 }
 
 function rule(store: Store, event: TmbEvent): Decision {
   if (event.role === WORKER && event.type === "before-agent-start") return workerStart(store, event);
-  if (event.role === WORKER && event.type === "after-agent-stop") return workerStop(store, event);
+  if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
+  if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);
+  if (event.type === "before-command") return commandRule(event) ?? { decision: "allow" };
+  if (event.type === "before-file-write") return fileWriteRule(store, event) ?? { decision: "allow" };
   return { decision: "allow" };
 }
 

@@ -13,7 +13,8 @@
     "test:agent": "sh tests/agent-run/run.sh",
     "test:chain": "sh tests/agent-chain/run.sh",
     "test:chain:feature": "sh tests/agent-chain/feature.sh",
-    "test:worker": "sh tests/agent-run/worker.sh"
+    "test:worker": "sh tests/agent-run/worker.sh",
+    "test:reviewer": "sh tests/agent-run/reviewer.sh"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

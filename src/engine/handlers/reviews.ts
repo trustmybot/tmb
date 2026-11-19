@@ -1,0 +1,338 @@
+// The review of a whole feature branch in agile mode. The reviewer judges the branch at its tip
+// and records a pass or a fail on that exact commit; the Human may waive the review instead, also
+// on that commit. Only then does the engine push the branch and open its one pull request into
+// the base branch. The push gate reads the same coverage, so a commit no pass or waiver covers
+// never reaches the base branch by a push either.
+import { spawnSync } from "node:child_process";
+import { runGit } from "../git.ts";
+import type { Actor, Feature, Review, Store } from "../store/index.ts";
+import { OPEN, type OperationContext, requireRole } from "./common.ts";
+import { HandlerError } from "./errors.ts";
+import { featureTip } from "./features.ts";
+import { pushFeature } from "./fold.ts";
+import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
+
+export const VERDICTS = ["pass", "fail"] as const;
+export type Verdict = (typeof VERDICTS)[number];
+
+/** The state of a feature branch once the engine has opened its pull request. */
+export const PR_OPEN = "pr_open";
+/** What an audit entry of a Human waiver is about. */
+export const WAIVER = "waiver";
+
+const PR_TIMEOUT_MS = 120_000;
+
+export type Finding = { text: string; blocking: boolean };
+
+export type ReviewSummary = {
+  id: string;
+  verdict: string;
+  commit: string | null;
+  findings: Finding[];
+  by: Actor;
+  at: string;
+};
+
+export type Waiver = { id: string; feature: string; commit: string; reason: string; at: string };
+
+/** One task's commits on the feature branch, the group a reviewer judges it in. */
+export type ReviewGroup = { task: string; title: string; kind: string | null; from: string; to: string };
+
+export type FeatureBrief = {
+  name: string;
+  state: string;
+  baseBranch: string;
+  baseCommit: string;
+  /** Where the feature branch leaves the base branch: the diff to review is from here to the tip. */
+  mergeBase: string;
+  tip: string;
+  /** Each closed task's commits on the branch, in the order they landed. */
+  groups: ReviewGroup[];
+  reviews: ReviewSummary[];
+  waivers: Waiver[];
+  /** Whether a pass or a waiver covers the tip, so the pull request may open. */
+  covered: boolean;
+  coveredBy: "review" | "waiver" | null;
+  prUrl: string | null;
+  /** The line a reviewer's start prompt carries. */
+  reviewLine: string;
+};
+
+export type ReviewRecordResult = { review: ReviewSummary; feature: string; covered: boolean; next: string };
+export type FeaturePrResult = { feature: string; url: string; base: string; tip: string; coveredBy: "review" | "waiver"; push: string };
+
+/** The line that names a feature branch to the reviewer. */
+export function reviewLine(name: string): string {
+  return `feature=${name}`;
+}
+
+function requireFeature(store: Store, name: string): Feature {
+  const feature = store.findFeature(name);
+  if (!feature) {
+    const names = store.listFeatures().map((each) => each.name);
+    throw new HandlerError("not_found", `no feature branch ${name} in the record${names.length === 0 ? "" : `; it holds ${names.join(", ")}`}`);
+  }
+  return feature;
+}
+
+function requireOpenFeature(store: Store, name: string, doing: string): Feature {
+  const feature = requireFeature(store, name);
+  if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
+  return feature;
+}
+
+function findingsOf(review: Review): Finding[] {
+  return review.findings.filter((item): item is Finding => typeof item === "object" && item !== null && typeof (item as Finding).text === "string");
+}
+
+function summaryOf(review: Review): ReviewSummary {
+  return { id: review.id, verdict: review.verdict, commit: review.commitSha, findings: findingsOf(review), by: review.createdBy, at: review.createdAt };
+}
+
+function parseWaiver(detail: string): Omit<Waiver, "id" | "at"> & { featureId: string } {
+  const parsed = JSON.parse(detail) as { feature_id: string; feature: string; commit: string; reason: string };
+  return { featureId: parsed.feature_id, feature: parsed.feature, commit: parsed.commit, reason: parsed.reason };
+}
+
+/** Every Human waiver in the record, oldest first, with the feature branch id it names. */
+function allWaivers(store: Store): (Waiver & { featureId: string })[] {
+  return store.listAuditAbout(WAIVER).map((entry) => ({ id: entry.id, at: entry.createdAt, ...parseWaiver(entry.detail) }));
+}
+
+/**
+ * Whether the record lets `commit` of a feature branch through: the newest review on that exact
+ * commit is a pass, or the Human waived the review on it. A waiver is the Human's call, so a
+ * fail does not undo it.
+ */
+function coverageAt(reviews: readonly Review[], waivers: readonly { commit: string }[], commit: string): "review" | "waiver" | null {
+  if (waivers.some((waiver) => waiver.commit === commit)) return "waiver";
+  const newest = reviews.filter((review) => review.commitSha === commit).at(-1);
+  return newest?.verdict === "pass" ? "review" : null;
+}
+
+/** Every commit the record lets reach the base branch: each feature branch commit a pass or a waiver covers. */
+export function coveredCommits(store: Store): string[] {
+  const waivers = allWaivers(store);
+  const commits = new Set(waivers.map((waiver) => waiver.commit));
+  const byFeature = new Map<string, Review[]>();
+  for (const review of store.listReviews()) {
+    if (review.featureId === null || review.commitSha === null) continue;
+    byFeature.set(review.featureId, [...(byFeature.get(review.featureId) ?? []), review]);
+  }
+  for (const reviews of byFeature.values()) {
+    for (const commit of new Set(reviews.map((review) => review.commitSha!))) {
+      if (coverageAt(reviews, [], commit) === "review") commits.add(commit);
+    }
+  }
+  return [...commits];
+}
+
+/** Each closed task's commits on the branch, in the order git holds them between the merge base and the tip. */
+function groupsOf(store: Store, projectDir: string, feature: Feature, mergeBase: string, tip: string): ReviewGroup[] {
+  const listed = runGit(projectDir, ["rev-list", "--reverse", `${mergeBase}..${tip}`]);
+  const order = listed.ok ? listed.stdout.split("\n").filter((sha) => sha !== "") : [];
+  const position = new Map(order.map((sha, i) => [sha, i]));
+  const landed = store
+    .listFeatureTasks(feature.id)
+    .filter((task) => task.commitSha !== null && position.has(task.commitSha))
+    .sort((a, b) => position.get(a.commitSha!)! - position.get(b.commitSha!)!);
+  let from = mergeBase;
+  return landed.map((task) => {
+    const group = { task: task.id, title: task.title, kind: task.kind, from, to: task.commitSha! };
+    from = task.commitSha!;
+    return group;
+  });
+}
+
+function mergeBaseOf(projectDir: string, feature: Feature, tip: string): string {
+  const merged = runGit(projectDir, ["merge-base", feature.baseBranch, tip]);
+  return merged.ok ? merged.stdout : feature.baseCommit;
+}
+
+export function featureBriefOf(store: Store, projectDir: string, feature: Feature): FeatureBrief {
+  const tip = featureTip(projectDir, feature);
+  const reviews = store.listFeatureReviews(feature.id);
+  const waivers = allWaivers(store).filter((waiver) => waiver.featureId === feature.id);
+  const mergeBase = mergeBaseOf(projectDir, feature, tip);
+  const coveredBy = coverageAt(reviews, waivers, tip);
+  return {
+    name: feature.name,
+    state: feature.state,
+    baseBranch: feature.baseBranch,
+    baseCommit: feature.baseCommit,
+    mergeBase,
+    tip,
+    groups: groupsOf(store, projectDir, feature, mergeBase, tip),
+    reviews: reviews.map(summaryOf),
+    waivers: waivers.map(({ featureId: _, ...waiver }) => waiver),
+    covered: coveredBy !== null,
+    coveredBy,
+    prUrl: feature.prUrl,
+    reviewLine: reviewLine(feature.name),
+  };
+}
+
+const FEATURE_FIELD = { type: "string", description: "The feature branch's name, as feature_list shows it.", pattern: NOT_BLANK } as const;
+
+// --- feature_brief ------------------------------------------------------------------------
+
+export const featureBriefSchema: InputSchema = {
+  type: "object",
+  properties: { feature: FEATURE_FIELD },
+  required: ["feature"],
+  additionalProperties: false,
+};
+
+export function featureBrief(store: Store, _actor: Actor, input: unknown, context: OperationContext): FeatureBrief {
+  const { feature } = validateInput<{ feature: string }>("feature_brief", featureBriefSchema, input);
+  return featureBriefOf(store, context.projectDir, requireFeature(store, feature));
+}
+
+// --- review_record ------------------------------------------------------------------------
+
+const FINDING_ITEM = { type: "string", pattern: NOT_BLANK } as const;
+
+export const reviewRecordSchema: InputSchema = {
+  type: "object",
+  properties: {
+    feature: FEATURE_FIELD,
+    commit: {
+      type: "string",
+      description: "The commit you reviewed the branch at: the tip feature_brief showed. A review counts only for that commit.",
+      pattern: "^[0-9a-fA-F]{7,64}$",
+    },
+    verdict: { type: "string", description: "pass when no finding blocks, fail when one does.", enum: VERDICTS },
+    blocking: {
+      type: "array",
+      description: "Each blocking finding: file and line, the concrete failure scenario, and the task it belongs to. A fail names at least one; a pass names none.",
+      items: FINDING_ITEM,
+    },
+    notes: {
+      type: "array",
+      description: "Each finding that does not block, or that was already on the base, in the same form.",
+      items: FINDING_ITEM,
+    },
+  },
+  required: ["feature", "commit", "verdict"],
+  additionalProperties: false,
+};
+
+type ReviewRecordInput = { feature: string; commit: string; verdict: Verdict; blocking?: string[]; notes?: string[] };
+
+export function reviewRecord(store: Store, actor: Actor, input: unknown, context: OperationContext): ReviewRecordResult {
+  const given = validateInput<ReviewRecordInput>("review_record", reviewRecordSchema, input);
+  if (actor.kind === "human") {
+    throw new HandlerError("refused", "only the reviewer records a review; the Human waives one instead, with `tmb feature waive <name> --reason <text>`");
+  }
+  requireRole(actor, "review_record", ["reviewer"]);
+  if (store.openRuns("reviewer").length === 0) {
+    throw new HandlerError("refused", "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, and tmb records that start");
+  }
+  const blocking = given.blocking ?? [];
+  const notes = given.notes ?? [];
+  if (given.verdict === "pass" && blocking.length > 0) throw new HandlerError("invalid_input", "a pass names no blocking finding; with one, the verdict is fail");
+  if (given.verdict === "fail" && blocking.length === 0) throw new HandlerError("invalid_input", "a fail names at least one blocking finding");
+
+  const feature = requireOpenFeature(store, given.feature, "it takes no review");
+  const tip = featureTip(context.projectDir, feature);
+  const resolved = runGit(context.projectDir, ["rev-parse", "--verify", "--quiet", `${given.commit}^{commit}`]);
+  if (!resolved.ok || resolved.stdout !== tip) {
+    throw new HandlerError(
+      "refused",
+      `the feature branch ${feature.name} is at ${tip}, not at the commit reviewed (${given.commit}); read feature_brief again and review the branch at its tip`,
+    );
+  }
+
+  const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
+  const id = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip });
+  const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
+  const covered = given.verdict === "pass";
+  const next = covered
+    ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
+    : `the planner reworks each blocking finding as a task on ${feature.name}, then starts the reviewer again`;
+  return { review, feature: feature.name, covered, next };
+}
+
+// --- feature_waive ------------------------------------------------------------------------
+
+export const featureWaiveSchema: InputSchema = {
+  type: "object",
+  properties: {
+    feature: FEATURE_FIELD,
+    reason: { type: "string", description: "Why the review is waived, kept in the record.", pattern: NOT_BLANK },
+  },
+  required: ["feature", "reason"],
+  additionalProperties: false,
+};
+
+export function featureWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): Waiver {
+  const given = validateInput<{ feature: string; reason: string }>("feature_waive", featureWaiveSchema, input);
+  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.role} cannot`);
+  const feature = requireOpenFeature(store, given.feature, "there is no review to waive");
+  const commit = featureTip(context.projectDir, feature);
+  const detail = { feature_id: feature.id, feature: feature.name, commit, reason: given.reason.trim() };
+  const id = store.recordAudit(actor, { what: WAIVER, detail: JSON.stringify(detail) });
+  const entry = store.listAuditAbout(WAIVER).find((each) => each.id === id)!;
+  return { id, feature: feature.name, commit, reason: detail.reason, at: entry.createdAt };
+}
+
+// --- feature_pr ---------------------------------------------------------------------------
+
+export const featurePrSchema: InputSchema = {
+  type: "object",
+  properties: {
+    feature: FEATURE_FIELD,
+    title: { type: "string", description: "The pull request's title.", pattern: NOT_BLANK },
+    body: { type: "string", description: "The pull request's description; tmb adds how the review went." },
+  },
+  required: ["feature", "title"],
+  additionalProperties: false,
+};
+
+/** Opens the pull request with the GitHub command line; returns its address or what went wrong. */
+function openPullRequest(projectDir: string, args: readonly string[]): { ok: true; url: string } | { ok: false; why: string } {
+  const result = spawnSync("gh", ["pr", "create", ...args], {
+    cwd: projectDir,
+    encoding: "utf8",
+    timeout: PR_TIMEOUT_MS,
+    env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
+  });
+  if (result.error) return { ok: false, why: result.error.message };
+  const said = `${result.stderr ?? ""}\n${result.stdout ?? ""}`.replace(/\s+/g, " ").trim();
+  if (result.status !== 0) return { ok: false, why: said === "" ? `gh exited ${result.status}` : said };
+  const url = (result.stdout ?? "").split("\n").map((line) => line.trim()).filter((line) => /^https?:\/\//.test(line)).at(-1);
+  return url === undefined ? { ok: false, why: `gh printed no pull request address: ${said}` } : { ok: true, url };
+}
+
+export function featurePr(store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult {
+  const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
+  requireRole(actor, "feature_pr", ["planner"]);
+  const feature = requireOpenFeature(store, given.feature, "its pull request does not open again");
+  const brief = featureBriefOf(store, context.projectDir, feature);
+  if (brief.coveredBy === null) {
+    const newest = brief.reviews.at(-1);
+    const why =
+      newest === undefined
+        ? "no reviewer has reviewed it"
+        : newest.commit !== brief.tip
+          ? `its newest review was at ${newest.commit}, and the branch has moved since`
+          : `its newest review at the tip is a ${newest.verdict}`;
+    throw new HandlerError(
+      "refused",
+      `the pull request of ${feature.name} opens only after the reviewer passes the branch at its tip ${brief.tip}, or the Human waives the review: ${why}. Start the reviewer with the ${reviewLine(feature.name)} line in its prompt, or ask the Human to run \`tmb feature waive ${feature.name} --reason <text>\`.`,
+    );
+  }
+
+  const push = pushFeature(context.projectDir, feature.name);
+  if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
+  const how =
+    brief.coveredBy === "review"
+      ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
+      : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
+  const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
+  const opened = openPullRequest(context.projectDir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
+  if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
+  store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
+  return { feature: feature.name, url: opened.url, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail };
+}
+

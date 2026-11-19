@@ -200,7 +200,17 @@ ALTER TABLE tasks ADD COLUMN push_detail TEXT;
 CREATE INDEX idx_tasks_feature ON tasks(feature_id, id);
 `;
 
+// Version 4: the review of a feature branch. A review names the feature branch it judged and
+// the commit it judged it at, so a later commit is never taken as reviewed; a feature branch
+// records the pull request the engine opened for it.
+const VERSION_4_SQL = `
+ALTER TABLE reviews ADD COLUMN feature_id TEXT REFERENCES features(id);
+ALTER TABLE reviews ADD COLUMN commit_sha TEXT;
+CREATE INDEX idx_reviews_feature ON reviews(feature_id, id);
+ALTER TABLE features ADD COLUMN pr_url TEXT;
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

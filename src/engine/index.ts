@@ -18,6 +18,8 @@ export function handleEvent(event: EngineEvent): EngineAnswer {
 export { type Decision, decide, TMB_EVENT_TYPES, type TmbEvent, type TmbEventType } from "./decide.ts";
 export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
 export { OPERATIONS } from "./handlers/index.ts";
+export { installPushGate, judgePush, parsePushRefs, type PushRef, removePushGate } from "./push-gate.ts";
+export { statements, toolCalls, type ToolCall } from "./commands.ts";
 export { OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole, UNATTENDED_INSTRUCTION } from "./session-start.ts";
 export { openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "./project.ts";
 export { detectBaseBranch, FALLBACK_BASE_BRANCH } from "./base-branch.ts";

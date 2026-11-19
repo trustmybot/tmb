@@ -2,6 +2,8 @@
 // calls the same operation an agent's tool call does, acting as the Human.
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
+  type FeatureBrief,
+  type FeaturePrResult,
   type FeatureSummary,
   HandlerError,
   type IssueDetail,
@@ -12,6 +14,7 @@ import {
   type TaskCloseResult,
   type TaskStartResult,
   type TaskSummary,
+  type Waiver,
 } from "../handlers/index.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
@@ -33,6 +36,12 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
   tmb history <id>          Show every recorded change to an issue or note
   tmb feature start <name>  Cut a feature branch from the base branch and record it
   tmb feature list          List the feature branches with their base, state and tasks
+  tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
+  tmb feature waive <name> --reason <text>
+                            Waive the review of the feature branch at its tip (the Human only)
+  tmb feature pr <name> --title <text> [--body <text>]
+                            Open the feature branch's pull request into the base branch, once
+                            the reviewer passed its tip or the Human waived the review
   tmb task start <issue-id> --kind code|docs [--feature <name>] --intent <text> --file <path>...
                  --criterion <text>... [--check <command>]...
                             Start a task: cut its branch and worktree from the feature
@@ -199,6 +208,27 @@ function featureLine(feature: FeatureSummary): string {
   return `${feature.name}  ${feature.state.padEnd(6)}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
 }
 
+function featureBriefLines(brief: FeatureBrief): string[] {
+  const cover = brief.coveredBy === null ? "not yet: the reviewer has not passed this tip and no waiver holds it" : `yes, by a ${brief.coveredBy}`;
+  return [
+    `Feature branch ${brief.name}  ${brief.state}  into ${brief.baseBranch}`,
+    `Tip: ${brief.tip}  (review the diff from ${brief.mergeBase})`,
+    `Covered at the tip: ${cover}`,
+    ...(brief.prUrl === null ? [] : [`Pull request: ${brief.prUrl}`]),
+    "Task groups:",
+    ...(brief.groups.length === 0 ? ["  (none)"] : brief.groups.map((group) => `  ${group.task}  ${group.from.slice(0, 12)}..${group.to.slice(0, 12)}  ${group.title}`)),
+    "Reviews:",
+    ...(brief.reviews.length === 0
+      ? ["  (none)"]
+      : brief.reviews.flatMap((review) => [
+          `  ${review.verdict.padEnd(4)}  at ${(review.commit ?? "?").slice(0, 12)}  by ${who(review.by)}  ${review.at}`,
+          ...review.findings.map((finding) => `    ${finding.blocking ? "blocking" : "note"}: ${finding.text}`),
+        ])),
+    "Waivers:",
+    ...(brief.waivers.length === 0 ? ["  (none)"] : brief.waivers.map((waiver) => `  at ${waiver.commit.slice(0, 12)}  ${waiver.at}  ${waiver.reason}`)),
+  ];
+}
+
 function featureRequest(args: string[]): Request {
   const [action, ...rest] = args;
   switch (action) {
@@ -213,8 +243,26 @@ function featureRequest(args: string[]): Request {
       const format = (features: FeatureSummary[]) => (features.length === 0 ? "No feature branches." : features.map(featureLine).join("\n"));
       return { operation: "feature_list", input: {}, json: values.json === true, format };
     }
+    case "brief": {
+      const { values, positionals } = parse(rest, {});
+      const format = (brief: FeatureBrief) => featureBriefLines(brief).join("\n");
+      return { operation: "feature_brief", input: { feature: only(positionals, "feature branch name") }, json: values.json === true, format };
+    }
+    case "waive": {
+      const { values, positionals } = parse(rest, { reason: { type: "string" } });
+      if (values.reason === undefined) throw new UsageError("feature waive needs --reason <text>: why the review is waived");
+      const format = (waiver: Waiver) => `Waived the review of ${waiver.feature} at ${waiver.commit}; its pull request may open now.`;
+      return { operation: "feature_waive", input: { feature: only(positionals, "feature branch name"), reason: values.reason }, json: values.json === true, format };
+    }
+    case "pr": {
+      const { values, positionals } = parse(rest, { title: { type: "string" }, body: { type: "string" } });
+      if (values.title === undefined) throw new UsageError("feature pr needs --title <text>");
+      const input = { feature: only(positionals, "feature branch name"), title: values.title, ...(values.body === undefined ? {} : { body: values.body }) };
+      const format = (pr: FeaturePrResult) => `Opened the pull request of ${pr.feature} into ${pr.base} at ${pr.tip} (${pr.coveredBy}): ${pr.url}`;
+      return { operation: "feature_pr", input, json: values.json === true, format };
+    }
     default:
-      throw new UsageError(action === undefined ? "feature needs an action: start or list" : `unknown feature action '${action}'`);
+      throw new UsageError(action === undefined ? "feature needs an action: start, list, brief, waive or pr" : `unknown feature action '${action}'`);
   }
 }
 

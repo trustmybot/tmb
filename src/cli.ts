@@ -5,6 +5,8 @@ import type { HookRun } from "./adapters/host-adapter.ts";
 import { HOST_ADAPTERS, hostAdapter } from "./adapters/index.ts";
 import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
+import { projectRootOf } from "./engine/project.ts";
+import { judgePush, removePushGate } from "./engine/push-gate.ts";
 import { runSetup, terminalAsk } from "./setup.ts";
 import { version, versionLine } from "./version.ts";
 
@@ -18,7 +20,9 @@ ${CONFIG_USAGE}
 ${RECORD_USAGE}
   tmb mcp --host <id> [--project <dir>]
                             Serve the record's tools over stdio (the host runs this)
-  tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)`;
+  tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)
+  tmb pre-push <remote> [<url>]
+                            Judge a push (git's pre-push hook runs this; reads its ref lines on stdin)`;
 
 // A compiled tmb runs its entry from Bun's embedded file system; from source, Bun runs this file.
 const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:\\~BUN\\)/i;
@@ -51,6 +55,19 @@ async function runHook(event: string | undefined): Promise<number> {
     if (output !== "") process.stdout.write(output + "\n");
   } catch (error) {
     process.stderr.write(`tmb hook: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+  return 0;
+}
+
+/** git's pre-push hook: exit 1 refuses the push, and git shows what tmb wrote on stderr. */
+async function runPrePush(args: string[]): Promise<number> {
+  const remote = args[0];
+  if (remote === undefined) throw new Error("pre-push needs the remote's name, as git passes it");
+  // A push from a task worktree runs the hook there; the record is in the project that holds it.
+  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text());
+  if (decision.decision === "deny") {
+    console.error(decision.reason ?? `tmb refused the push to ${remote}`);
+    return 1;
   }
   return 0;
 }
@@ -116,7 +133,10 @@ async function main(argv: string[]): Promise<number> {
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "remove":
       for (const line of adapter.remove(process.cwd())) console.log(line);
+      for (const line of removePushGate(process.cwd())) console.log(line);
       return 0;
+    case "pre-push":
+      return runPrePush(rest);
     case "mcp":
       return runToolServer(rest);
     case "hook":

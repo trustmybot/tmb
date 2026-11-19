@@ -1,11 +1,11 @@
 name: agent run
 
 # Real Claude Code sessions in a project set up with tmb. agent-run greets a session set up
-# with the dev build and checks bro answers, then has a session built from this checkout fix a
-# small bun project through a task; agent-chain builds tmb from this checkout, has one session
-# record a goal and checks a new session finds it, then has two sessions add two functions and
-# checks one feature branch collected both. Runs only on request, and each job only does
-# anything when CLAUDE_CODE_OAUTH_TOKEN is set.
+# with the dev build and checks bro answers, then has sessions built from this checkout fix a
+# small bun project through a task and have a finished feature branch reviewed; agent-chain
+# builds tmb from this checkout, has one session record a goal and checks a new session finds
+# it, then has two sessions add two functions and checks one feature branch collected both.
+# Runs only on request, and each job only does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
 
 on:
   workflow_dispatch:
@@ -49,6 +49,9 @@ jobs:
       - name: Run the worker agent run
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-run/worker.sh
+      - name: Run the reviewer agent run
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-run/reviewer.sh
 
   agent-chain:
     runs-on: ubuntu-latest
