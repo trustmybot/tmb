@@ -33,11 +33,11 @@ A compiled file is not secret: its bundled code can be read. The public repo hid
 
 An install follows one channel. Updates are pushed to each channel; tmb checks for one when it starts and applies it between sessions, never in the middle of a task. With no network it runs the version it has.
 
-As built at level 8, pending the Human's review on trustmybot/tmb#16:
+As built at level 8, as agreed on trustmybot/tmb#16 (pending the Human's review):
 
 - A build's version names its channel: `X.Y.Z-dev.N` is dev, `X.Y.Z-rc.N` is rc, `X.Y.Z` is stable. Every release carries a `VERSION` file and the checksums of its files.
 - dev is the rolling `dev` prerelease, published on every push to the base branch. rc and stable are published only when a `vX.Y.Z-rc.N` or `vX.Y.Z` tag is pushed: rc as a prerelease, stable as the release marked latest. rc's newest release is found through the public releases API.
-- When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no project it has served has an open task. `tmb update` does the same on request.
+- When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running. "Never in the middle of a task" is met by never swapping while a session runs: an open task does not hold the swap back, since a task can stay open for days, and a build that changes the record's layout upgrades it at the next start. `tmb update` does the same on request.
 
 A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
 

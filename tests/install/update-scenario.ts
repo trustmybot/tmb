@@ -1,6 +1,6 @@
 // One install updating itself, the way a user's does: an older tmb is installed, a host
 // session starts its tool server and ends it, and the newer build on its channel is swapped
-// in only between sessions and never while a task is open. Shared by the Install test
+// in only between sessions, even with a task open. Shared by the Install test
 // against the real release repo and the integration test against a local one.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -139,8 +139,9 @@ export function openTask(scenario: Scenario): () => void {
 }
 
 /**
- * The whole story for one channel, from an older install to `expected`. Returns the steps
- * it saw, in order, and throws at the first one that is wrong.
+ * The whole story for one channel, from an older install to `expected`, with a task open
+ * throughout: an open task does not hold an update back, a running session does
+ * (trustmybot/tmb#16). Logs the steps it saw, in order, and throws at the first one that is wrong.
  */
 export async function updatesItself(scenario: Scenario, expected: string, log: (line: string) => void = () => {}): Promise<void> {
   const before = installedVersion(scenario);
@@ -156,17 +157,16 @@ export async function updatesItself(scenario: Scenario, expected: string, log: (
   if (installedVersion(scenario) !== before) throw new Error(`tmb update swapped the file while a session ran: ${during.output}`);
   log(`while a session runs, tmb update waits: ${during.output}`);
 
-  await first.end();
-  if (installedVersion(scenario) !== before) throw new Error("the update applied at a session's end while a task was open");
-  log("at the session's end with a task open, the install keeps its version");
-
-  closeTask();
   const second = await startSession(scenario);
-  if (installedVersion(scenario) !== before) throw new Error("the update applied while a session ran");
+  await first.end();
+  if (installedVersion(scenario) !== before) throw new Error("the update applied at a session's end while another session still ran");
+  log("at a session's end with another session still running, the install keeps its version");
+
   await second.end();
   const after = installedVersion(scenario);
-  if (after !== expected) throw new Error(`after the session ended with no task open, tmb is ${after}, expected ${expected}`);
-  log(`after the next session ended with no task open, tmb is ${after}`);
+  if (after !== expected) throw new Error(`after the last session ended, tmb is ${after}, expected ${expected}`);
+  log(`after the last session ended, with a task still open, tmb is ${after}`);
+  closeTask();
 
   const again = await runUpdate(scenario);
   if (again.status !== 0 || !again.output.includes("newest")) throw new Error(`tmb update after the swap: ${again.output}`);

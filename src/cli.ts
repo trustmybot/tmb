@@ -23,7 +23,7 @@ const USAGE = `Usage:
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
   tmb update [--check]      Look for a newer build on this install's channel now and apply it
-                            when no tmb session is running and no task is open; with
+                            when no other tmb session is running; with
                             --check, only report
   tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
@@ -142,7 +142,7 @@ async function runUpdateCommand(args: string[]): Promise<number> {
     return 0;
   }
   if (applied.outcome === "waiting") {
-    console.log(`tmb ${applied.version} is ready and applies once no session is running and no task is open: ${applied.reason}.`);
+    console.log(`tmb ${applied.version} is ready and applies once no tmb session is running: ${applied.reason}.`);
     return 0;
   }
   console.error(`tmb update: could not apply ${applied.version}: ${applied.reason}`);
@@ -226,9 +226,6 @@ function runMigrateCommand(args: string[]): number {
         `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
           `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
       );
-      if (counts.openTasks > 0) {
-        console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
-      }
       console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
     }
   } finally {

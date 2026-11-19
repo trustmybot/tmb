@@ -37,7 +37,7 @@ function pluginWorkspace(): { workspace: string; dbPath: string } {
                        base_sha, workflow_mode, no_code_class, repo) VALUES
       (10, 1, 'feat/dark-mode', 'Theme variables', 'Add the variables', 'closed', '## Spec\nAdd CSS variables.', 'abc123',
        '2026-01-02T11:00:00.000Z', '2026-01-04T11:00:00.000Z', '2026-01-04T11:00:00.000Z', 'base000', 'agile', NULL, 'app'),
-      (11, 1, 'docs/dark-mode', '', 'Document the toggle', 'running', '', NULL,
+      (11, 1, 'docs/dark-mode', '', 'Document the toggle', 'escalated', '', NULL,
        '2026-01-02T12:00:00.000Z', '2026-01-02T12:00:00.000Z', NULL, NULL, NULL, 'docs', 'app'),
       (12, 2, 'perf/search', 'Index search', 'Add an index', 'running', 'Index it.', NULL,
        '2026-01-03T11:00:00.000Z', '2026-01-03T11:00:00.000Z', NULL, 'base111', NULL, NULL, 'app'),
@@ -96,7 +96,6 @@ describe("a plugin project's records carry over", () => {
     expect(output).toContain(dbPath);
     expect(output).toContain("(repo app)");
     expect(output).toContain("2 issues, 4 notes and decisions, 3 tasks, 2 reviews, 1 check runs, 2 agent runs");
-    expect(output).toContain("1 of the tasks are still open");
   });
 
   test("the plugin's database is byte for byte unchanged", () => {
@@ -140,8 +139,7 @@ describe("a plugin project's records carry over", () => {
         ["Index search", "open", "perf/search", "code", null, "base111", null],
       ]);
       expect(tasks[0]!.spec).toBe("Carried over from the plugin's task 10 (status closed).\n\n## Spec\nAdd CSS variables.");
-      // Left running under an issue the plugin closed: abandoned, so copied closed.
-      expect(tasks[1]!.spec).toContain("(status running)");
+      expect(tasks[1]!.spec).toContain("(status escalated)");
       expect(tasks[0]!.createdAt).toBe("2026-01-02T11:00:00.000Z");
       expect(tasks.map((task) => task.createdBy)).toEqual(tasks.map(() => ({ kind: "agent", role: "planner", host: "claude-code" })));
 
