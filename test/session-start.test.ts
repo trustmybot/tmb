@@ -11,7 +11,6 @@ import {
   plannerRole,
   projectDbPath,
   UNATTENDED_INSTRUCTION,
-  UNATTENDED_VARIABLE,
 } from "../src/engine/index.ts";
 import type { Store } from "../src/engine/store/index.ts";
 
@@ -26,7 +25,7 @@ afterEach(() => {
 });
 
 function context(): string {
-  return handleEvent({ type: "session-start", projectDir: project }).context;
+  return handleEvent({ type: "session-start", projectDir: project, unattended: false }).context;
 }
 
 function withStore(use: (store: Store) => void): void {
@@ -100,20 +99,16 @@ describe("session start", () => {
 });
 
 describe("unattended mode", () => {
-  function contextWith(unattended: string | undefined): string {
+  function contextWith(unattended: boolean): string {
     return handleEvent({ type: "session-start", projectDir: project, unattended }).context;
   }
 
-  test("is read from TMB_UNATTENDED", () => {
-    expect(UNATTENDED_VARIABLE).toBe("TMB_UNATTENDED");
-  });
-
-  test("with 1, the answer is the attended one followed by the unattended instruction", () => {
+  test("when on, the answer is the attended one followed by the unattended instruction", () => {
     withStore((store) => {
       store.createIssue({ kind: "human" }, { title: "Open issue" });
     });
-    const attended = contextWith(undefined);
-    const text = contextWith("1");
+    const attended = contextWith(false);
+    const text = contextWith(true);
     expect(text).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
     expect(text.indexOf("Open issue")).toBeLessThan(text.indexOf(UNATTENDED_INSTRUCTION));
     expect(UNATTENDED_INSTRUCTION).toContain("No one can answer in this run");
@@ -121,16 +116,12 @@ describe("unattended mode", () => {
     expect(UNATTENDED_INSTRUCTION).toContain("stop with the reason when a default is not safe");
   });
 
-  test("with 1 and no record, the role is followed by the instruction", () => {
-    expect(contextWith("1")).toBe(`${plannerRole.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+  test("when on and there is no record, the role is followed by the instruction", () => {
+    expect(contextWith(true)).toBe(`${plannerRole.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
   });
 
-  test("unset or any other value gives exactly the attended answer", () => {
+  test("when off, the answer is the role and the open work alone", () => {
     withStore(() => {});
-    const attended = context();
-    for (const value of [undefined, "", "0", "true", "yes", " 1", "1 "]) {
-      expect(contextWith(value)).toBe(attended);
-    }
-    expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
+    expect(contextWith(false)).toBe(`${plannerRole.trimEnd()}\n\n${OPEN_WORK_HEADING}\n\nNo open issues.\n`);
   });
 });

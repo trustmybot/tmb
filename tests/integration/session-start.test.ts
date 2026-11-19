@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { UNATTENDED_INSTRUCTION, UNATTENDED_VARIABLE } from "../../src/engine/index.ts";
+import { UNATTENDED_INSTRUCTION } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
@@ -29,7 +29,7 @@ function run(command: string, args: string[], cwd: string, input?: string, extra
     GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig"),
     PATH: pathWithFakeClaude(scratch),
   };
-  delete env[UNATTENDED_VARIABLE];
+  delete env.TMB_UNATTENDED;
   const result = spawnSync(command, args, { cwd, input, encoding: "utf8", timeout: 30_000, env: { ...env, ...extraEnv } });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -73,6 +73,7 @@ describe("tmb hook session-start", () => {
     expect(contextWith({ TMB_UNATTENDED: "1" })).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
     expect(contextWith({ TMB_UNATTENDED: "0" })).toBe(attended);
     expect(contextWith({ TMB_UNATTENDED: "" })).toBe(attended);
+    for (const value of ["true", "yes", " 1", "1 "]) expect(contextWith({ TMB_UNATTENDED: value })).toBe(attended);
   });
 });
 

@@ -1,4 +1,5 @@
-import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType, UNATTENDED_VARIABLE } from "../../engine/index.ts";
+import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+import type { HookRun } from "../host-adapter.ts";
 import { isObject, type JsonObject } from "./json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
 import type { HookName } from "./settings.ts";
@@ -46,8 +47,8 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
   return { type, projectDir: projectDirOf(input), host: HOST_ID, role, action };
 }
 
-function sessionStart(input: JsonObject): string {
-  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: process.env[UNATTENDED_VARIABLE] });
+function sessionStart(input: JsonObject, run: HookRun): string {
+  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: run.unattended });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 
@@ -71,7 +72,7 @@ function subagentStop(input: JsonObject): string {
   return "";
 }
 
-const ANSWERS: Record<HookName, (input: JsonObject) => string> = {
+const ANSWERS: Record<HookName, (input: JsonObject, run: HookRun) => string> = {
   "session-start": sessionStart,
   "pre-tool-use": preToolUse,
   "subagent-stop": subagentStop,
@@ -79,12 +80,12 @@ const ANSWERS: Record<HookName, (input: JsonObject) => string> = {
 
 /**
  * Turns Claude Code's hook input into the engine's event and the engine's answer into
- * Claude Code's hook output. Returns the stdout text, empty when there is nothing to say,
- * or throws on bad input.
+ * Claude Code's hook output; `run` is what the command line read about the run. Returns the
+ * stdout text, empty when there is nothing to say, or throws on bad input.
  */
-export function answerHook(event: string, stdinText: string): string {
+export function answerHook(event: string, stdinText: string, run: HookRun): string {
   const answer = Object.hasOwn(ANSWERS, event) ? ANSWERS[event as HookName] : undefined;
   if (!answer) throw new Error(`unknown hook event '${event}'`);
   const input: unknown = stdinText.trim() === "" ? {} : JSON.parse(stdinText);
-  return answer(isObject(input) ? input : {});
+  return answer(isObject(input) ? input : {}, run);
 }

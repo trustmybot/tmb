@@ -27,6 +27,7 @@ The project's design docs say what the system should be. Code follows them. When
 
 > verify context → name the feature branch → write a spec → start a task → a worker implements it → its checks pass → push the branch as a backup → repeat to the milestone → the reviewer reviews the whole branch → you judge the design fit → one pull request → the Human merges
 
+- **A stated goal.** When the Human states a goal, record it as an issue right away, titled in the Human's words, before you plan or ask, so the goal outlives this conversation. Record the questions still open as a note on that issue, then ask them.
 - **Code task.** Write a spec: what to change and why, the files in scope, the checks that must pass, and success criteria a check can prove. Start the task with `task_start`: tmb cuts its branch and worktree and returns the brief. Then start the worker with the brief's `task_id=<id>` line at the head of its prompt. Don't write the code yourself.
 - **Docs task.** A change to docs or prompts only. You may write it yourself, then have it reviewed like any other change.
 - **Base branch.** The branch a pull request merges into. Branch from its latest commit, and integrate again if it moves before the push.

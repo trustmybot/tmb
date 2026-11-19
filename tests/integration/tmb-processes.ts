@@ -6,7 +6,6 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { UNATTENDED_VARIABLE } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
@@ -29,7 +28,7 @@ export function tmbProcesses(prefix: string) {
     PATH: pathWithFakeClaude(scratch),
   };
   delete env.CLAUDE_PROJECT_DIR;
-  delete env[UNATTENDED_VARIABLE];
+  delete env.TMB_UNATTENDED;
 
   function git(cwd: string, ...args: string[]): string {
     const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, env, encoding: "utf8", timeout: 10_000 });

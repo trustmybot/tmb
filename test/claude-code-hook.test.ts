@@ -4,11 +4,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { answerHook } from "../src/adapters/claude-code/hook.ts";
-import { handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION, UNATTENDED_VARIABLE } from "../src/engine/index.ts";
+import { handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
 
 let project: string;
 const savedProjectDir = process.env.CLAUDE_PROJECT_DIR;
+const ATTENDED = { unattended: false };
 
 beforeEach(() => {
   project = mkdtempSync(path.join(tmpdir(), "tmb-hook-"));
@@ -53,6 +54,7 @@ function preToolUse(toolName: string, toolInput: Record<string, unknown>, extra:
   return answerHook(
     "pre-tool-use",
     JSON.stringify({ hook_event_name: "PreToolUse", cwd: project, tool_name: toolName, tool_input: toolInput, ...extra }),
+    ATTENDED,
   );
 }
 
@@ -150,7 +152,7 @@ describe("hook pre-tool-use", () => {
   });
 
   test("still throws on input that is not JSON", () => {
-    expect(() => answerHook("pre-tool-use", "{ not json")).toThrow();
+    expect(() => answerHook("pre-tool-use", "{ not json", ATTENDED)).toThrow();
   });
 });
 
@@ -158,7 +160,7 @@ describe("hook subagent-stop", () => {
   test("records an after-agent-stop under the stopped agent's role and answers nothing", () => {
     createRecord();
     const input = { hook_event_name: "SubagentStop", cwd: project, agent_id: "a1", agent_type: "reviewer", stop_hook_active: false };
-    expect(answerHook("subagent-stop", JSON.stringify(input))).toBe("");
+    expect(answerHook("subagent-stop", JSON.stringify(input), ATTENDED)).toBe("");
     const [recorded] = guardDecisions();
     expect(recorded!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
     expect(JSON.parse(recorded!.event)).toEqual({ type: "after-agent-stop", role: "reviewer", action: "reviewer" });
@@ -166,12 +168,12 @@ describe("hook subagent-stop", () => {
 
   test("answers nothing even when the record cannot be read", () => {
     breakRecord();
-    expect(answerHook("subagent-stop", JSON.stringify({ cwd: project }))).toBe("");
+    expect(answerHook("subagent-stop", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
   });
 
   test("records the stop from a subfolder of the project", () => {
     createRecord();
-    expect(answerHook("subagent-stop", JSON.stringify({ cwd: subfolder(), agent_type: "worker" }))).toBe("");
+    expect(answerHook("subagent-stop", JSON.stringify({ cwd: subfolder(), agent_type: "worker" }), ATTENDED)).toBe("");
     expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
       { type: "after-agent-stop", role: "worker", action: "worker" },
     ]);
@@ -179,29 +181,18 @@ describe("hook subagent-stop", () => {
 });
 
 describe("hook session-start", () => {
-  const savedUnattended = process.env[UNATTENDED_VARIABLE];
-
-  afterEach(() => {
-    if (savedUnattended === undefined) delete process.env[UNATTENDED_VARIABLE];
-    else process.env[UNATTENDED_VARIABLE] = savedUnattended;
-  });
-
-  function sessionStartContext(): string {
-    const output = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", cwd: project })));
+  function sessionStartContext(unattended: boolean): string {
+    const input = JSON.stringify({ hook_event_name: "SessionStart", cwd: project });
+    const output = JSON.parse(answerHook("session-start", input, { unattended }));
     return output.hookSpecificOutput.additionalContext as string;
   }
 
-  test("passes the run's unattended value through to the engine's answer", () => {
+  test("puts the run's unattended flag in the engine's session-start event", () => {
     createRecord();
-    delete process.env[UNATTENDED_VARIABLE];
-    const attended = handleEvent({ type: "session-start", projectDir: project }).context;
-    expect(sessionStartContext()).toBe(attended);
-
-    process.env[UNATTENDED_VARIABLE] = "1";
-    expect(sessionStartContext()).toBe(handleEvent({ type: "session-start", projectDir: project, unattended: "1" }).context);
-    expect(sessionStartContext()).toEndWith(`${UNATTENDED_INSTRUCTION}\n`);
-
-    process.env[UNATTENDED_VARIABLE] = "0";
-    expect(sessionStartContext()).toBe(attended);
+    const attended = handleEvent({ type: "session-start", projectDir: project, unattended: false }).context;
+    expect(sessionStartContext(false)).toBe(attended);
+    expect(sessionStartContext(true)).toBe(handleEvent({ type: "session-start", projectDir: project, unattended: true }).context);
+    expect(sessionStartContext(true)).toEndWith(`${UNATTENDED_INSTRUCTION}\n`);
+    expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
   });
 });
