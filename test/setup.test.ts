@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { HostAdapter } from "../src/adapters/index.ts";
+import { type HostAdapter, SUPPORTED_HOST_IDS } from "../src/adapters/index.ts";
 import { openProjectStore, readSettings, SettingError, type Settings, TMB_EVENT_TYPES } from "../src/engine/index.ts";
 import type { AuditEntry } from "../src/engine/store/index.ts";
 import { type Ask, runSetup, SetupError, type SetupFlags } from "../src/setup.ts";
@@ -56,11 +56,13 @@ function scripted(answers: (string | null)[]): Ask & { prompts: string[] } {
   return Object.assign(ask, { prompts });
 }
 
-function setup(options: { adapters?: HostAdapter[]; flags?: SetupFlags; ask?: Ask | null } = {}): Promise<void> {
+function setup(options: { adapters?: HostAdapter[]; flags?: SetupFlags; ask?: Ask | null; supportedHostIds?: string[] } = {}): Promise<void> {
+  const adapters = options.adapters ?? [A];
   return runSetup({
     projectDir: project,
     tmbCommand: ["tmb"],
-    adapters: options.adapters ?? [A],
+    adapters,
+    supportedHostIds: options.supportedHostIds ?? adapters.map((adapter) => adapter.id),
     flags: options.flags ?? {},
     ask: options.ask ?? null,
     out: (line) => output.push(line),
@@ -120,6 +122,25 @@ describe("choosing the host", () => {
     expect(readdirSync(project)).toEqual([]);
     await setup({ adapters: [A, B], flags: { host: "b" }, ask: scripted([]) });
     expect(setUpWith).toEqual(["b"]);
+  });
+});
+
+describe("a host this release does not support yet", () => {
+  test("is set up so it can be tried, with a warning first and last, and marked in the list of hosts", async () => {
+    const warning = "Warning: Host B is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.";
+    await setup({ adapters: [A, B], flags: { host: "b" }, supportedHostIds: ["a"] });
+    expect(setUpWith).toEqual(["b"]);
+    expect(output[1]).toBe(warning);
+    expect(output.at(-1)).toBe(warning);
+
+    output.length = 0;
+    await setup({ adapters: [A, B], ask: scripted(["a"]), supportedHostIds: ["a"] });
+    expect(output).toContain("  2. Host B (b), not supported yet");
+    expect(output.join("\n")).not.toContain("Warning:");
+  });
+
+  test("in this release, only Claude Code is supported", () => {
+    expect(SUPPORTED_HOST_IDS).toEqual(["claude-code"]);
   });
 });
 

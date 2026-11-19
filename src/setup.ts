@@ -2,7 +2,7 @@
 // questions the workflow needs and stores the answers in the record. It reaches a host only
 // through the adapter interface, so it names none.
 import { createInterface } from "node:readline";
-import type { HostAdapter } from "./adapters/index.ts";
+import { type HostAdapter, SUPPORTED_HOST_IDS } from "./adapters/index.ts";
 import {
   AVAILABLE_REVIEW_MODES,
   DEFAULT_HOST_ROLE,
@@ -40,6 +40,8 @@ export type SetupOptions = {
   /** Asks on the terminal; null when there is none, so every question takes its default. */
   ask: Ask | null;
   out: (line: string) => void;
+  /** The ids of the hosts this release supports; setup warns for any other. SUPPORTED_HOST_IDS unless given. */
+  supportedHostIds?: readonly string[];
 };
 
 export class SetupError extends Error {
@@ -108,7 +110,7 @@ async function chooseHost(options: SetupOptions, ask: Ask | null, storedHost: st
     return fallback;
   }
   out("Several supported hosts are installed:");
-  installed.forEach((adapter, i) => out(`  ${i + 1}. ${adapter.name} (${adapter.id})`));
+  installed.forEach((adapter, i) => out(`  ${i + 1}. ${adapter.name} (${adapter.id})${(options.supportedHostIds ?? SUPPORTED_HOST_IDS).includes(adapter.id) ? "" : ", not supported yet"}`));
   for (;;) {
     const answer = (await ask(`Which host should tmb use? [${fallback.id}] `))?.trim();
     if (!answer) return fallback;
@@ -206,6 +208,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const ask = flags.yes === true ? null : options.ask;
 
   const adapter = await chooseHost(options, ask, stored.host);
+  const supported = options.supportedHostIds ?? SUPPORTED_HOST_IDS;
+  const unsupported = !supported.includes(adapter.id);
+  const notSupported = `${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
+  if (unsupported) out(`Warning: ${notSupported}`);
   // The role is the host's main agent's: kept from an earlier setup of this host unless --role names another.
   const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
@@ -235,6 +241,8 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     for (const step of steps) out(`  - ${step}`);
   }
   out(`tmb is set up for ${adapter.name}. Open it in this project to start as the ${role}.`);
+  // Said again last, so it is not lost above setup's other lines.
+  if (unsupported) out(`Warning: ${notSupported}`);
 }
 
 /** Asks on the process's terminal, one line per question. */
