@@ -1,6 +1,6 @@
-# Testing
+# tests
 
-How tmb is tested, and which tests each level of the [build order](README.md#build-order) must add.
+How tmb is tested, and which tests each level of the [build order](../docs/architecture/README.md#build-order) must add.
 
 ## The rule
 
