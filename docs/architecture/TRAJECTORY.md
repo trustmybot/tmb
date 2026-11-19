@@ -37,7 +37,7 @@ One database file per project, inside the project's folder and left out of git. 
 
 ## The code graph is separate
 
-The [code graph](CODE_GRAPH.md) is not part of the trajectory. It can be rebuilt from git at any time, and it lives in its own file. That an indexing run happened is trajectory; the graph itself is not.
+The [code graph](CODE_GRAPH.md) is not part of the trajectory. It can be rebuilt from git at any time, and it lives in its own file. Indexing is not recorded in the trajectory either: the graph file keeps, for each repo, the commit it was built at, when and what it holds. Proposed, for the Human's review.
 
 ## Plugin projects
 
