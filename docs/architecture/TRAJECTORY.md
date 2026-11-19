@@ -27,7 +27,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 
 ## Where it lives
 
-One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one. The engine creates it at setup, and is the only program that migrates it. Proposed, for the Human's review: the plugin does the same.
+One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one. The engine creates it at setup, and is the only program that migrates it.
 
 | State | Gate | Other commands |
 |---|---|---|
@@ -41,4 +41,4 @@ The [code graph](CODE_GRAPH.md) is not part of the trajectory. It can be rebuilt
 
 ## Plugin projects
 
-A one-way migration tool carries a plugin project's records into a new tmb database. The plugin's database is left untouched.
+A one-way migration tool carries a plugin project's records into a new tmb database. The plugin's database is left untouched. It carries over only what tmb supports: a kind of record tmb does not have is left behind, not folded into another kind.
