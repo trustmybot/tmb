@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "./theme/theme.css";
+@source "./";
+
+@layer base {
+  body {
+    @apply bg-canvas text-fg font-sans;
+  }
+}
