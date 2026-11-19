@@ -27,6 +27,28 @@ flowchart TD
 - The **engine** holds the three pillars. It briefs the agents, records what they do, and decides what is allowed.
 - The **host adapter** is the only part that knows a host. Claude Code is first; another host is another adapter ([HOSTS.md](HOSTS.md)).
 
+## What tmb can and cannot do
+
+tmb is a harness that is not built into the agent. The host runs the agent's loop: it calls the model and runs the tools. tmb stands at the points the host and git open to an outside program. Every design in these docs has to fit inside this. Confirmed by the Human on 2026-11-19.
+
+| tmb can | Through | How strong |
+|---|---|---|
+| **Guide** an agent | Text at session start and in the role definitions | Weak. An agent can ignore a prompt. |
+| **Offer tools** | Its tool server and command line, over the record and the code graph | Strong for a step that has to go through tmb, because the rule is inside the tool. |
+| **Refuse** an action | The host's events before a write, a command or an agent start, and git's pre-push hook | Strong. The host or git enforces it, not the agent. |
+| **Remember** | The record, kept outside any conversation | What lets a new session, or another host, carry on. |
+
+| tmb cannot | So |
+|---|---|
+| Make an agent take an action | A rule is written as a refusal of the wrong step, or as a tool that does the right one. Never as a hope that the agent will do it. |
+| See what the host does not show it | tmb records what it needs from the events it gets. A host's limits are reported by its adapter ([HOSTS.md](HOSTS.md)). |
+| Outlive a change in the host's events | tmb is built on top of the host. The adapter is the one part that follows it. |
+| Stop the Human from switching it off | That is the Human's choice. tmb ships options, not enforcement against its own user. |
+| See an agent's reasoning or steer the model in the middle of a turn | No design depends on it. |
+
+- **Prompts guide, the gate holds.** When a rule matters, it is a refusal or a tool, with a prompt only to explain it.
+- **tmb runs when something calls it.** A session, a hook, git, the command line or the dashboard. Background work is done by a tmb program that is already open for that project, and stops when it closes. Proposed, for the Human's review.
+
 ## Docs in this folder
 
 | Doc | Answers |
