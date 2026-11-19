@@ -1,0 +1,84 @@
+// The project's .codex/config.toml, where Codex finds project-scoped tool servers. tmb keeps
+// its server in one marked block at the end of the file and never touches the rest.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { ignoreInGit } from "../common/git.ts";
+import { deleteFile, isObject, writeJsonObject } from "../common/json-file.ts";
+import { CODEX_DIR, configTomlPath, createdMarkerPath, HOST_ID, SERVER_KEY } from "./paths.ts";
+
+const BEGIN = "# >>> tmb: written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
+const END = "# <<< tmb";
+// The block and the newline setup put before it: a blank line after a file that ends with one.
+const BLOCK = new RegExp(String.raw`\n${escape(BEGIN)}\n[\s\S]*?\n${escape(END)}\n`);
+
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** A TOML basic string: JSON's escapes are all valid TOML ones. */
+const tomlString = (value: string) => JSON.stringify(value);
+
+export function serverBlock(tmbCommand: readonly string[]): string {
+  const args = [...tmbCommand.slice(1), "mcp", "--host", HOST_ID];
+  return [BEGIN, `[mcp_servers.${SERVER_KEY}]`, `command = ${tomlString(tmbCommand[0]!)}`, `args = [${args.map(tomlString).join(", ")}]`, END, ""].join("\n");
+}
+
+function parse(text: string, file: string): Record<string, unknown> {
+  try {
+    return Bun.TOML.parse(text) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`${file} is not valid TOML, so tmb left it as it is: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function hasServer(config: Record<string, unknown>): boolean {
+  const servers = config.mcp_servers;
+  return isObject(servers) && Object.hasOwn(servers, SERVER_KEY);
+}
+
+export type RegisterResult = { file: string; changed: boolean; created: boolean; gitignoreChanged: boolean };
+
+export function registerServer(projectDir: string, tmbCommand: readonly string[]): RegisterResult {
+  const file = configTomlPath(projectDir);
+  const created = !existsSync(file);
+  const before = created ? "" : readFileSync(file, "utf8");
+  const humans = before.replace(BLOCK, "");
+  if (hasServer(parse(humans, file))) throw new Error(`${file} already has an [mcp_servers.${SERVER_KEY}] tmb did not write; remove it, then run setup again`);
+  // One newline before the block: a blank line after a file that ends with one, a line break after one that does not.
+  const text = `${humans}\n${serverBlock(tmbCommand)}`;
+  if (!hasServer(parse(text, file))) throw new Error(`tmb could not add its server to ${file}`);
+
+  const changed = text !== before;
+  if (changed) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, text);
+    if (created) writeJsonObject(createdMarkerPath(projectDir, "config"), { created: path.join(CODEX_DIR, "config.toml") });
+  }
+  // A config.toml tmb made holds only a machine-specific path, so it stays out of git.
+  const gitignoreChanged = existsSync(createdMarkerPath(projectDir, "config")) && ignoreInGit(projectDir, `${CODEX_DIR}/config.toml`, path.join(CODEX_DIR, "config.toml"));
+  return { file, changed, created: created && changed, gitignoreChanged };
+}
+
+export type UnregisterResult = { file: string; removed: boolean; fileDeleted: boolean };
+
+export function unregisterServer(projectDir: string): UnregisterResult {
+  const file = configTomlPath(projectDir);
+  const marker = createdMarkerPath(projectDir, "config");
+  const tmbCreatedIt = existsSync(marker);
+  const result: UnregisterResult = { file, removed: false, fileDeleted: false };
+  if (existsSync(file)) {
+    const before = readFileSync(file, "utf8");
+    const after = before.replace(BLOCK, "");
+    if (after !== before) {
+      result.removed = true;
+      if (tmbCreatedIt && after.trim() === "") {
+        deleteFile(file, projectDir);
+        result.fileDeleted = true;
+      } else {
+        writeFileSync(file, after);
+      }
+    }
+  }
+  if (tmbCreatedIt) deleteFile(marker, projectDir);
+  return result;
+}

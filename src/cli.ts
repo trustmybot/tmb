@@ -230,8 +230,10 @@ function runRemoveCommand(args: string[]): number {
   const { values, positionals } = parseArgs({ args, options: { host: { type: "string" } }, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`remove takes no arguments, got ${positionals.join(" ")}`);
   const adapters = values.host === undefined ? HOST_ADAPTERS : [adapterById(values.host)];
-  for (const adapter of adapters) for (const line of adapter.remove(process.cwd())) console.log(line);
-  if (values.host === undefined) for (const line of removePushGate(process.cwd())) console.log(line);
+  const lines = adapters.flatMap((adapter) => adapter.remove(process.cwd()));
+  if (values.host === undefined) lines.push(...removePushGate(process.cwd()));
+  // Each adapter says the record is kept; say it once.
+  for (const line of new Set(lines)) console.log(line);
   return 0;
 }
 

@@ -3,9 +3,13 @@
 // registered the tool server. Everything else in the suite is the same for every host.
 import type { HostAdapter } from "../../../src/adapters/index.ts";
 
-/** A host-neutral event the suite raises through the host's own hook. The role is the agent's the event comes from. */
+/**
+ * A host-neutral event the suite raises through the host's own hook. The role is the agent's the
+ * event comes from: "planner" is the host's main agent, any other role a subagent of that role.
+ */
 export type ContractEvent =
   | { type: "session-start" }
+  | { type: "session-end" }
   | { type: "before-file-write"; role: string; file: string }
   | { type: "before-command"; role: string; command: string }
   | { type: "before-agent-start"; role: string; prompt: string }
@@ -19,6 +23,8 @@ export type HookAnswer = { deny: string | null; context: string | null };
 
 export type HostHarness = {
   adapter: HostAdapter;
+  /** The host names the subagent on its tool calls, so tmb can guard a subagent's write in its own role. */
+  namesSubagentOnToolCall: boolean;
   /** Makes a program that answers --version as the host does, in a new folder under `dir`; returns that folder. */
   fakeHost(dir: string): string;
   /** Writes the Human's own config for the host into the project, so remove must keep it. */

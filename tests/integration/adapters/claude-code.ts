@@ -35,6 +35,7 @@ function input(project: string, hookEvent: string, fields: Record<string, unknow
 
 export const claudeCodeHarness: HostHarness = {
   adapter,
+  namesSubagentOnToolCall: true,
 
   fakeHost: fakeClaudeFolder,
 
@@ -53,6 +54,8 @@ export const claudeCodeHarness: HostHarness = {
     switch (event.type) {
       case "session-start":
         return { command: wiredCommand(project, "SessionStart"), input: input(project, "SessionStart", { source: "startup" }), env };
+      case "session-end":
+        return { command: wiredCommand(project, "SessionEnd"), input: input(project, "SessionEnd", { reason: "exit" }), env };
       case "before-file-write":
         return {
           command: wiredCommand(project, "PreToolUse"),

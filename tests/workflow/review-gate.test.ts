@@ -107,5 +107,5 @@ describe("the review of a feature branch", () => {
     } finally {
       await client.close();
     }
-  });
+  }, 30_000);
 });

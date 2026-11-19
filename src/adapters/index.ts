@@ -1,9 +1,10 @@
 // The one place that lists host adapters. Everything else reaches a host through the
 // HostAdapter interface, so a new host is a new adapter and an entry here.
 import { adapter as claudeCode } from "./claude-code/index.ts";
+import { adapter as codex } from "./codex/index.ts";
 import type { HostAdapter } from "./host-adapter.ts";
 
-export const HOST_ADAPTERS: readonly HostAdapter[] = [claudeCode];
+export const HOST_ADAPTERS: readonly HostAdapter[] = [claudeCode, codex];
 
 /** The host a hook that names none comes from: Claude Code, the first host tmb wired. */
 export const DEFAULT_HOST_ID = claudeCode.id;

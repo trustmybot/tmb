@@ -9,12 +9,13 @@ import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFile
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { HOST_ADAPTERS } from "../../src/adapters/index.ts";
-import { OPEN_WORK_HEADING, openProjectStore, projectDbPath, TMB_EVENT_TYPES } from "../../src/engine/index.ts";
+import { AWAITING_REVIEW_HEADING, OPEN_WORK_HEADING, openProjectStore, projectDbPath, TMB_EVENT_TYPES } from "../../src/engine/index.ts";
 import type { Store } from "../../src/engine/store/index.ts";
 import { claudeCodeHarness } from "./adapters/claude-code.ts";
+import { codexHarness } from "./adapters/codex.ts";
 import type { ContractEvent, HostHarness } from "./adapters/harness.ts";
 
-const HARNESSES: readonly HostHarness[] = [claudeCodeHarness];
+const HARNESSES: readonly HostHarness[] = [claudeCodeHarness, codexHarness];
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
@@ -103,8 +104,8 @@ for (const harness of HARNESSES) {
     return harness.readAnswer(event, result.stdout);
   }
 
-  function setUp(project: string): void {
-    tmb(["setup", "--host", adapter.id, "--base", "main", "--check", "true", "--yes"], project);
+  function setUp(project: string, role = "planner"): string {
+    return tmb(["setup", "--host", adapter.id, "--role", role, "--base", "main", "--check", "true", "--yes"], project);
   }
 
   describe(`${adapter.name} (${adapter.id}): the adapter contract`, () => {
@@ -149,7 +150,7 @@ for (const harness of HARNESSES) {
       setUp(project);
       expect(snapshot(project)).toEqual(afterSetup);
 
-      tmb(["remove"], project);
+      tmb(["remove", "--host", adapter.id], project);
       const afterRemove = snapshot(project);
       // The lines setup added to .gitignore stay with the record they hide.
       expect(Buffer.from(afterRemove[".gitignore"]!, "base64").toString()).toStartWith("node_modules/\n");
@@ -193,7 +194,7 @@ for (const harness of HARNESSES) {
         if (adapter.limits.canDenyToolCall) expect(denied.deny).toBeTruthy();
         expect(raise(project, { type: "before-command", role: "planner", command: "git status" }).deny).toBeNull();
       }
-      if (adapter.limits.events.includes("before-file-write")) {
+      if (adapter.limits.events.includes("before-file-write") && harness.namesSubagentOnToolCall) {
         const denied = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
         if (adapter.limits.canDenyToolCall) expect(denied.deny).toContain("reviewer");
       }
@@ -214,6 +215,22 @@ for (const harness of HARNESSES) {
         raise(project, { type: "after-agent-stop", role: "reviewer" });
         expect(withStore(project, (store) => store.openRuns("reviewer"))).toHaveLength(0);
       }
+    });
+
+    test("set up as the reviewer, the host's main agent is briefed, guarded and run as the reviewer", () => {
+      const project = newProject();
+      setUp(project, "reviewer");
+      const started = raise(project, { type: "session-start" });
+      expect(started.context).toContain(AWAITING_REVIEW_HEADING);
+      expect(started.context).not.toContain(OPEN_WORK_HEADING);
+      const open = () => withStore(project, (store) => store.openRuns("reviewer"));
+      expect(open().map((run) => run.createdBy)).toEqual([{ kind: "agent", role: "reviewer", host: adapter.id }]);
+
+      if (adapter.limits.events.includes("before-file-write") && adapter.limits.canDenyToolCall) {
+        expect(raise(project, { type: "before-file-write", role: "planner", file: "README.md" }).deny).toContain("reviewer");
+      }
+      expect(raise(project, { type: "session-end" }).deny).toBeNull();
+      expect(open()).toHaveLength(0);
     });
 
     test("a record tmb cannot read denies, and bad input never breaks the host's session", () => {

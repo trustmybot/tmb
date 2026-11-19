@@ -122,7 +122,7 @@ describe("tmb setup", () => {
     mkdirSync(emptyPath, { recursive: true });
     const result = run(["setup", "--yes"], project, { PATH: emptyPath });
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code).");
+    expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code) and Codex (codex).");
     expect(readdirSync(project).sort()).toEqual([".git", "bun.lock", "package.json"]);
   });
 });
