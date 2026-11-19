@@ -229,7 +229,7 @@ describe("the guards", () => {
 
   test("denies a git or gh command whose subcommand is not plain text", () => {
     createRecord();
-    for (const action of ['git "$SUB" origin', "x=push; git $x", "gh $(echo pr) create", "$(echo git) push"]) {
+    for (const action of ['git "$SUB" origin', "x=push; git $x", "gh $(echo pr) create", "$(echo git) push", "git $(echo push)", 'git "$X"', "gh pr $cmd", 'eval "git $sub origin"', "eval 'git $(echo push)'"]) {
       expect(command(action).decision).toBe("deny");
     }
     expect(command('git commit -m "$(cat msg)"').decision).toBe("allow");
