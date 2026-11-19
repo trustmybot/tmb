@@ -73,9 +73,13 @@ describe("tmb setup and remove", () => {
     expect(setup.status).toBe(0);
     const afterSetup = readSettings();
     expect(afterSetup.permissions).toEqual(original.permissions);
-    expect(afterSetup.hooks.PreToolUse).toEqual([otherHook]);
-    const hookCommand = `"${process.execPath}" "${CLI}" hook session-start`;
-    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand }] }]);
+    const hookCommand = (name: string) => `"${process.execPath}" "${CLI}" hook ${name}`;
+    expect(afterSetup.hooks.PreToolUse).toEqual([
+      otherHook,
+      { matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
+    ]);
+    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
+    expect(afterSetup.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
 
     const remove = run(process.execPath, [CLI, "remove"], project);
     expect(remove.status).toBe(0);

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { adapter } from "#host-adapter";
+import { hostAdapter } from "./adapters/index.ts";
 import { isRecordCommand, RECORD_USAGE, runRecordCommand } from "./engine/doors/command-line.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { version, versionLine } from "./version.ts";
@@ -18,6 +18,8 @@ ${RECORD_USAGE}
 // A compiled tmb runs its entry from Bun's embedded file system; from source, Bun runs this file.
 const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:\\~BUN\\)/i;
 
+const adapter = hostAdapter();
+
 /** The command that runs this tmb: the executable, plus this file when run from source. */
 function tmbCommand(): string[] {
   return COMPILED_ENTRY.test(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
@@ -28,7 +30,9 @@ async function runHook(event: string | undefined): Promise<number> {
   try {
     if (!event) throw new Error("missing event name");
     const stdinText = await Bun.stdin.text();
-    process.stdout.write(adapter.answerHook(event, stdinText) + "\n");
+    const output = adapter.answerHook(event, stdinText);
+    // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
+    if (output !== "") process.stdout.write(output + "\n");
   } catch (error) {
     process.stderr.write(`tmb hook: ${error instanceof Error ? error.message : String(error)}\n`);
   }

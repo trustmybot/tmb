@@ -46,15 +46,29 @@ function gitInit(dir: string): void {
   expect(result.status).toBe(0);
 }
 
-const tmbEntry = { hooks: [{ type: "command", command: hookCommand(BINARY) }] };
-const tmbSettings = { hooks: { SessionStart: [tmbEntry] }, enabledMcpjsonServers: ["tmb"] };
+const GUARDED_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task";
+const tmbHooks = (tmbCommand: readonly string[]) => ({
+  SessionStart: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start") }] }],
+  PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: hookCommand(tmbCommand, "pre-tool-use") }] }],
+  SubagentStop: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "subagent-stop") }] }],
+});
+const tmbSettings = { hooks: tmbHooks(BINARY), enabledMcpjsonServers: ["tmb"] };
+const ALL_HOOKS = ["SessionStart", "PreToolUse", "SubagentStop"];
 
 describe("settings: setup", () => {
-  test("on a fresh project creates the settings file with one SessionStart hook and the enabled server", () => {
+  test("on a fresh project creates the settings file with the three hooks and the enabled server", () => {
     const result = install(project, BINARY);
-    expect(result).toMatchObject({ hookAdded: true, serverEnabled: true });
+    expect(result).toMatchObject({ hooksAdded: ALL_HOOKS, serverEnabled: true });
     expect(readJson(settingsPath(project))).toEqual(tmbSettings);
-    expect(hookCommand(BINARY)).toBe(`"${EXE}" hook session-start`);
+    expect(hookCommand(BINARY, "session-start")).toBe(`"${EXE}" hook session-start`);
+    expect(hookCommand(BINARY, "pre-tool-use")).toBe(`"${EXE}" hook pre-tool-use`);
+    expect(hookCommand(BINARY, "subagent-stop")).toBe(`"${EXE}" hook subagent-stop`);
+  });
+
+  test("the PreToolUse matcher covers the seven guarded tools", () => {
+    install(project, BINARY);
+    const [group] = (readJson(settingsPath(project)) as { hooks: { PreToolUse: { matcher: string }[] } }).hooks.PreToolUse;
+    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write"]);
   });
 
   test("merges into an existing file, keeping other keys, hooks and enabled servers", () => {
@@ -64,6 +78,8 @@ describe("settings: setup", () => {
       hooks: {
         SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "echo hi" }] }],
         PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "guard.sh" }] }],
+        SubagentStop: [{ hooks: [{ type: "command", command: "notify.sh" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "done.sh" }] }],
       },
     };
     mkdirSync(path.join(project, ".claude"));
@@ -71,10 +87,16 @@ describe("settings: setup", () => {
 
     install(project, BINARY);
 
+    const ours = tmbHooks(BINARY);
     expect(readJson(settingsPath(project))).toEqual({
       permissions: prior.permissions,
       enabledMcpjsonServers: ["other", "tmb"],
-      hooks: { SessionStart: [...prior.hooks.SessionStart, tmbEntry], PreToolUse: prior.hooks.PreToolUse },
+      hooks: {
+        SessionStart: [...prior.hooks.SessionStart, ...ours.SessionStart],
+        PreToolUse: [...prior.hooks.PreToolUse, ...ours.PreToolUse],
+        SubagentStop: [...prior.hooks.SubagentStop, ...ours.SubagentStop],
+        Stop: prior.hooks.Stop,
+      },
     });
   });
 
@@ -82,7 +104,7 @@ describe("settings: setup", () => {
     install(project, BINARY);
     const first = readFileSync(settingsPath(project), "utf8");
     const second = install(project, BINARY);
-    expect(second).toMatchObject({ hookAdded: false, serverEnabled: false });
+    expect(second).toMatchObject({ hooksAdded: [], serverEnabled: false });
     expect(readFileSync(settingsPath(project), "utf8")).toBe(first);
   });
 
@@ -98,13 +120,28 @@ describe("settings: setup", () => {
     expect(readJson(settingsPath(project))).toEqual(tmbSettings);
   });
 
+  test("replaces only the stale kind, and a PreToolUse hook whose matcher is out of date", () => {
+    install(project, BINARY);
+    const settings = readJson(settingsPath(project)) as { hooks: Record<string, { matcher?: string; hooks: { command: string }[] }[]> };
+    settings.hooks.SubagentStop![0]!.hooks[0]!.command = hookCommand([path.join(project, "old", "tmb")], "subagent-stop");
+    settings.hooks.PreToolUse![0]!.matcher = "Write|Bash";
+    writeFileSync(settingsPath(project), JSON.stringify(settings));
+
+    expect(install(project, BINARY).hooksAdded).toEqual(["PreToolUse", "SubagentStop"]);
+    expect(readJson(settingsPath(project))).toEqual(tmbSettings);
+  });
+
   test("quotes a Windows executable path", () => {
     const winExe = "C:\\Users\\Jo Doe\\AppData\\Local\\tmb\\bin\\tmb.exe";
     install(project, [winExe]);
     expect(readJson(settingsPath(project))).toMatchObject({
-      hooks: { SessionStart: [{ hooks: [{ type: "command", command: `"${winExe}" hook session-start` }] }] },
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: `"${winExe}" hook session-start` }] }],
+        PreToolUse: [{ hooks: [{ type: "command", command: `"${winExe}" hook pre-tool-use` }] }],
+        SubagentStop: [{ hooks: [{ type: "command", command: `"${winExe}" hook subagent-stop` }] }],
+      },
     });
-    expect(remove(project).hookRemoved).toBe(true);
+    expect(remove(project).hooksRemoved).toEqual(ALL_HOOKS);
   });
 
   test("refuses to overwrite a settings file that is not valid JSON", () => {
@@ -117,25 +154,28 @@ describe("settings: setup", () => {
 
 describe("hook commands", () => {
   test("quotes the source run's Bun and entry file", () => {
-    expect(hookCommand(SOURCE)).toBe(`"${SOURCE[0]}" "${SOURCE[1]}" hook session-start`);
+    expect(hookCommand(SOURCE, "session-start")).toBe(`"${SOURCE[0]}" "${SOURCE[1]}" hook session-start`);
   });
 
-  test("recognises tmb's hook from a binary and from source, quoted or not", () => {
-    expect(isTmbHookCommand(hookCommand(BINARY))).toBe(true);
-    expect(isTmbHookCommand(hookCommand(SOURCE))).toBe(true);
-    expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/tmb/src/cli.ts hook session-start`)).toBe(true);
-    expect(isTmbHookCommand(`"C:\\bun\\bun.exe" "C:\\code\\tmb\\src\\cli.ts" hook session-start`)).toBe(true);
+  test("recognises each of tmb's hooks from a binary and from source, quoted or not", () => {
+    for (const name of ["session-start", "pre-tool-use", "subagent-stop"] as const) {
+      expect(isTmbHookCommand(hookCommand(BINARY, name))).toBe(true);
+      expect(isTmbHookCommand(hookCommand(SOURCE, name), name)).toBe(true);
+      expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/tmb/src/cli.ts hook ${name}`)).toBe(true);
+      expect(isTmbHookCommand(`"C:\\bun\\bun.exe" "C:\\code\\tmb\\src\\cli.ts" hook ${name}`)).toBe(true);
+    }
+    expect(isTmbHookCommand(hookCommand(BINARY, "pre-tool-use"), "session-start")).toBe(false);
   });
 
   test("leaves other commands alone", () => {
     expect(isTmbHookCommand(`"/bin/other" hook session-start`)).toBe(false);
-    expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/app/src/main.ts hook session-start`)).toBe(false);
+    expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/app/src/main.ts hook pre-tool-use`)).toBe(false);
     expect(isTmbHookCommand(`"${EXE}" hook session-end`)).toBe(false);
   });
 
-  test("remove finds the hook a source-run setup wrote", () => {
+  test("remove finds the hooks a source-run setup wrote", () => {
     install(project, SOURCE);
-    expect(remove(project)).toMatchObject({ hookRemoved: true, serverDisabled: true, fileDeleted: true });
+    expect(remove(project)).toMatchObject({ hooksRemoved: ALL_HOOKS, serverDisabled: true, fileDeleted: true });
   });
 });
 
@@ -221,14 +261,30 @@ describe("settings: remove", () => {
     const prior = {
       model: "x",
       enabledMcpjsonServers: ["other"],
-      hooks: { SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "echo hi" }] }] },
+      hooks: {
+        SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "echo hi" }] }],
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "guard.sh" }] }],
+        SubagentStop: [{ hooks: [{ type: "command", command: "notify.sh" }] }],
+      },
     };
     mkdirSync(path.join(project, ".claude"));
     writeFileSync(settingsPath(project), JSON.stringify(prior));
 
     install(project, BINARY);
-    expect(remove(project)).toMatchObject({ hookRemoved: true, serverDisabled: true, fileDeleted: false });
+    expect(remove(project)).toMatchObject({ hooksRemoved: ALL_HOOKS, serverDisabled: true, fileDeleted: false });
     expect(readJson(settingsPath(project))).toEqual(prior);
+  });
+
+  test("keeps the Human's hooks that share a group with tmb's", () => {
+    install(project, BINARY);
+    const settings = readJson(settingsPath(project)) as { hooks: Record<string, { hooks: unknown[] }[]> };
+    settings.hooks.PreToolUse![0]!.hooks.push({ type: "command", command: "guard.sh" });
+    writeFileSync(settingsPath(project), JSON.stringify(settings));
+
+    remove(project);
+    expect(readJson(settingsPath(project))).toEqual({
+      hooks: { PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: "guard.sh" }] }] },
+    });
   });
 
   test("drops the containers it emptied and keeps other keys", () => {
@@ -249,7 +305,7 @@ describe("settings: remove", () => {
     mkdirSync(path.join(project, ".claude"));
     const text = JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: '"/bin/other" hook session-start' }] }] } });
     writeFileSync(settingsPath(project), text);
-    expect(remove(project)).toMatchObject({ hookRemoved: false, serverDisabled: false });
+    expect(remove(project)).toMatchObject({ hooksRemoved: [], serverDisabled: false });
     expect(readFileSync(settingsPath(project), "utf8")).toBe(text);
   });
 });

@@ -5,6 +5,7 @@ export { SCHEMA_VERSION } from "./schema.ts";
 export {
   type Discussion,
   type DiscussionKind,
+  type GuardDecision,
   type Issue,
   type IssueChanges,
   type IssueState,

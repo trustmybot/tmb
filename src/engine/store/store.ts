@@ -73,6 +73,7 @@ export type NewCheckRun = {
 };
 export type NewReview = { target: { kind: "commit" | "branch"; ref: string }; verdict: string; findings?: unknown[] };
 export type NewGuardDecision = { event: string; decision: "allow" | "deny"; reason: string };
+export type GuardDecision = NewGuardDecision & { id: string; createdBy: Actor; createdAt: string };
 
 type EventRow = ActorColumns & { id: string; record_kind: RecordKind; record_id: string; type: EventType; data: string; at: string };
 type IssueRow = {
@@ -86,6 +87,7 @@ type IssueRow = {
   updated_at: string;
 };
 type DiscussionRow = { id: string; issue_id: string; kind: DiscussionKind; body: string; created_by: string; created_at: string };
+type GuardDecisionRow = { id: string; event: string; decision: "allow" | "deny"; reason: string; created_by: string; created_at: string };
 
 /** Flattens whitespace and cuts text to at most SNIPPET_MAX characters, marking a cut with an ellipsis. */
 export function clip(text: string): string {
@@ -246,6 +248,19 @@ export class Store {
 
   appendGuardDecision(actor: Actor, guard: NewGuardDecision): string {
     return this.create(actor, "guard_decision", { event: guard.event, decision: guard.decision, reason: guard.reason });
+  }
+
+  /** Every guard decision, oldest first. */
+  listGuardDecisions(): GuardDecision[] {
+    const rows = this.db.query("SELECT * FROM guard_decisions ORDER BY id").all() as GuardDecisionRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      event: row.event,
+      decision: row.decision,
+      reason: row.reason,
+      createdBy: JSON.parse(row.created_by) as Actor,
+      createdAt: row.created_at,
+    }));
   }
 
   // --- reads across records -----------------------------------------------------------
