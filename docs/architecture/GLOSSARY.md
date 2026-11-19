@@ -26,7 +26,7 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 | Truest mode | A review of every task before its push. |
 | Feature branch | A long-lived branch that collects a milestone's tasks. |
 | Issue, task, milestone | As in [WORKFLOW.md](WORKFLOW.md#units-of-work). |
-| Harness | The workflow together with what enforces it: tmb's events, its rules and the gate. A workflow alone only guides an agent; the harness holds it. |
+| Harness | tmb as a whole: the record, the code graph, and the workflow with the gate that enforces it, around the agents a host runs. It is not the program that runs the model; that is the host. |
 | Gate | What stops a step that the workflow does not allow. |
 | Concept | An agent-written note in the code graph, anchored to code. |
 | The Human | The developer tmb works for. |
