@@ -167,6 +167,16 @@ trustmybot/tmb#89, Part 2: `tmb`, `tmb-rc`, `tmb-dev` and `tmb-<version>` on one
 | Integration | [tests/integration/update.test.ts](integration/update.test.ts) | A program's name says what it follows and where it keeps its state. `tmb`, `tmb-rc`, `tmb-dev` and a pinned `tmb-<version>` installed in one home each report their own channel and update only themselves from a local release repo; the pinned one never does. A project initialised with `tmb-dev` has its tool server, hooks and push hook call `tmb-dev`, until `tmb init` moves it. |
 | Install | [tests/install/channels.ts](install/channels.ts) (`bun run test:install:channels`) | The published installer puts `tmb`, `tmb-rc` and `tmb-dev` side by side in one throwaway home; each reports its own channel, looks for updates only there, keeps its own state and leaves the others' files alone. A channel with no release yet is skipped. |
 
+## Package manager tests
+
+Part 3 of trustmybot/tmb#89.
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/package-managers.test.ts](../test/package-managers.test.ts) | From a release's `SHA256SUMS`, each channel gets a Homebrew cask, a Scoop manifest and three winget manifests under its own program name, with every platform's file and checksum, no placeholder left, and updates left to tmb. A missing checksum or a version that is not a release's is refused. Only the newest build on a channel counts as current. Publishing skips when the token or the repo is missing, pushes one commit, pushes nothing when the manifests are already there, and keeps the other channels' manifests. |
+
+Not automated yet: a tap install and a bucket install start. They wait for the tap and the bucket to exist.
+
 ## Level 9 tests
 
 Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmybot/tmb#18). Its tests without a model run in CI like any others, but no v1 release waits for or runs the agent chain with a second host.

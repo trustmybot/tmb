@@ -59,6 +59,20 @@ Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2)
 - The record's shape is signed with the version and program that wrote it. A tmb that finds a newer shape than it knows refuses the record and names them.
 - The installers take `TMB_CHANNEL` and, to pin one release, `TMB_INSTALL_VERSION`, and install under the matching name.
 
+## Package managers
+
+The installer scripts stay. Package managers are added beside them (trustmybot/tmb#89, Part 3).
+
+| Where | Route | Channels |
+|---|---|---|
+| macOS and Linux | tmb's own Homebrew tap, as a cask | `tmb`, `tmb@rc` and `tmb@dev`, installing `tmb`, `tmb-rc` and `tmb-dev` |
+| Windows | tmb's own Scoop bucket, then winget's community list | Scoop: `tmb`, `tmb-rc` and `tmb-dev`. winget: one package per channel. |
+| Linux without Homebrew | The installer script | |
+
+- **Who updates.** tmb keeps its own updater on every route. The cask says so with `auto_updates`, and the winget package refuses winget's own upgrade, so the package manager leaves upgrades to tmb.
+- **How a manifest is filled.** Every manifest is a template in the source repo. When a release is published, the release workflow fills in its version and the checksums from its `SHA256SUMS`, and pushes the cask to the tap and the Scoop manifest to the bucket. A release that is no longer the newest on its channel leaves them as they are. The winget manifests are kept with the workflow run, for a submission to winget's list.
+- **Until the tap and the bucket exist.** The step skips, and the release still succeeds. Planned: the Human creates the tap, the bucket and their token, and submits to winget.
+
 A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
 
 ## Offline

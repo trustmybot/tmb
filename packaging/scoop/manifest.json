@@ -1,0 +1,20 @@
+{
+  "version": "{{VERSION}}",
+  "description": "{{NAME}}: a harness for coding agents, with a record, a code graph and an enforced workflow.",
+  "homepage": "https://github.com/trustmybot/tmb-releases",
+  "license": {
+    "identifier": "FSL-1.1-ALv2",
+    "url": "https://fsl.software/FSL-1.1-ALv2.template.md"
+  },
+  "architecture": {
+    "64bit": {
+      "url": "{{DOWNLOAD}}/tmb-windows-x64.exe#/{{PROGRAM}}.exe",
+      "hash": "{{SHA256_WINDOWS_X64}}"
+    }
+  },
+  "bin": "{{PROGRAM}}.exe",
+  "notes": [
+    "{{PROGRAM}} updates itself from the {{CHANNEL}} channel between sessions.",
+    "Run '{{PROGRAM}} setup' in a project, then start your agent program there."
+  ]
+}
