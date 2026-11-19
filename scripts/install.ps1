@@ -1,11 +1,12 @@
 # Installs tmb from the public release repo. No login needed.
 #   irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1 | iex
 # $env:TMB_CHANNEL picks the channel (default: dev).
+# $env:TMB_NO_MODIFY_PATH = '1' leaves the user PATH alone and prints the line instead.
 $ErrorActionPreference = 'Stop'
 
 $channel = if ($env:TMB_CHANNEL) { $env:TMB_CHANNEL } else { 'dev' }
 $baseUrl = "https://github.com/trustmybot/tmb-releases/releases/download/$channel"
-$binDir = Join-Path $env:LOCALAPPDATA 'tmb\bin'
+$binDir = Join-Path $env:USERPROFILE '.local\bin'
 
 # Only an x64 build is published; Windows on Arm runs it under emulation.
 $asset = 'tmb-windows-x64.exe'
@@ -33,11 +34,34 @@ try {
     Move-Item -Force -Path $download -Destination $target
     Write-Host "Installed $(& $target --version) to $target"
 
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if (-not (($userPath -split ';') -contains $binDir)) {
-        Write-Host 'Add tmb to your PATH, e.g.:'
-        Write-Host "  [Environment]::SetEnvironmentVariable('Path', `"$binDir;`$([Environment]::GetEnvironmentVariable('Path','User'))`", 'User')"
+    $legacyDir = Join-Path $env:LOCALAPPDATA 'tmb\bin'
+    $legacyExe = Join-Path $legacyDir 'tmb.exe'
+    if (Test-Path $legacyExe) {
+        Remove-Item -Force -Path $legacyExe
+        foreach ($dir in @($legacyDir, (Split-Path $legacyDir -Parent))) {
+            if ((Test-Path $dir) -and -not (Get-ChildItem -Force -Path $dir)) {
+                Remove-Item -Force -Path $dir -ErrorAction SilentlyContinue
+            }
+        }
+        Write-Host 'Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run tmb setup again.'
     }
+
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $userEntries = @(if ($userPath) { $userPath -split ';' | Where-Object { $_ } })
+    if (-not ($userEntries -contains $binDir)) {
+        $pathLine = "[Environment]::SetEnvironmentVariable('Path', `"$binDir;`$([Environment]::GetEnvironmentVariable('Path','User'))`", 'User')"
+        if ($env:TMB_NO_MODIFY_PATH -eq '1') {
+            Write-Host 'Add tmb to your PATH, e.g.:'
+            Write-Host "  $pathLine"
+        }
+        else {
+            [Environment]::SetEnvironmentVariable('Path', ((@($binDir) + $userEntries) -join ';'), 'User')
+            $env:Path = if ($env:Path) { "$binDir;$env:Path" } else { $binDir }
+            Write-Host "Added $binDir to your user PATH. Open a new terminal."
+        }
+    }
+
+    Write-Host 'Run tmb setup in a project, then start claude there.'
 }
 catch {
     Write-Error "tmb install: $_"

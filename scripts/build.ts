@@ -2,6 +2,7 @@
 //   bun scripts/build.ts            every release target into dist/tmb-<os>-<arch>[.exe]
 //   bun scripts/build.ts --local    this machine only, into dist/tmb[.exe]
 //   bun scripts/build.ts linux-x64  only the named targets
+// With TMB_VERSION set, the binary reports that version instead of package.json's.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -14,13 +15,17 @@ function gitSha(): string {
 }
 
 function compile(outfile: string, target?: string): void {
-  const args = ["build", "--compile", "--minify", `--define`, `TMB_GIT_SHA=${JSON.stringify(sha)}`, "src/cli.ts", "--outfile", outfile];
+  const args = ["build", "--compile", "--minify", "--define", `TMB_GIT_SHA=${JSON.stringify(sha)}`];
+  if (tmbVersion) args.push("--define", `TMB_VERSION=${JSON.stringify(tmbVersion)}`);
+  args.push("src/cli.ts", "--outfile", outfile);
   if (target) args.push(`--target=bun-${target}`);
   const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", timeout: 600_000 });
   if (result.status !== 0) throw new Error(`build failed for ${target ?? "this machine"}`);
 }
 
 const sha = gitSha();
+// Set by CI to the dev version from scripts/dev-version.ts; unset builds keep the package.json version.
+const tmbVersion = process.env.TMB_VERSION?.trim();
 const args = process.argv.slice(2);
 
 if (args.includes("--local")) {
