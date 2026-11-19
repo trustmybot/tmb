@@ -20,10 +20,29 @@ const TASK_ID: FieldSchema = {
   pattern: RECORD_ID,
 };
 
-async function withView<T>(store: Store, context: OperationContext, taskId: string | undefined, read: (view: GraphView) => T): Promise<GraphAnswer<T>> {
+type Miss = (lookup: string, query: string, detail?: string) => void;
+
+/**
+ * Answers one read from a graph brought forward first. The read runs in one transaction, so
+ * every statement of an answer sees the same build even while another process brings the
+ * graph forward; misses it notes are recorded after it. Pass `writes` when the read writes.
+ */
+async function withView<T>(
+  store: Store,
+  actor: Actor,
+  context: OperationContext,
+  taskId: string | undefined,
+  read: (view: GraphView, miss: Miss) => T,
+  writes = false,
+): Promise<GraphAnswer<T>> {
   const view = await openView(context.projectDir, store, taskId === undefined ? {} : { taskId });
   try {
-    return { ...read(view), freshness: view.freshness, untrusted: UNTRUSTED_NOTE };
+    const misses: Parameters<Miss>[] = [];
+    // A write takes the lock up front: a read transaction that later writes fails when another process committed in between.
+    const transaction = view.db.transaction(() => read(view, (...miss) => misses.push(miss)));
+    const answer = writes ? transaction.immediate() : transaction.deferred();
+    for (const [lookup, query, detail] of misses) recordMiss(view.db, actor, lookup, query, detail);
+    return { ...answer, freshness: view.freshness, untrusted: UNTRUSTED_NOTE };
   } finally {
     view.db.close();
   }
@@ -42,9 +61,9 @@ export const graphMapSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export async function graphMap(store: Store, _actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<MapResult>> {
+export async function graphMap(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<MapResult>> {
   const { path, depth, task_id } = validateInput<{ path?: string; depth?: number; task_id?: string }>("graph_map", graphMapSchema, input);
-  return withView(store, context, task_id, (view) => projectMap(view.db, view.layer, { path, depth }));
+  return withView(store, actor, context, task_id, (view) => projectMap(view.db, view.layer, { path, depth }));
 }
 
 // --- graph_find ---------------------------------------------------------------------------
@@ -62,9 +81,9 @@ export const graphFindSchema: InputSchema = {
 
 export async function graphFind(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ hits: Hit[] }>> {
   const { query, k, task_id } = validateInput<{ query: string; k?: number; task_id?: string }>("graph_find", graphFindSchema, input);
-  return withView(store, context, task_id, (view) => {
+  return withView(store, actor, context, task_id, (view, miss) => {
     const hits = find(view.db, view.layer, query, k);
-    if (hits.length === 0) recordMiss(view.db, actor, "graph_find", query);
+    if (hits.length === 0) miss("graph_find", query);
     return { hits };
   });
 }
@@ -89,9 +108,9 @@ export async function graphSymbol(
   context: OperationContext,
 ): Promise<GraphAnswer<{ cards: SymbolCard[]; more: number }>> {
   const { name, path, task_id } = validateInput<{ name: string; path?: string; task_id?: string }>("graph_symbol", graphSymbolSchema, input);
-  return withView(store, context, task_id, (view) => {
+  return withView(store, actor, context, task_id, (view, miss) => {
     const result = lookupSymbol(view.db, view.layer, name, path);
-    if (result.cards.length === 0) recordMiss(view.db, actor, "graph_symbol", path === undefined ? name : `${path}#${name}`);
+    if (result.cards.length === 0) miss("graph_symbol", path === undefined ? name : `${path}#${name}`);
     return result;
   });
 }
@@ -121,10 +140,10 @@ export async function graphScope(store: Store, actor: Actor, input: unknown, con
     input,
   );
   if (objective.trim() === "" && anchors.length === 0) throw new HandlerError("invalid_input", "graph_scope needs an objective or at least one anchor");
-  return withView(store, context, task_id, (view) => {
+  return withView(store, actor, context, task_id, (view, miss) => {
     const result = scope(view.db, view.layer, { objective, anchors, k });
-    for (const anchor of result.unresolvedAnchors) recordMiss(view.db, actor, "graph_scope", anchor, "anchor not found");
-    if (result.files.length === 0 && result.tests.length === 0) recordMiss(view.db, actor, "graph_scope", objective, "nothing in scope");
+    for (const anchor of result.unresolvedAnchors) miss("graph_scope", anchor, "anchor not found");
+    if (result.files.length === 0 && result.tests.length === 0) miss("graph_scope", objective, "nothing in scope");
     return result;
   });
 }
@@ -154,13 +173,13 @@ export async function graphConceptUpsert(store: Store, actor: Actor, input: unkn
     graphConceptUpsertSchema,
     input,
   );
-  return withView(store, context, undefined, (view) => {
+  return withView(store, actor, context, undefined, (view) => {
     const result = upsertConcept(view.db, actor, { name, kind, body, anchors: anchors.map(parseAnchor) }, view.freshness.commit);
     if (result.concept === null) {
       throw new HandlerError("refused", `a concept is anchored only to code in the graph, and these are not in the base branch: ${result.missing.join(", ")}`);
     }
     return { concept: result.concept };
-  });
+  }, true);
 }
 
 // --- graph_concepts -----------------------------------------------------------------------
@@ -175,9 +194,9 @@ export const graphConceptsSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export async function graphConcepts(store: Store, _actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ concepts: Concept[] }>> {
+export async function graphConcepts(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ concepts: Concept[] }>> {
   const { name, query } = validateInput<{ name?: string; query?: string }>("graph_concepts", graphConceptsSchema, input);
-  return withView(store, context, undefined, (view) => {
+  return withView(store, actor, context, undefined, (view) => {
     if (name === undefined) return { concepts: listConcepts(view.db, query) };
     const concept = getConcept(view.db, name);
     if (concept === null) throw new HandlerError("not_found", `no concept ${JSON.stringify(name)} in the code graph`);

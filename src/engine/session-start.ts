@@ -4,7 +4,6 @@
 import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
-import { projectMap } from "./graph/lookups.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
 import { type Store, clip } from "./store/index.ts";
@@ -13,6 +12,7 @@ export const OPEN_WORK_HEADING = "## Open work in the record";
 export const OPEN_WORK_MAX = 20;
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
+const PROJECT_MAP_DEPTH = 2;
 const MAP_SUMMARY_MAX = 120;
 
 function openWork(store: Store): string {
@@ -43,6 +43,8 @@ function openTasks(store: Store): string {
   return `\n\nOpen tasks, oldest first:\n\n${lines.join("\n")}`;
 }
 
+/** Text from the project's files on one line, so a path or summary cannot forge a heading of this context. */
+const oneLineText = (text: string): string => text.replace(/[\s\p{Cc}]+/gu, " ").trim();
 const shorten = (text: string): string => (text.length <= MAP_SUMMARY_MAX ? text : `${text.slice(0, MAP_SUMMARY_MAX - 1)}…`);
 
 /**
@@ -57,12 +59,15 @@ function projectMapSection(projectDir: string): string {
     try {
       const layer = layerRow(db, BASE_LAYER);
       if (layer === null) return "";
-      const { dirs } = projectMap(db, BASE_LAYER, { depth: 3 });
-      const lines = dirs.slice(0, PROJECT_MAP_MAX_DIRS).map((dir) => {
-        const summary = dir.summary ? `: ${shorten(dir.summary.replace(/\s+/g, " "))}` : "";
-        return `- ${dir.path === "." ? "./" : `${dir.path}/`} (${dir.fileCount} files)${summary}`;
+      const dirs = db
+        .query("SELECT path, summary, file_count FROM dirs WHERE layer = ? AND depth <= ? ORDER BY depth, path LIMIT ?")
+        .all(BASE_LAYER, PROJECT_MAP_DEPTH, PROJECT_MAP_MAX_DIRS) as { path: string; summary: string; file_count: number }[];
+      const total = (db.query("SELECT count(*) AS n FROM dirs WHERE layer = ?").get(BASE_LAYER) as { n: number }).n;
+      const lines = dirs.map((dir) => {
+        const summary = dir.summary ? `: ${shorten(oneLineText(dir.summary))}` : "";
+        return `- ${dir.path === "." ? "./" : `${oneLineText(dir.path)}/`} (${dir.file_count} files)${summary}`;
       });
-      if (dirs.length > PROJECT_MAP_MAX_DIRS) lines.push(`- …and ${dirs.length - PROJECT_MAP_MAX_DIRS} more; graph_map shows them.`);
+      if (total > dirs.length) lines.push(`- …and ${total - dirs.length} more directories; graph_map shows them.`);
       return (
         `\n\n${PROJECT_MAP_HEADING}\n\nAs indexed at ${layer.commit_sha.slice(0, 12)}: ${layer.files} files, ${layer.symbols} symbols. ` +
         `Scope from here with graph_map, graph_find, graph_symbol and graph_scope, which bring the graph to the newest commit first. ${UNTRUSTED_NOTE}\n\n${lines.join("\n")}`

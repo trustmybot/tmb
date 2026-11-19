@@ -98,7 +98,7 @@ export async function indexProject(projectDir: string, store: Store, options: { 
   const db = openGraphDb(projectDir);
   try {
     if (options.rebuild) db.run("DELETE FROM parsed");
-    const stats = await buildLayer(db, projectDir, commit, BASE_LAYER);
+    const stats = await buildLayer(db, projectDir, commit, BASE_LAYER, { force: true });
     dropClosedTaskLayers(db, store);
     return { ...stats, baseBranch };
   } finally {

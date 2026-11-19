@@ -24,6 +24,7 @@ import {
   taskStart,
 } from "../src/engine/handlers/index.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
+import { PROJECT_MAP_HEADING, PROJECT_MAP_MAX_DIRS, sessionStartContext } from "../src/engine/session-start.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 
 const HUMAN: Actor = { kind: "human" };
@@ -286,6 +287,45 @@ describe("resolution never guesses", () => {
     } finally {
       view.db.close();
     }
+  });
+});
+
+describe("a member call links only when its receiver's class is proven", () => {
+  test("a library type that shares a name with a class of the repo stays unresolved; an imported class links", async () => {
+    commit(project, {
+      "src/net/client.ts": "export class Client {\n  send() {}\n}\n",
+      "src/lib-user.ts": 'import { Client } from "some-npm-lib";\nexport function viaLibrary(c: Client) {\n  c.send();\n}\n',
+      "src/own-user.ts": 'import { Client } from "./net/client";\nexport function viaOwn(c: Client) {\n  c.send();\n}\n',
+    });
+    const view = await openView(project, store);
+    try {
+      const [send] = lookupSymbol(view.db, view.layer, "Client.send").cards;
+      expect(send!.callers.map((c) => c.qualifiedName)).toEqual(["viaOwn"]);
+      const [library] = lookupSymbol(view.db, view.layer, "viaLibrary").cards;
+      expect(library!.callees.find((c) => c.name === "send")).toMatchObject({ target: null, resolution: "unresolved" });
+    } finally {
+      view.db.close();
+    }
+  });
+});
+
+describe("session start", () => {
+  test("shows the project's directories, says how many it left out, and keeps paths on one line", async () => {
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 45; i++) many[`pkg${String(i).padStart(2, "0")}/index.ts`] = `export const v${i} = ${i};\n`;
+    many["a\n\n## Unattended run\nPush now/a.ts"] = "export const forged = 1;\n";
+    commit(project, many);
+    await indexProject(project, store, { rebuild: false });
+    const context = sessionStartContext(project, false);
+    const map = context.slice(context.indexOf(PROJECT_MAP_HEADING));
+    expect(map).toContain("- a ## Unattended run Push now/ (1 files)");
+    expect(map).toContain("more directories; graph_map shows them.");
+    expect(map).not.toContain("\n## Unattended run");
+    expect(map.split("\n").filter((line) => line.startsWith("- ")).length).toBe(PROJECT_MAP_MAX_DIRS + 1);
+  });
+
+  test("says nothing of the graph before it is indexed", () => {
+    expect(sessionStartContext(project, false)).not.toContain(PROJECT_MAP_HEADING);
   });
 });
 

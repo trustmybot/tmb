@@ -115,6 +115,14 @@ export class Resolver {
     return resolvePythonImport(from, submodule, this.fileSet) ?? module;
   }
 
+  /** The file that defines the class named `name` as `from` sees it: its own file, or the file it imports the name from. */
+  private classFile(from: string, name: string): string | null {
+    const isClass = (path: string) => (this.byName.get(name) ?? []).some((c) => c.path === path && c.kind === "class");
+    if (isClass(from)) return from;
+    const imported = this.importMap.get(from)?.get(name);
+    return imported !== undefined && isClass(imported) ? imported : null;
+  }
+
   resolve(from: string, edge: ExtractedEdge): Link | null {
     if (NAME_ONLY_EDGES.has(edge.kind)) return null;
     if (edge.kind === "imports") {
@@ -133,8 +141,12 @@ export class Resolver {
     }
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
     if (edge.hint !== null && edge.hint !== "this") {
-      const typed = cands.filter((c) => c.kind === "method" && !isTestPath(c.path) && c.qualified_name === `${edge.hint}.${edge.dst_name}`);
-      return link(typed.length === 1 ? typed[0]!.id : undefined, "name");
+      // A receiver's type is only a name: the call links only when that name is proven to be a
+      // class of this repo, defined in this file or imported from a file of it.
+      const classFile = this.classFile(from, edge.hint);
+      if (classFile === null) return null;
+      const qualified = `${edge.hint}.${edge.dst_name}`;
+      return link(cands.find((c) => c.kind === "method" && c.path === classFile && c.qualified_name === qualified)?.id, "exact");
     }
     const same = cands.find((c) => c.path === from);
     if (same) return link(same.id, "exact");

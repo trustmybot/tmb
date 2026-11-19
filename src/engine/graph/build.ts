@@ -4,7 +4,7 @@
 import type { Database } from "bun:sqlite";
 import { basename, posix } from "node:path";
 import { type Extraction, extractFile, inSymbolScope, languageOf, needsParser, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
-import { BASE_LAYER, dropLayer } from "./db.ts";
+import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
@@ -184,13 +184,18 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
 }
 
 /**
- * Indexes the repo at `commit` into `layer`, replacing it in one step. A base layer then
- * re-checks every concept against the new graph.
+ * Indexes the repo at `commit` into `layer`, replacing it in one step, unless the layer is
+ * already at `commit` and `force` is not set. A base layer then re-checks every concept.
  */
-export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string): Promise<BuildStats> {
+export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: { force?: boolean } = {}): Promise<BuildStats> {
   const { plans, readmes: readmeByDir, parsed, reused } = await planCommit(db, repoDir, commit);
   const stats = db
     .transaction(() => {
+      // Another process may have applied this very commit while this one parsed: keep its layer.
+      const current = layerRow(db, layer);
+      if (options.force !== true && current !== null && current.commit_sha === commit && current.extractor === EXTRACTOR_VERSION) {
+        return { layer, commit, files: current.files, symbols: current.symbols, edges: current.edges, unresolved: current.unresolved };
+      }
       const applied = applyLayer(db, layer, commit, plans, readmeByDir);
       if (layer === BASE_LAYER) recheckConcepts(db, commit);
       return applied;

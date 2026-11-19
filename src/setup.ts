@@ -181,8 +181,13 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void): 
     const stats = await indexProject(projectDir, opened.store, { rebuild: false });
     out(`Indexed the code graph of ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
   } catch (error) {
-    if (!(error instanceof HandlerError)) throw error;
-    out(`The code graph is not indexed yet: ${error.message}. Lookups index it once the base branch has a commit.`);
+    // Setup has stored its answers by now, and every lookup indexes the graph itself, so a failed index never fails setup.
+    const message = error instanceof Error ? error.message : String(error);
+    out(
+      error instanceof HandlerError
+        ? `The code graph is not indexed yet: ${message}. Lookups index it once the base branch has a commit.`
+        : `The code graph could not be indexed now (${message}); the first lookup indexes it.`,
+    );
   } finally {
     opened.store.close();
   }
