@@ -34,7 +34,8 @@ ${INDEX_USAGE}
   tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)`;
 
 // A compiled tmb runs its entry from Bun's embedded file system; from source, Bun runs this file.
-const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:\\~BUN\\)/i;
+// Windows names it B:\~BUN\root\..., written with either slash.
+const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:[\\/]~BUN[\\/])/i;
 
 const adapter = hostAdapter();
 

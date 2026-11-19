@@ -231,6 +231,18 @@ export class Updater {
     if (!this.active) return { outcome: "off" };
     const last = readJson<{ at: string }>(this.file("check.json"));
     if (!options.force && last && Date.now() - Date.parse(last.at) < CHECK_INTERVAL_MS) return { outcome: "skipped" };
+    const result = await this.look(options.signal);
+    // The outcome of the last look, for `tmb update` and for anyone finding out why nothing was kept.
+    try {
+      writeJson(this.file("last-check.json"), { at: new Date().toISOString(), version: this.options.version, ...result });
+    } catch {
+      // Best effort: a state folder that cannot be written fails the next step anyway.
+    }
+    return result;
+  }
+
+  private async look(signal?: AbortSignal): Promise<{ outcome: "current" | "staged" | "failed"; version?: string; error?: string }> {
+    const options = { signal };
     try {
       const release = await this.latest(options.signal);
       const kept = this.staged();

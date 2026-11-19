@@ -5,7 +5,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/project.ts";
@@ -33,6 +33,8 @@ export type Scenario = {
   installed: string;
   /** Env for every tmb run: a scratch HOME and state folder, and any release-repo override. */
   env: Record<string, string>;
+  /** Sessions started and not yet ended, ended by `cleanup` so no tmb process holds the folder. */
+  sessions: Set<Session>;
   project: string;
   stateDir: string;
 };
@@ -54,13 +56,18 @@ export function prepareInstall(oldBinary: string, extraEnv: Record<string, strin
   delete inherited.TMB_NO_UPDATE;
   delete inherited.TMB_UPDATE_FILE;
   const env: Record<string, string> = { ...inherited, HOME: home, USERPROFILE: home, TMB_STATE_DIR: stateDir, ...extraEnv };
-  return { scratch, installed, env, project, stateDir };
+  return { scratch, installed, env, project, stateDir, sessions: new Set() };
 }
 
-/** Removes the scenario's scratch folder and nothing else. */
-export function cleanup(scenario: Scenario): void {
+/**
+ * Ends any session still running, then removes the scenario's scratch folder and nothing
+ * else. Windows refuses to remove a file a process still has open, so a process that is
+ * just exiting gets a few tries.
+ */
+export async function cleanup(scenario: Scenario): Promise<void> {
   if (!path.basename(scenario.scratch).startsWith("tmb-update-")) throw new Error(`refusing to remove ${scenario.scratch}`);
-  rmSync(scenario.scratch, { recursive: true, force: true });
+  for (const session of [...scenario.sessions]) await session.end().catch(() => {});
+  rmSync(scenario.scratch, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 }
 
 export function installedVersion(scenario: Scenario): string {
@@ -96,30 +103,57 @@ async function waitFor(what: string, done: () => boolean, timeoutMs: number): Pr
   }
 }
 
+export type Session = { end: () => Promise<void>; pid: number; stderr: () => string };
+
 /** A host session: the installed tmb's tool server, started and answering, until `end` stops it as the host does. */
-export async function startSession(scenario: Scenario): Promise<{ end: () => Promise<void>; pid: number }> {
+export async function startSession(scenario: Scenario): Promise<Session> {
   const transport = new StdioClientTransport({
     command: scenario.installed,
     args: ["mcp", "--host", "test", "--project", scenario.project],
     env: scenario.env,
     stderr: "pipe",
   });
+  let stderr = "";
+  transport.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
   const client = new Client({ name: "tmb-update-test", version: "0.0.0" });
   await client.connect(transport);
   await client.listTools();
   const pid = transport.pid!;
-  return {
+  const session: Session = {
     pid,
+    stderr: () => stderr,
     end: async () => {
+      scenario.sessions.delete(session);
       await client.close();
       await waitFor("the tool server to exit", () => !isRunning(pid), 30_000);
     },
   };
+  scenario.sessions.add(session);
+  return session;
 }
 
-/** Waits until a session's background look has kept a newer build for the next swap. */
-export async function waitForStaged(scenario: Scenario, timeoutMs = 300_000): Promise<void> {
-  await waitFor("a verified build to be kept", () => existsSync(path.join(scenario.stateDir, "staged.json")), timeoutMs);
+/**
+ * Waits until a session's background look has kept a newer build for the next swap. On a
+ * timeout, says what the look recorded and what the session printed.
+ */
+export async function waitForStaged(scenario: Scenario, session: Session, timeoutMs = 300_000): Promise<void> {
+  const lastCheck = path.join(scenario.stateDir, "last-check.json");
+  const staged = path.join(scenario.stateDir, "staged.json");
+  try {
+    await waitFor("a verified build to be kept", () => {
+      if (existsSync(staged)) return true;
+      // A look that finished without keeping anything will not keep one later in this session.
+      if (existsSync(lastCheck) && !/"outcome":\s*"staged"/.test(readFileSync(lastCheck, "utf8"))) {
+        throw new Error("the session's look kept no build");
+      }
+      return false;
+    }, timeoutMs);
+  } catch (error) {
+    const recorded = existsSync(lastCheck) ? readFileSync(lastCheck, "utf8").trim() : "nothing: the tool server never looked (not a compiled build, or updates off?)";
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; the last look recorded ${recorded}; the session printed: ${session.stderr().trim() || "nothing"}`);
+  }
 }
 
 /** Opens a task in the project's record, as a started task would be; returns a function that closes it. */
@@ -150,7 +184,7 @@ export async function updatesItself(scenario: Scenario, expected: string, log: (
 
   const closeTask = openTask(scenario);
   const first = await startSession(scenario);
-  await waitForStaged(scenario);
+  await waitForStaged(scenario, first);
   log("a session start kept the newer build");
 
   const during = await runUpdate(scenario);

@@ -76,9 +76,9 @@ beforeAll(() => {
   });
 }, 600_000);
 
-afterAll(() => {
+afterAll(async () => {
   server?.stop(true);
-  for (const scenario of scenarios) cleanup(scenario);
+  for (const scenario of scenarios) await cleanup(scenario);
   rmSync(scratch, { recursive: true, force: true });
 });
 
