@@ -100,6 +100,13 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). tmb issues have no labels, so only the milestone, title and body move. |
 | 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
 
+## Level 7 tests
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Lint | `bun run typecheck` | The dashboard's pages type-check under their own [tsconfig](../dashboard/tsconfig.json), next to the engine. |
+| Integration | [tests/integration/dashboard.test.ts](integration/dashboard.test.ts) | `tmb dashboard`, started from outside the repository over a [prepared record](integration/dashboard-record.ts), serves the page with its bundled script and Tailwind styles. Every API read returns the record. The Human's notes, decisions, edits, closes and reopens go through the engine's operations. A request to another host name, a change without the token and an edit from a stale page are refused. Every page (overview, issues, one issue, tasks, one task, runs and gate decisions, audit) is rendered against the running server and shows its data. |
+
 ## Level 8 tests
 
 | Layer | Test | What it proves |

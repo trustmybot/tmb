@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
 import { findPluginDb, HOST_ADAPTERS, hostAdapter, migratePluginProject } from "./adapters/index.ts";
 import { CONFIG_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runRecordCommand } from "./engine/doors/command-line.ts";
+import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { runSetup, terminalAsk } from "./setup.ts";
@@ -24,6 +25,9 @@ ${RECORD_USAGE}
   tmb update [--check]      Look for a newer build on this install's channel now and apply it
                             when no tmb session is running and no task is open; with
                             --check, only report
+  tmb dashboard [--port <n>] [--project <dir>]
+                            Serve the record as a local web page, on port ${DEFAULT_PORT}
+                            unless named; 0 picks a free one
   tmb mcp --host <id> [--project <dir>]
                             Serve the record's tools over stdio (the host runs this)
   tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)`;
@@ -145,6 +149,28 @@ async function runUpdateCommand(args: string[]): Promise<number> {
   return 1;
 }
 
+async function runDashboard(args: string[]): Promise<number> {
+  const { values, positionals } = parseArgs({
+    args,
+    options: { port: { type: "string" }, project: { type: "string" } },
+    allowPositionals: true,
+    strict: true,
+  });
+  if (positionals.length > 0) throw new Error(`dashboard takes no arguments, got ${positionals.join(" ")}`);
+  const port = values.port === undefined ? DEFAULT_PORT : Number(values.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`--port must be a whole number from 0 to 65535, got ${values.port}`);
+  const projectDir = projectRootOf(values.project ?? process.cwd());
+  const dashboard = startDashboard({ projectDir, port });
+  console.log(`tmb dashboard for ${projectDir}: ${dashboard.url}`);
+  console.log("Press Ctrl+C to stop.");
+  await new Promise<void>((resolve) => {
+    process.once("SIGINT", () => resolve());
+    process.once("SIGTERM", () => resolve());
+  });
+  await dashboard.stop();
+  return 0;
+}
+
 async function runSetupCommand(args: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
@@ -233,6 +259,8 @@ async function main(argv: string[]): Promise<number> {
       return runUpdateCommand(rest);
     case "migrate":
       return runMigrateCommand(rest);
+    case "dashboard":
+      return runDashboard(rest);
     case "mcp":
       return runToolServer(rest);
     case "hook":

@@ -1,0 +1,33 @@
+const AUTHOR_BG: Record<string, string> = {
+  planner: 'bg-(--bgColor-accent-emphasis)',
+  worker: 'bg-(--bgColor-success-emphasis)',
+  reviewer: 'bg-(--bgColor-severe-emphasis)',
+  human: 'bg-(--bgColor-neutral-emphasis)',
+};
+
+const FALLBACK_BG = [
+  'bg-(--bgColor-open-emphasis)',
+  'bg-(--bgColor-danger-emphasis)',
+  'bg-(--bgColor-sponsors-emphasis)',
+  'bg-(--bgColor-upsell-emphasis)',
+];
+
+const authorBg = (author: string) => {
+  const name = author.toLowerCase();
+  if (AUTHOR_BG[name]) return AUTHOR_BG[name];
+  const hash = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0);
+  return FALLBACK_BG[hash % FALLBACK_BG.length]!;
+};
+
+const SIZE = { small: 'size-5 text-[9px]', medium: 'size-10 text-[13px]' } as const;
+
+export function Avatar({ author, size = 'medium', className = '' }: { author: string; size?: keyof typeof SIZE; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-grid shrink-0 place-items-center rounded-full font-semibold text-(--fgColor-onEmphasis) ${SIZE[size]} ${authorBg(author)} ${className}`}
+    >
+      {(author || '?').slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
