@@ -16,7 +16,13 @@ afterAll(cleanup);
 const ghLog = path.join(scratch, "gh.log");
 const fakeBin = path.join(scratch, "fake-gh");
 mkdirSync(fakeBin, { recursive: true });
-writeFileSync(path.join(fakeBin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho "https://github.com/example/project/pull/9"\n`, { mode: 0o755 });
+// With the flag file present, the next \`gh pr create\` fails as if the pull request were already open.
+const ghFailOnce = path.join(scratch, "gh-fail-once");
+writeFileSync(
+  path.join(fakeBin, "gh"),
+  `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$1 $2" = "pr create" ] && [ -f '${ghFailOnce}' ]; then rm '${ghFailOnce}'; echo "a pull request already exists" >&2; exit 1; fi\necho "https://github.com/example/project/pull/9"\n`,
+  { mode: 0o755 },
+);
 env.PATH = `${fakeBin}${path.delimiter}${env.PATH}`;
 
 const LINES = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
@@ -81,6 +87,9 @@ describe("Truest mode: every task is reviewed before its push", () => {
       expect(pushed.status).not.toBe(0);
       expect(pushed.stderr).toContain("tmb task waive");
       expect(git(project, "ls-remote", "origin", task.branch)).toBe("");
+      // A remote-tracking ref moved by hand does not make the commit count as already on origin.
+      git(project, "update-ref", "refs/remotes/origin/sneak", first);
+      expect(handPush(task.worktree, `HEAD:refs/heads/${task.branch}`).status).not.toBe(0);
       // A branch of the Human's own, with no task's commit, pushes freely; onto the base branch it is refused.
       git(project, "switch", "-q", "-c", "human/notes");
       commitFile(project, "NOTES.md", "mine\n", "notes");
@@ -170,7 +179,10 @@ describe("Truest mode: every task is reviewed before its push", () => {
       await callJson(client, "task_close", { id: waived.id, role: "worker" });
       expect(await callRefused(client, "task_waive", { id: waived.id, reason: "tiny", role: "planner" })).toContain("only the Human waives");
       expect(tmb(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(`at ${waivedCommit}`);
+      // gh pr create fails because the pull request is already open: task_pr takes that one.
+      writeFileSync(ghFailOnce, "");
       expect(tmb(["task", "pr", waived.id, "--title", "New file"], project)).toContain("https://github.com/example/project/pull/9");
+      expect(readFileSync(ghLog, "utf8")).toContain(`pr list --head ${waived.branch} --state open`);
       expect(readFileSync(ghLog, "utf8")).toContain(`Review waived by the Human at ${waivedCommit}: A file the Human read`);
       expect(git(project, "ls-remote", "origin", `refs/heads/${waived.branch}`)).toStartWith(waivedCommit);
 

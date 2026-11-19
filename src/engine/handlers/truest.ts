@@ -14,7 +14,7 @@ import { HandlerError } from "./errors.ts";
 import { baseBranchTip } from "./features.ts";
 import { isAncestor, pushFeature, rebaseOnto, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
-import { type Finding, openPullRequest, type ReviewSummary, summaryOf, type Verdict } from "./reviews.ts";
+import { existingPullRequest, type Finding, openPullRequest, type ReviewSummary, summaryOf, type Verdict } from "./reviews.ts";
 import {
   type CheckRunOutcome,
   checkCommit,
@@ -476,7 +476,12 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
       ? `Reviewed by the tmb reviewer: pass at ${review.to}${onto === null ? "" : `, carried to ${commit} by a rebase onto ${onto} that kept the patch`}.`
       : `Review waived by the Human at ${review.to}: ${review.waivers.filter((waiver) => waiver.commit === review.to).at(-1)?.reason ?? ""}`;
   const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
-  const opened = openPullRequest(context.projectDir, ["--base", baseBranch, "--head", task.branch!, "--title", given.title, "--body", body]);
+  let opened = openPullRequest(context.projectDir, ["--base", baseBranch, "--head", task.branch!, "--title", given.title, "--body", body]);
+  if (!opened.ok) {
+    // An earlier task_pr may have opened it before failing: that pull request is this task's.
+    const existing = existingPullRequest(context.projectDir, task.branch!);
+    if (existing !== null) opened = { ok: true, url: existing };
+  }
   if (!opened.ok) throw new HandlerError("refused", `${task.branch} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateTask(actor, task.id, { state: CLOSED, prUrl: opened.url });
 

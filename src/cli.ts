@@ -274,6 +274,10 @@ function runMigrateCommand(args: string[]): number {
       if (counts.openTasks > 0) {
         console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
       }
+      const left = Object.entries(result.leftBehind).sort(([a], [b]) => a.localeCompare(b));
+      if (left.length > 0) {
+        console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
+      }
       console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
     }
   } finally {

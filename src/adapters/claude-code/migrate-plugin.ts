@@ -36,6 +36,8 @@ export type MigrationResult = {
   pluginVersion: string | null;
   repo: string | null;
   counts: MigrationCounts;
+  /** Records of the carried issues left behind because tmb has no such kind, per plugin kind. */
+  leftBehind: Record<string, number>;
   /** Plugin ids to tmb ids, per kind. */
   ids: { issues: Record<string, string>; tasks: Record<string, string> };
 };
@@ -164,7 +166,8 @@ function isoTime(value: string | null | undefined): string | null {
 }
 
 const TASK_CLOSED_STATES = new Set(["closed", "completed", "failed", "escalated"]);
-const DISCUSSION_LABELS: Record<string, string> = { intent: "Intent", question: "Question", answer: "Answer", analysis: "Analysis" };
+/** The plugin's discussion kinds that tmb has; any other kind is left behind, not folded into these. */
+const DISCUSSION_KINDS = new Set(["note", "decision"]);
 
 function firstLine(text: string): string {
   const line = text.trim().split("\n")[0]?.trim() ?? "";
@@ -226,10 +229,9 @@ function chooseRepo(db: Database, wanted: string | undefined, projectDir: string
   throw new MigrationError(`the plugin database serves several repos (${repos.join(", ")}); name one with --repo`);
 }
 
-/** The plugin's status at the head of the spec, so what the closed-or-open state leaves out is kept. */
+/** The task's spec as the plugin wrote it; its status beyond open or closed is left behind. */
 function taskSpec(task: TaskRow): string {
-  const body = task.spec_body.trim() !== "" ? task.spec_body : task.description;
-  return `Carried over from the plugin's task ${task.id} (status ${task.status}).\n\n${body}`;
+  return task.spec_body.trim() !== "" ? task.spec_body : task.description;
 }
 
 function taskKind(task: TaskRow): string {
@@ -308,6 +310,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
   const issueIds = new Map<number, string>();
   const taskIds = new Map<number, string>();
   const tasks = new Map<number, TaskRow>();
+  const leftBehind: Record<string, number> = {};
 
   const issues = db
     .query(
@@ -330,14 +333,17 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
   for (const row of db.query("SELECT id, issue_id, author, kind, body, created_at FROM discussions ORDER BY created_at, id").all() as DiscussionRow[]) {
     const issue = issueIds.get(row.issue_id);
     if (issue === undefined || row.body.trim() === "") continue;
+    if (!DISCUSSION_KINDS.has(row.kind)) {
+      leftBehind[row.kind] = (leftBehind[row.kind] ?? 0) + 1;
+      continue;
+    }
     const at = isoTime(row.created_at) ?? now;
-    const label = DISCUSSION_LABELS[row.kind];
     store.backdated(at, () =>
       store.appendDiscussion(actorOf(row.author), {
         id: discussionId(at),
         issueId: issue,
         kind: row.kind === "decision" ? "decision" : "note",
-        body: label === undefined ? row.body : `${label}: ${row.body}`,
+        body: row.body,
       }),
     );
     counts.discussions++;
@@ -488,6 +494,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
     pluginVersion: source.pluginVersion,
     repo: source.repo,
     counts,
+    leftBehind,
     ids: {
       issues: Object.fromEntries([...issueIds].map(([plugin, tmb]) => [String(plugin), tmb])),
       tasks: Object.fromEntries([...taskIds].map(([plugin, tmb]) => [String(plugin), tmb])),
