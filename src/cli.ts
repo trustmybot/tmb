@@ -8,7 +8,7 @@ import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { runSetup, terminalAsk } from "./setup.ts";
-import { Updater, updaterOptions } from "./update.ts";
+import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
@@ -33,15 +33,11 @@ ${INDEX_USAGE}
                             Serve the record's tools over stdio (the host runs this)
   tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)`;
 
-// A compiled tmb runs its entry from Bun's embedded file system; from source, Bun runs this file.
-// Windows names it B:\~BUN\root\..., written with either slash.
-const COMPILED_ENTRY = /^(?:\/\$bunfs\/|[A-Z]:[\\/]~BUN[\\/])/i;
-
 const adapter = hostAdapter();
 
 /** The command that runs this tmb: the executable, plus this file when run from source. */
 function tmbCommand(): string[] {
-  return COMPILED_ENTRY.test(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
+  return isCompiledEntry(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
 }
 
 /**
@@ -79,7 +75,7 @@ async function runToolServer(args: string[]): Promise<number> {
   if (positionals.length > 0) throw new Error(`mcp takes no arguments, got ${positionals.join(" ")}`);
   if (values.host === undefined || values.host.trim() === "") throw new Error("mcp needs --host <id>, the host that runs it");
   const projectDir = path.resolve(values.project ?? process.cwd());
-  const updater = new Updater(updaterOptions(version, COMPILED_ENTRY.test(Bun.main)));
+  const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
     await serveTools({ projectDir, host: values.host, version });
     return 0;
@@ -112,7 +108,7 @@ async function runToolServer(args: string[]): Promise<number> {
 async function runUpdateCommand(args: string[]): Promise<number> {
   const { values, positionals } = parseArgs({ args, options: { check: { type: "boolean" } }, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`update takes no arguments, got ${positionals.join(" ")}`);
-  const updater = new Updater(updaterOptions(version, COMPILED_ENTRY.test(Bun.main)));
+  const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
     console.log(
       updater.options.enabled ? `tmb ${version} runs from source and does not update itself.` : `Updates are turned off (TMB_NO_UPDATE=1); this is tmb ${version}.`,

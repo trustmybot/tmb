@@ -39,9 +39,3 @@ jobs:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
       - run: bun test tests/integration/update.test.ts
-      - name: Diagnostic (temporary) - Bun.main in a compiled build
-        shell: bash
-        run: |
-          echo 'console.log(JSON.stringify({ main: Bun.main, execPath: process.execPath }))' > main-probe.ts
-          bun build --compile main-probe.ts --outfile main-probe
-          ./main-probe

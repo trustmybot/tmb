@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { assetName, channelOf, compareVersions, Updater } from "../../src/update.ts";
+import { assetName, channelOf, compareVersions, isCompiledEntry, Updater } from "../../src/update.ts";
 import { buildTmb, cleanup, installedVersion, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
 
 const CHANNELS = {
@@ -108,6 +108,12 @@ describe("versions and channels", () => {
   test("versions order as semantic versions, a release after its prereleases", () => {
     const sorted = ["0.1.1", "0.1.0-rc.10", "0.1.0", "0.1.0-rc.2", "0.1.0-dev.4", "0.0.9"].sort(compareVersions);
     expect(sorted).toEqual(["0.0.9", "0.1.0-dev.4", "0.1.0-rc.2", "0.1.0-rc.10", "0.1.0", "0.1.1"]);
+  });
+
+  test("a compiled build knows it is compiled on every OS (trustmybot/tmb#57)", () => {
+    // Bun.main as a compiled build reports it on macOS/Linux and on Windows, where it uses forward slashes.
+    for (const main of ["/$bunfs/root/tmb", "B:/~BUN/root/tmb.exe", "B:\\~BUN\\root\\tmb.exe"]) expect(isCompiledEntry(main)).toBe(true);
+    for (const main of ["/repo/src/cli.ts", "C:\\repo\\src\\cli.ts", "D:/a/tmb/src/cli.ts"]) expect(isCompiledEntry(main)).toBe(false);
   });
 });
 

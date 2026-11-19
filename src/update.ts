@@ -19,6 +19,14 @@ const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const RC_TAG = /^v(\d+\.\d+\.\d+-rc\.\d+)$/;
 const IS_WINDOWS = process.platform === "win32";
 
+/**
+ * Whether Bun's entry point is a compiled tmb's embedded file rather than a source file. Compiled,
+ * it is /$bunfs/root/... on macOS and Linux and B:/~BUN/root/... on Windows (seen with either slash).
+ */
+export function isCompiledEntry(main: string): boolean {
+  return /^(?:\/\$bunfs\/|[A-Z]:[\\/]~BUN[\\/])/i.test(main);
+}
+
 /** The channel a version follows: its stamp names it. */
 export function channelOf(version: string): Channel {
   if (/-dev\./.test(version)) return "dev";
