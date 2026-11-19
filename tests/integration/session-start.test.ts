@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { UNATTENDED_INSTRUCTION, UNATTENDED_VARIABLE } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
@@ -20,20 +21,16 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-function run(command: string, args: string[], cwd: string, input?: string) {
-  const result = spawnSync(command, args, {
-    cwd,
-    input,
-    encoding: "utf8",
-    timeout: 30_000,
-    // Keep the machine's global git ignore rules out of the project under test.
-    env: {
-      ...process.env,
-      XDG_CONFIG_HOME: path.join(scratch, "no-xdg"),
-      GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig"),
-      PATH: pathWithFakeClaude(scratch),
-    },
-  });
+function run(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}) {
+  // Keep the machine's global git ignore rules, and any unattended mode it runs in, out of the project under test.
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    XDG_CONFIG_HOME: path.join(scratch, "no-xdg"),
+    GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig"),
+    PATH: pathWithFakeClaude(scratch),
+  };
+  delete env[UNATTENDED_VARIABLE];
+  const result = spawnSync(command, args, { cwd, input, encoding: "utf8", timeout: 30_000, env: { ...env, ...extraEnv } });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -60,6 +57,22 @@ describe("tmb hook session-start", () => {
     const groundTruthRule = plannerSection("Docs are ground truth");
     expect(groundTruthRule.length).toBeGreaterThan(0);
     expect(context).toContain(groundTruthRule);
+  });
+
+  test("ends with the unattended instruction only when TMB_UNATTENDED is 1", () => {
+    const event = JSON.stringify({ session_id: "integration", hook_event_name: "SessionStart", source: "startup", cwd: ROOT });
+    const contextWith = (extraEnv: Record<string, string>) => {
+      const result = run(process.execPath, [CLI, "hook", "session-start"], ROOT, event, extraEnv);
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      return (JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    };
+
+    const attended = contextWith({});
+    expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
+    expect(contextWith({ TMB_UNATTENDED: "1" })).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+    expect(contextWith({ TMB_UNATTENDED: "0" })).toBe(attended);
+    expect(contextWith({ TMB_UNATTENDED: "" })).toBe(attended);
   });
 });
 

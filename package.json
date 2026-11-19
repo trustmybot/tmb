@@ -11,7 +11,8 @@
     "lint:links": "bun tests/lint/links.ts",
     "test:install": "sh tests/install/smoke.sh",
     "test:agent": "sh tests/agent-run/run.sh",
-    "test:chain": "sh tests/agent-chain/run.sh"
+    "test:chain": "sh tests/agent-chain/run.sh",
+    "test:worker": "sh tests/agent-run/worker.sh"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

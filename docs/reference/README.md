@@ -69,6 +69,10 @@ Once the project is set up:
 - tmb lets a worker start only when its start prompt names an open task as `task_id=<id>` and that task's worktree exists. It records the worker's run from its start to its end.
 - When tmb allows an action it says nothing, so Claude Code still asks you for permission as it would without tmb.
 
+## Unattended runs
+
+When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults, names each default it used, and stops with the reason when a default is not safe. Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
+
 ## The record from the command line
 
 The planner records work through tmb's tools. You can read and change the same record yourself:
@@ -84,7 +88,7 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb history <id>` | Show every recorded change to an issue or note |
 | `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where setup has not run, it says so. |
 | `tmb task start <issue-id> --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the base branch, and adds its worktree under `.tmb/worktrees/`. It refuses when setup has not set a base branch, or when a file overlaps one held by another open task. |
-| `tmb task list` | List the open tasks |
+| `tmb task list [--state open\|closed\|all]` | List the open tasks, or the closed ones, each with the commit it closed at, or all |
 | `tmb task brief <id>` | Show a task's spec, branch, worktree and the checks that run when it closes |
 | `tmb task close <id>` | Run the checks on the task's commit, and close the task when they all pass |
 

@@ -1,71 +1,18 @@
 // The task flow driven as separate processes, the way the Human, an agent and the host use
 // it: the task commands, the task tools over stdio, and the hooks setup wired, which let a
 // worker start only on an open task and record its run.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import type { Run, Store } from "../../src/engine/store/index.ts";
-import { pathWithFakeClaude } from "./fake-host.ts";
+import { callJson, type ToolResult, tmbProcesses } from "./tmb-processes.ts";
 
-const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
 const WORK_FILE = "src/a/work.ts";
 
-let scratch: string;
-let env: Record<string, string>;
-
-beforeAll(() => {
-  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-task-flow-")));
-  // Keep the machine's global git settings out of the project under test.
-  env = {
-    ...(process.env as Record<string, string>),
-    XDG_CONFIG_HOME: path.join(scratch, "no-xdg"),
-    GIT_CONFIG_GLOBAL: path.join(scratch, "no-gitconfig"),
-    PATH: pathWithFakeClaude(scratch),
-  };
-  delete env.CLAUDE_PROJECT_DIR;
-});
-
-afterAll(() => {
-  rmSync(scratch, { recursive: true, force: true });
-});
-
-function git(cwd: string, ...args: string[]): string {
-  const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, env, encoding: "utf8", timeout: 10_000 });
-  if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
-  return result.stdout.trim();
-}
-
-function run(args: string[], cwd: string) {
-  const result = spawnSync(process.execPath, [CLI, ...args], { cwd, env, encoding: "utf8", timeout: 60_000 });
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
-}
-
-function tmb(args: string[], cwd: string): string {
-  const result = run(args, cwd);
-  if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.stderr}`);
-  return result.stdout;
-}
-
-function tmbJson<T = any>(args: string[], cwd: string): T {
-  return JSON.parse(tmb([...args, "--json"], cwd)) as T;
-}
-
-/** A git project with one commit on main, set up with the given check. */
-function setUpProject(check: string): string {
-  const project = mkdtempSync(path.join(scratch, "project-"));
-  git(project, "init", "-q", "-b", "main");
-  writeFileSync(path.join(project, "README.md"), "hello\n");
-  git(project, "add", ".");
-  git(project, "commit", "-q", "-m", "first");
-  tmb(["setup", "--base", "main", "--check", check, "--yes"], project);
-  return project;
-}
+const { env, git, run, tmb, tmbJson, setUpProject, connect, cleanup } = tmbProcesses("tmb-task-flow-");
+afterAll(cleanup);
 
 function commitWork(worktree: string): string {
   mkdirSync(path.join(worktree, path.dirname(WORK_FILE)), { recursive: true });
@@ -124,6 +71,12 @@ describe("task commands", () => {
     expect(closed).toContain(`Closed task ${started.id} at commit ${head}.`);
     expect(tmb(["task", "list"], project)).toContain("No open tasks.");
     expect(tmbJson(["task", "brief", started.id], project)).toMatchObject({ state: "closed", commitSha: head });
+    expect(tmbJson<any[]>(["task", "list", "--state", "closed"], project)).toMatchObject([{ id: started.id, state: "closed", commitSha: head }]);
+    expect(tmb(["task", "list", "--state", "all"], project)).toContain(`${started.id}  closed  ${started.branch}  Add the work file`);
+    expect(tmb(["task", "list", "--state", "all"], project)).toContain(`closed at: ${head}`);
+    const badState = run(["task", "list", "--state", "done"], project);
+    expect(badState.status).toBe(1);
+    expect(badState.stderr).toContain("state");
     withStore(project, (store) => {
       const checkRuns = store.listCheckRuns(started.id);
       expect(checkRuns.map((checkRun) => checkRun.result)).toEqual(["failed", "passed"]);
@@ -141,20 +94,6 @@ describe("task commands", () => {
     expect(noFiles.stderr).toContain("files must be a list of at least 1");
   });
 });
-
-type ToolResult = { isError?: boolean; content: { type: string; text: string }[] };
-
-async function connect(project: string): Promise<Client> {
-  const client = new Client({ name: "task-flow-test", version: "0.0.0" });
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, "mcp", "--host", "test", "--project", project], env, stderr: "pipe" }));
-  return client;
-}
-
-async function callJson<T = any>(client: Client, name: string, args: Record<string, unknown>): Promise<T> {
-  const result = (await client.callTool({ name, arguments: args })) as ToolResult;
-  if (result.isError) throw new Error(`${name} failed: ${result.content[0]?.text}`);
-  return JSON.parse(result.content[0]!.text) as T;
-}
 
 describe("task tools", () => {
   test("the planner starts a task and the worker reads its brief and closes it, through the tool server", async () => {

@@ -48,7 +48,8 @@ echo "tmb config after setup:"
 printf '%s\n' "$settings"
 
 echo "Asking claude (${model}): $(cat "$prompt_file")"
-(cd "$project" && claude -p "$(cat "$prompt_file")" --model "$model") >"$log" 2>&1
+# No one answers in the run, so it starts in tmb's unattended mode.
+(cd "$project" && TMB_UNATTENDED=1 claude -p "$(cat "$prompt_file")" --model "$model") >"$log" 2>&1
 claude_status=$?
 
 echo "--- answer (saved to ${log}) ---"

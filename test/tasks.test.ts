@@ -247,9 +247,33 @@ describe("task_brief and task_list", () => {
     const started = taskStart(store, PLANNER, spec(), context());
     expect(taskBrief(store, REVIEWER, { id: started.id.toLowerCase() })).toEqual(started.brief);
     expect(taskList(store, WORKER, {})).toEqual([
-      { id: started.id, issueId, title: "Add the feature", branch: started.branch, worktree: started.worktree, files: ["src/a"] },
+      {
+        id: started.id,
+        issueId,
+        state: "open",
+        title: "Add the feature",
+        branch: started.branch,
+        worktree: started.worktree,
+        commitSha: null,
+        files: ["src/a"],
+      },
     ]);
     expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" })).code).toBe("not_found");
+  });
+
+  test("the list takes a state: open by default, closed, or all oldest first; any other is refused", async () => {
+    const done = taskStart(store, PLANNER, spec(), context());
+    const head = commitWork(done.worktree);
+    await taskClose(store, WORKER, { id: done.id }, context());
+    const open = taskStart(store, PLANNER, spec({ files: ["src/b"] }), context());
+
+    const ids = (state?: string) => taskList(store, HUMAN, state === undefined ? {} : { state }).map((task) => task.id);
+    expect(ids()).toEqual([open.id]);
+    expect(ids("open")).toEqual([open.id]);
+    expect(ids("closed")).toEqual([done.id]);
+    expect(ids("all")).toEqual([done.id, open.id]);
+    expect(taskList(store, HUMAN, { state: "closed" })[0]).toMatchObject({ state: "closed", commitSha: head });
+    expect(refusal(() => taskList(store, HUMAN, { state: "done" })).code).toBe("invalid_input");
   });
 
   test("a task recorded without a task_start spec reads as its text, holding no files", () => {

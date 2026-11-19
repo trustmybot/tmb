@@ -32,7 +32,8 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
   tmb history <id>          Show every recorded change to an issue or note
   tmb task start <issue-id> --intent <text> --file <path>... --criterion <text>... [--check <command>]...
                             Start a task: cut its branch and worktree and record its spec
-  tmb task list             List the open tasks
+  tmb task list [--state open|closed|all]
+                            List the open tasks, or the closed ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
   tmb task close <id>       Run the checks on the task's commit; close it when all pass
   Add --json to any of these for JSON output.`;
@@ -160,8 +161,17 @@ function briefLines(brief: TaskBrief): string[] {
   ];
 }
 
-function formatTasks(tasks: TaskSummary[]): string {
-  return tasks.length === 0 ? "No open tasks." : tasks.map((task) => `${task.id}  ${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}`).join("\n");
+function taskLine(task: TaskSummary, withState: boolean): string {
+  const state = withState ? `  ${task.state.padEnd(6)}` : "";
+  const commit = task.commitSha ? `\n  closed at: ${task.commitSha}` : "";
+  return `${task.id}${state}  ${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
+}
+
+/** The open list keeps its plain form; a list that may mix states shows each task's state. */
+function formatTasks(state: string | undefined) {
+  const which = state === undefined || state === "open" ? "open " : state === "closed" ? "closed " : "";
+  return (tasks: TaskSummary[]) =>
+    tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
 
 function formatClose({ brief, checks }: TaskCloseResult): string {
@@ -189,9 +199,9 @@ function taskRequest(args: string[]): Request {
       return { operation: "task_start", input, json: values.json === true, format };
     }
     case "list": {
-      const { values, positionals } = parse(rest, {});
+      const { values, positionals } = parse(rest, { state: { type: "string" } });
       if (positionals.length > 0) throw new UsageError(`task list takes no arguments, got ${positionals.join(" ")}`);
-      return { operation: "task_list", input: {}, json: values.json === true, format: formatTasks };
+      return { operation: "task_list", input: { state: values.state }, json: values.json === true, format: formatTasks(values.state) };
     }
     case "brief": {
       const { values, positionals } = parse(rest, {});

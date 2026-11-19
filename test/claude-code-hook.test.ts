@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { answerHook } from "../src/adapters/claude-code/hook.ts";
-import { openProjectStore, projectDbPath } from "../src/engine/index.ts";
+import { handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION, UNATTENDED_VARIABLE } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
 
 let project: string;
@@ -175,5 +175,33 @@ describe("hook subagent-stop", () => {
     expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
       { type: "after-agent-stop", role: "worker", action: "worker" },
     ]);
+  });
+});
+
+describe("hook session-start", () => {
+  const savedUnattended = process.env[UNATTENDED_VARIABLE];
+
+  afterEach(() => {
+    if (savedUnattended === undefined) delete process.env[UNATTENDED_VARIABLE];
+    else process.env[UNATTENDED_VARIABLE] = savedUnattended;
+  });
+
+  function sessionStartContext(): string {
+    const output = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", cwd: project })));
+    return output.hookSpecificOutput.additionalContext as string;
+  }
+
+  test("passes the run's unattended value through to the engine's answer", () => {
+    createRecord();
+    delete process.env[UNATTENDED_VARIABLE];
+    const attended = handleEvent({ type: "session-start", projectDir: project }).context;
+    expect(sessionStartContext()).toBe(attended);
+
+    process.env[UNATTENDED_VARIABLE] = "1";
+    expect(sessionStartContext()).toBe(handleEvent({ type: "session-start", projectDir: project, unattended: "1" }).context);
+    expect(sessionStartContext()).toEndWith(`${UNATTENDED_INSTRUCTION}\n`);
+
+    process.env[UNATTENDED_VARIABLE] = "0";
+    expect(sessionStartContext()).toBe(attended);
   });
 });

@@ -75,7 +75,7 @@ export const OPERATIONS = {
   },
   task_list: {
     description:
-      "List the open tasks in the project's tmb record, with each one's branch, worktree and files. Use it before starting a task, since two open tasks never share a file.",
+      "List the open tasks in the project's tmb record, or the closed ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task, since two open tasks never share a file.",
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },

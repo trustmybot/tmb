@@ -3,7 +3,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { handleEvent, OPEN_WORK_HEADING, OPEN_WORK_MAX, openProjectStore, plannerRole, projectDbPath } from "../src/engine/index.ts";
+import {
+  handleEvent,
+  OPEN_WORK_HEADING,
+  OPEN_WORK_MAX,
+  openProjectStore,
+  plannerRole,
+  projectDbPath,
+  UNATTENDED_INSTRUCTION,
+  UNATTENDED_VARIABLE,
+} from "../src/engine/index.ts";
 import type { Store } from "../src/engine/store/index.ts";
 
 let project: string;
@@ -87,5 +96,41 @@ describe("session start", () => {
     expect(listed[0]).toContain(`Issue number ${OPEN_WORK_MAX + 3}`);
     expect(work).not.toContain("Issue number 3\n");
     expect(work).toContain("3 older open issues");
+  });
+});
+
+describe("unattended mode", () => {
+  function contextWith(unattended: string | undefined): string {
+    return handleEvent({ type: "session-start", projectDir: project, unattended }).context;
+  }
+
+  test("is read from TMB_UNATTENDED", () => {
+    expect(UNATTENDED_VARIABLE).toBe("TMB_UNATTENDED");
+  });
+
+  test("with 1, the answer is the attended one followed by the unattended instruction", () => {
+    withStore((store) => {
+      store.createIssue({ kind: "human" }, { title: "Open issue" });
+    });
+    const attended = contextWith(undefined);
+    const text = contextWith("1");
+    expect(text).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+    expect(text.indexOf("Open issue")).toBeLessThan(text.indexOf(UNATTENDED_INSTRUCTION));
+    expect(UNATTENDED_INSTRUCTION).toContain("No one can answer in this run");
+    expect(UNATTENDED_INSTRUCTION).toContain("name each default you used");
+    expect(UNATTENDED_INSTRUCTION).toContain("stop with the reason when a default is not safe");
+  });
+
+  test("with 1 and no record, the role is followed by the instruction", () => {
+    expect(contextWith("1")).toBe(`${plannerRole.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+  });
+
+  test("unset or any other value gives exactly the attended answer", () => {
+    withStore(() => {});
+    const attended = context();
+    for (const value of [undefined, "", "0", "true", "yes", " 1", "1 "]) {
+      expect(contextWith(value)).toBe(attended);
+    }
+    expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
   });
 });

@@ -40,7 +40,17 @@ export type TaskBrief = {
   startLine: string;
 };
 
-export type TaskSummary = { id: string; issueId: string; title: string; branch: string | null; worktree: string | null; files: string[] };
+export type TaskSummary = {
+  id: string;
+  issueId: string;
+  state: string;
+  title: string;
+  branch: string | null;
+  worktree: string | null;
+  /** The commit the task closed at; null while it is open. */
+  commitSha: string | null;
+  files: string[];
+};
 
 export type TaskCloseResult = { brief: TaskBrief; checkRunId: string; checks: CheckCommandResult[] };
 
@@ -294,16 +304,28 @@ export function taskBrief(store: Store, _actor: Actor, input: unknown): TaskBrie
 
 // --- task_list ----------------------------------------------------------------------------
 
-export const taskListSchema: InputSchema = { type: "object", properties: {}, required: [], additionalProperties: false };
+export const TASK_LIST_STATES = [OPEN, CLOSED, "all"] as const;
+export type TaskListState = (typeof TASK_LIST_STATES)[number];
+
+export const taskListSchema: InputSchema = {
+  type: "object",
+  properties: {
+    state: { type: "string", description: "Which tasks to list: open (the default), closed or all.", enum: TASK_LIST_STATES },
+  },
+  required: [],
+  additionalProperties: false,
+};
 
 export function taskList(store: Store, _actor: Actor, input: unknown): TaskSummary[] {
-  validateInput("task_list", taskListSchema, input);
-  return store.listTasks(OPEN).map((task) => ({
+  const { state = OPEN } = validateInput<{ state?: TaskListState }>("task_list", taskListSchema, input);
+  return store.listTasks(state === "all" ? undefined : state).map((task) => ({
     id: task.id,
     issueId: task.issueId,
+    state: task.state,
     title: task.title,
     branch: task.branch,
     worktree: task.worktree,
+    commitSha: task.commitSha,
     files: specOf(task).files,
   }));
 }

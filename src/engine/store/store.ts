@@ -353,9 +353,13 @@ export class Store {
     return row ? toTask(row) : null;
   }
 
-  /** Tasks in one state, oldest first. */
-  listTasks(state: string): Task[] {
-    const rows = this.db.query("SELECT * FROM tasks WHERE state = ? ORDER BY id").all(state) as TaskRow[];
+  /** Tasks in one state, or in any state when none is given, oldest first. */
+  listTasks(state?: string): Task[] {
+    const rows = (
+      state === undefined
+        ? this.db.query("SELECT * FROM tasks ORDER BY id").all()
+        : this.db.query("SELECT * FROM tasks WHERE state = ? ORDER BY id").all(state)
+    ) as TaskRow[];
     return rows.map(toTask);
   }
 

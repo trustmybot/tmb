@@ -1,6 +1,6 @@
 #!/bin/sh
-# Agent chain (Level 1): in a fresh git project set up with tmb, one Claude Code session has
-# bro record an issue, and a new session must find it in the record at its start.
+# Agent chain (Level 1): in a fresh git project set up with tmb, one Claude Code session is told
+# a goal and bro records it, and a new session must find it in the record at its start.
 #   sh tests/agent-chain/run.sh
 # TMB_BIN          the tmb to set up with (default: tmb on PATH)
 # TMB_AGENT_MODEL  the model claude runs (default: haiku)
@@ -8,11 +8,11 @@
 set -u
 
 here="$(cd "$(dirname "$0")" && pwd)"
-# prompts/record.txt and prompts/resume.txt are bro-drafted from the Human's Level 1 criterion
-# and wait for the Human's confirmation. Never edit them to make this test pass.
+# prompts/record.txt and prompts/resume.txt are Human-authored, in a user's words: never edit
+# them to make this test pass. The checks look for the goal they name, not for a title.
 record_prompt="$(cat "${here}/prompts/record.txt")"
 resume_prompt="$(cat "${here}/prompts/resume.txt")"
-issue_title="Level 1 chain check"
+goal="dark mode"
 tmb_bin="${TMB_BIN:-tmb}"
 model="${TMB_AGENT_MODEL:-haiku}"
 
@@ -35,8 +35,9 @@ if ! (cd "$project" && git init -q && "$tmb_bin" setup); then
 fi
 
 # Runs one new claude session in the project with tmb's tools allowed; $1 is the prompt, $2 the log.
+# No one answers in the run, so it starts in tmb's unattended mode.
 ask() {
-  (cd "$project" && claude -p "$1" --model "$model" --allowedTools 'mcp__tmb__*') >"$2" 2>&1
+  (cd "$project" && TMB_UNATTENDED=1 claude -p "$1" --model "$model" --allowedTools 'mcp__tmb__*') >"$2" 2>&1
 }
 
 show() {
@@ -59,20 +60,33 @@ if [ "$record_status" -ne 0 ]; then
   echo "FAIL session 1: claude exited ${record_status}"
   exit 1
 fi
-if ! (cd "$project" && "$tmb_bin" issue list --json) >"${logs}/issues.json" 2>&1; then
+if ! (cd "$project" && "$tmb_bin" issue list --state open --json) >"${logs}/issues.json" 2>&1; then
   echo "FAIL tmb issue list failed: $(cat "${logs}/issues.json")"
   exit 1
 fi
-if ! grep -Fq "\"title\": \"${issue_title}\"" "${logs}/issues.json"; then
-  echo "FAIL session 1 recorded no issue titled '${issue_title}'; the record holds: $(cat "${logs}/issues.json")"
+# The list clips each body, so each open issue is read whole. In `issue show --json` the issue's
+# own fields sit at four spaces, and its notes' fields deeper, so only its title or body can match.
+found=""
+for id in $(sed -n 's/^    "id": "\([0-9A-Z]*\)",$/\1/p' "${logs}/issues.json"); do
+  if ! (cd "$project" && "$tmb_bin" issue show "$id" --json) >"${logs}/issue.json" 2>&1; then
+    echo "FAIL tmb issue show ${id} failed: $(cat "${logs}/issue.json")"
+    exit 1
+  fi
+  if grep -E '^    "(title|body)": ' "${logs}/issue.json" | grep -Fiq "$goal"; then
+    found="$id"
+    break
+  fi
+done
+if [ -z "$found" ]; then
+  echo "FAIL session 1 recorded no open issue whose title or body names '${goal}'; the record holds: $(cat "${logs}/issues.json")"
   exit 1
 fi
 if [ "$resume_status" -ne 0 ]; then
   echo "FAIL session 2: claude exited ${resume_status}"
   exit 1
 fi
-if ! grep -Fq "$issue_title" "${logs}/resume.log"; then
-  echo "FAIL session 2's answer never names '${issue_title}'"
+if ! grep -Fiq "$goal" "${logs}/resume.log"; then
+  echo "FAIL session 2's answer never mentions '${goal}'"
   exit 1
 fi
-echo "PASS session 1 recorded '${issue_title}' and session 2 found it"
+echo "PASS session 1 recorded the '${goal}' goal and session 2 found it"

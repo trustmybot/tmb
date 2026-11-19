@@ -1,4 +1,4 @@
-import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType, UNATTENDED_VARIABLE } from "../../engine/index.ts";
 import { isObject, type JsonObject } from "./json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
 import type { HookName } from "./settings.ts";
@@ -47,7 +47,7 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
 }
 
 function sessionStart(input: JsonObject): string {
-  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input) });
+  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: process.env[UNATTENDED_VARIABLE] });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 
