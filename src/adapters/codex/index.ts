@@ -26,7 +26,7 @@ export const adapter: HostAdapter = {
   name: "Codex",
 
   // Codex raises every tmb event; a subagent's start is denied from its spawn tool call.
-  limits: { canDenyToolCall: true, modelPerRole: true, events: TMB_EVENT_TYPES },
+  limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: false, events: TMB_EVENT_TYPES },
 
   detect,
 

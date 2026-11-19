@@ -22,6 +22,12 @@ export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
  */
 export const MAIN_AGENT = "main-agent";
 
+/**
+ * The role an adapter gives an agent starting when the host's input does not say which agent it
+ * is. The start goes through, and its recorded decision says tmb could not tell, as a finding.
+ */
+export const UNNAMED_AGENT = "unnamed-agent";
+
 /** A host-neutral event: the same fields whatever host raised it. */
 export type TmbEvent = {
   type: TmbEventType;
@@ -185,6 +191,9 @@ function fileWriteRule(store: Store, event: TmbEvent): Decision | null {
 }
 
 function rule(store: Store, event: TmbEvent): Decision {
+  if (event.role === UNNAMED_AGENT && event.type === "before-agent-start") {
+    return { decision: "allow", reason: "finding: the host did not say which agent is starting, so tmb could not apply a role's rules to its start" };
+  }
   if (event.role === WORKER && event.type === "before-agent-start") return workerStart(store, event);
   if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
   if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);

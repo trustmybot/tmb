@@ -28,7 +28,7 @@ function fakeHost(id: string, installed: boolean): HostAdapter {
   return {
     id,
     name: `Host ${id.toUpperCase()}`,
-    limits: { canDenyToolCall: true, modelPerRole: true, events: TMB_EVENT_TYPES },
+    limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
     detect: () => ({ installed }),
     setup(projectDir) {
       setUpWith.push(id);

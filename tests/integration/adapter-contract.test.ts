@@ -194,9 +194,18 @@ for (const harness of HARNESSES) {
         if (adapter.limits.canDenyToolCall) expect(denied.deny).toBeTruthy();
         expect(raise(project, { type: "before-command", role: "planner", command: "git status" }).deny).toBeNull();
       }
-      if (adapter.limits.events.includes("before-file-write") && harness.namesSubagentOnToolCall) {
-        const denied = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
-        if (adapter.limits.canDenyToolCall) expect(denied.deny).toContain("reviewer");
+      if (adapter.limits.events.includes("before-file-write")) {
+        const write = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
+        if (adapter.limits.namesAgentOnToolCall) {
+          if (adapter.limits.canDenyToolCall) expect(write.deny).toContain("reviewer");
+        } else {
+          // The host names no agent, so a reviewer subagent's write is judged as the host's own role,
+          // the planner's, and goes through; git's pre-push hook still judges every push of it.
+          expect(write.deny).toBeNull();
+          const last = withStore(project, (store) => store.listGuardDecisions().at(-1));
+          expect(last?.createdBy).toEqual({ kind: "agent", role: "planner", host: adapter.id });
+          expect(readFileSync(path.join(project, ".git", "hooks", "pre-push"), "utf8")).toContain("pre-push");
+        }
       }
       const decisions = withStore(project, (store) => store.listGuardDecisions());
       expect(decisions.length).toBeGreaterThan(0);

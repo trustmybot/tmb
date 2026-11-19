@@ -21,7 +21,7 @@ export const adapter: HostAdapter = {
   id: HOST_ID,
   name: "Claude Code",
 
-  limits: { canDenyToolCall: true, modelPerRole: true, events: TMB_EVENT_TYPES },
+  limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
 
   detect,
 

@@ -35,7 +35,6 @@ function input(project: string, hookEvent: string, fields: Record<string, unknow
 
 export const claudeCodeHarness: HostHarness = {
   adapter,
-  namesSubagentOnToolCall: true,
 
   fakeHost: fakeClaudeFolder,
 

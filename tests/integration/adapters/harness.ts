@@ -23,8 +23,6 @@ export type HookAnswer = { deny: string | null; context: string | null };
 
 export type HostHarness = {
   adapter: HostAdapter;
-  /** The host names the subagent on its tool calls, so tmb can guard a subagent's write in its own role. */
-  namesSubagentOnToolCall: boolean;
   /** Makes a program that answers --version as the host does, in a new folder under `dir`; returns that folder. */
   fakeHost(dir: string): string;
   /** Writes the Human's own config for the host into the project, so remove must keep it. */

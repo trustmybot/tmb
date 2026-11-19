@@ -46,7 +46,7 @@ describe.skipIf(process.platform === "win32")("detect", () => {
 
 describe("limits", () => {
   test("Claude Code can deny a tool call, sets a model per role and raises every host event", () => {
-    expect(adapter.limits).toEqual({ canDenyToolCall: true, modelPerRole: true, events: TMB_EVENT_TYPES });
+    expect(adapter.limits).toEqual({ canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES });
   });
 });
 

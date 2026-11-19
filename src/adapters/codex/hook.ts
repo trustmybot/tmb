@@ -2,14 +2,11 @@
 // Claude Code's in shape; its tools differ. Inside a subagent Codex names no agent on a tool
 // call, so a tool call takes the role of the main agent unless the input names an agent type.
 import path from "node:path";
-import { type Decision, decide, handleEvent, MAIN_AGENT, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+import { type Decision, decide, handleEvent, MAIN_AGENT, projectRootOf, type TmbEvent, type TmbEventType, UNNAMED_AGENT } from "../../engine/index.ts";
 import { isObject, type JsonObject } from "../common/json-file.ts";
 import type { HookRun } from "../host-adapter.ts";
 import type { HookName } from "./hooks-json.ts";
 import { HOST_ID } from "./paths.ts";
-
-/** The agent Codex starts when the spawn names no agent type. */
-const DEFAULT_SUBAGENT = "default";
 
 const SHELL_TOOLS = new Set(["Bash", "shell", "local_shell", "exec_command"]);
 const PATCH_TOOLS = new Set(["apply_patch", "Edit", "Write"]);
@@ -61,7 +58,7 @@ export function patchFilesOf(toolInput: JsonObject): string[] {
 }
 
 function spawnOf(toolInput: JsonObject): { role: string; prompt: string } {
-  const role = stringField(toolInput, "agent_type", "subagent_type", "agent", "name") ?? DEFAULT_SUBAGENT;
+  const role = stringField(toolInput, "agent_type", "subagent_type", "agent", "name") ?? UNNAMED_AGENT;
   const items = toolInput.items;
   const prompt = stringField(toolInput, "message", "prompt", "task") ?? (items === undefined ? "" : JSON.stringify(items));
   return { role, prompt };

@@ -9,6 +9,12 @@ export type HostLimits = {
   canDenyToolCall: boolean;
   /** The host runs each subagent role on the model its role file names. */
   modelPerRole: boolean;
+  /**
+   * The host says which agent makes each tool call. When it does not, a subagent's call is
+   * judged under the role the host was set up with, so a worker's write cannot be told from
+   * the planner's; git's pre-push hook still judges every push.
+   */
+  namesAgentOnToolCall: boolean;
   /** The tmb events the host raises. */
   events: readonly TmbEventType[];
 };

@@ -11,7 +11,7 @@ import { hookCommand, installHooks, isTmbHookCommand, removeHooks } from "../src
 import { configTomlPath, hooksJsonPath } from "../src/adapters/codex/paths.ts";
 import { roleFileText, writeRoleFiles } from "../src/adapters/codex/role-files.ts";
 import { isProjectTrusted, pendingSteps } from "../src/adapters/codex/trust.ts";
-import { openProjectStore, SUBAGENT_ROLES, type SubagentRole, writeSetting } from "../src/engine/index.ts";
+import { openProjectStore, SUBAGENT_ROLES, type SubagentRole, UNNAMED_AGENT, writeSetting } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
 
 const TMB = ["/opt/tmb/bin/tmb"];
@@ -187,6 +187,22 @@ describe("tool calls", () => {
         { type: "before-agent-start", role: "reviewer", action: "Review." },
         { type: "after-agent-stop", role: "reviewer", action: "reviewer" },
       ]);
+    } finally {
+      reopened.store.close();
+    }
+  });
+
+  test("a spawn whose agent tmb cannot read goes through, and its decision says so as a finding", () => {
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    opened.store.close();
+    expect(answerHook("pre-tool-use", JSON.stringify({ cwd: project, tool_name: "spawn_agent", tool_input: { unknown_field: "x" } }), ATTENDED)).toBe("");
+    const reopened = openProjectStore(project, { create: false });
+    if (!reopened.ok) throw reopened.error;
+    try {
+      const [decision] = reopened.store.listGuardDecisions();
+      expect(JSON.parse(decision!.event)).toMatchObject({ type: "before-agent-start", role: UNNAMED_AGENT });
+      expect(decision!.reason).toContain("finding: the host did not say which agent is starting");
     } finally {
       reopened.store.close();
     }

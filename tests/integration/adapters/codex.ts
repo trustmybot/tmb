@@ -25,18 +25,12 @@ function input(project: string, hookEvent: string, fields: Record<string, unknow
   return JSON.stringify({ session_id: "contract", transcript_path: null, cwd: project, hook_event_name: hookEvent, model: "gpt-5", ...fields });
 }
 
-/** Codex names no agent on a tool call, so the suite raises tool calls from the main agent only. */
-function mainAgentOnly(role: string): void {
-  if (role !== "planner") throw new Error(`Codex names no subagent on a tool call, so a ${role}'s call cannot be raised`);
-}
-
 function preToolUse(project: string, toolName: string, toolInput: Record<string, unknown>) {
   return { command: wiredCommand(project, "PreToolUse"), input: input(project, "PreToolUse", { turn_id: "t1", tool_use_id: "c1", tool_name: toolName, tool_input: toolInput }) };
 }
 
 export const codexHarness: HostHarness = {
   adapter,
-  namesSubagentOnToolCall: false,
 
   fakeHost(dir) {
     const folder = path.join(dir, "fake-codex");
@@ -61,10 +55,9 @@ export const codexHarness: HostHarness = {
       case "session-end":
         return { command: wiredCommand(project, "SessionEnd"), input: input(project, "SessionEnd", { reason: "other" }) };
       case "before-file-write":
-        mainAgentOnly(event.role);
+        // Codex names no agent on a tool call (namesAgentOnToolCall is false): a subagent's call looks like the main agent's.
         return preToolUse(project, "apply_patch", { command: `*** Begin Patch\n*** Add File: ${event.file}\n+x\n*** End Patch\n` });
       case "before-command":
-        mainAgentOnly(event.role);
         return preToolUse(project, "Bash", { command: event.command });
       case "before-agent-start":
         return preToolUse(project, "spawn_agent", { agent_type: event.role, message: event.prompt });
