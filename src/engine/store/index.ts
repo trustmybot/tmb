@@ -21,4 +21,5 @@ export {
   SNIPPET_MAX,
   type SearchHit,
   Store,
+  clip,
 } from "./store.ts";
