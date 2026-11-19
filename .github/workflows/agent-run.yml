@@ -34,14 +34,15 @@ jobs:
           curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh -o "$RUNNER_TEMP/install.sh"
           TMB_NO_MODIFY_PATH=1 sh "$RUNNER_TEMP/install.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Run the agent test
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: sh tests/agent-run/run.sh
-      # The worker run needs bun for its fixture's tests and the task commands of this checkout.
+      # The drivers run under bun, and the worker run needs it for its fixture's tests and the task
+      # commands of this checkout.
       - uses: oven-sh/setup-bun@v2
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         with:
           bun-version: "1.4"
+      - name: Run the agent test
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: bun tests/agent-run/run.ts
       - name: Build tmb from this checkout
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         run: |
@@ -49,13 +50,13 @@ jobs:
           bun run build:local
       - name: Run the worker agent run
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-run/worker.sh
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-run/worker.ts
       - name: Run the scope agent run
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-run/scope.sh
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-run/scope.ts
       - name: Run the reviewer agent run
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-run/reviewer.sh
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-run/reviewer.ts
 
   agent-chain:
     runs-on: ubuntu-latest
@@ -81,7 +82,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Run the agent chain
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-chain/run.sh
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-chain/run.ts
       - name: Run the feature branch agent chain
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" sh tests/agent-chain/feature.sh
+        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-chain/feature.ts

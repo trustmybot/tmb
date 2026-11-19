@@ -124,13 +124,13 @@ jobs:
       TMB_EXPECTED_VERSION: ${{ needs.version.outputs.tmb_version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install smoke (macOS, Linux)
-        if: runner.os != 'Windows'
-        run: sh tests/install/smoke.sh "$TMB_CHANNEL" "$TMB_EXPECTED_VERSION"
-      - name: Install smoke (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./tests/install/smoke.ps1 -Channel $env:TMB_CHANNEL -ExpectedVersion $env:TMB_EXPECTED_VERSION
+      # Only the test driver runs under bun; the installer runs under sh, or PowerShell on Windows.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - name: Install smoke
+        shell: bash
+        run: bun tests/install/smoke.ts "$TMB_CHANNEL" "$TMB_EXPECTED_VERSION"
 
   # An older install on the channel updates itself to the release just published.
   install-update:
