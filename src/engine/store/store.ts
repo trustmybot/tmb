@@ -44,9 +44,10 @@ export type SearchHit = {
   snippet: string;
 };
 
-export type NewIssue = { title: string; body?: string; milestone?: string | null };
+/** `id` is for a record copied from elsewhere, such as a migration, that keeps an id made for it beforehand. */
+export type NewIssue = { id?: string; title: string; body?: string; milestone?: string | null };
 export type IssueChanges = { title?: string; body?: string; state?: IssueState; milestone?: string | null };
-export type NewDiscussion = { issueId: string; kind: DiscussionKind; body: string };
+export type NewDiscussion = { id?: string; issueId: string; kind: DiscussionKind; body: string };
 export type NewAuditEntry = { what: string; detail?: string };
 export type AuditEntry = { id: string; what: string; detail: string; createdBy: Actor; createdAt: string };
 export type NewTask = {
@@ -125,6 +126,7 @@ export type CheckRun = {
 };
 export type CheckRunEnd = { endedAt?: string; result: string; commands: unknown[] };
 export type NewRun = {
+  id?: string;
   taskId?: string | null;
   role: Role;
   startedAt?: string;
@@ -133,6 +135,7 @@ export type NewRun = {
   cost?: Record<string, unknown> | null;
 };
 export type NewCheckRun = {
+  id?: string;
   taskId: string;
   commitSha: string;
   startedAt?: string;
@@ -141,6 +144,7 @@ export type NewCheckRun = {
   commands?: unknown[];
 };
 export type NewReview = {
+  id?: string;
   target: { kind: "commit" | "branch"; ref: string };
   verdict: string;
   findings?: unknown[];
@@ -373,9 +377,7 @@ export class Store {
   // --- issues -------------------------------------------------------------------------
 
   createIssue(actor: Actor, issue: NewIssue): string {
-    const id = newId();
-    this.append(actor, "issue", id, "created", { title: issue.title, body: issue.body ?? "", milestone: issue.milestone ?? null });
-    return id;
+    return this.create(actor, "issue", { title: issue.title, body: issue.body ?? "", milestone: issue.milestone ?? null }, issue.id);
   }
 
   updateIssue(actor: Actor, id: string, changes: IssueChanges): void {
@@ -399,9 +401,7 @@ export class Store {
   // --- discussions --------------------------------------------------------------------
 
   appendDiscussion(actor: Actor, discussion: NewDiscussion): string {
-    const id = newId();
-    this.append(actor, "discussion", id, "created", { issue_id: discussion.issueId, kind: discussion.kind, body: discussion.body });
-    return id;
+    return this.create(actor, "discussion", { issue_id: discussion.issueId, kind: discussion.kind, body: discussion.body }, discussion.id);
   }
 
   /** The issue's discussion, oldest first. */
@@ -526,7 +526,7 @@ export class Store {
       ended_at: run.endedAt ?? null,
       outcome: run.outcome ?? null,
       cost: run.cost ?? null,
-    });
+    }, run.id);
   }
 
   endRun(actor: Actor, id: string, end: RunEnd = {}): void {
@@ -551,7 +551,7 @@ export class Store {
       ended_at: check.endedAt ?? null,
       result: check.result ?? null,
       commands: check.commands ?? [],
-    });
+    }, check.id);
   }
 
   endCheckRun(actor: Actor, id: string, end: CheckRunEnd): void {
@@ -576,7 +576,7 @@ export class Store {
       findings: review.findings ?? [],
       feature_id: review.featureId ?? null,
       commit_sha: review.commitSha ?? null,
-    });
+    }, review.id);
   }
 
   /** The reviews of one feature branch, oldest first. */
@@ -654,6 +654,24 @@ export class Store {
 
   // --- the one write path -------------------------------------------------------------
 
+  /**
+   * Runs `work` with every event it writes stamped at `at` instead of now, for records copied
+   * from elsewhere that keep the time they were first made. Event ids still follow the newest
+   * stored one, so a rebuild replays them in the order they were written.
+   */
+  backdated<T>(at: string, work: () => T): T {
+    if (Number.isNaN(Date.parse(at))) throw new Error(`not a time: ${JSON.stringify(at)}`);
+    const before = this.clock;
+    this.clock = () => new Date(at).toISOString();
+    try {
+      return work();
+    } finally {
+      this.clock = before;
+    }
+  }
+
+  private clock: () => string = () => new Date().toISOString();
+
   private create(actor: Actor, kind: RecordKind, data: Record<string, unknown>, id: string = newId()): string {
     if (!isId(id)) throw new Error(`a ${kind} id must be a record id, got ${JSON.stringify(id)}`);
     this.append(actor, kind, id, "created", data);
@@ -677,7 +695,7 @@ export class Store {
           type,
           data: asStoredData(data),
           actor,
-          at: new Date().toISOString(),
+          at: this.clock(),
         };
         const who = actorColumns(actor);
         this.db

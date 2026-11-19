@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p dashboard",
     "lint:links": "bun tests/lint/links.ts",
     "test:install": "sh tests/install/smoke.sh",
+    "test:install:update": "bun tests/install/update.ts",
     "test:agent": "sh tests/agent-run/run.sh",
     "test:chain": "sh tests/agent-chain/run.sh",
     "test:chain:feature": "sh tests/agent-chain/feature.sh",
