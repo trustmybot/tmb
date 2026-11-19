@@ -8,7 +8,7 @@ export type SettingName = (typeof SETTING_NAMES)[number];
 export const REVIEW_MODES = ["agile", "truest"] as const;
 export type ReviewMode = (typeof REVIEW_MODES)[number];
 /** The review modes built so far; the others are refused until their level. */
-export const AVAILABLE_REVIEW_MODES: readonly ReviewMode[] = ["agile"];
+export const AVAILABLE_REVIEW_MODES: readonly ReviewMode[] = ["agile", "truest"];
 
 export type SettingValues = { host: string; base_branch: string; review_mode: ReviewMode; checks: string[] };
 /** Each setting's current value, null while it has never been set. */
@@ -26,7 +26,6 @@ function nonEmptyText(name: string, value: unknown): string {
 }
 
 function reviewMode(value: unknown): ReviewMode {
-  if (value === "truest") throw new SettingError("review mode truest arrives at level 10; only agile is available now");
   if (!AVAILABLE_REVIEW_MODES.includes(value as ReviewMode)) {
     throw new SettingError(`review mode must be ${AVAILABLE_REVIEW_MODES.join(" or ")}, got ${JSON.stringify(value)}`);
   }

@@ -210,7 +210,13 @@ CREATE INDEX idx_reviews_feature ON reviews(feature_id, id);
 ALTER TABLE features ADD COLUMN pr_url TEXT;
 `;
 
+// Version 5: truest mode. A task reviewed on its own reaches the base branch through its own
+// pull request, which the task records.
+const VERSION_5_SQL = `
+ALTER TABLE tasks ADD COLUMN pr_url TEXT;
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

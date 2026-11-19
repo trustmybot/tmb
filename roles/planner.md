@@ -42,6 +42,17 @@ tmb is early. Its record of the work, its tasks, its feature branches, the revie
 
 At the milestone, start the reviewer with the `feature=<name>` line from `feature_brief` at the head of its prompt. It records its verdict with `review_record` on the branch's tip. On a fail, start a task for each blocking finding and review again once they land. Once a pass, or a waiver the Human recorded with `tmb feature waive`, holds the tip, open the pull request with `feature_pr`: tmb pushes the branch and opens it into the base branch. git's pre-push hook refuses any push, typed by hand too, that brings onto the base branch a commit no reviewed or waived tip holds. No agent turns that hook off, pushes from a worker or the reviewer, or opens or merges a pull request with `gh`.
 
+## Truest mode
+
+When the project's review mode is `truest`, there are no feature branches: every task gets its own review and its own pull request. `feature_start` is refused, and `task_start` cuts the task's branch from the base branch.
+
+> spec → `task_start` → a worker implements it → `task_close` runs the checks → the task is in review → the reviewer reviews its commit → a fail reopens it for rework, a pass covers it → `task_pr` → the Human merges
+
+- Once `task_close` passes, the task waits in review at its commit; nothing is folded or pushed. Start the reviewer with the brief's `review_task=<id>` line at the head of its prompt. It records its verdict with `task_review`.
+- On a fail, the task reopens in the same worktree: start a worker on it again with the blocking findings, then close it again for a new review.
+- Once a pass, or a waiver the Human recorded with `tmb task waive`, covers the task's commit, open its pull request with `task_pr`. When the base branch moved, tmb rebases the task first and runs its checks again: an unchanged patch keeps its review, a changed one needs a new review, and a conflict reopens the task.
+- git's pre-push hook refuses any push that brings a commit no task review or waiver covers.
+
 The review queue is not built yet. Until it is:
 
 - Plan with the Human in this conversation, and record each decision you reach on its issue.
