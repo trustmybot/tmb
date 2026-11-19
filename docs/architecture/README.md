@@ -64,18 +64,25 @@ Decided by the Human on 2026-11-18.
 
 ## Build order
 
-The order serves one goal: tmb is used to build tmb as early as possible. Each step is a GitHub milestone, and its issues say which plugin code they reuse.
+tmb is built in levels, from easy to hard. Each level unlocks one ability and ends in something the Human can try in a minute. Each level is a GitHub milestone, and its issues say which plugin code they reuse.
 
-| Step | Delivers | After it |
+| Level | Unlocks | The Human sees it when |
 |---|---|---|
-| 0. Packaging test | One compiled file on three platforms that opens the database, parses code and answers a tool call. | The language decision is confirmed or reopened. |
-| 1. First build | Engine, trajectory, the Claude Code adapter, agile mode, docs tasks written by the planner, workers on code tasks, checks at close. | tmb's own development moves onto tmb. |
-| 2. Code graph | Indexing, lookups, and their use in scoping a task. | Tasks are scoped from the graph, not by reading files. |
-| 3. Feature branch review | The reviewer, the review of a whole feature branch, the pre-push gate, the Human's waiver. | A milestone reaches the base branch reviewed. |
-| 4. Dashboard | The local web page over the record. | The Human sees the work without asking an agent. |
-| 5. Distribution | One-step install, three channels, pushed updates, the migration tool. | Others can install it. |
-| 6. More hosts and vendors | A second host adapter, two hosts on one record, local models. | Mixed teams of agents. |
-| 7. Truest mode | Review of every task before its push. | Version 1 is complete. |
+| 0. Wake up | Download, install and cold start, with the smallest setup: one session start event. | Claude Code, opened in a project, answers as bro. |
+| 1. Memory | The trajectory record and tmb's tools. | Bro records an issue and a new session picks it up. |
+| 2. Setup | Full setup with its questions, the project's database and the complete Claude Code adapter. | One command sets up a fresh project and another undoes it. |
+| 3. Workers | Tasks, worktrees, workers as subagents, checks at close. | Bro hands a code task to a worker and it closes only when its checks pass. |
+| 4. Agile mode | Feature branches, docs tasks written by the planner, contract tests. | A feature branch collects several tasks. |
+| 5. Code graph | Indexing, lookups, and their use in scoping a task. | Bro scopes a task from the graph, not by reading files. |
+| 6. Review and gate | The reviewer, the review of a whole feature branch, the pre-push gate, the Human's waiver. | A reviewer passes the branch and a wrong push is refused. |
+| 7. Dashboard | The local web page over the record. | The work shows in a browser without asking an agent. |
+| 8. Distribution | Three channels, pushed updates, the migration tool. | An install updates itself and a plugin project's records carry over. |
+| 9. More hosts | A second host adapter, two hosts on one record, local models. | A second host reviews work on the same record. |
+| 10. Truest mode | Review of every task before its push. | A task cannot be pushed unreviewed. |
+
+- After level 4, tmb's own development moves onto tmb. After level 10, version 1 is complete.
+- Enforcement arrives in steps: the planner is guided by its prompt alone until level 3 brings checks at close, and level 6 brings the push gate.
+- The packaging test runs at level 0, ahead of the levels that need what it tests, because a failure reopens the language decision ([DISTRIBUTION.md](DISTRIBUTION.md)).
 
 ## Reuse from the plugin
 
@@ -91,12 +98,12 @@ Most of the plugin's logic is host-neutral and carries over. What is tied to Cla
 | Git and pull request helpers, issue sync | Reuse as is. |
 | Dashboard, server and pages | Reuse, reading the engine's database. |
 | Guards written as Claude Code hooks | Rebuild: the rules move into the engine, the adapter only translates events. |
-| Shell command analysis for guards | Decide at step 3. |
+| Shell command analysis for guards | Decide at level 6. |
 | Role prompts and skills | Rewrite once, host-neutral. |
 | Workflow tests that drive the tools end to end | Port as the engine's contract tests. |
 | Roundtable, cheatcodes, lanes, headless shim, sandbox setup | Drop. |
 
 ## Open
 
-- How much of the plugin's guard set the first build needs, beyond checks at close.
+- How much of the plugin's guard set levels 3 and 4 need, beyond checks at close.
 - Which second host comes first.
