@@ -27,6 +27,10 @@ Removing tmb from a project undoes exactly what setup added and leaves the Human
 | rc | Release candidates. |
 | stable | Releases. |
 
+Planned: release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo stays private for now. How the three channels map onto that repo is proposed, for the Human's review: stable as normal releases, rc as prereleases, dev as one rolling prerelease.
+
+A compiled file is not secret: its bundled code can be read. The public repo hides the source repo's docs, issues and history, not the code.
+
 An install follows one channel. Updates are pushed to each channel; tmb checks for one when it starts and applies it between sessions, never in the middle of a task. With no network it runs the version it has.
 
 ## Offline
