@@ -45,14 +45,13 @@ const short = (sha: string): string => sha.slice(0, 12);
 
 /**
  * The commits a push to the base branch brings that no reviewed or waived feature branch tip
- * holds. Commits already on the remote's base branch, or under a feature branch's starting
- * point, are not new. Merge commits are left out: they bring no change of their own to review.
+ * holds. Only what the remote says it holds, the sha git read from it, counts as already there:
+ * a local ref, the remote-tracking one or the base a feature was cut from, can hold commits
+ * that never reached the remote. Merge commits are left out: they bring no change of their own.
  */
-function uncovered(store: Store, projectDir: string, remote: string, base: string, ref: PushRef): { lines: string[]; error: string | null } {
+function uncovered(store: Store, projectDir: string, ref: PushRef): { lines: string[]; error: string | null } {
   const known = [
     ZERO_SHA.test(ref.remoteSha) ? null : commitOf(projectDir, ref.remoteSha),
-    commitOf(projectDir, `refs/remotes/${remote}/${base}`),
-    ...store.listFeatures().map((feature) => commitOf(projectDir, feature.baseCommit)),
     ...coveredCommits(store).map((commit) => commitOf(projectDir, commit)),
   ].filter((sha): sha is string => sha !== null);
   const listed = runGit(projectDir, ["rev-list", "--no-merges", "--format=%h %s", ref.localSha, "--not", ...new Set(known)]);
@@ -64,7 +63,7 @@ function uncovered(store: Store, projectDir: string, remote: string, base: strin
 function judgeRef(store: Store, projectDir: string, remote: string, base: string, ref: PushRef): string | null {
   if (ref.remoteRef !== `refs/heads/${base}`) return null;
   if (ZERO_SHA.test(ref.localSha)) return `it deletes the base branch ${base} on ${remote}, and tmb never lets the base branch go`;
-  const found = uncovered(store, projectDir, remote, base, ref);
+  const found = uncovered(store, projectDir, ref);
   if (found.error !== null) return found.error;
   if (found.lines.length === 0) return null;
   const shown = found.lines.slice(0, SHOWN_COMMITS).map((line) => `  ${line}`);

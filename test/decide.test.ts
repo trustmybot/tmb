@@ -216,6 +216,15 @@ describe("the guards", () => {
     }
     expect(command("git push origin feat/x").decision).toBe("allow");
     expect(command("git log --oneline | head").decision).toBe("allow");
+    // Naming the setting where git does not run is not turning it on.
+    expect(command("grep -rn core.hooksPath docs/").decision).toBe("allow");
+  });
+
+  test("no agent defines a git alias, which would hide a push under another name", () => {
+    createRecord();
+    expect(command("git config alias.p 'push --no-verify'").reason).toContain("git alias");
+    expect(command("git -c alias.p=push p origin main").reason).toContain("git alias");
+    expect(command("git config user.name bot").decision).toBe("allow");
   });
 
   test("denies a git or gh command whose subcommand is not plain text", () => {

@@ -144,8 +144,14 @@ function groupsOf(store: Store, projectDir: string, feature: Feature, mergeBase:
   });
 }
 
+/**
+ * Where the branch leaves the base branch on origin, so a commit made on the local base branch
+ * and never pushed is part of the diff the reviewer sees; the local base branch when there is no origin copy.
+ */
 function mergeBaseOf(projectDir: string, feature: Feature, tip: string): string {
-  const merged = runGit(projectDir, ["merge-base", feature.baseBranch, tip]);
+  const remoteBase = `refs/remotes/origin/${feature.baseBranch}`;
+  const onOrigin = runGit(projectDir, ["rev-parse", "--verify", "--quiet", remoteBase]).ok;
+  const merged = runGit(projectDir, ["merge-base", onOrigin ? remoteBase : feature.baseBranch, tip]);
   return merged.ok ? merged.stdout : feature.baseCommit;
 }
 

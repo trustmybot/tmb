@@ -109,10 +109,16 @@ function deny(reason: string): Decision {
 
 /** A command that turns git's hooks off, keeps a push from asking the gate, pushes from a subagent, or opens a pull request by hand. */
 function commandRule(event: TmbEvent): Decision | null {
-  if (/core\.hookspath/i.test(event.action)) {
+  const calls = toolCalls(event.action);
+  // Only a command that runs git can change where git looks for its hooks; a search or a note that names the setting can run.
+  if (calls.some((call) => call.tool === "git") && /core\.hookspath/i.test(event.action)) {
     return deny(`This command names core.hooksPath, and ${PUSH_GATE}: no agent changes where git looks for its hooks. Run the command without it.`);
   }
-  for (const call of toolCalls(event.action)) {
+  for (const call of calls) {
+    // An alias would run push (or push --no-verify) under a name the rules below do not read.
+    if (call.tool === "git" && (call.config.some((value) => /^alias\./i.test(value)) || (call.subcommand === "config" && call.args.some((arg) => /^alias\./i.test(arg))))) {
+      return deny("No agent defines a git alias: tmb reads each git command by its own name. Run the command it stands for instead.");
+    }
     if (call.subcommand === null) {
       return deny(`tmb cannot tell which ${call.tool} subcommand this runs, because it is not written as plain text. Write the subcommand out, such as \`${call.tool} ${call.tool === "git" ? "status" : "pr view"}\`.`);
     }

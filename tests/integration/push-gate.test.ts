@@ -72,6 +72,24 @@ describe("the push gate", () => {
     expect(pushDecisions(project)[0]!.createdBy).toEqual({ kind: "human" });
   });
 
+  test("trusts only what the remote holds: not a feature's starting point, nor a remote-tracking ref set by hand", async () => {
+    const project = setUpProject("true", undefined, { origin: true });
+    const unpushed = commitFile(project, "hotfix.txt", "fix\n", "an unpushed commit on main");
+    // A feature cut now starts at the unpushed commit; that must not count it as on the remote.
+    const client = await connect(project);
+    try {
+      await callJson(client, "feature_start", { name: "feat/later" });
+    } finally {
+      await client.close();
+    }
+    expect(push(project, "origin", BASE_BRANCH).stderr).toContain(unpushed.slice(0, 7));
+
+    git(project, "update-ref", `refs/remotes/origin/${BASE_BRANCH}`, "HEAD");
+    const forged = push(project, "origin", BASE_BRANCH);
+    expect(forged.status).not.toBe(0);
+    expect(forged.stderr).toContain("an unpushed commit on main");
+  });
+
   test("lets the base branch take a feature branch once the reviewer passed its tip, and not before", async () => {
     const project = setUpProject("true", undefined, { origin: true });
     const issue = tmbJson(["issue", "create", "Greet the user"], project);
