@@ -5,7 +5,9 @@ import { createInterface } from "node:readline";
 import type { HostAdapter } from "./adapters/index.ts";
 import {
   AVAILABLE_REVIEW_MODES,
+  DEFAULT_HOST_ROLE,
   detectBaseBranch,
+  type HostRole,
   detectChecks,
   openProjectStore,
   readSettings,
@@ -15,6 +17,7 @@ import {
   settingLines,
   type Settings,
   type SettingValues,
+  validateHostRole,
   validateSetting,
   writeSetting,
 } from "./engine/index.ts";
@@ -24,7 +27,7 @@ import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
 
 /** Answers given on the command line; each one is used without asking. */
-export type SetupFlags = { host?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
+export type SetupFlags = { host?: string; role?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
 
 /** Shows a prompt and reads one line; null once input has ended. */
 export type Ask = (prompt: string) => Promise<string | null>;
@@ -44,7 +47,7 @@ export class SetupError extends Error {
 }
 
 const HUMAN: Actor = { kind: "human" };
-const NO_SETTINGS: Settings = { host: null, base_branch: null, review_mode: null, checks: null };
+const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null };
 const DEFAULT_REVIEW_MODE: ReviewMode = "agile";
 
 /** "A", "A and B", "A, B and C". */
@@ -71,8 +74,9 @@ function storedSettings(projectDir: string): Settings {
 }
 
 /** Checks the flag answers before setup changes anything. Throws SettingError. */
-function validatedFlags(flags: SetupFlags): Partial<Omit<SettingValues, "host">> {
+function validatedFlags(flags: SetupFlags): Partial<Omit<SettingValues, "host" | "host_roles">> & { role?: HostRole } {
   return {
+    role: flags.role === undefined ? undefined : validateHostRole(flags.role),
     base_branch: flags.base === undefined ? undefined : validateSetting("base_branch", flags.base),
     review_mode: flags.reviewMode === undefined ? undefined : validateSetting("review_mode", flags.reviewMode),
     checks: flags.checks === undefined || flags.checks.length === 0 ? undefined : validateSetting("checks", flags.checks),
@@ -202,6 +206,8 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const ask = flags.yes === true ? null : options.ask;
 
   const adapter = await chooseHost(options, ask, stored.host);
+  // The role is the host's main agent's: kept from an earlier setup of this host unless --role names another.
+  const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
 
@@ -219,10 +225,16 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const checks =
     answered.checks ?? (ask ? await askChecks(ask, checksFallback, stored.checks === null ? "Detected" : "Stored", out) : checksFallback);
 
-  storeAnswers(projectDir, { host: adapter.id, base_branch: base ?? undefined, review_mode: reviewMode, checks }, out);
+  const hostRoles = { ...(stored.host_roles ?? {}), [adapter.id]: role };
+  storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode, checks }, out);
   if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb setup --base <branch> to set one.");
   else await indexCodeGraph(projectDir, out);
-  out(`tmb is set up for ${adapter.name}. Open it in this project to start as the planner.`);
+  const steps = adapter.pendingSteps?.(projectDir) ?? [];
+  if (steps.length > 0) {
+    out(`Before ${adapter.name} runs tmb in this project, you need to:`);
+    for (const step of steps) out(`  - ${step}`);
+  }
+  out(`tmb is set up for ${adapter.name}. Open it in this project to start as the ${role}.`);
 }
 
 /** Asks on the process's terminal, one line per question. */

@@ -1,36 +1,11 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { openProjectStore, PROJECT_DIR_NAME, projectDbPath, SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
+import { SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
+import { keptRecordLine, listed, setUpRecord, shown } from "../common/record.ts";
 import type { HostAdapter } from "../host-adapter.ts";
 import { detect } from "./detect.ts";
-import { ignoreInGit } from "./git.ts";
 import { answerHook } from "./hook.ts";
 import { HOST_ID, registerServer, unregisterServer } from "./mcp-json.ts";
 import { removeRoleFiles, roleFilePath, writeRoleFiles } from "./role-files.ts";
 import { install, remove } from "./settings.ts";
-
-function shown(projectDir: string, file: string): string {
-  return path.relative(projectDir, file) || file;
-}
-
-/** "A", "A and B", "A, B and C". */
-function listed(items: readonly string[]): string {
-  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-}
-
-/** Creates the project's record through the engine, or keeps the one already there. */
-function setUpRecord(projectDir: string): string[] {
-  const dbFile = shown(projectDir, projectDbPath(projectDir));
-  const existed = existsSync(projectDbPath(projectDir));
-  const opened = openProjectStore(projectDir, { create: true });
-  if (!opened.ok) throw new Error(`cannot set up the record: ${opened.error.message}`);
-  opened.store.close();
-  const lines = [existed ? `${dbFile} already holds the record; kept it.` : `Created the record at ${dbFile}.`];
-  if (ignoreInGit(projectDir, `${PROJECT_DIR_NAME}/`, path.join(PROJECT_DIR_NAME, "trajectory.db"))) {
-    lines.push(`Added ${PROJECT_DIR_NAME}/ to .gitignore.`);
-  }
-  return lines;
-}
 
 function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): string[] {
   const result = writeRoleFiles(projectDir, roles);
@@ -94,8 +69,7 @@ export const adapter: HostAdapter = {
       lines.push(settings.fileDeleted ? `Removed ${removed}, then the now-empty ${file}.` : `Removed ${removed} from ${file}.`);
     }
 
-    const dbFile = projectDbPath(projectDir);
-    if (existsSync(dbFile)) lines.push(`Kept the record at ${shown(projectDir, dbFile)}: it is your data; delete it yourself if you no longer want it.`);
+    lines.push(...keptRecordLine(projectDir));
     return lines;
   },
 

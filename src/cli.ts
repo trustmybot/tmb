@@ -2,7 +2,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
-import { findPluginDb, HOST_ADAPTERS, hostAdapter, migratePluginProject } from "./adapters/index.ts";
+import { adapterById, DEFAULT_HOST_ID, findPluginDb, HOST_ADAPTERS, migratePluginProject } from "./adapters/index.ts";
 import { CONFIG_USAGE, INDEX_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runIndexCommand, runRecordCommand } from "./engine/doors/command-line.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
@@ -14,10 +14,13 @@ import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
   tmb --version             Print the version
-  tmb setup [--host <id>] [--base <branch>] [--review-mode <mode>] [--check <command>]... [--yes]
-                            Wire tmb into the project in the current directory and store
-                            its settings; asks on a terminal, else takes the defaults
-  tmb remove                Undo what setup added; the record is kept
+  tmb setup [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
+            [--check <command>]... [--yes]
+                            Wire one host into the project in the current directory, in its
+                            role, and store the settings; asks on a terminal, else takes the
+                            defaults. Run it once per host to use two hosts on one record
+  tmb remove [--host <id>]  Undo what setup added for one host, or for every host and the
+                            push gate when none is named; the record is kept
   tmb migrate [--from <plugin db>] [--repo <name>]
                             Copy a tmb plugin project's records into this project's new
                             record; the plugin's database is left untouched
@@ -32,11 +35,11 @@ ${INDEX_USAGE}
                             unless named; 0 picks a free one
   tmb mcp --host <id> [--project <dir>]
                             Serve the record's tools over stdio (the host runs this)
-  tmb hook <event>          Answer a host event (the host runs this; reads JSON on stdin)
+  tmb hook <event> [--host <id>]
+                            Answer a host event (the host runs this; reads JSON on stdin);
+                            with no host, the event is the first host's tmb wired
   tmb pre-push <remote> [<url>]
                             Judge a push (git's pre-push hook runs this; reads its ref lines on stdin)`;
-
-const adapter = hostAdapter();
 
 /** The command that runs this tmb: the executable, plus this file when run from source. */
 function tmbCommand(): string[] {
@@ -54,10 +57,14 @@ function hookRun(): HookRun {
   return { unattended: process.env[UNATTENDED_VARIABLE] === "1" };
 }
 
-async function runHook(event: string | undefined): Promise<number> {
+async function runHook(args: string[]): Promise<number> {
   // A hook must never break the host session: any failure exits 0 with a note on stderr.
   try {
+    const { values, positionals } = parseArgs({ args, options: { host: { type: "string" } }, allowPositionals: true, strict: true });
+    const [event, ...extra] = positionals;
     if (!event) throw new Error("missing event name");
+    if (extra.length > 0) throw new Error(`hook takes one event name, got ${positionals.join(" ")}`);
+    const adapter = adapterById(values.host ?? DEFAULT_HOST_ID);
     const stdinText = await Bun.stdin.text();
     const output = adapter.answerHook(event, stdinText, hookRun());
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
@@ -90,7 +97,8 @@ async function runToolServer(args: string[]): Promise<number> {
   });
   if (positionals.length > 0) throw new Error(`mcp takes no arguments, got ${positionals.join(" ")}`);
   if (values.host === undefined || values.host.trim() === "") throw new Error("mcp needs --host <id>, the host that runs it");
-  const projectDir = path.resolve(values.project ?? process.cwd());
+  // A host may start the server in a subfolder; the record is in the project that holds it.
+  const projectDir = values.project === undefined ? projectRootOf(process.cwd()) : path.resolve(values.project);
   const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
     await serveTools({ projectDir, host: values.host, version });
@@ -190,6 +198,7 @@ async function runSetupCommand(args: string[]): Promise<number> {
     args,
     options: {
       host: { type: "string" },
+      role: { type: "string" },
       base: { type: "string" },
       "review-mode": { type: "string" },
       check: { type: "string", multiple: true },
@@ -206,13 +215,23 @@ async function runSetupCommand(args: string[]): Promise<number> {
       projectDir: process.cwd(),
       tmbCommand: tmbCommand(),
       adapters: HOST_ADAPTERS,
-      flags: { host: values.host, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes: values.yes },
+      flags: { host: values.host, role: values.role, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes: values.yes },
       ask: terminal?.ask ?? null,
       out: (line) => console.log(line),
     });
   } finally {
     terminal?.close();
   }
+  return 0;
+}
+
+/** One host's wiring, or every host's and then the push gate, which serves them all. */
+function runRemoveCommand(args: string[]): number {
+  const { values, positionals } = parseArgs({ args, options: { host: { type: "string" } }, allowPositionals: true, strict: true });
+  if (positionals.length > 0) throw new Error(`remove takes no arguments, got ${positionals.join(" ")}`);
+  const adapters = values.host === undefined ? HOST_ADAPTERS : [adapterById(values.host)];
+  for (const adapter of adapters) for (const line of adapter.remove(process.cwd())) console.log(line);
+  if (values.host === undefined) for (const line of removePushGate(process.cwd())) console.log(line);
   return 0;
 }
 
@@ -266,9 +285,7 @@ async function main(argv: string[]): Promise<number> {
     case "index":
       return runIndexCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "remove":
-      for (const line of adapter.remove(process.cwd())) console.log(line);
-      for (const line of removePushGate(process.cwd())) console.log(line);
-      return 0;
+      return runRemoveCommand(rest);
     case "pre-push":
       return runPrePush(rest);
     case "update":
@@ -280,7 +297,7 @@ async function main(argv: string[]): Promise<number> {
     case "mcp":
       return runToolServer(rest);
     case "hook":
-      return runHook(rest[0]);
+      return runHook(rest);
     case undefined:
     case "--help":
     case "-h":

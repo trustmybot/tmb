@@ -3,12 +3,16 @@
 // layout from the code graph as it was last indexed.
 import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
+import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
+import { featureBriefOf, reviewLine } from "./handlers/reviews.ts";
+import { isReviewerHost, openHostReviewerRun } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
 import { type Store, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
+export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
@@ -92,11 +96,56 @@ export const UNATTENDED_INSTRUCTION =
   "## Unattended run\n\nNo one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.";
 
 /**
- * The role and the open work, then, when `unattended` says no one can answer in this run,
- * the instruction for it. Nothing about the mode is stored in the project.
+ * Open feature branches with work on them and no review or waiver at their tip, oldest first.
+ * A branch whose newest review at the tip failed waits for rework, not for a review.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean): string {
-  const context = attendedContext(projectDir);
+function awaitingReview(store: Store, projectDir: string): string {
+  const lines: string[] = [];
+  for (const feature of store.listFeatures("open")) {
+    const brief = featureBriefOf(store, projectDir, feature);
+    if (brief.groups.length === 0 || brief.covered || brief.reviews.some((review) => review.commit === brief.tip)) continue;
+    lines.push(`- ${reviewLine(feature.name)} at ${brief.tip.slice(0, 12)}: ${brief.groups.length} task${brief.groups.length === 1 ? "" : "s"} onto ${brief.baseBranch}`);
+  }
+  const list = lines.length === 0 ? "No feature branch waits for a review now." : lines.join("\n");
+  return `${AWAITING_REVIEW_HEADING}\n\nThis host is set up as the project's reviewer: another agent plans and writes, and you judge its work through the record. Take each branch below as your prompt's \`feature=<name>\` line. Report your verdict to the Human, who passes it on to the planner.\n\n${list}`;
+}
+
+/** The reviewer host's context; opens its run, so the verdict it records has one. Never throws. */
+function reviewerContext(projectDir: string, host: string): string {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(opened.error)}\n`;
+  try {
+    const context = `${reviewerRole.trimEnd()}\n\n${awaitingReview(opened.store, projectDir)}\n`;
+    openHostReviewerRun(opened.store, host);
+    return context;
+  } catch (error) {
+    return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(error)}\n`;
+  } finally {
+    opened.store.close();
+  }
+}
+
+/** Whether the record sets the host up as the reviewer; false when there is no host or no readable record. */
+function reviewsHere(projectDir: string, host: string | undefined): boolean {
+  if (host === undefined) return false;
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return false;
+  try {
+    return isReviewerHost(opened.store, host);
+  } catch {
+    return false;
+  } finally {
+    opened.store.close();
+  }
+}
+
+/**
+ * The role and its work: for the planner the open work, for a host set up as the reviewer the
+ * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
+ * instruction for it. Nothing about the mode is stored in the project.
+ */
+export function sessionStartContext(projectDir: string, unattended: boolean, host?: string): string {
+  const context = reviewsHere(projectDir, host) ? reviewerContext(projectDir, host!) : attendedContext(projectDir);
   return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
 }
 
@@ -115,4 +164,4 @@ function attendedContext(projectDir: string): string {
   }
 }
 
-export { plannerRole };
+export { plannerRole, reviewerRole };

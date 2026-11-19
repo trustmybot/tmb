@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { answerHook } from "../src/adapters/claude-code/hook.ts";
-import { handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION } from "../src/engine/index.ts";
+import { AWAITING_REVIEW_HEADING, handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION, writeSetting } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
 
 let project: string;
@@ -177,6 +177,46 @@ describe("hook subagent-stop", () => {
     expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
       { type: "after-agent-stop", role: "worker", action: "worker" },
     ]);
+  });
+});
+
+describe("Claude Code set up as the reviewer", () => {
+  function setUpAsReviewer(): void {
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    writeSetting(opened.store, { kind: "human" }, "host_roles", { "claude-code": "reviewer" });
+    opened.store.close();
+  }
+
+  function openReviewerRuns(): number {
+    const opened = openProjectStore(project, { create: false });
+    if (!opened.ok) throw opened.error;
+    try {
+      return opened.store.openRuns("reviewer").length;
+    } finally {
+      opened.store.close();
+    }
+  }
+
+  test("its main agent is guarded and recorded as the reviewer", () => {
+    setUpAsReviewer();
+    const input = { hook_event_name: "PreToolUse", cwd: project, tool_name: "Write", tool_input: { file_path: "src/a.ts", content: "x" } };
+    expect(JSON.parse(answerHook("pre-tool-use", JSON.stringify(input), ATTENDED)).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(guardDecisions()[0]!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
+  });
+
+  test("its session start briefs the reviewer and opens its run; its session end closes it", () => {
+    setUpAsReviewer();
+    const started = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", cwd: project }), ATTENDED));
+    expect(started.hookSpecificOutput.additionalContext).toContain(AWAITING_REVIEW_HEADING);
+    expect(openReviewerRuns()).toBe(1);
+    expect(answerHook("session-end", JSON.stringify({ hook_event_name: "SessionEnd", cwd: project, reason: "exit" }), ATTENDED)).toBe("");
+    expect(openReviewerRuns()).toBe(0);
+  });
+
+  test("a session end answers nothing even when the record cannot be read", () => {
+    breakRecord();
+    expect(answerHook("session-end", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
   });
 });
 

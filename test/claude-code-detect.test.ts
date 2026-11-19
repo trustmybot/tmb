@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter } from "../src/adapters/claude-code/index.ts";
-import { HOST_ADAPTERS, hostAdapter } from "../src/adapters/index.ts";
+import { adapterById, DEFAULT_HOST_ID, HOST_ADAPTERS } from "../src/adapters/index.ts";
 import { TMB_EVENT_TYPES } from "../src/engine/index.ts";
 
 let bin: string;
@@ -51,8 +51,13 @@ describe("limits", () => {
 });
 
 describe("registry", () => {
-  test("lists the Claude Code adapter and hands it to the command line", () => {
-    expect(HOST_ADAPTERS).toEqual([adapter]);
-    expect(hostAdapter()).toBe(adapter);
+  test("lists the Claude Code adapter, which answers a hook that names no host", () => {
+    expect(HOST_ADAPTERS).toContain(adapter);
+    expect(DEFAULT_HOST_ID).toBe(adapter.id);
+    expect(adapterById(adapter.id)).toBe(adapter);
+  });
+
+  test("names the hosts it knows when asked for one it does not", () => {
+    expect(() => adapterById("no-such-host")).toThrow(/unknown host 'no-such-host'; tmb knows .*claude-code/);
   });
 });

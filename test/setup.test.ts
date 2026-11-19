@@ -127,7 +127,7 @@ describe("the questions", () => {
   test("without a terminal, takes the defaults and prints each value it stored", async () => {
     writeFileSync(path.join(project, "go.mod"), "module x\n");
     await setup();
-    expect(settings()).toEqual({ host: "a", base_branch: null, review_mode: "agile", checks: ["go test ./..."] });
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: "agile", checks: ["go test ./..."] });
     expect(output).toContain("There is no terminal to ask on, so each question takes its default; --base, --review-mode and --check set them.");
     expect(output).toContain("Settings in the record:");
     expect(output).toContain("  host: a");
@@ -145,7 +145,7 @@ describe("the questions", () => {
     expect(ask.prompts).toEqual(["Base branch, the branch pull requests merge into: ", "Review mode, one of: agile [agile]: ", "> ", "> ", "> "]);
     expect(output).toContain("  Detected:");
     expect(output).toContain("    cargo test");
-    expect(settings()).toEqual({ host: "a", base_branch: "trunk", review_mode: "agile", checks: ["cargo test", "cargo clippy"] });
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["cargo test", "cargo clippy"] });
   });
 
   test("with no detected base branch, asks again until it gets one", async () => {
@@ -175,7 +175,7 @@ describe("the questions", () => {
     writeFileSync(path.join(project, "go.mod"), "");
     await setup({ flags: { base: "develop", checks: ["make check"] } });
     const recorded = auditCount();
-    expect(recorded).toBe(4);
+    expect(recorded).toBe(5);
     output = [];
     const ask = scripted([]);
     await setup({ ask });
@@ -193,7 +193,7 @@ describe("flags", () => {
     await setup({ ask, flags: { base: "release", checks: ["make lint", "make test"], yes: true } });
     expect(ask.prompts).toEqual([]);
     expect(output).toContain("--yes was given, so each question takes its default; --base, --review-mode and --check set them.");
-    expect(settings()).toEqual({ host: "a", base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
   });
 
   test("answer only their own question on a terminal", async () => {

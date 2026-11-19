@@ -1,10 +1,8 @@
-import { decide, handleEvent, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+import { decide, handleEvent, MAIN_AGENT, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
 import type { HookRun } from "../host-adapter.ts";
-import { isObject, type JsonObject } from "./json-file.ts";
+import { isObject, type JsonObject } from "../common/json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
 import type { HookName } from "./settings.ts";
-
-const MAIN_AGENT_ROLE = "planner";
 
 /** The subagent Claude Code starts when the call names no subagent_type. */
 const DEFAULT_SUBAGENT = "general-purpose";
@@ -38,9 +36,9 @@ function projectDirOf(input: JsonObject): string {
   return projectRootOf(start);
 }
 
-/** Inside a subagent Claude Code names its agent type; the main agent is the planner. */
+/** Inside a subagent Claude Code names its agent type; the main agent takes the host's role in the record. */
 function roleOf(input: JsonObject): string {
-  return stringField(input, "agent_type") ?? MAIN_AGENT_ROLE;
+  return stringField(input, "agent_type") ?? MAIN_AGENT;
 }
 
 function eventOf(input: JsonObject, type: TmbEventType, action: string, role: string = roleOf(input)): TmbEvent {
@@ -48,7 +46,7 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
 }
 
 function sessionStart(input: JsonObject, run: HookRun): string {
-  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: run.unattended });
+  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: run.unattended, host: HOST_ID });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 
@@ -72,10 +70,17 @@ function subagentStop(input: JsonObject): string {
   return "";
 }
 
+/** Claude Code takes no answer to a session's end; a reviewer host's run without a verdict ends with it. */
+function sessionEnd(input: JsonObject): string {
+  handleEvent({ type: "session-end", projectDir: projectDirOf(input), host: HOST_ID });
+  return "";
+}
+
 const ANSWERS: Record<HookName, (input: JsonObject, run: HookRun) => string> = {
   "session-start": sessionStart,
   "pre-tool-use": preToolUse,
   "subagent-stop": subagentStop,
+  "session-end": sessionEnd,
 };
 
 /**
