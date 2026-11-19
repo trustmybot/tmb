@@ -202,12 +202,17 @@ describe("the Human's changes", () => {
     expect((await read()).state).toBe("open");
     expect((await post(`issues/${ids.closedIssueId}/close`, { updated_at: (await read()).updated_at }, { "x-tmb-token": t })).status).toBe(200);
     expect((await read()).state).toBe("closed");
-    expect((await post("issues/missing/close", {}, { "x-tmb-token": t })).status).toBe(404);
+    expect((await post("issues/missing/close", { updated_at: "x" }, { "x-tmb-token": t })).status).toBe(404);
+    // A change to the issue itself must say which version the page read.
+    expect((await post(`issues/${ids.closedIssueId}/reopen`, {}, { "x-tmb-token": t })).status).toBe(400);
   });
 });
 
 describe("every page shows its data", () => {
-  let root: HTMLElement;
+  // The root tsconfig has no DOM types, so the few DOM pieces used here are typed by hand.
+  type Node = { textContent: string | null; appendChild(child: Node): void };
+  const dom = () => globalThis as unknown as { document: { body: Node; createElement(tag: string): Node }; window: { location: { hash: string } } };
+  let root: Node;
 
   beforeAll(async () => {
     GlobalRegistrator.register({ url: base });
@@ -219,14 +224,14 @@ describe("every page shows its data", () => {
       import("@tanstack/react-query"),
       import("react"),
     ]);
-    root = document.createElement("div");
-    document.body.appendChild(root);
+    root = dom().document.createElement("div");
+    dom().document.body.appendChild(root);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     createRoot(root).render(createElement(QueryClientProvider, { client }, createElement(App)));
   });
 
   async function show(hash: string, ...texts: string[]): Promise<void> {
-    window.location.hash = hash;
+    dom().window.location.hash = hash;
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       const text = root.textContent ?? "";

@@ -23,9 +23,18 @@ export const TABS: readonly NavTab[] = [
 
 const pageName = (key: HelpKey) => (key === 'issue' || key === 'task' ? DETAIL_PAGE[key] : TABS.find(([k]) => k === key)![1]);
 
+/** A hash segment decoded, or left as it is when it is not valid percent-encoding. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 function useHashRoute(): string[] {
   const read = () => {
-    return window.location.hash.replace(/^#\/?/, '').split('?')[0]!.split('/').filter(Boolean);
+    return window.location.hash.replace(/^#\/?/, '').split('?')[0]!.split('/').filter(Boolean).map(decodeSegment);
   };
   const [route, setRoute] = useState(read);
   useEffect(() => {
@@ -49,9 +58,9 @@ export function App() {
           <HelpToggletip key={help} page={pageName(help)} help={HELP[help]} />
         </div>
         {tab === 'issues' && id ? (
-          <IssueView id={decodeURIComponent(id)} />
+          <IssueView id={id} />
         ) : tab === 'tasks' && id ? (
-          <TaskView id={decodeURIComponent(id)} />
+          <TaskView id={id} />
         ) : (
           <TabView tab={tab} />
         )}

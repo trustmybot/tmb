@@ -13,7 +13,7 @@ export const CHECK_RUN_COLUMNS: Column[] = [
     header: 'Failed',
     cell: (r) => {
       const commands = Array.isArray(r['commands']) ? (r['commands'] as Row[]) : [];
-      return `${commands.filter((c) => c['status'] !== 'passed').length}/${commands.length}`;
+      return `${commands.filter((c) => c['status'] === 'failed').length}/${commands.length}`;
     },
     hideBelow: 'sm',
   },

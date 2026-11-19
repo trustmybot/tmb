@@ -41,7 +41,7 @@ class HttpError extends Error {
 }
 
 async function readJson(req: Request): Promise<Json> {
-  if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) {
+  if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
     throw new HttpError(415, "unsupported_media_type", "send the body as application/json");
   }
   const text = await req.text();
@@ -99,8 +99,11 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
     };
   }
 
-  /** A change to an issue: refused when the issue moved on since the page read it, then run through the engine's operation. */
-  function write(change: (id: string, body: Json) => unknown) {
+  /**
+   * A change to an issue, run through the engine's operation. With `fresh`, the request must
+   * carry the `updated_at` it read and is refused when the issue moved on since.
+   */
+  function write(change: (id: string, body: Json) => unknown, options: { fresh: boolean }) {
     return async (req: Request & { params: Record<string, string> }) => {
       try {
         checkHost(req);
@@ -109,7 +112,10 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
         const id = req.params.id!;
         const issue = store.getIssue(id);
         if (!issue) throw new HandlerError("not_found", `no issue ${id} in the record`);
-        if (body.updated_at !== undefined && body.updated_at !== issue.updatedAt) {
+        if (options.fresh && typeof body.updated_at !== "string") {
+          throw new HttpError(400, "invalid_input", "send the issue's updated_at as the page read it");
+        }
+        if (options.fresh && body.updated_at !== issue.updatedAt) {
           throw new HttpError(409, "stale", "the issue changed since this page read it; reload to see the change");
         }
         return json(change(id, body));
@@ -134,19 +140,20 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
     "/api/guard-decisions": read((req) => q.guardDecisions(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/audit": read((req) => q.audit(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/issues/:id/edit": {
-      POST: write((id, body) => OPERATIONS.issue_update.run(store, HUMAN, { id, ...pick(body, ["title", "body", "milestone"]) })),
+      POST: write((id, body) => OPERATIONS.issue_update.run(store, HUMAN, { id, ...pick(body, ["title", "body", "milestone"]) }), { fresh: true }),
     },
     "/api/issues/:id/comment": {
-      POST: write((id, body) => OPERATIONS.discussion_append.run(store, HUMAN, { issue_id: id, kind: body.kind ?? "note", body: body.body })),
+      POST: write((id, body) => OPERATIONS.discussion_append.run(store, HUMAN, { issue_id: id, kind: body.kind ?? "note", body: body.body }), { fresh: false }),
     },
-    "/api/issues/:id/close": { POST: write((id) => OPERATIONS.issue_update.run(store, HUMAN, { id, state: "closed" })) },
-    "/api/issues/:id/reopen": { POST: write((id) => OPERATIONS.issue_update.run(store, HUMAN, { id, state: "open" })) },
+    "/api/issues/:id/close": { POST: write((id) => OPERATIONS.issue_update.run(store, HUMAN, { id, state: "closed" }), { fresh: true }) },
+    "/api/issues/:id/reopen": { POST: write((id) => OPERATIONS.issue_update.run(store, HUMAN, { id, state: "open" }), { fresh: true }) },
   };
 
   const server = Bun.serve({
     hostname: HOST,
     port: options.port ?? DEFAULT_PORT,
     development: false,
+    maxRequestBodySize: MAX_BODY_BYTES,
     routes,
     fetch(req) {
       const path = new URL(req.url).pathname;
