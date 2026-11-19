@@ -85,8 +85,8 @@ flowchart TD
     C --> D[Allow, or deny with the reason]
 ```
 
-- **The workflow guides.** The role instructions tell the planner to plan, write a spec and ask the engine to start a task. An agent can ignore a prompt.
-- **The harness holds.** The host itself asks the engine before an action, and the engine answers from the record. An agent cannot skip that.
+- **The role prompts guide.** They tell the planner to plan, write a spec and ask the engine to start a task. An agent can ignore a prompt.
+- **The gate holds.** The host itself asks the engine before an action, and the engine answers from the record. An agent cannot skip that.
 - A session resumes from the record, so a new session needs nothing from the conversation before it.
 
 ## tmb's own events
@@ -136,7 +136,7 @@ When a host cannot deny an action, the engine's own layers still hold: checks at
 
 ## What tmb leaves to the host
 
-tmb starts no agent, runs no model and manages no parallel sessions. Hosts do that better, and tmb ships what they lack: one record, one code graph and one harness: a workflow and the gate that enforces it.
+tmb starts no agent, runs no model and manages no parallel sessions. Hosts do that better, and tmb ships what they lack: one record, one code graph, and one workflow with the gate that enforces it. Together they are the harness the host's agents work inside.
 
 ## Different models on one task
 

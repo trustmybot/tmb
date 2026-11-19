@@ -79,7 +79,7 @@ flowchart TD
 
 ## The gate
 
-Code enforces the workflow; prompts only guide. The workflow and this gate together are the harness. Three layers, each owned by the engine:
+Code enforces the workflow; prompts only guide. Three layers, each owned by the engine:
 
 1. **Checks at close.** A task cannot close until the engine has run its checks on the commit and recorded a pass.
 2. **Guards in the host.** The host adapter asks the engine before an agent writes a file, starts a subagent or runs a git command that moves a branch. The engine answers allow or deny from the record ([HOSTS.md](HOSTS.md)).
