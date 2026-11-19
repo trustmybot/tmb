@@ -95,3 +95,23 @@ jobs:
           gh release create dev --repo "$RELEASES_REPO" --prerelease --title "dev (${TMB_VERSION})" \
             --notes "Rolling dev build ${TMB_VERSION} from trustmybot/tmb@${GITHUB_SHA}." \
             dist/tmb-* dist/install.sh dist/install.ps1 dist/SHA256SUMS
+
+  # Installs the release just published, the way a user does, on every OS. Needs no secret.
+  install-test:
+    needs: [version, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    env:
+      TMB_EXPECTED_VERSION: ${{ needs.version.outputs.tmb_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install smoke (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: sh tests/install/smoke.sh dev "$TMB_EXPECTED_VERSION"
+      - name: Install smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/install/smoke.ps1 -Channel dev -ExpectedVersion $env:TMB_EXPECTED_VERSION

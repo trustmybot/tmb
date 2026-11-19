@@ -1,0 +1,46 @@
+name: packaging probe
+
+# Proves one `bun build --compile` file runs SQLite FTS5, a tree-sitter TypeScript
+# parse from embedded WASM, and a stdio MCP tool call on every OS (trustmybot/tmb#2).
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - name: Compile the probe for this runner
+        run: bun build --compile --minify probe/packaging.ts --outfile dist/probe
+      - name: Run the probe away from node_modules
+        run: |
+          exe=probe
+          if [ "$RUNNER_OS" = "Windows" ]; then exe=probe.exe; fi
+          run_dir="$RUNNER_TEMP/probe-run"
+          mkdir -p "$run_dir"
+          cp "dist/$exe" "$run_dir/"
+          cd "$run_dir"
+          # Cut the network on Linux when unprivileged user namespaces are allowed.
+          wrap=()
+          if [ "$RUNNER_OS" = "Linux" ] && unshare -rn true 2>/dev/null; then wrap=(unshare -rn); fi
+          echo "network wrapper: ${wrap[*]:-none}"
+          "${wrap[@]}" "./$exe" | tee probe.log
+          grep -q "^PROBE OK" probe.log
