@@ -174,3 +174,12 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 | Unit | [test/truest.test.ts](../test/truest.test.ts) | In truest mode a task is cut from the base branch and feature_start is refused; close runs the checks and leaves the task in review with its worktree, folding nothing; a fail reopens the task and a pass covers only the commit it names; only a reviewer run reviews and only the Human waives; task_pr is the planner's and needs a pass or a waiver and an origin; a task keeps the review mode of its start. |
 | Workflow simulation | [tests/workflow/truest.test.ts](workflow/truest.test.ts) | A task cannot be pushed unreviewed: task_pr and a push typed by hand through git's pre-push hook are refused. Review, fail, rework and pass on one task, then task_pr rebases onto a base branch that moved, carries the review over the unchanged patch, pushes the task branch and opens its pull request. A rebase that changes the patch needs a new review, a conflict reopens the task, and a Human waiver lets a task through. |
 | Agent run | [tests/agent-run/truest.ts](agent-run/truest.ts) (`bun run test:truest`) | One task from request to its pull request: bro has a worker fix add, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |
+
+## Docs task check
+
+The check of a docs task by file type at its close ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#two-kinds-of-task)).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/linguist.test.ts](../test/linguist.test.ts) | Linguist's table marks programming languages (TypeScript, Shell, Dockerfile, Makefile) apart from prose, markup and data (Markdown, HTML, CSS, JSON, YAML, TOML, SQL); a file the table does not know, or a name with no extension it knows, is not refused; an extension of more than one type is refused only when every language left is programming. |
+| Workflow simulation | [tests/workflow/docs-task-check.test.ts](workflow/docs-task-check.test.ts) | A docs task whose change touches a source file cannot close, and the refusal names the file; once its change touches only docs, markup and data it closes; a code task is never checked this way. |
