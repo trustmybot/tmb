@@ -36,6 +36,7 @@ flowchart TD
 | [TRAJECTORY.md](TRAJECTORY.md) | What is recorded, and how is work resumed from it? |
 | [CODE_GRAPH.md](CODE_GRAPH.md) | How is the code graph built and queried? |
 | [DISTRIBUTION.md](DISTRIBUTION.md) | How is tmb packaged, installed and updated? |
+| [TESTING.md](TESTING.md) | How is tmb tested, and which tests does each level add? |
 | [GLOSSARY.md](GLOSSARY.md) | What does each word mean, and what did the plugin call it? |
 
 ## Decided
@@ -80,6 +81,7 @@ tmb is built in levels, from easy to hard. Each level unlocks one ability and en
 | 9. More hosts | A second host adapter, two hosts on one record, local models. | A second host reviews work on the same record. |
 | 10. Truest mode | Review of every task before its push. | A task cannot be pushed unreviewed. |
 
+- A level is done only when its tests pass with no manual step. The last column is one of those tests ([TESTING.md](TESTING.md)).
 - After level 4, tmb's own development moves onto tmb. After level 10, version 1 is complete.
 - Enforcement arrives in steps: the planner is guided by its prompt alone until level 3 brings checks at close, and level 6 brings the push gate.
 - The packaging test runs at level 0, ahead of the levels that need what it tests, because a failure reopens the language decision ([DISTRIBUTION.md](DISTRIBUTION.md)).
