@@ -52,7 +52,7 @@ try {
     failed = true;
     console.error(`FAIL ${error instanceof Error ? error.message : String(error)}`);
   } finally {
-    cleanup(scenario);
+    await cleanup(scenario);
   }
 } finally {
   rmSync(builds, { recursive: true, force: true });

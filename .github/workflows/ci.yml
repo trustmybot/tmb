@@ -22,3 +22,20 @@ jobs:
       - run: bun run typecheck
       - run: bun test
       - run: bun tests/lint/links.ts
+
+  # Each channel's install updating itself, against a local release repo, on the platforms
+  # the test job does not run on, so a platform's update path is caught on a pull request
+  # and not first in a dev release (trustmybot/tmb#57).
+  update-scenario:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: bun test tests/integration/update.test.ts
