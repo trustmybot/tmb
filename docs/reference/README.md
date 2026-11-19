@@ -66,6 +66,7 @@ Once the project is set up:
 
 - tmb records each file write, shell command, subagent start and subagent end that the hooks report.
 - tmb refuses file writes, shell commands and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb.
+- tmb lets a worker start only when its start prompt names an open task as `task_id=<id>` and that task's worktree exists. It records the worker's run from its start to its end.
 - When tmb allows an action it says nothing, so Claude Code still asks you for permission as it would without tmb.
 
 ## The record from the command line
@@ -82,8 +83,14 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
 | `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where setup has not run, it says so. |
+| `tmb task start <issue-id> --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the base branch, and adds its worktree under `.tmb/worktrees/`. It refuses when setup has not set a base branch, or when a file overlaps one held by another open task. |
+| `tmb task list` | List the open tasks |
+| `tmb task brief <id>` | Show a task's spec, branch, worktree and the checks that run when it closes |
+| `tmb task close <id>` | Run the checks on the task's commit, and close the task when they all pass |
 
 Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
+
+A task closes only when its worktree has no uncommitted changes and has at least one commit past the point it was cut from. tmb then runs the project's checks, followed by the task's own, one after another in the worktree. Each check gets 10 minutes. Every run is recorded with its start, its end, each command's exit code and the end of its output. If a check fails, the task stays open, and tmb names the command and shows the end of its output. A task with no checks at all never closes.
 
 ## Remove
 

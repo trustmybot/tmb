@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createIdFactory, idTime, isId, newId } from "../src/engine/ids.ts";
 import { type Actor, ActorError, SCHEMA_VERSION, SNIPPET_MAX, type Store, openStore } from "../src/engine/store/index.ts";
-import { PROJECTION_TABLES } from "../src/engine/store/schema.ts";
+import { PROJECTION_TABLES, SCHEMA_STEPS } from "../src/engine/store/schema.ts";
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };
@@ -51,15 +51,42 @@ function snapshot(db: Database): Record<string, unknown[]> {
 }
 
 describe("openStore", () => {
-  test("creates a version-1 database with WAL and foreign keys", () => {
+  test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 1 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 2 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
     expect(() => s.appendDiscussion(HUMAN, { issueId: newId(), kind: "note", body: "orphan" })).toThrow(/FOREIGN KEY/);
+  });
+
+  test("upgrades a version-1 database in place, keeping its records", () => {
+    const old = new Database(dbPath, { create: true });
+    old.run(SCHEMA_STEPS[0]!);
+    old.run("PRAGMA user_version = 1");
+    old.close();
+    const kept = (() => {
+      const result = openStore(path.join(dir, "fresh.db"), { create: true });
+      if (!result.ok) throw result.error;
+      result.store.close();
+      return new Database(path.join(dir, "fresh.db"), { readonly: true });
+    })();
+    const freshSchema = kept.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all();
+    kept.close();
+
+    const result = openStore(dbPath, { create: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    store = result.store;
+    const issueId = store.createIssue(HUMAN, { title: "after the upgrade" });
+    const taskId = store.appendTask(PLANNER, { issueId, title: "t", worktree: "/w", baseCommit: "abc" });
+    expect(store.getTask(taskId)).toMatchObject({ worktree: "/w", baseCommit: "abc" });
+    peek((db) => {
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
+      expect(db.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(freshSchema);
+    });
   });
 
   test("reopens an existing database without create", () => {
@@ -316,6 +343,51 @@ describe("small reads", () => {
     expect(Array.from(summary!.snippet).length).toBe(SNIPPET_MAX);
     expect(summary!.snippet.endsWith("…")).toBe(true);
     expect(s.getIssue(id)?.body).toBe(body);
+  });
+});
+
+describe("task, run and check run updates", () => {
+  test("close a task, end a run and end a check run as events, and survive a rebuild", () => {
+    const s = open();
+    const issueId = s.createIssue(HUMAN, { title: "parent" });
+    const presetId = newId();
+    const taskId = s.appendTask(PLANNER, { id: presetId, issueId, title: "a task", state: "open", branch: "tmb/x", worktree: "/w", baseCommit: "b0" });
+    expect(taskId).toBe(presetId);
+    expect(() => s.appendTask(PLANNER, { id: "not-an-id", issueId, title: "x" })).toThrow(/record id/);
+    expect(s.listTasks("open").map((task) => task.id)).toEqual([taskId]);
+
+    const first = s.appendRun(WORKER, { taskId, role: "worker" });
+    const other = s.appendRun(WORKER, { role: "worker" });
+    expect(s.openRuns("worker").map((run) => run.id)).toEqual([first, other]);
+    expect(s.openRuns("worker", taskId).map((run) => run.id)).toEqual([first]);
+    s.endRun(WORKER, first, { outcome: "stopped" });
+    expect(s.openRuns("worker").map((run) => run.id)).toEqual([other]);
+
+    const checkId = s.appendCheckRun(WORKER, { taskId, commitSha: "c1" });
+    expect(s.listCheckRuns(taskId)[0]).toMatchObject({ endedAt: null, result: null, commands: [] });
+    s.endCheckRun(WORKER, checkId, { result: "passed", commands: [{ command: "true", status: "passed", exitCode: 0 }] });
+    s.updateTask(WORKER, taskId, { state: "closed", commitSha: "c1" });
+
+    expect(s.getTask(taskId)).toMatchObject({ state: "closed", commitSha: "c1", worktree: "/w", baseCommit: "b0" });
+    expect(s.listTasks("open")).toEqual([]);
+    expect(s.listCheckRuns(taskId)[0]).toMatchObject({ result: "passed", commands: [{ command: "true", status: "passed", exitCode: 0 }] });
+    expect(s.history(taskId).map((event) => event.type)).toEqual(["created", "updated"]);
+    expect(s.history(checkId).map((event) => event.type)).toEqual(["created", "updated"]);
+
+    const before = peek(snapshot);
+    s.rebuildProjections();
+    expect(peek(snapshot)).toEqual(before);
+  });
+
+  test("a transaction's writes stand or fall together", () => {
+    const s = open();
+    expect(() =>
+      s.transaction(() => {
+        s.createIssue(HUMAN, { title: "rolled back" });
+        throw new Error("refused");
+      }),
+    ).toThrow("refused");
+    expect(s.listIssues()).toEqual([]);
   });
 });
 

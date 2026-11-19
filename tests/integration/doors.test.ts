@@ -11,7 +11,19 @@ import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
-const TOOLS = ["issue_create", "issue_list", "issue_get", "issue_update", "discussion_append", "search", "history"];
+const TOOLS = [
+  "issue_create",
+  "issue_list",
+  "issue_get",
+  "issue_update",
+  "discussion_append",
+  "search",
+  "history",
+  "task_start",
+  "task_brief",
+  "task_close",
+  "task_list",
+];
 
 let scratch: string;
 let env: Record<string, string>;

@@ -1,7 +1,7 @@
 // The record store: every write appends one event and applies it to the projections in
 // the same transaction; reads come from the projections and return small pieces.
 import type { Database } from "bun:sqlite";
-import { newId } from "../ids.ts";
+import { isId, newId } from "../ids.ts";
 import { type Actor, type ActorColumns, type Role, actorColumns, actorFromColumns, assertActor } from "./actor.ts";
 import { type EventType, type RecordKind, type StoredEvent, applyEvent } from "./projections.ts";
 import { PROJECTION_TABLES } from "./schema.ts";
@@ -50,13 +50,53 @@ export type NewDiscussion = { issueId: string; kind: DiscussionKind; body: strin
 export type NewAuditEntry = { what: string; detail?: string };
 export type AuditEntry = { id: string; what: string; detail: string; createdBy: Actor; createdAt: string };
 export type NewTask = {
+  /** An id made beforehand, when something outside the record, such as a branch, is named after the task first. */
+  id?: string;
   issueId: string;
   title: string;
   spec?: string;
   state?: string;
   branch?: string | null;
   commitSha?: string | null;
+  worktree?: string | null;
+  baseCommit?: string | null;
 };
+export type Task = {
+  id: string;
+  issueId: string;
+  title: string;
+  spec: string;
+  state: string;
+  branch: string | null;
+  worktree: string | null;
+  baseCommit: string | null;
+  commitSha: string | null;
+  createdBy: Actor;
+  createdAt: string;
+  updatedAt: string;
+};
+export type TaskChanges = { state?: string; commitSha?: string | null };
+export type Run = {
+  id: string;
+  taskId: string | null;
+  role: Role;
+  startedAt: string;
+  endedAt: string | null;
+  outcome: string | null;
+  createdBy: Actor;
+};
+export type RunEnd = { endedAt?: string; outcome?: string | null };
+export type CheckRun = {
+  id: string;
+  taskId: string;
+  commitSha: string;
+  startedAt: string;
+  endedAt: string | null;
+  result: string | null;
+  commands: unknown[];
+  createdBy: Actor;
+};
+export type CheckRunEnd = { endedAt?: string; result: string; commands: unknown[] };
 export type NewRun = {
   taskId?: string | null;
   role: Role;
@@ -71,6 +111,7 @@ export type NewCheckRun = {
   startedAt?: string;
   endedAt?: string | null;
   result?: string | null;
+  commands?: unknown[];
 };
 export type NewReview = { target: { kind: "commit" | "branch"; ref: string }; verdict: string; findings?: unknown[] };
 export type NewGuardDecision = { event: string; decision: "allow" | "deny"; reason: string };
@@ -90,6 +131,31 @@ type IssueRow = {
 type DiscussionRow = { id: string; issue_id: string; kind: DiscussionKind; body: string; created_by: string; created_at: string };
 type GuardDecisionRow = { id: string; event: string; decision: "allow" | "deny"; reason: string; created_by: string; created_at: string };
 type AuditRow = { id: string; what: string; detail: string; created_by: string; created_at: string };
+type TaskRow = {
+  id: string;
+  issue_id: string;
+  title: string;
+  spec: string;
+  state: string;
+  branch: string | null;
+  worktree: string | null;
+  base_commit: string | null;
+  commit_sha: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+type RunRow = { id: string; task_id: string | null; role: Role; started_at: string; ended_at: string | null; outcome: string | null; created_by: string };
+type CheckRunRow = {
+  id: string;
+  task_id: string;
+  commit_sha: string;
+  started_at: string;
+  ended_at: string | null;
+  result: string | null;
+  commands: string;
+  created_by: string;
+};
 
 /** Flattens whitespace and cuts text to at most SNIPPET_MAX characters, marking a cut with an ellipsis. */
 export function clip(text: string): string {
@@ -136,6 +202,48 @@ function toIssue(row: IssueRow): Issue {
 
 function toAuditEntry(row: AuditRow): AuditEntry {
   return { id: row.id, what: row.what, detail: row.detail, createdBy: JSON.parse(row.created_by) as Actor, createdAt: row.created_at };
+}
+
+function toTask(row: TaskRow): Task {
+  return {
+    id: row.id,
+    issueId: row.issue_id,
+    title: row.title,
+    spec: row.spec,
+    state: row.state,
+    branch: row.branch,
+    worktree: row.worktree,
+    baseCommit: row.base_commit,
+    commitSha: row.commit_sha,
+    createdBy: JSON.parse(row.created_by) as Actor,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toRun(row: RunRow): Run {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    role: row.role,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    outcome: row.outcome,
+    createdBy: JSON.parse(row.created_by) as Actor,
+  };
+}
+
+function toCheckRun(row: CheckRunRow): CheckRun {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    commitSha: row.commit_sha,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    result: row.result,
+    commands: JSON.parse(row.commands) as unknown[],
+    createdBy: JSON.parse(row.created_by) as Actor,
+  };
 }
 
 function toDiscussion(row: DiscussionRow): Discussion {
@@ -231,7 +339,24 @@ export class Store {
       state: task.state ?? "pending",
       branch: task.branch ?? null,
       commit_sha: task.commitSha ?? null,
-    });
+      worktree: task.worktree ?? null,
+      base_commit: task.baseCommit ?? null,
+    }, task.id);
+  }
+
+  updateTask(actor: Actor, id: string, changes: TaskChanges): void {
+    this.append(actor, "task", id, "updated", { state: changes.state, commit_sha: changes.commitSha });
+  }
+
+  getTask(id: string): Task | null {
+    const row = this.db.query("SELECT * FROM tasks WHERE id = ?").get(id) as TaskRow | null;
+    return row ? toTask(row) : null;
+  }
+
+  /** Tasks in one state, oldest first. */
+  listTasks(state: string): Task[] {
+    const rows = this.db.query("SELECT * FROM tasks WHERE state = ? ORDER BY id").all(state) as TaskRow[];
+    return rows.map(toTask);
   }
 
   appendRun(actor: Actor, run: NewRun): string {
@@ -245,6 +370,20 @@ export class Store {
     });
   }
 
+  endRun(actor: Actor, id: string, end: RunEnd = {}): void {
+    this.append(actor, "run", id, "updated", { ended_at: end.endedAt ?? new Date().toISOString(), outcome: end.outcome ?? null });
+  }
+
+  /** Runs of a role that have a start and no end, oldest first; only those of `taskId` when given. */
+  openRuns(role: Role, taskId?: string): Run[] {
+    const rows = (
+      taskId === undefined
+        ? this.db.query("SELECT * FROM runs WHERE role = ? AND ended_at IS NULL ORDER BY id").all(role)
+        : this.db.query("SELECT * FROM runs WHERE role = ? AND ended_at IS NULL AND task_id = ? ORDER BY id").all(role, taskId)
+    ) as RunRow[];
+    return rows.map(toRun);
+  }
+
   appendCheckRun(actor: Actor, check: NewCheckRun): string {
     return this.create(actor, "check_run", {
       task_id: check.taskId,
@@ -252,7 +391,22 @@ export class Store {
       started_at: check.startedAt ?? new Date().toISOString(),
       ended_at: check.endedAt ?? null,
       result: check.result ?? null,
+      commands: check.commands ?? [],
     });
+  }
+
+  endCheckRun(actor: Actor, id: string, end: CheckRunEnd): void {
+    this.append(actor, "check_run", id, "updated", {
+      ended_at: end.endedAt ?? new Date().toISOString(),
+      result: end.result,
+      commands: end.commands,
+    });
+  }
+
+  /** A task's check runs, oldest first. */
+  listCheckRuns(taskId: string): CheckRun[] {
+    const rows = this.db.query("SELECT * FROM check_runs WHERE task_id = ? ORDER BY id").all(taskId) as CheckRunRow[];
+    return rows.map(toCheckRun);
   }
 
   appendReview(actor: Actor, review: NewReview): string {
@@ -320,10 +474,15 @@ export class Store {
       .immediate();
   }
 
+  /** Runs `work` in one transaction: the reads it makes and the records it writes stand or fall together. */
+  transaction<T>(work: () => T): T {
+    return this.db.transaction(work).immediate();
+  }
+
   // --- the one write path -------------------------------------------------------------
 
-  private create(actor: Actor, kind: RecordKind, data: Record<string, unknown>): string {
-    const id = newId();
+  private create(actor: Actor, kind: RecordKind, data: Record<string, unknown>, id: string = newId()): string {
+    if (!isId(id)) throw new Error(`a ${kind} id must be a record id, got ${JSON.stringify(id)}`);
     this.append(actor, kind, id, "created", data);
     return id;
   }

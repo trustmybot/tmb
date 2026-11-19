@@ -59,19 +59,31 @@ function preToolUse(toolName: string, toolInput: Record<string, unknown>, extra:
 describe("hook pre-tool-use", () => {
   test("translates each guarded tool into its tmb event and action, allowing with no output", () => {
     createRecord();
-    const calls: [string, Record<string, unknown>, string, string][] = [
-      ["Write", { file_path: "/p/a.ts", content: "x" }, "before-file-write", "/p/a.ts"],
-      ["Edit", { file_path: "/p/b.ts", old_string: "a", new_string: "b" }, "before-file-write", "/p/b.ts"],
-      ["MultiEdit", { file_path: "/p/c.ts", edits: [] }, "before-file-write", "/p/c.ts"],
-      ["NotebookEdit", { notebook_path: "/p/d.ipynb", new_source: "" }, "before-file-write", "/p/d.ipynb"],
-      ["Bash", { command: "git push" }, "before-command", "git push"],
-      ["Agent", { subagent_type: "worker", prompt: "go" }, "before-agent-start", "worker"],
-      ["Task", { subagent_type: "reviewer", prompt: "go" }, "before-agent-start", "reviewer"],
+    // A subagent start names the role of the agent starting, and its start prompt is the action.
+    const calls: [string, Record<string, unknown>, string, string, string][] = [
+      ["Write", { file_path: "/p/a.ts", content: "x" }, "before-file-write", "planner", "/p/a.ts"],
+      ["Edit", { file_path: "/p/b.ts", old_string: "a", new_string: "b" }, "before-file-write", "planner", "/p/b.ts"],
+      ["MultiEdit", { file_path: "/p/c.ts", edits: [] }, "before-file-write", "planner", "/p/c.ts"],
+      ["NotebookEdit", { notebook_path: "/p/d.ipynb", new_source: "" }, "before-file-write", "planner", "/p/d.ipynb"],
+      ["Bash", { command: "git push" }, "before-command", "planner", "git push"],
+      ["Agent", { subagent_type: "Explore", prompt: "look around" }, "before-agent-start", "Explore", "look around"],
+      ["Task", { subagent_type: "reviewer", prompt: "review it" }, "before-agent-start", "reviewer", "review it"],
+      ["Agent", { prompt: "no type given" }, "before-agent-start", "general-purpose", "no type given"],
     ];
     for (const [tool, input] of calls) expect(preToolUse(tool, input)).toBe("");
 
     const recorded = guardDecisions().map((decision) => JSON.parse(decision.event));
-    expect(recorded).toEqual(calls.map(([, , type, action]) => ({ type, role: "planner", action })));
+    expect(recorded).toEqual(calls.map(([, , type, role, action]) => ({ type, role, action })));
+  });
+
+  test("denies a worker start whose prompt names no open task, in Claude Code's form", () => {
+    createRecord();
+    const output = JSON.parse(preToolUse("Agent", { subagent_type: "worker", prompt: "fix the bug" }));
+    expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(output.hookSpecificOutput.permissionDecisionReason).toContain("task_id=<id>");
+    const [recorded] = guardDecisions();
+    expect(recorded).toMatchObject({ decision: "deny" });
+    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-agent-start", role: "worker", action: "fix the bug" });
   });
 
   test("takes the role from agent_type inside a subagent, and records under it and the host", () => {
