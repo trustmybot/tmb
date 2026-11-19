@@ -8,15 +8,31 @@ export const OPEN_WORK_HEADING = "## Open work in the record";
 export const OPEN_WORK_MAX = 20;
 
 function openWork(store: Store): string {
+  return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}`;
+}
+
+function openIssues(store: Store): string {
   // Ids sort in time order, so the newest issues come last in the store's list.
   const open = store.listIssues({ state: "open" }).reverse();
-  if (open.length === 0) return `${OPEN_WORK_HEADING}\n\nNo open issues.`;
+  if (open.length === 0) return "No open issues.";
   const lines = open.slice(0, OPEN_WORK_MAX).map((issue) => {
     const decision = store.newestDecision(issue.id);
     return `- ${issue.id} ${issue.title}${decision ? ` (decision: ${clip(decision.body)})` : ""}`;
   });
   if (open.length > OPEN_WORK_MAX) lines.push(`- …and ${open.length - OPEN_WORK_MAX} older open issues; issue_list shows them all.`);
-  return `${OPEN_WORK_HEADING}\n\nNewest first:\n\n${lines.join("\n")}`;
+  return `Newest first:\n\n${lines.join("\n")}`;
+}
+
+/** The open tasks, oldest first, so a session resumes a task a worker left open; empty when none is. */
+function openTasks(store: Store): string {
+  const open = store.listTasks("open");
+  if (open.length === 0) return "";
+  const lines = open.slice(0, OPEN_WORK_MAX).map((task) => {
+    const feature = task.featureId === null ? null : store.getFeature(task.featureId)?.name;
+    return `- ${task.id} ${task.title} (issue ${task.issueId}${feature ? `, feature branch ${feature}` : ""}, worktree ${task.worktree ?? "none"})`;
+  });
+  if (open.length > OPEN_WORK_MAX) lines.push(`- …and ${open.length - OPEN_WORK_MAX} newer open tasks; task_list shows them all.`);
+  return `\n\nOpen tasks, oldest first:\n\n${lines.join("\n")}`;
 }
 
 function withRole(section: string): string {

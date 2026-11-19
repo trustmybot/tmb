@@ -4,7 +4,7 @@ import type { Database, SQLQueryBindings } from "bun:sqlite";
 import type { Actor } from "./actor.ts";
 import type { ProjectionTable } from "./schema.ts";
 
-export const RECORD_KINDS = ["issue", "discussion", "task", "run", "check_run", "review", "guard_decision", "audit"] as const;
+export const RECORD_KINDS = ["issue", "discussion", "task", "run", "check_run", "review", "guard_decision", "audit", "feature"] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
 export type EventType = "created" | "updated";
@@ -43,8 +43,8 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   discussion: { table: "discussions", columns: ["issue_id", "kind", "body"], updatable: [], hasUpdatedAt: false, searchable: true },
   task: {
     table: "tasks",
-    columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit"],
-    updatable: ["state", "commit_sha"],
+    columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit", "feature_id", "kind"],
+    updatable: ["state", "commit_sha", "review_mode", "push_result", "push_detail"],
     hasUpdatedAt: true,
     searchable: false,
   },
@@ -65,6 +65,14 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   review: { table: "reviews", columns: ["target_kind", "target", "verdict", "findings"], updatable: [], hasUpdatedAt: false, searchable: false },
   guard_decision: { table: "guard_decisions", columns: ["event", "decision", "reason"], updatable: [], hasUpdatedAt: false, searchable: false },
   audit: { table: "audit", columns: ["what", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
+  feature: {
+    table: "features",
+    columns: ["name", "base_branch", "base_commit"],
+    updatable: [],
+    initial: { state: "open" },
+    hasUpdatedAt: true,
+    searchable: false,
+  },
 };
 
 export function tableOf(kind: RecordKind): ProjectionTable {

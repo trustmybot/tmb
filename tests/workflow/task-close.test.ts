@@ -26,8 +26,10 @@ describe("closing a task", () => {
     const issue = tmbJson(["issue", "create", "The value is wrong"], project);
     const client = await connect(project);
     try {
+      await callJson(client, "feature_start", { name: "feat/value" });
       const started = await callJson(client, "task_start", {
         issue_id: issue.id,
+        kind: "code",
         intent: "Make the value right",
         files: [VALUE_FILE],
         criteria: ["SC1: the value is right"],

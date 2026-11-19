@@ -12,6 +12,7 @@
     "test:install": "sh tests/install/smoke.sh",
     "test:agent": "sh tests/agent-run/run.sh",
     "test:chain": "sh tests/agent-chain/run.sh",
+    "test:chain:feature": "sh tests/agent-chain/feature.sh",
     "test:worker": "sh tests/agent-run/worker.sh"
   },
   "devDependencies": {

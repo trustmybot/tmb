@@ -8,6 +8,8 @@ export {
   type CheckRunEnd,
   type Discussion,
   type DiscussionKind,
+  type Feature,
+  type NewFeature,
   type GuardDecision,
   type Issue,
   type IssueChanges,

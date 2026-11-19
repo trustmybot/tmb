@@ -19,6 +19,8 @@ const TOOLS = [
   "discussion_append",
   "search",
   "history",
+  "feature_start",
+  "feature_list",
   "task_start",
   "task_brief",
   "task_close",

@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  featureStart,
   HandlerError,
   issueCreate,
   issueUpdate,
@@ -41,6 +42,9 @@ function git(cwd: string, ...args: string[]): string {
 beforeEach(() => {
   project = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-tasks-")));
   git(project, "init", "-q", "-b", "main");
+  // The close's rebase commits through tmb's own git calls, which a CI runner gives no global identity.
+  git(project, "config", "user.name", "t");
+  git(project, "config", "user.email", "t@example.com");
   writeFileSync(path.join(project, ".gitignore"), ".tmb/\n");
   writeFileSync(path.join(project, "README.md"), "hello\n");
   git(project, "add", ".");
@@ -51,6 +55,7 @@ beforeEach(() => {
   writeSetting(store, HUMAN, "base_branch", "main");
   writeSetting(store, HUMAN, "checks", ["echo project check"]);
   issueId = issueCreate(store, HUMAN, { title: "The goal" }).id;
+  featureStart(store, HUMAN, { name: FEATURE }, context());
 });
 
 afterEach(() => {
@@ -58,10 +63,11 @@ afterEach(() => {
   rmSync(project, { recursive: true, force: true });
 });
 
+const FEATURE = "feat/goal";
 const context = () => ({ projectDir: project });
 
 function spec(fields: Record<string, unknown> = {}) {
-  return { issue_id: issueId, intent: "Add the feature\n\nIn detail.", files: ["src/a"], criteria: ["SC1: it works"], ...fields };
+  return { issue_id: issueId, kind: "code", intent: "Add the feature\n\nIn detail.", files: ["src/a"], criteria: ["SC1: it works"], ...fields };
 }
 
 function refusal(call: () => unknown): HandlerError {
@@ -97,7 +103,7 @@ function worktreeFolders(): string[] {
 function expectNothingWritten(): void {
   expect(taskList(store, HUMAN, {})).toEqual([]);
   expect(store.listTasks("closed")).toEqual([]);
-  expect(branches()).toEqual(["main"]);
+  expect(branches()).toEqual([FEATURE, "main"]);
   expect(worktreeFolders()).toEqual([]);
   expect(git(project, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
 }
@@ -112,8 +118,11 @@ function commitWork(worktree: string, file = "src/a/work.ts"): string {
 }
 
 describe("task_start", () => {
-  test("cuts tmb/<short id> from the base branch tip into .tmb/worktrees and records the task", () => {
-    const tip = git(project, "rev-parse", "main");
+  test("cuts tmb/<short id> from the feature branch tip into .tmb/worktrees and records the task", () => {
+    const tip = git(project, "rev-parse", FEATURE);
+    // The base branch moves on; the task still comes from the feature branch.
+    git(project, "commit", "-q", "--allow-empty", "-m", "later on main");
+    expect(git(project, "rev-parse", "main")).not.toBe(tip);
     const started = taskStart(store, PLANNER, spec({ checks: ["echo task check"] }), context());
 
     const short = shortTaskId(started.id);
@@ -132,12 +141,17 @@ describe("task_start", () => {
       worktree: started.worktree,
       baseCommit: tip,
       commitSha: null,
+      featureId: store.findFeature(FEATURE)!.id,
+      kind: "code",
+      reviewMode: null,
       createdBy: PLANNER,
     });
     expect(started.brief).toMatchObject({
       id: started.id,
       branch: started.branch,
       worktree: started.worktree,
+      feature: FEATURE,
+      kind: "code",
       spec: { intent: "Add the feature\n\nIn detail.", files: ["src/a"], criteria: ["SC1: it works"], checks: ["echo task check"] },
       checks: ["echo project check", "echo task check"],
       startLine: `task_id=${started.id}`,
@@ -201,13 +215,59 @@ describe("task_start", () => {
     expectNothingWritten();
   });
 
-  test("a git failure writes nothing and says why", () => {
-    writeSetting(store, HUMAN, "base_branch", "no-such-branch");
-    const noBase = refusal(() => taskStart(store, PLANNER, spec(), context()));
-    expect(noBase.message).toContain("cannot cut a task branch from the base branch no-such-branch");
+  test("needs a kind, code or docs, and records it", () => {
+    const { kind: _kind, ...noKind } = spec();
+    expect(refusal(() => taskStart(store, PLANNER, noKind, context())).message).toContain("needs kind");
+    const wrong = refusal(() => taskStart(store, PLANNER, spec({ kind: "tests" }), context()));
+    expect(wrong.code).toBe("invalid_input");
+    expect(wrong.message).toContain("kind must be one of code, docs");
     expectNothingWritten();
 
-    writeSetting(store, HUMAN, "base_branch", "main");
+    const docs = taskStart(store, PLANNER, spec({ kind: "docs", files: ["docs"] }), context());
+    expect(store.getTask(docs.id)!.kind).toBe("docs");
+    expect(docs.brief.kind).toBe("docs");
+  });
+
+  test("with no feature named, uses the only open one, and refuses none or several, naming the fix", () => {
+    const fresh = openProjectStore(mkdtempSync(path.join(project, "fresh-")), { create: true });
+    if (!fresh.ok) throw fresh.error;
+    try {
+      writeSetting(fresh.store, HUMAN, "base_branch", "main");
+      const id = issueCreate(fresh.store, HUMAN, { title: "x" }).id;
+      const none = refusal(() => taskStart(fresh.store, PLANNER, spec({ issue_id: id }), context()));
+      expect(none.code).toBe("refused");
+      expect(none.message).toContain("no feature branch is open");
+      expect(none.message).toContain("feature_start");
+      expect(fresh.store.listTasks()).toEqual([]);
+    } finally {
+      fresh.store.close();
+    }
+    expectNothingWritten();
+
+    featureStart(store, HUMAN, { name: "feat/other" }, context());
+    const several = refusal(() => taskStart(store, PLANNER, spec(), context()));
+    expect(several.message).toContain(`2 feature branches are open (${FEATURE}, feat/other)`);
+    expect(several.message).toContain("name the one this task belongs to with feature");
+    const unknown = refusal(() => taskStart(store, PLANNER, spec({ feature: "feat/nope" }), context()));
+    expect(unknown.code).toBe("not_found");
+    expect(unknown.message).toContain(`the open ones are ${FEATURE}, feat/other`);
+    expect(taskList(store, HUMAN, {})).toEqual([]);
+
+    git(project, "update-ref", "refs/heads/feat/other", git(project, "commit-tree", "-p", "main", "-m", "on other", `${git(project, "rev-parse", "main")}^{tree}`));
+    const named = taskStart(store, PLANNER, spec({ feature: "feat/other" }), context());
+    expect(named.brief.feature).toBe("feat/other");
+    expect(store.getTask(named.id)!.baseCommit).toBe(git(project, "rev-parse", "feat/other"));
+    expect(git(named.worktree, "rev-parse", "HEAD")).toBe(git(project, "rev-parse", "feat/other"));
+  });
+
+  test("a git failure writes nothing and says why", () => {
+    const tip = git(project, "rev-parse", FEATURE);
+    git(project, "branch", "-D", FEATURE);
+    const noFeature = refusal(() => taskStart(store, PLANNER, spec(), context()));
+    expect(noFeature.message).toContain(`cannot read the feature branch ${FEATURE}`);
+    git(project, "branch", FEATURE, tip);
+    expectNothingWritten();
+
     mkdirSync(path.join(project, ".tmb"), { recursive: true });
     writeFileSync(path.join(project, ".tmb", "worktrees"), "a file where the worktrees folder goes");
     const noWorktree = refusal(() => taskStart(store, PLANNER, spec(), context()));
@@ -220,7 +280,7 @@ describe("task_start", () => {
     const plain = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-plain-")));
     try {
       const error = refusal(() => taskStart(store, PLANNER, spec(), { projectDir: plain }));
-      expect(error.message).toContain("cannot cut a task branch");
+      expect(error.message).toContain(`cannot read the feature branch ${FEATURE}`);
       expect(existsSync(path.join(plain, ".tmb"))).toBe(false);
       expect(taskList(store, HUMAN, {})).toEqual([]);
     } finally {
@@ -252,6 +312,8 @@ describe("task_brief and task_list", () => {
         issueId,
         state: "open",
         title: "Add the feature",
+        feature: FEATURE,
+        kind: "code",
         branch: started.branch,
         worktree: started.worktree,
         commitSha: null,
@@ -318,7 +380,8 @@ describe("task_close", () => {
       ["pwd", "passed", 0],
       ["test -f src/a/work.ts", "passed", 0],
     ]);
-    expect(realpathSync(closed.checks[0]!.outputTail.trim())).toBe(realpathSync(started.worktree));
+    // The project folder is a real path, so pwd in the worktree prints the worktree's path as recorded.
+    expect(closed.checks[0]!.outputTail.trim()).toBe(started.worktree);
     expect(store.getTask(started.id)).toMatchObject({ state: "closed", commitSha: head });
     expect(closed.brief).toMatchObject({ state: "closed", commitSha: head });
     expect(taskList(store, HUMAN, {})).toEqual([]);
