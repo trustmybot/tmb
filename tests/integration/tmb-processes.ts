@@ -115,10 +115,13 @@ export function tmbProcesses(prefix: string) {
     hook(project, "subagent-stop", { hook_event_name: "SubagentStop", agent_type: role });
   }
 
-  /** A connected client on the project's tool server, acting for the host `test`. */
-  async function connect(project: string): Promise<Client> {
+  /**
+   * A connected client on the project's tool server, acting for the host `test` unless named. A
+   * verdict needs the host whose hook started the reviewer, Claude Code here.
+   */
+  async function connect(project: string, host = "test"): Promise<Client> {
     const client = new Client({ name: "tmb-processes-test", version: "0.0.0" });
-    await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, "mcp", "--host", "test", "--project", project], env, stderr: "pipe" }));
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, "mcp", "--host", host, "--project", project], env, stderr: "pipe" }));
     return client;
   }
 

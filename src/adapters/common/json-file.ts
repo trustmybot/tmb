@@ -1,4 +1,4 @@
-// Claude Code's JSON files are the Human's: read them whole, change only tmb's own keys,
+// A host's config files are the Human's: read them whole, change only tmb's own keys,
 // and refuse to touch a file that is not a JSON object rather than overwrite it.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";

@@ -5,6 +5,7 @@
 // never reaches the base branch by a push either.
 import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
+import { endHostReviewerRun, ensureHostReviewerRun, isReviewerHost } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
 import { OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
@@ -190,9 +191,12 @@ export const featureBriefSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export function featureBrief(store: Store, _actor: Actor, input: unknown, context: OperationContext): FeatureBrief {
+export function featureBrief(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureBrief {
   const { feature } = validateInput<{ feature: string }>("feature_brief", featureBriefSchema, input);
-  return featureBriefOf(store, context.projectDir, requireFeature(store, feature));
+  const brief = featureBriefOf(store, context.projectDir, requireFeature(store, feature));
+  // A reviewer host that already gave a verdict in this session reviews again in a new run.
+  if (actor.kind === "agent" && actor.role === "reviewer") ensureHostReviewerRun(store, actor.host);
+  return brief;
 }
 
 // --- review_record ------------------------------------------------------------------------
@@ -232,8 +236,12 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
     throw new HandlerError("refused", "only the reviewer records a review; the Human waives one instead, with `tmb feature waive <name> --reason <text>`");
   }
   requireRole(actor, "review_record", ["reviewer"]);
-  if (store.openRuns("reviewer").length === 0) {
-    throw new HandlerError("refused", "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, and tmb records that start");
+  // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
+  if (!store.openRuns("reviewer").some((run) => run.createdBy.kind === "agent" && run.createdBy.host === actor.host)) {
+    throw new HandlerError(
+      "refused",
+      "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
+    );
   }
   const blocking = given.blocking ?? [];
   const notes = given.notes ?? [];
@@ -253,6 +261,7 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
   const id = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip });
   const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
+  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, `verdict ${given.verdict} at ${tip}`);
   const covered = given.verdict === "pass";
   const next = covered
     ? `the pull request may open: the planner calls feature_pr for ${feature.name}`

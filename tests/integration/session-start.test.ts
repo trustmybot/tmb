@@ -100,6 +100,7 @@ describe("tmb setup and remove", () => {
     ]);
     expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
     expect(afterSetup.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
+    expect(afterSetup.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
 
     const remove = run(process.execPath, [CLI, "remove"], project);
     expect(remove.status).toBe(0);

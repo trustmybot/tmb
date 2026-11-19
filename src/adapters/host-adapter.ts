@@ -9,6 +9,12 @@ export type HostLimits = {
   canDenyToolCall: boolean;
   /** The host runs each subagent role on the model its role file names. */
   modelPerRole: boolean;
+  /**
+   * The host says which agent makes each tool call. When it does not, a subagent's call is
+   * judged under the role the host was set up with, so a worker's write cannot be told from
+   * the planner's; git's pre-push hook still judges every push.
+   */
+  namesAgentOnToolCall: boolean;
   /** The tmb events the host raises. */
   events: readonly TmbEventType[];
 };
@@ -36,6 +42,11 @@ export interface HostAdapter {
   setup(projectDir: string, tmbCommand: readonly string[], roles?: readonly SubagentRole[]): string[];
   /** Undoes exactly what setup added; returns what changed, one line each. */
   remove(projectDir: string): string[];
+  /**
+   * What the Human must still do in the host before it runs tmb in the project, such as trust
+   * the project or tmb's hooks, one step each; none when nothing is left. tmb never does these itself.
+   */
+  pendingSteps?(projectDir: string): string[];
   /** Answers a host event: the host's stdin in, the host's stdout out (empty when there is nothing to say). Throws on bad input. */
   answerHook(event: string, stdinText: string, run: HookRun): string;
 }

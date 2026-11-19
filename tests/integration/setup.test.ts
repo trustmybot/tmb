@@ -71,9 +71,9 @@ describe("tmb setup", () => {
     const project = newBunProject();
     const stdout = tmb(["setup", "--yes"], project);
     expect(stdout).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
-    expect(stdout).toContain("Recorded 4 changes in the record's audit trail.");
-    expect(config(project)).toEqual({ host: "claude-code", base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"] });
-    expect(tmb(["config"], project)).toBe('host: claude-code\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\n');
+    expect(stdout).toContain("Recorded 5 changes in the record's audit trail.");
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"] });
+    expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\n');
   });
 
   test("with no terminal and no flags, never waits for input: takes the defaults and prints them", async () => {
@@ -96,7 +96,7 @@ describe("tmb setup", () => {
     const project = newBunProject();
     const flags = ["setup", "--host", "claude-code", "--base", "release", "--review-mode", "agile", "--check", "make lint", "--check", "make test"];
     tmb(flags, project);
-    expect(config(project)).toEqual({ host: "claude-code", base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
     const recorded = auditCount(project);
 
     const files = [".mcp.json", ".claude/settings.local.json", ".gitignore"].map((file) => path.join(project, file));
@@ -122,7 +122,7 @@ describe("tmb setup", () => {
     mkdirSync(emptyPath, { recursive: true });
     const result = run(["setup", "--yes"], project, { PATH: emptyPath });
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code).");
+    expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code) and Codex (codex).");
     expect(readdirSync(project).sort()).toEqual([".git", "bun.lock", "package.json"]);
   });
 });

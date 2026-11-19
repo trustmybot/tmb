@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { type Capability, OPERATIONS, type SubagentRole } from "../../engine/index.ts";
-import { deleteFile } from "./json-file.ts";
+import { deleteFile } from "../common/json-file.ts";
 import { SERVER_KEY } from "./mcp-json.ts";
 
 const AGENTS_RELATIVE = path.join(".claude", "agents");
