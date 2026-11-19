@@ -2,11 +2,12 @@
 # Installs tmb from the public release repo. No login needed.
 #   curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh | sh
 # TMB_CHANNEL picks the channel (default: dev).
+# TMB_NO_MODIFY_PATH=1 leaves shell profiles alone and prints the PATH line instead.
 set -eu
 
 channel="${TMB_CHANNEL:-dev}"
 base_url="https://github.com/trustmybot/tmb-releases/releases/download/${channel}"
-bin_dir="${HOME}/.tmb/bin"
+bin_dir="${HOME}/.local/bin"
 
 fail() {
   echo "tmb install: $*" >&2
@@ -54,10 +55,45 @@ mv "${tmp}/${asset}" "${bin_dir}/tmb"
 chmod +x "${bin_dir}/tmb"
 
 echo "Installed $("${bin_dir}/tmb" --version) to ${bin_dir}/tmb"
+
+legacy_dir="${HOME}/.tmb/bin"
+if [ -e "${legacy_dir}/tmb" ]; then
+  rm -f "${legacy_dir}/tmb"
+  rmdir "$legacy_dir" 2>/dev/null || true
+  rmdir "${HOME}/.tmb" 2>/dev/null || true
+  echo "Removed the old ~/.tmb/bin/tmb. In projects set up with it, run tmb setup again."
+fi
+
+login_shell="$(basename "${SHELL:-sh}")"
+case "$login_shell" in
+  zsh) profile="${ZDOTDIR:-$HOME}/.zshrc" ;;
+  bash)
+    if [ "$os" = darwin ]; then profile="${HOME}/.bash_profile"; else profile="${HOME}/.bashrc"; fi
+    ;;
+  fish) profile="${HOME}/.config/fish/config.fish" ;;
+  *) profile="${HOME}/.profile" ;;
+esac
+if [ "$login_shell" = fish ]; then
+  path_line='fish_add_path $HOME/.local/bin'
+else
+  path_line='export PATH="$HOME/.local/bin:$PATH"'
+fi
+path_marker='# Added by the tmb installer'
+
 case ":${PATH}:" in
   *":${bin_dir}:"*) ;;
   *)
-    echo "Add tmb to your PATH, e.g. in your shell profile:"
-    echo "  export PATH=\"\$HOME/.tmb/bin:\$PATH\""
+    if [ "${TMB_NO_MODIFY_PATH:-}" = 1 ]; then
+      echo "Add ~/.local/bin to your PATH, e.g. in ${profile}:"
+      echo "  ${path_line}"
+    else
+      if ! grep -qxF "$path_marker" "$profile" 2>/dev/null; then
+        mkdir -p "$(dirname "$profile")"
+        printf '\n%s\n%s\n' "$path_marker" "$path_line" >>"$profile"
+      fi
+      echo "Added ~/.local/bin to your PATH in ${profile}. Open a new terminal, or run: ${path_line}"
+    fi
     ;;
 esac
+
+echo "Run tmb setup in a project, then start claude there."
