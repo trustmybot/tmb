@@ -1,11 +1,19 @@
 // What a new session is told: the planner role, then the open work from the record, so the
-// session resumes from the record rather than from any earlier conversation.
+// session resumes from the record rather than from any earlier conversation, then the project's
+// layout from the code graph as it was last indexed.
+import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
+import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
+import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
 import { type Store, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
 export const OPEN_WORK_MAX = 20;
+export const PROJECT_MAP_HEADING = "## The project, from the code graph";
+export const PROJECT_MAP_MAX_DIRS = 40;
+const PROJECT_MAP_DEPTH = 2;
+const MAP_SUMMARY_MAX = 120;
 
 function openWork(store: Store): string {
   return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}`;
@@ -35,6 +43,43 @@ function openTasks(store: Store): string {
   return `\n\nOpen tasks, oldest first:\n\n${lines.join("\n")}`;
 }
 
+/** Text from the project's files on one line, so a path or summary cannot forge a heading of this context. */
+const oneLineText = (text: string): string => text.replace(/[\s\p{Cc}]+/gu, " ").trim();
+const shorten = (text: string): string => (text.length <= MAP_SUMMARY_MAX ? text : `${text.slice(0, MAP_SUMMARY_MAX - 1)}…`);
+
+/**
+ * The base branch's directories as the graph last indexed them, without bringing it forward:
+ * session start must stay fast, and graph_map answers from the newest commit. Empty when the
+ * project has no graph yet or it cannot be read.
+ */
+function projectMapSection(projectDir: string): string {
+  if (!existsSync(graphDbPath(projectDir))) return "";
+  try {
+    const db = openGraphDb(projectDir);
+    try {
+      const layer = layerRow(db, BASE_LAYER);
+      if (layer === null) return "";
+      const dirs = db
+        .query("SELECT path, summary, file_count FROM dirs WHERE layer = ? AND depth <= ? ORDER BY depth, path LIMIT ?")
+        .all(BASE_LAYER, PROJECT_MAP_DEPTH, PROJECT_MAP_MAX_DIRS) as { path: string; summary: string; file_count: number }[];
+      const total = (db.query("SELECT count(*) AS n FROM dirs WHERE layer = ?").get(BASE_LAYER) as { n: number }).n;
+      const lines = dirs.map((dir) => {
+        const summary = dir.summary ? `: ${shorten(oneLineText(dir.summary))}` : "";
+        return `- ${dir.path === "." ? "./" : `${oneLineText(dir.path)}/`} (${dir.file_count} files)${summary}`;
+      });
+      if (total > dirs.length) lines.push(`- …and ${total - dirs.length} more directories; graph_map shows them.`);
+      return (
+        `\n\n${PROJECT_MAP_HEADING}\n\nAs indexed at ${layer.commit_sha.slice(0, 12)}: ${layer.files} files, ${layer.symbols} symbols. ` +
+        `Scope from here with graph_map, graph_find, graph_symbol and graph_scope, which bring the graph to the newest commit first. ${UNTRUSTED_NOTE}\n\n${lines.join("\n")}`
+      );
+    } finally {
+      db.close();
+    }
+  } catch {
+    return "";
+  }
+}
+
 function withRole(section: string): string {
   return `${plannerRole.trimEnd()}\n\n${section}\n`;
 }
@@ -62,7 +107,7 @@ function attendedContext(projectDir: string): string {
     return opened.error.failure === "missing" ? plannerRole : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
   }
   try {
-    return withRole(openWork(opened.store));
+    return withRole(`${openWork(opened.store)}${projectMapSection(projectDir)}`);
   } catch (error) {
     return withRole(`tmb could not read the record: ${oneLine(error)}`);
   } finally {
