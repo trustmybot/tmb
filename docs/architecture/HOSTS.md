@@ -70,6 +70,25 @@ Running several workers at once, each on its own task and worktree, is the host'
 
 All rules stay in the engine. An adapter that grows a rule is a defect.
 
+## Cold start
+
+How a plain host agent becomes the planner. The agent does not work this out itself: tmb tells it at the start of every session, through what setup wired once.
+
+```mermaid
+flowchart TD
+    S[Once: the Human runs tmb setup] --> W[The adapter writes the tool registration, the role files and the event wiring into the project]
+    W --> O[The Human opens the host in the project]
+    O --> SS[The host raises its session start event]
+    SS --> E[The engine answers: you are the planner, with the rules and the open work from the record]
+    E --> P[The agent works as the planner: plans, calls tmb's tools, starts workers]
+    P --> C[Before each action the host asks the engine]
+    C --> D[Allow, or deny with the reason]
+```
+
+- **The workflow guides.** The role instructions tell the planner to plan, write a spec and ask the engine to start a task. An agent can ignore a prompt.
+- **The harness holds.** The host itself asks the engine before an action, and the engine answers from the record. An agent cannot skip that.
+- A session resumes from the record, so a new session needs nothing from the conversation before it.
+
 ## tmb's own events
 
 tmb has its own hook system. Rules are written once against tmb's events, never against a host's or git's. Host hooks and git hooks are only sources that raise a tmb event.
@@ -117,7 +136,7 @@ When a host cannot deny an action, the engine's own layers still hold: checks at
 
 ## What tmb leaves to the host
 
-tmb starts no agent, runs no model and manages no parallel sessions. Hosts do that better, and tmb ships what they lack: one record, one code graph, one workflow and one gate.
+tmb starts no agent, runs no model and manages no parallel sessions. Hosts do that better, and tmb ships what they lack: one record, one code graph and one harness: a workflow and the gate that enforces it.
 
 ## Different models on one task
 

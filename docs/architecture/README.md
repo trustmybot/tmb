@@ -16,7 +16,7 @@ flowchart TD
     D --> E
     C --> E
     subgraph E[Engine]
-        W[Workflow and gate]
+        W[Harness: workflow and gate]
         T[Trajectory]
         G[Code graph]
     end
