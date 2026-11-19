@@ -96,7 +96,7 @@ What each version delivers. Decided by the Human on 2026-11-19. Each version is 
 | v2 | Mixed agents on one task, such as Claude as the planner, Codex as the reviewer and a local model as a worker. A desktop program to watch the work live. | Level 9 of the build order, and the desktop program. Planned. |
 | v3 | Undecided: managing agents from the desktop. | It would make tmb the program that starts hosts, which tmb does not do today ([HOSTS.md](HOSTS.md#what-tmb-leaves-to-the-host)). |
 
-- v1 supports one host, Claude Code. Parts of level 9 may be built before v1 is released, but mixed agents are not supported and not tested in v1: no v1 release waits for, or runs, a test that needs a second host. Proposed, for the Human's review: in v1, setup says that a host other than Claude Code is not supported yet.
+- v1 supports one host, Claude Code. Parts of level 9 may be built before v1 is released, but mixed agents are not supported and not tested in v1: no v1 release waits for, or runs, a test that needs a second host. In v1, tmb says that a host other than Claude Code is not supported yet.
 - The desktop program of v2 only watches. It reads the record, which already holds every session, agent start and stop, and gate decision, so tmb still starts no agent.
 - A pending feature of the plugin is not a version of its own. Each one is placed in a version above or left out.
 
