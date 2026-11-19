@@ -37,7 +37,7 @@ The review mode decides who reviews a change and when. Only the Human sets it.
 | **Agile** (default) | Once, on the whole feature branch | One pull request per milestone | Building a feature in many small tasks and judging it as a whole. |
 | **Truest** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed. |
 
-Agile is built first. Truest is built last (see [the build order](README.md#build-order)).
+Agile is built first, at level 4. Truest is built last, at level 10 (see [the build order](README.md#build-order)).
 
 ## Agile mode
 
@@ -93,4 +93,4 @@ The engine, not an agent, creates branches and worktrees, runs checks, folds a t
 
 ## Carried over from the plugin
 
-The plugin's design for retry and escalation, rebasing a reviewed task, pull request comment triage and multi-repo workspaces is carried over unchanged in intent. Each gets its section here when its milestone starts.
+The plugin's design for retry and escalation, rebasing a reviewed task, pull request comment triage and multi-repo workspaces is carried over unchanged in intent. Each gets its section here when its level starts.
