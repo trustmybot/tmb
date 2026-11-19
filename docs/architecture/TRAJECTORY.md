@@ -21,9 +21,9 @@ The record of the work: what was asked, what was decided, what each agent did an
 - **A start without an end is a finding.** Every run and check records its start and its end. What is stuck is whatever has a start and no end.
 - **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
 - **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump. Agents spend their context on the work.
-- **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events. Proposed, for the Human's review.
-- **Every record names who made it.** The Human, or the role and agent that acted. Proposed, for the Human's review.
-- **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering. Proposed, for the Human's review.
+- **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
+- **Every record names who made it.** The Human, or the role and host that acted.
+- **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering.
 
 ## Where it lives
 

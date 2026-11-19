@@ -51,6 +51,7 @@ Decided by the Human on 2026-11-18.
 | Login | The Human's subscription to the host. No API key is needed. |
 | Roles | The host's main agent is the planner. Workers and the reviewer are subagents the host starts. The engine briefs, records and gates them. |
 | Different models | Each role can use a different model. Agents from different vendors work on one task by connecting their hosts to the same record. Planned, after the first host. |
+| Records | Shareable from the first schema: history is kept as events, every record names the role and host that made it, and ids never collide across machines. |
 | What tmb does not do | Start agents, run models or manage parallel sessions. The host does. |
 | Agents left out of version 1 | DeepSeek Harness, as host or as worker. |
 | Network | The engine works with no internet access. Running fully offline with local models needs a host that supports them. |
@@ -97,6 +98,5 @@ Most of the plugin's logic is host-neutral and carries over. What is tied to Cla
 
 ## Open
 
-- Whether records are made shareable from the start ([TRAJECTORY.md](TRAJECTORY.md#rules)).
 - How much of the plugin's guard set the first build needs, beyond checks at close.
 - Which second host comes first.
