@@ -242,7 +242,7 @@ describe("folding a closed task into its feature branch", () => {
     expect(error.message).toContain("`test ! -f src/a/one.ts` exited 1 on the task rebased onto the feature branch");
     expect(error.message).toContain(`The worktree is back at ${secondHead}, as it was.`);
     expect(tip()).toBe(firstHead);
-    expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: null });
+    expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: "agile" });
     expect(git(second.worktree, "rev-parse", "HEAD")).toBe(secondHead);
     expect(git(second.worktree, "rev-parse", "--abbrev-ref", "HEAD")).toBe(second.branch);
     expect(git(second.worktree, "status", "--porcelain")).toBe("");
@@ -278,7 +278,7 @@ describe("folding a closed task into its feature branch", () => {
       expect(error.message).toContain(`task ${second.id} stays open`);
       if (rebased) expect(error.message).toContain(`The worktree is back at ${secondHead}, as it was.`);
       expect(tip()).toBe(firstHead);
-      expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: null });
+      expect(store.getTask(second.id)).toMatchObject({ state: "open", commitSha: null, reviewMode: "agile" });
       expect(store.getTask(first.id)).toMatchObject({ state: "closed", commitSha: firstHead });
       expect(git(second.worktree, "rev-parse", "HEAD")).toBe(secondHead);
       expect(git(second.worktree, "rev-parse", "--abbrev-ref", "HEAD")).toBe(second.branch);
@@ -286,6 +286,23 @@ describe("folding a closed task into its feature branch", () => {
       expect(store.listCheckRuns(second.id).map((run) => run.commitSha)).toEqual([secondHead]);
     });
   }
+
+  test("a task whose earlier close moved the feature branch and stopped before recording it closes, finishing the fold", async () => {
+    const task = startTask(["src/a"]);
+    const head = commitFile(task.worktree, "src/a/one.ts");
+    // What the earlier close left: the feature branch moved to the task's commit, the task still open.
+    const from = tip();
+    moveFeature(project, FEATURE, from, head, "a fold that stopped before it recorded the close");
+    expect(store.getTask(task.id)).toMatchObject({ state: "open", commitSha: null });
+
+    const result = await taskClose(store, WORKER, { id: task.id }, context());
+    expect(result.fold).toEqual({ feature: FEATURE, from: head, to: head, rebased: false });
+    expect(result.cleanupProblems).toEqual([]);
+    expect(tip()).toBe(head);
+    expect(store.getTask(task.id)).toMatchObject({ state: "closed", commitSha: head, reviewMode: "agile", pushResult: "skipped" });
+    expect(existsSync(task.worktree)).toBe(false);
+    expect(branches()).not.toContain(task.branch);
+  });
 
   test("a rebase conflict is aborted and refused naming the paths, leaving the task open, the feature unmoved and the worktree as it was", async () => {
     const first = startTask(["src/a"]);

@@ -3,12 +3,16 @@
 // layout from the code graph as it was last indexed.
 import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
+import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
+import { featureBriefOf, reviewLine } from "./handlers/reviews.ts";
+import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
 import { type Store, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
+export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
@@ -16,7 +20,7 @@ const PROJECT_MAP_DEPTH = 2;
 const MAP_SUMMARY_MAX = 120;
 
 function openWork(store: Store): string {
-  return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}`;
+  return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}${inReviewTasks(store)}`;
 }
 
 function openIssues(store: Store): string {
@@ -41,6 +45,15 @@ function openTasks(store: Store): string {
   });
   if (open.length > OPEN_WORK_MAX) lines.push(`- …and ${open.length - OPEN_WORK_MAX} newer open tasks; task_list shows them all.`);
   return `\n\nOpen tasks, oldest first:\n\n${lines.join("\n")}`;
+}
+
+/** Truest tasks waiting on their review or their pull request, oldest first; empty when none is. */
+function inReviewTasks(store: Store): string {
+  const waiting = store.listTasks("in_review");
+  if (waiting.length === 0) return "";
+  const lines = waiting.slice(0, OPEN_WORK_MAX).map((task) => `- ${task.id} ${task.title} (issue ${task.issueId}, at ${task.commitSha?.slice(0, 12) ?? "no commit"})`);
+  if (waiting.length > OPEN_WORK_MAX) lines.push(`- …and ${waiting.length - OPEN_WORK_MAX} newer tasks in review; task_list shows them all.`);
+  return `\n\nTasks in review, oldest first (task_brief shows whether a review covers each; task_pr opens a covered one's pull request):\n\n${lines.join("\n")}`;
 }
 
 /** Text from the project's files on one line, so a path or summary cannot forge a heading of this context. */
@@ -92,11 +105,57 @@ export const UNATTENDED_INSTRUCTION =
   "## Unattended run\n\nNo one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.";
 
 /**
- * The role and the open work, then, when `unattended` says no one can answer in this run,
- * the instruction for it. Nothing about the mode is stored in the project.
+ * Open feature branches with work on them and no review or waiver at their tip, oldest first.
+ * A branch whose newest review at the tip failed waits for rework, not for a review.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean): string {
-  const context = attendedContext(projectDir);
+function awaitingReview(store: Store, projectDir: string): string {
+  const lines: string[] = [];
+  for (const feature of store.listFeatures("open")) {
+    const brief = featureBriefOf(store, projectDir, feature);
+    if (brief.groups.length === 0 || brief.covered || brief.reviews.some((review) => review.commit === brief.tip)) continue;
+    lines.push(`- ${reviewLine(feature.name)} at ${brief.tip.slice(0, 12)}: ${brief.groups.length} task${brief.groups.length === 1 ? "" : "s"} onto ${brief.baseBranch}`);
+  }
+  const list = lines.length === 0 ? "No feature branch waits for a review now." : lines.join("\n");
+  return `${AWAITING_REVIEW_HEADING}\n\nThis host is set up as the project's reviewer: another agent plans and writes, and you judge its work through the record. Take each branch below as your prompt's \`feature=<name>\` line. Report your verdict to the Human, who passes it on to the planner.\n\n${list}`;
+}
+
+/** The reviewer host's context; opens its run, so the verdict it records has one. Never throws. */
+function reviewerContext(projectDir: string, host: string): string {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(opened.error)}\n`;
+  try {
+    const context = `${reviewerRole.trimEnd()}\n\n${awaitingReview(opened.store, projectDir)}\n`;
+    // A host may raise a session start again on resume, clear or compact: one run per session.
+    ensureHostReviewerRun(opened.store, host);
+    return context;
+  } catch (error) {
+    return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(error)}\n`;
+  } finally {
+    opened.store.close();
+  }
+}
+
+/** Whether the record sets the host up as the reviewer; false when there is no host or no readable record. */
+function reviewsHere(projectDir: string, host: string | undefined): boolean {
+  if (host === undefined) return false;
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return false;
+  try {
+    return isReviewerHost(opened.store, host);
+  } catch {
+    return false;
+  } finally {
+    opened.store.close();
+  }
+}
+
+/**
+ * The role and its work: for the planner the open work, for a host set up as the reviewer the
+ * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
+ * instruction for it. Nothing about the mode is stored in the project.
+ */
+export function sessionStartContext(projectDir: string, unattended: boolean, host?: string): string {
+  const context = reviewsHere(projectDir, host) ? reviewerContext(projectDir, host!) : attendedContext(projectDir);
   return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
 }
 
@@ -115,4 +174,4 @@ function attendedContext(projectDir: string): string {
   }
 }
 
-export { plannerRole };
+export { plannerRole, reviewerRole };

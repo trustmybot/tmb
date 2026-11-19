@@ -2,8 +2,8 @@
 // its hooks and enables its tool server from the project's .mcp.json.
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ignoreInGit } from "./git.ts";
-import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject } from "./json-file.ts";
+import { ignoreInGit } from "../common/git.ts";
+import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject } from "../common/json-file.ts";
 import { SERVER_KEY } from "./mcp-json.ts";
 
 const SETTINGS_RELATIVE = path.join(".claude", "settings.local.json");
@@ -18,6 +18,7 @@ export const TMB_HOOKS = [
   { hookEvent: "SessionStart", name: "session-start" },
   { hookEvent: "PreToolUse", name: "pre-tool-use", matcher: GUARDED_TOOLS.join("|") },
   { hookEvent: "SubagentStop", name: "subagent-stop" },
+  { hookEvent: "SessionEnd", name: "session-end" },
 ] as const;
 
 type TmbHook = (typeof TMB_HOOKS)[number];

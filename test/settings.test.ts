@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe("settings in the record", () => {
   test("start unset", () => {
-    expect(readSettings(store)).toEqual({ host: null, base_branch: null, review_mode: null, checks: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null });
   });
 
   test("each set is one audit entry by the actor, and the current value is the newest", () => {
@@ -33,7 +33,7 @@ describe("settings in the record", () => {
     expect(writeSetting(store, HUMAN, "checks", ["bun run lint", "bun test"])).toBe(true);
     expect(writeSetting(store, HUMAN, "base_branch", "develop")).toBe(true);
 
-    expect(readSettings(store)).toEqual({ host: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"] });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"] });
     const audit = store.listAudit();
     expect(audit).toHaveLength(3);
     expect(audit.every((entry) => entry.createdBy.kind === "human")).toBe(true);
@@ -63,15 +63,15 @@ describe("settings in the record", () => {
 });
 
 describe("validation", () => {
-  test("refuses truest with the level it arrives at, and records nothing", () => {
-    expect(() => writeSetting(store, HUMAN, "review_mode", "truest")).toThrow(
-      new SettingError("review mode truest arrives at level 10; only agile is available now"),
-    );
-    expect(store.listAudit()).toHaveLength(0);
+  test("takes truest, and refuses a mode that does not exist, recording nothing for it", () => {
+    expect(writeSetting(store, HUMAN, "review_mode", "truest")).toBe(true);
+    expect(readSettings(store).review_mode).toBe("truest");
+    expect(() => writeSetting(store, HUMAN, "review_mode", "strict")).toThrow(new SettingError('review mode must be agile or truest, got "strict"'));
+    expect(store.listAudit()).toHaveLength(1);
   });
 
   test("refuses an unknown review mode", () => {
-    expect(() => validateSetting("review_mode", "fast")).toThrow(/review mode must be agile, got "fast"/);
+    expect(() => validateSetting("review_mode", "fast")).toThrow(/review mode must be agile or truest, got "fast"/);
   });
 
   test("refuses an empty base branch or host, and trims the text it keeps", () => {
@@ -95,14 +95,16 @@ describe("validation", () => {
 
 describe("settingLines", () => {
   test("shows one line per setting, quoting each check and naming what is unset", () => {
-    expect(settingLines({ host: "host-a", base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."] })).toEqual([
+    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."] })).toEqual([
       "host: host-a",
+      "host roles: host-a planner, host-b reviewer",
       "base branch: main",
       "review mode: agile",
       'checks: "bun run lint", "go test ./..."',
     ]);
-    expect(settingLines({ host: null, base_branch: null, review_mode: null, checks: [] })).toEqual([
+    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [] })).toEqual([
       "host: (not set)",
+      "host roles: (not set)",
       "base branch: (not set)",
       "review mode: (not set)",
       "checks: (none)",

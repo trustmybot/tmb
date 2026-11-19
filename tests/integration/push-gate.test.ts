@@ -76,7 +76,7 @@ describe("the push gate", () => {
     const project = setUpProject("true", undefined, { origin: true });
     const unpushed = commitFile(project, "hotfix.txt", "fix\n", "an unpushed commit on main");
     // A feature cut now starts at the unpushed commit; that must not count it as on the remote.
-    const client = await connect(project);
+    const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/later" });
     } finally {
@@ -93,7 +93,7 @@ describe("the push gate", () => {
   test("lets the base branch take a feature branch once the reviewer passed its tip, and not before", async () => {
     const project = setUpProject("true", undefined, { origin: true });
     const issue = tmbJson(["issue", "create", "Greet the user"], project);
-    const client = await connect(project);
+    const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/greet" });
       const task = await callJson(client, "task_start", {

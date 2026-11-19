@@ -53,9 +53,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(4);
+    expect(SCHEMA_VERSION).toBe(5);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 4 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 5 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -173,6 +173,34 @@ result.store.close();
 
       const db = new Database(roundPath, { readonly: true });
       expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
+      db.close();
+    }
+  }, 60_000);
+
+  test("creates a new database once when several processes open it at the same moment", async () => {
+    const opener = path.join(dir, "create-once.ts");
+    const openModule = path.join(import.meta.dir, "../src/engine/store/open.ts");
+    writeFileSync(
+      opener,
+      `import { openStore } from ${JSON.stringify(openModule)};
+const result = openStore(process.argv[2]!, { create: true });
+if (!result.ok) { console.error(result.error.message); process.exit(1); }
+result.store.close();
+`,
+    );
+    for (let round = 0; round < 5; round++) {
+      const roundPath = path.join(dir, `create-${round}.db`);
+      const openers = Array.from({ length: 8 }, () =>
+        Bun.spawn([process.execPath, "run", opener, roundPath], { stdout: "pipe", stderr: "pipe" }),
+      );
+      const outcomes = await Promise.all(
+        openers.map(async (child) => ({ code: await child.exited, stderr: await new Response(child.stderr).text() })),
+      );
+      expect(outcomes.filter((outcome) => outcome.code !== 0)).toEqual([]);
+
+      const db = new Database(roundPath, { readonly: true });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
+      expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
       db.close();
     }
   }, 60_000);

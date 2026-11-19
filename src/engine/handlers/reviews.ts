@@ -5,11 +5,13 @@
 // never reaches the base branch by a push either.
 import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
+import { endHostReviewerRun, ensureHostReviewerRun, isReviewerHost } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
 import { OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureTip } from "./features.ts";
 import { pushFeature } from "./fold.ts";
+import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
 export const VERDICTS = ["pass", "fail"] as const;
@@ -85,7 +87,7 @@ function findingsOf(review: Review): Finding[] {
   return review.findings.filter((item): item is Finding => typeof item === "object" && item !== null && typeof (item as Finding).text === "string");
 }
 
-function summaryOf(review: Review): ReviewSummary {
+export function summaryOf(review: Review): ReviewSummary {
   return { id: review.id, verdict: review.verdict, commit: review.commitSha, findings: findingsOf(review), by: review.createdBy, at: review.createdAt };
 }
 
@@ -110,10 +112,10 @@ function coverageAt(reviews: readonly Review[], waivers: readonly { commit: stri
   return newest?.verdict === "pass" ? "review" : null;
 }
 
-/** Every commit the record lets reach the base branch: each feature branch commit a pass or a waiver covers. */
+/** Every commit the record lets through the push gate: each feature branch commit a pass or a waiver covers, and each truest task commit one covers. */
 export function coveredCommits(store: Store): string[] {
   const waivers = allWaivers(store);
-  const commits = new Set(waivers.map((waiver) => waiver.commit));
+  const commits = new Set([...waivers.map((waiver) => waiver.commit), ...truestCoveredCommits(store)]);
   const byFeature = new Map<string, Review[]>();
   for (const review of store.listReviews()) {
     if (review.featureId === null || review.commitSha === null) continue;
@@ -189,9 +191,12 @@ export const featureBriefSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export function featureBrief(store: Store, _actor: Actor, input: unknown, context: OperationContext): FeatureBrief {
+export function featureBrief(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureBrief {
   const { feature } = validateInput<{ feature: string }>("feature_brief", featureBriefSchema, input);
-  return featureBriefOf(store, context.projectDir, requireFeature(store, feature));
+  const brief = featureBriefOf(store, context.projectDir, requireFeature(store, feature));
+  // A reviewer host that already gave a verdict in this session reviews again in a new run.
+  if (actor.kind === "agent" && actor.role === "reviewer") ensureHostReviewerRun(store, actor.host);
+  return brief;
 }
 
 // --- review_record ------------------------------------------------------------------------
@@ -231,8 +236,12 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
     throw new HandlerError("refused", "only the reviewer records a review; the Human waives one instead, with `tmb feature waive <name> --reason <text>`");
   }
   requireRole(actor, "review_record", ["reviewer"]);
-  if (store.openRuns("reviewer").length === 0) {
-    throw new HandlerError("refused", "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, and tmb records that start");
+  // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
+  if (!store.openRuns("reviewer").some((run) => run.createdBy.kind === "agent" && run.createdBy.host === actor.host)) {
+    throw new HandlerError(
+      "refused",
+      "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
+    );
   }
   const blocking = given.blocking ?? [];
   const notes = given.notes ?? [];
@@ -252,6 +261,7 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
   const id = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip });
   const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
+  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, `verdict ${given.verdict} at ${tip}`);
   const covered = given.verdict === "pass";
   const next = covered
     ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
@@ -296,7 +306,7 @@ export const featurePrSchema: InputSchema = {
 };
 
 /** Opens the pull request with the GitHub command line; returns its address or what went wrong. */
-function openPullRequest(projectDir: string, args: readonly string[]): { ok: true; url: string } | { ok: false; why: string } {
+export function openPullRequest(projectDir: string, args: readonly string[]): { ok: true; url: string } | { ok: false; why: string } {
   const result = spawnSync("gh", ["pr", "create", ...args], {
     cwd: projectDir,
     encoding: "utf8",
@@ -308,6 +318,19 @@ function openPullRequest(projectDir: string, args: readonly string[]): { ok: tru
   if (result.status !== 0) return { ok: false, why: said === "" ? `gh exited ${result.status}` : said };
   const url = (result.stdout ?? "").split("\n").map((line) => line.trim()).filter((line) => /^https?:\/\//.test(line)).at(-1);
   return url === undefined ? { ok: false, why: `gh printed no pull request address: ${said}` } : { ok: true, url };
+}
+
+/** The address of the open pull request from `branch`, when one is already open; null when none is or gh cannot say. */
+export function existingPullRequest(projectDir: string, branch: string): string | null {
+  const result = spawnSync("gh", ["pr", "list", "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url"], {
+    cwd: projectDir,
+    encoding: "utf8",
+    timeout: PR_TIMEOUT_MS,
+    env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
+  });
+  if (result.error || result.status !== 0) return null;
+  const url = (result.stdout ?? "").trim();
+  return /^https?:\/\/\S+$/.test(url) ? url : null;
 }
 
 export function featurePr(store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult {

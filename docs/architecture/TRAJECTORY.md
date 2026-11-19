@@ -41,4 +41,4 @@ The [code graph](CODE_GRAPH.md) is not part of the trajectory. It can be rebuilt
 
 ## Plugin projects
 
-A one-way migration tool carries a plugin project's records into a new tmb database. The plugin's database is left untouched. It carries over only what tmb supports: a kind of record tmb does not have is left behind, not folded into another kind. Planned: the build still folds two kinds (trustmybot/tmb#67).
+A one-way migration tool carries a plugin project's records into a new tmb database. The plugin's database is left untouched. It carries over only what tmb supports: a kind of record tmb does not have is left behind, not folded into another kind.
