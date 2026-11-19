@@ -22,7 +22,7 @@ The script downloads the file for your platform, checks it against the published
 
 Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb setup` again in any project you set up with it.
 
-`tmb --version` prints the version and the source commit it was built from.
+`tmb --version` prints the version and the source commit it was built from. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
 ## Set up a project
 
