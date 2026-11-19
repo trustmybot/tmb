@@ -56,7 +56,7 @@ show_answer() {
 cp -R "${fixture}/." "$project" || exit 2
 # The identity lives in the project's own git config, which the task's worktree shares.
 if ! (cd "$project" && git init -q -b "$base_branch" && git config user.name "tmb worker run" &&
-  git config user.email "worker-run@tmb.invalid" && git add . && git commit -q -m "Add the math project"); then
+  git config user.email "worker-run@example.com" && git add . && git commit -q -m "Add the math project"); then
   fail "could not make the fixture project a git repository in ${project}"
 fi
 if (cd "$project" && bun test) >"${work}/base.log" 2>&1; then
