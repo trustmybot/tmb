@@ -34,6 +34,8 @@ jobs:
           curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh -o "$RUNNER_TEMP/install.sh"
           TMB_NO_MODIFY_PATH=1 sh "$RUNNER_TEMP/install.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # The dev channel installs as tmb-dev; the drivers run the tmb TMB_BIN names.
+          echo "TMB_BIN=tmb-dev" >> "$GITHUB_ENV"
       # The drivers run under bun, and the worker run needs it for its fixture's tests and the task
       # commands of this checkout.
       - uses: oven-sh/setup-bun@v2

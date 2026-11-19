@@ -1,5 +1,5 @@
 export { type Actor, ActorError, ROLES, type Role } from "./actor.ts";
-export { type OpenResult, StoreOpenError, type StoreOpenFailure, openStore } from "./open.ts";
+export { type OpenResult, StoreOpenError, type StoreOpenFailure, currentWriter, openStore } from "./open.ts";
 export { type RecordKind, type StoredEvent } from "./projections.ts";
 export { SCHEMA_VERSION } from "./schema.ts";
 export {
@@ -30,6 +30,8 @@ export {
   SEARCH_LIMIT_MAX,
   SNIPPET_MAX,
   type SearchHit,
+  SHAPE_WRITER_KEY,
+  type ShapeWriter,
   Store,
   type Task,
   type TaskChanges,

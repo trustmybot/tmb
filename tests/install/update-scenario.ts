@@ -39,11 +39,14 @@ export type Scenario = {
   stateDir: string;
 };
 
-/** Installs `oldBinary` into a scratch HOME the way the installer lays it out, with a project that has a record. */
-export function prepareInstall(oldBinary: string, extraEnv: Record<string, string> = {}): Scenario {
+/**
+ * Installs `oldBinary` into a scratch HOME the way the installer lays it out, under the program
+ * name `name` (tmb unless given), with a project that has a record.
+ */
+export function prepareInstall(oldBinary: string, extraEnv: Record<string, string> = {}, name = "tmb"): Scenario {
   const scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-update-")));
   const home = path.join(scratch, "home");
-  const installed = path.join(home, ".local", "bin", IS_WINDOWS ? "tmb.exe" : "tmb");
+  const installed = path.join(home, ".local", "bin", IS_WINDOWS ? `${name}.exe` : name);
   mkdirSync(path.dirname(installed), { recursive: true });
   copyFileSync(oldBinary, installed);
   const stateDir = path.join(scratch, "state");

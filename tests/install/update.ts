@@ -7,6 +7,7 @@
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { programName } from "../../src/program.ts";
 import { CHANNELS, type Channel, Updater, updaterOptions } from "../../src/update.ts";
 import { buildTmb, cleanup, prepareInstall, updatesItself } from "./update-scenario.ts";
 
@@ -44,7 +45,8 @@ const old = path.join(builds, process.platform === "win32" ? "tmb.exe" : "tmb");
 let failed = false;
 try {
   buildTmb(OLD[channel], old);
-  const scenario = prepareInstall(old);
+  // Installed under the channel's own name, as the installer does.
+  const scenario = prepareInstall(old, {}, programName(channel));
   try {
     await updatesItself(scenario, latest, (line) => console.log(`PASS ${line}`));
     console.log(`install update: the ${channel} install updated itself to ${latest}`);

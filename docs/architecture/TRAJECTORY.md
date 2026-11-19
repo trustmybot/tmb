@@ -33,7 +33,7 @@ One database file per project, inside the project's folder and left out of git. 
 |---|---|---|
 | No database | Allows: tmb stays out of projects it was never set up in | Offer setup |
 | Readable | Decides normally | Run normally |
-| Unreadable, or made by a newer tmb | Denies, naming the cause | Only the health check and repair run |
+| Unreadable, or made by a newer tmb | Denies, naming the cause, and for a newer one the version and program that wrote its shape | Only the health check and repair run |
 
 ## The code graph is separate
 

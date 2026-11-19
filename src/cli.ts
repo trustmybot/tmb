@@ -9,6 +9,7 @@ import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGate } from "./engine/push-gate.ts";
 import { runSetup, terminalAsk } from "./setup.ts";
+import { runningProgram } from "./program.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 
@@ -27,9 +28,10 @@ const USAGE = `Usage:
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
 ${INDEX_USAGE}
-  tmb update [--check]      Look for a newer build on this install's channel now and apply it
-                            when no other tmb session is running; with
-                            --check, only report
+  tmb update [--check]      Look for a newer build on this program's channel now and apply it
+                            when no other session of it is running; with --check, only
+                            report. tmb follows stable, tmb-rc rc and tmb-dev dev;
+                            tmb-<version> never updates
   tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one
@@ -134,40 +136,46 @@ async function runUpdateCommand(args: string[]): Promise<number> {
   if (positionals.length > 0) throw new Error(`update takes no arguments, got ${positionals.join(" ")}`);
   const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
+    const name = updater.program.name;
     console.log(
-      updater.options.enabled ? `tmb ${version} runs from source and does not update itself.` : `Updates are turned off (TMB_NO_UPDATE=1); this is tmb ${version}.`,
+      updater.pinned
+        ? `${name} is pinned to ${version} and never updates itself; install tmb, tmb-rc or tmb-dev to follow a channel.`
+        : updater.options.enabled
+          ? `tmb ${version} runs from source and does not update itself.`
+          : `Updates are turned off (TMB_NO_UPDATE=1); this is ${name} ${version}.`,
     );
     return 0;
   }
+  const name = updater.program.name;
   updater.tidy();
   const checked = await updater.check({ force: true });
   if (checked.outcome === "failed") {
-    console.error(`tmb update: could not reach the ${updater.channel} channel: ${checked.error}`);
+    console.error(`${name} update: could not reach the ${updater.channel} channel: ${checked.error}`);
     return 1;
   }
   if (checked.outcome === "current") {
-    console.log(`tmb ${version} is the newest on the ${updater.channel} channel.`);
+    console.log(`${name} ${version} is the newest on the ${updater.channel} channel.`);
     return 0;
   }
   const staged = updater.staged();
   if (!staged) {
-    console.log(`tmb ${version} is the newest on the ${updater.channel} channel.`);
+    console.log(`${name} ${version} is the newest on the ${updater.channel} channel.`);
     return 0;
   }
   if (values.check) {
-    console.log(`tmb ${staged.version} is ready on the ${updater.channel} channel; this is ${version}.`);
+    console.log(`${name} ${staged.version} is ready on the ${updater.channel} channel; this is ${version}.`);
     return 0;
   }
   const applied = updater.apply();
   if (applied.outcome === "applied") {
-    console.log(`Updated tmb from ${version} to ${applied.version}.`);
+    console.log(`Updated ${name} from ${version} to ${applied.version}.`);
     return 0;
   }
   if (applied.outcome === "waiting") {
-    console.log(`tmb ${applied.version} is ready and applies once no tmb session is running: ${applied.reason}.`);
+    console.log(`${name} ${applied.version} is ready and applies once no ${name} session is running: ${applied.reason}.`);
     return 0;
   }
-  console.error(`tmb update: could not apply ${applied.version}: ${applied.reason}`);
+  console.error(`${name} update: could not apply ${applied.version}: ${applied.reason}`);
   return 1;
 }
 
@@ -214,6 +222,7 @@ async function runSetupCommand(args: string[]): Promise<number> {
     await runSetup({
       projectDir: process.cwd(),
       tmbCommand: tmbCommand(),
+      program: { name: runningProgram(version).name, version },
       adapters: HOST_ADAPTERS,
       flags: { host: values.host, role: values.role, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes: values.yes },
       ask: terminal?.ask ?? null,
@@ -292,7 +301,7 @@ async function main(argv: string[]): Promise<number> {
     case "--version":
     case "-v":
     case "version":
-      console.log(versionLine());
+      console.log(versionLine(updaterOptions(version, isCompiledEntry(Bun.main)).program!));
       return 0;
     case "setup":
       return runSetupCommand(rest);
