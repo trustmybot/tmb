@@ -50,6 +50,8 @@ Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). Th
 
 `tmb --version` prints the program's name, its version, the source commit it was built from and the channel it follows. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
+After an update, each project's database is upgraded by itself the first time tmb opens it. The files `tmb init` wrote into a project are not refreshed yet: run `tmb init` in the project again to get the new ones. tmb doing this by itself is planned for v1.0.0 (trustmybot/tmb#128).
+
 ## Set up a project
 
 In the project's root folder:
