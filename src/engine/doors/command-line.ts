@@ -282,13 +282,14 @@ function formatTasks(state: string | undefined) {
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
 
-function formatClose({ brief, checks, fold, push, cleanupProblems, next, notes }: TaskCloseResult): string {
+function formatClose({ brief, checks, fold, push, cleanupProblems, cleanedUp, next, notes }: TaskCloseResult): string {
   return [
     next === undefined ? `Closed task ${brief.id} at commit ${brief.commitSha}.` : `The checks passed at ${brief.commitSha}; ${next}.`,
     ...checks.map((check) => `  passed: ${check.command}`),
     ...(fold ? [`Folded into ${fold.feature}${fold.rebased ? `, rebased onto ${fold.from} and checked again` : ""}.`] : []),
     ...(push ? [`Push: ${push.result}, ${push.detail}`] : []),
     ...cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+    ...cleanedUp,
     ...notes,
   ].join("\n");
 }
@@ -418,6 +419,7 @@ function taskRequest(args: string[]): Request {
           `Opened the pull request of task ${pr.task} (${pr.branch}) into ${pr.base} at ${pr.commit} (${pr.coveredBy}): ${pr.url}`,
           ...(pr.rebasedOnto === null ? [] : [`Rebased onto ${pr.base} at ${pr.rebasedOnto} first; the patch was unchanged, so the review carried over.`]),
           ...pr.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+          ...pr.cleanedUp,
           markRequiredLine(pr.base, pr.markRequired),
         ]
           .filter((line) => line !== null)
