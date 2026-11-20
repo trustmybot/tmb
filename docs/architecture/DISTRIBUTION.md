@@ -14,12 +14,12 @@ One step per platform. After it, two commands inside a project:
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | No |
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | One, on a terminal: the review mode |
 | `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
-**Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied.
+**Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them, all but the review mode. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied; the review mode stays unset.
 
-**The review mode is the Human's choice.** Planned (trustmybot/tmb#114), decided by the Human on 2026-11-20. The review mode decides how many tokens a project uses, so the planner recommends one but does not apply it. No task starts until the Human has chosen: at the end of `tmb init` on a terminal, with `tmb onboard`, or when the planner asks at the first session. With nobody to ask, the task is refused and the refusal names `tmb onboard`. The other settings stay the planner's recommendation.
+**The review mode is the Human's choice.** Decided by the Human on 2026-11-20 (trustmybot/tmb#114). The review mode decides how many tokens a project uses, so tmb recommends one but never picks it. No task starts until the Human has chosen: at the end of `tmb init` on a terminal, with `tmb onboard`, or when the planner asks at the first session and stores the answer. With nobody to ask, the task start is refused, the refusal names `tmb onboard`, and the planner cannot set the mode. The record keeps which of the three ways chose it. The other settings stay the planner's recommendation.
 
 Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 

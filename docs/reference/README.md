@@ -66,11 +66,11 @@ tmb is set up for Claude Code. Next:
   2. Send `@bro`.
 ```
 
-At the first session the planner applies the settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
+On a terminal, init first asks one question: the review mode, with what each mode costs. It is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). At the first session the planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's settings empty. | No |
+| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | One, on a terminal: the review mode |
 | `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
@@ -78,7 +78,9 @@ At the first session the planner applies the settings it recommends ([Onboarding
 
 `tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
 
-It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands). It never waits for input.
+It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
+
+On a terminal it asks for the review mode before those lines, unless one is stored. Without a terminal it asks nothing, never waits for input, and ends by saying that no review mode is chosen and that no task starts until it is.
 
 ### onboard
 
@@ -94,13 +96,24 @@ It then wires tmb into that host, as listed below, and stores the host and its r
 - The host is the one init stored; `--host <id>` names another host init wired.
 - A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
+- The review mode has no default. Without a terminal it is set only by `--review-mode`, also when `--yes` is given; otherwise it stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
 
 ### Onboarding by itself
 
-When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the settings it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. Once all are set, the session start says nothing about them.
+When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. Once all are set, the session start says nothing about them.
 
 `settings_get` reads the settings and what tmb found; `settings_set` is the planner's alone.
+
+### The review mode is yours
+
+The review mode decides how many tokens a project uses, so tmb recommends one and never picks it. While none is set, tmb refuses to start a task and says how to choose. There are three ways:
+
+- answer the question at the end of `tmb init`, on a terminal;
+- run `tmb onboard`, or `tmb onboard --review-mode <mode> --yes` to set it without a question;
+- tell the planner when it asks before the first task. It stores your answer.
+
+In an unattended run nobody can answer, so the task start is refused, the refusal names `tmb onboard`, and the planner cannot set or change the mode. Set it before the run. The record keeps which way the mode was chosen.
 
 ### Settings
 
@@ -131,7 +144,7 @@ Once the project is set up:
 
 ## Unattended runs
 
-When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults, names each default it used, and stops with the reason when a default is not safe. Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
+When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults, names each default it used, and stops with the reason when a default is not safe. The review mode is never one of those defaults: with none set, the run's first task is refused ([The review mode is yours](#the-review-mode-is-yours)). Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
 
 ## Help and mistyped commands
 
