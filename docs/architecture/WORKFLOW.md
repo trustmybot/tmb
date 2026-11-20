@@ -51,7 +51,7 @@ Agile is built first, at level 4. Truest is built last, at level 10 (see [the bu
 ```mermaid
 flowchart TD
     A[Human names a milestone] --> B[Planner proposes a feature branch and its scope; Human approves]
-    B --> C[Engine cuts the feature branch from the base branch]
+    B --> C[Engine fetches the base branch and cuts the feature branch from it]
     C --> D[Planner writes a task spec]
     D --> E[Engine prepares a worktree on a task branch cut from the feature branch]
     E --> F[Worker changes code, or the planner writes docs]
@@ -61,7 +61,8 @@ flowchart TD
     H --> I[Engine pushes the feature branch as a backup, with no pull request]
     I --> D
     I --> J[Human tries the feature branch at any time]
-    I --> K[Milestone reached: reviewer reviews the whole branch]
+    I --> U[Milestone reached: planner has the engine bring the base branch in]
+    U --> K[Reviewer reviews the whole branch]
     K -- fail --> D
     K -- pass, or Human waiver --> L[One pull request into the base branch]
     L --> M[Human merges]
@@ -70,6 +71,8 @@ flowchart TD
 - A task closes only when its checks pass on its commit. That holds in every mode.
 - The feature branch's pull request opens only after the reviewer passes the branch, or after a Human waiver that is recorded.
 - The Human can try the feature branch in a separate worktree while tasks continue.
+- **The feature branch starts from the remote's base branch** (trustmybot/tmb#169). The engine fetches it first. It uses the local base branch instead when that holds a commit the remote lacks, when there is no remote, or when the remote is out of reach.
+- **The base branch is brought in before the review.** On the planner's request the engine merges the base branch into the feature branch, with a merge commit and never a rebase, and pushes the branch as a backup. A conflict changes nothing and names the files: the planner settles it in a task, or raises it to the Human. The feature branch's brief says whether it holds the base branch. Nothing refuses a review of a branch that does not; the brief is how the planner and the reviewer know. Proposed, for the Human's review.
 
 ## Truest mode
 
@@ -155,7 +158,7 @@ What tmb does today when work goes wrong, and what is planned. The plugin had a 
 | A check fails, or a reviewer comments, on an open pull request | In agile mode nothing: a feature branch whose pull request is open takes no task. | v1.0.0 (trustmybot/tmb#168): the branch takes fix tasks, and the reviewed new tip updates the same pull request. v1.x: the syncer brings the comments in, and the planner sorts them into tasks (trustmybot/tmb#70). |
 | The pull request is closed without a merge | Nothing: tmb does not look at the pull request after it opens, so the feature branch stays recorded as having an open pull request, and takes no task (trustmybot/tmb#131). | v1.0.0 (trustmybot/tmb#152): it can take a second pull request. |
 | A fold or a rebase conflicts | The step is undone and names the files. The task stays open until the worker has settled it. | |
-| The base branch moved under a feature branch | Nothing. The clash shows on GitHub, after the review. | v1.0.0 (trustmybot/tmb#169): a feature branch starts from a fetched base, and the engine brings the base in before the review. |
+| The base branch moved under a feature branch | The planner has the engine bring the base branch in before the review (trustmybot/tmb#169). A conflict changes nothing and names the files, and is settled in a task. | |
 | The approach is wrong, or nobody will finish the task | The planner or the Human drops the task with a reason (trustmybot/tmb#170). It works on an open task and on a truest task in review. The task is recorded as dropped, never as closed, and nothing of it reaches the feature branch. Its worktree goes as a closed task's does, unless it holds work nobody committed. Its branch is kept while it holds commits, and the answer names it and how to delete it. A new task can name the dropped task it replaces. | |
 | A run started and never ended | `tmb doctor` lists it, and the planner's session start names it in one line (trustmybot/tmb#160). The planner decides. | |
 
