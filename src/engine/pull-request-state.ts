@@ -2,10 +2,16 @@
 // merged, `closed` when it was closed without a merge. tmb reads the pull request's state through
 // the Human's own `gh`, only for features in pr_open. A read that fails changes nothing and never
 // fails the caller: with no network the feature stays pr_open. The change is kept in the record
-// like any other change of state. tmb never deletes the local branch of a merged feature.
+// like any other change of state. tmb never deletes the local branch of a merged feature. In a repo
+// with no remote there is no pull request: a ready feature or truest task moves on once the local
+// base branch holds its tip (trustmybot/tmb#183).
 import { spawnSync } from "node:child_process";
-import { CLOSED_UNMERGED, MERGED } from "./handlers/common.ts";
+import { runGit } from "./git.ts";
+import { CLOSED, CLOSED_UNMERGED, MERGED, READY } from "./handlers/common.ts";
+import { featureDir } from "./handlers/features.ts";
+import { branchRef, isAncestor } from "./handlers/fold.ts";
 import { PR_OPEN } from "./handlers/reviews.ts";
+import { repoOfRow } from "./repos.ts";
 import type { Actor, Feature, Store } from "./store/index.ts";
 
 export { CLOSED_UNMERGED, MERGED };
@@ -55,6 +61,39 @@ export function refreshPullRequestStates(
     }
   } catch {
     // A read or a write that fails leaves the feature as it was; the next read tries again.
+  }
+  return [...moved, ...refreshLocalMerges(store, actor, projectDir)];
+}
+
+/** Whether the local `base` branch in `dir` holds `commit`; false when git cannot tell. */
+function baseHolds(dir: string, base: string, commit: string | null): boolean {
+  if (commit === null) return false;
+  return runGit(dir, ["rev-parse", "--verify", "--quiet", `${branchRef(base)}^{commit}`]).ok && isAncestor(dir, commit, branchRef(base));
+}
+
+/**
+ * In a repo with no remote (trustmybot/tmb#183) the Human merges a ready feature branch, or a ready
+ * truest task, locally. Once the local base branch holds its tip, a feature moves to merged and a
+ * task to closed. Never throws; returns one line per one it moved.
+ */
+export function refreshLocalMerges(store: Store, actor: Actor, projectDir: string): string[] {
+  const moved: string[] = [];
+  try {
+    for (const feature of store.listFeatures(READY)) {
+      const dir = featureDir(store, projectDir, feature);
+      const tip = runGit(dir, ["rev-parse", "--verify", "--quiet", `${branchRef(feature.name)}^{commit}`]);
+      if (!tip.ok || !baseHolds(dir, feature.baseBranch, tip.stdout)) continue;
+      store.updateFeature(actor, feature.id, { state: MERGED });
+      moved.push(`${feature.name}: the base branch ${feature.baseBranch} holds its tip ${tip.stdout}, so the feature branch is ${MERGED}`);
+    }
+    for (const task of store.listTasks(READY)) {
+      const repo = repoOfRow(store, projectDir, task);
+      if (repo.baseBranch === null || !baseHolds(repo.dir, repo.baseBranch, task.commitSha)) continue;
+      store.updateTask(actor, task.id, { state: CLOSED });
+      moved.push(`task ${task.id}: the base branch ${repo.baseBranch} holds its commit ${task.commitSha}, so the task is ${CLOSED}`);
+    }
+  } catch {
+    // A read or a write that fails leaves the record as it was; the next read tries again.
   }
   return moved;
 }

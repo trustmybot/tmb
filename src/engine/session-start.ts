@@ -21,7 +21,7 @@ import { type Actor, type Store, type Task, clip } from "./store/index.ts";
 export const OPEN_WORK_HEADING = "## Open work in the record";
 export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
-export const PULL_REQUESTS_ENDED_HEADING = "## Pull requests that ended since the last session";
+export const PULL_REQUESTS_ENDED_HEADING = "## Pull requests and local merges that ended since the last session";
 export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
 export const HOST_FILES_HEADING = "## tmb's files in this project";
 export const DOCTOR_HEADING = "## What tmb doctor finds";

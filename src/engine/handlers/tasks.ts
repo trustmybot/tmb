@@ -11,13 +11,14 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
 import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
-import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
 import { type PushOutcome, branchHoldsWork, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
+import { refreshLocalMerges } from "../pull-request-state.ts";
 import { truestBase, truestClose, type TruestReview, truestReviewOf } from "./truest.ts";
 
 export { type OperationContext, TASK_BRANCH_PREFIX } from "./common.ts";
@@ -451,20 +452,22 @@ export function taskBrief(store: Store, _actor: Actor, input: unknown): TaskBrie
 
 // --- task_list ----------------------------------------------------------------------------
 
-export const TASK_LIST_STATES = [OPEN, IN_REVIEW, CLOSED, DROPPED, "all"] as const;
+export const TASK_LIST_STATES = [OPEN, IN_REVIEW, READY, CLOSED, DROPPED, "all"] as const;
 export type TaskListState = (typeof TASK_LIST_STATES)[number];
 
 export const taskListSchema: InputSchema = {
   type: "object",
   properties: {
-    state: { type: "string", description: "Which tasks to list: open (the default), in_review (truest tasks waiting for the reviewer or their pull request), closed, dropped or all.", enum: TASK_LIST_STATES },
+    state: { type: "string", description: "Which tasks to list: open (the default), in_review (truest tasks waiting for the reviewer or their pull request), ready (truest tasks in a repo with no remote, waiting for the Human to merge them locally), closed, dropped or all.", enum: TASK_LIST_STATES },
   },
   required: [],
   additionalProperties: false,
 };
 
-export function taskList(store: Store, _actor: Actor, input: unknown): TaskSummary[] {
+export function taskList(store: Store, actor: Actor, input: unknown, context?: OperationContext): TaskSummary[] {
   const { state = OPEN } = validateInput<{ state?: TaskListState }>("task_list", taskListSchema, input);
+  // A ready task the Human merged locally moves on first (trustmybot/tmb#183).
+  if (context !== undefined) refreshLocalMerges(store, actor, context.projectDir);
   return store.listTasks(state === "all" ? undefined : state).map((task) => ({
     id: task.id,
     issueId: task.issueId,
@@ -781,7 +784,7 @@ export type TaskDropResult = {
 };
 
 /**
- * Ends an open task, or a truest task in review, without its work, with the reason. The task's
+ * Ends an open task, or a truest task in review or ready, without its work, with the reason. The task's
  * worktree goes as a closed task's does, unless it holds work nobody committed; its branch stays
  * while it holds commits past the task's base, so nothing committed is lost.
  */
@@ -790,8 +793,9 @@ export function taskDrop(store: Store, actor: Actor, input: unknown, context: Op
   requireRole(actor, "task_drop", ["planner"]);
   store.transaction(() => {
     const task = requireTask(store, id);
-    if (task.state !== OPEN && task.state !== IN_REVIEW) {
-      throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task or one in review is dropped`);
+    // A ready task the Human will not merge as it is (a squash, say, which tmb cannot see) is ended here too (trustmybot/tmb#183).
+    if (task.state !== OPEN && task.state !== IN_REVIEW && task.state !== READY) {
+      throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task, one in review or a ready one is dropped`);
     }
     store.updateTask(actor, id, { state: DROPPED, dropReason: reason.trim() });
   });
