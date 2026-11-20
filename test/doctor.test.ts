@@ -1,6 +1,6 @@
 // trustmybot/tmb#160: `tmb doctor` checks the machine and the project, reads only, and with
 // `--fix` does each fix the Human says yes to. Each check here is broken once and found.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,6 +17,9 @@ import { BASE_LAYER, openGraphDb } from "../src/engine/graph/db.ts";
 import { baseCommit } from "../src/engine/graph/git-source.ts";
 import { DOCTOR_HEADING, handleEvent, installPushGate, openProjectStore, projectDbPath, tieProgram, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "claude-code" };
@@ -363,6 +366,25 @@ describe("the project", () => {
     await runDoctorCommand(["--fix"], env(), io(answering("y").ask).io);
     expect(existsSync(worktree)).toBe(false);
     expect(git(project, "branch", "--list", "task/1")).toBe("");
+  });
+
+  test("another tool's pre-push hook gets tmb's line first after a yes, and an older line at its end is moved there (trustmybot/tmb#218)", async () => {
+    const hook = path.join(project, ".git", "hooks", "pre-push");
+    const other = '#!/bin/sh\ncat > /dev/null\n';
+    // An older added line, at the end, after the other tool has read git's ref lines.
+    const older = "if command -v 'tmb' >/dev/null 2>&1; then 'tmb' 'pre-push' '--project' '.' \"$@\" || exit 1; fi # tmb: added for the push gate; tmb remove takes this line out.";
+    for (const before of [other, `${other}${older}\n`]) {
+      writeFileSync(hook, before, { mode: 0o755 });
+      const off = () => of(runChecks(env()), "host files").filter((finding) => finding.summary.includes("the push gate is off where git's pre-push hook is another tool's"));
+      expect(off().map((finding) => finding.status)).toEqual(["warn"]);
+      await runDoctorCommand(["--fix"], env(), io(answering("y").ask).io);
+      const [shebang, line, ...rest] = readFileSync(hook, "utf8").split("\n");
+      expect(shebang).toBe("#!/bin/sh");
+      expect(line).toContain("'tmb' 'pre-push' '--project' '.'");
+      expect(line).toContain('exec < "$tmb_refs"');
+      expect([shebang, ...rest].join("\n")).toBe(other);
+      expect(off()).toEqual([]);
+    }
   });
 
   test("a code graph behind its base branch names `tmb index`", () => {

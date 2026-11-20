@@ -2,13 +2,16 @@
 // init prepares a fresh project without a question and leaves its settings empty, the first
 // session start tells the planner to apply the ones it recommends, onboard changes them as often
 // as asked, and remove takes back what init added.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readdirSync, readFileSync, statSync, writeFileSync, existsSync, mkdtempSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, CLI, tmbProcesses } from "./tmb-processes.ts";
 
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
+
 const NO_INPUT_LIMIT_MS = 20_000;
-const { scratch, env, git, run, tmb, sessionStart, connect, cleanup } = tmbProcesses("tmb-init-onboard-");
+const { scratch, env, git, run, tmb, human, sessionStart, connect, cleanup } = tmbProcesses("tmb-init-onboard-");
 
 afterAll(cleanup);
 
@@ -128,7 +131,7 @@ describe("onboarding at the first session", () => {
 });
 
 describe("the review mode is the Human's choice (trustmybot/tmb#114)", () => {
-  test("no task starts until it is chosen; in an unattended run the planner cannot choose it, and tmb onboard --review-mode --yes can", async () => {
+  test("no task starts until it is chosen; in an unattended run the planner cannot choose it, and the Human's tmb onboard --review-mode --yes can", async () => {
     const project = newProject();
     tmb(["init"], project);
     tmb(["onboard", "--base", "trunk", "--check", "true", "--yes"], project);
@@ -143,7 +146,7 @@ describe("the review mode is the Human's choice (trustmybot/tmb#114)", () => {
       expect(await callRefused(client, "settings_set", { review_mode: "agile" })).toContain("no one can answer in this run");
       expect(config(project).review_mode).toBeNull();
 
-      tmb(["onboard", "--review-mode", "agile", "--yes"], project);
+      human(["onboard", "--review-mode", "agile", "--yes"], project);
       expect((await callJson(client, "task_start", spec)).brief).toMatchObject({ state: "open", feature: "feat/goal" });
     } finally {
       await client.close();
@@ -166,10 +169,10 @@ describe("tmb onboard", () => {
     tmb(["init"], project);
     expect(tmb(["onboard", "--base", "release"], project)).toContain("Recorded 2 changes in the record's audit trail.");
     expect(config(project)).toMatchObject({ base_branch: "release", review_mode: null, checks: ["bun run test"] });
-    expect(tmb(["onboard", "--review-mode", "truest", "--role", "reviewer"], project)).toContain("Recorded 2 changes in the record's audit trail.");
+    expect(human(["onboard", "--review-mode", "truest", "--role", "reviewer", "--yes"], project)).toContain("Recorded 2 changes in the record's audit trail.");
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["bun run test"] });
     expect(tmb(["onboard"], project)).toContain("No setting changed, so nothing was recorded.");
-  });
+  }, 30_000);
 });
 
 describe("tmb remove", () => {
@@ -178,7 +181,7 @@ describe("tmb remove", () => {
     const before = snapshot(project);
     tmb(["init"], project);
     expect(snapshot(project)).not.toEqual(before);
-    tmb(["remove"], project);
+    human(["remove"], project);
     const after = snapshot(project);
     // The record is the Human's data, and remove never edits .gitignore.
     for (const kept of Object.keys(after).filter((file) => file === ".gitignore" || file.startsWith(".tmb"))) delete after[kept];

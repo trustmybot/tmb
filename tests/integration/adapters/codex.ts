@@ -57,7 +57,7 @@ export const codexHarness: HostHarness = {
       case "before-file-write":
         // Codex names no agent on a tool call (namesAgentOnToolCall is false): a subagent's call looks like the main agent's.
         return preToolUse(project, "apply_patch", { command: `*** Begin Patch\n*** Add File: ${event.file}\n+x\n*** End Patch\n` });
-      case "shell-command":
+      case "before-shell-command":
         return preToolUse(project, "Bash", { command: event.command });
       case "before-agent-start":
         return preToolUse(project, "spawn_agent", { agent_type: event.role, message: event.prompt });

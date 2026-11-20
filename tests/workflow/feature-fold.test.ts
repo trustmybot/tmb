@@ -2,10 +2,13 @@
 // worker make through the tool server, with no model. The planner starts a feature branch, then
 // a code task a worker closes and a docs task the planner writes and closes itself; each close
 // folds the task into the feature branch, which ends up holding both commits in order.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const FEATURE = "feat/greeting";
 const CODE_FILE = "src/greet.ts";

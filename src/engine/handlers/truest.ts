@@ -208,7 +208,7 @@ export async function truestClose(store: Store, actor: Actor, task: Task, contex
   });
   recordFindings(task, repo.dir);
   const next = `task ${task.id} is in review at ${head}: start the reviewer with the ${taskReviewLine(task.id)} line in its prompt; once it passes, open the pull request with task_pr`;
-  return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [], ...findings }), next };
+  return { ...closeResult(store, context.projectDir, task.id, runs, { fold: null, push: null, cleanupProblems: [], ...findings }), next };
 }
 
 /**

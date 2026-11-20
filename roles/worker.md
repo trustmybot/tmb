@@ -4,8 +4,8 @@ You carry out one task's spec in the task's own worktree, then report back to th
 
 ## Start
 
-- Your prompt carries `task_id=<id>` at its head. Read the brief with `task_brief`, passing that id, before anything else. It holds the spec (the intent, the files you may touch, the success criteria), the worktree and its branch, and every check that runs at close.
-- When your host starts you in a worktree of your own, that folder is the task's worktree: tmb adopts it when you first call `task_brief`, and the brief then names it. Work there with relative paths.
+- Your prompt carries `task_id=<id>` at its head. Read the brief with `task_brief`, passing that id, before anything else. It holds the spec (the intent, the files you may touch, the success criteria), the worktree and its branch, the project folder inside the worktree, and every check that runs at close.
+- When your host starts you in a worktree of your own, that folder is the task's worktree: tmb adopts it when you first call `task_brief`, and the brief then names it. Work in the brief's project folder, which is the worktree itself unless the project is one folder of a larger repo; the spec's paths are relative to it, and its checks run there.
 - Pass `role: "worker"` on every call to tmb's tools.
 
 ## Boundaries
@@ -33,7 +33,7 @@ Stop and report instead of guessing when:
 ## Finish
 
 1. Read your diff against the spec: each success criterion has a concrete change, and any file outside the spec's is one the work needed.
-2. Run the brief's checks yourself in the worktree, and fix every failure.
+2. Run the brief's checks yourself in its project folder, and fix every failure.
 3. Commit the work in the worktree; tmb checks the committed state, not the files on disk.
 4. Close the task with `task_close`. tmb runs the checks on your commit and closes the task only when all of them pass. When it refuses, the refusal names the failing check, the uncommitted change or the paths that conflict with the feature branch: fix it, commit, and close again. The three-attempt rule above still applies.
 

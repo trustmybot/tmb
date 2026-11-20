@@ -33,11 +33,12 @@ import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
 import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
+import { HUMAN_YES, humanOnlyStep, humanYesQuestion, noTerminalRefusal, notConfirmedRefusal } from "./engine/human-only.ts";
 import { pushActorFrom } from "./engine/push-actor.ts";
 import { runGit } from "./engine/git.ts";
 import { repoOf, workspaceRepos } from "./engine/repos.ts";
 import type { Store } from "./engine/store/index.ts";
-import { judgePush, NO_RECORD, removePushGates, repoTopOf } from "./engine/push-gate.ts";
+import { judgePush, NO_RECORD, pushGateOffLine, removePushGates, repoTopOf } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { formatBytes, isProcessRunning } from "./builds.ts";
 import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
@@ -61,13 +62,14 @@ const USAGE: Record<string, string> = {
                             applies the ones it recommends at its first session. Run it once
                             per host to use two hosts on one record`,
   onboard: `  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-              [--check <command>]... [--repo <name> [--exempt]] [--yes]
+              [--check <command>]... [--repo <name> [--exempt]] [--add-push-gate] [--yes]
                             Set the project's settings: a host's role, the base branch, the
                             review mode and the checks. In a workspace of several repos, --repo
                             names the repo --base, --check and --review-mode set (--review-mode
                             workspace makes it follow the workspace's), and --exempt makes tmb do
-                            no work in it. Asks on a terminal, else keeps the stored values; run it
-                            again at any time`,
+                            no work in it. --add-push-gate adds tmb's one line to a pre-push hook
+                            that is another tool's. Asks on a terminal, else keeps the stored
+                            values; run it again at any time`,
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept`,
   migrate: `  tmb migrate [--from <plugin db>] [--repo <name> [--into <repo>]] [--json]
@@ -334,7 +336,8 @@ function hookRun(): HookRun {
 
 /** What a session start says about this tmb's own state: the host files' refresh and old builds; it also names the session. Never throws. */
 function sessionStartLines(projectDir: string, adapter: HostAdapter, stdinText: string): string | null {
-  const lines = [hostFileRefresh(projectDir)];
+  // A repo whose pre-push hook is another tool's has no push gate: said at every start until it has (trustmybot/tmb#184).
+  const lines = [hostFileRefresh(projectDir), pushGateOffLine(projectDir)];
   try {
     const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
     if (updater.tracksSessions) {
@@ -573,6 +576,7 @@ const SETTING_OPTIONS = {
   check: { type: "string", multiple: true },
   repo: { type: "string" },
   exempt: { type: "boolean" },
+  "add-push-gate": { type: "boolean" },
 } as const;
 
 /** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting (trustmybot/tmb#162). */
@@ -580,7 +584,7 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
   const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
-  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean; repo?: string; exempt?: boolean };
+  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean; repo?: string; exempt?: boolean; "add-push-gate"?: boolean };
   // onboard asks only when a person is at both ends; init never asks or waits for input.
   const attended = process.stdin.isTTY === true && process.stdout.isTTY === true;
   const terminal = command === "onboard" && attended ? terminalAsk() : null;
@@ -590,7 +594,7 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
     tmbCommand: tmbCommand(),
     program: { name: runningProgram(version).name, version },
     adapters: HOST_ADAPTERS,
-    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes, repo: given.repo, exempt: given.exempt },
+    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes, repo: given.repo, exempt: given.exempt, addPushGate: given["add-push-gate"] },
     ask: terminal?.ask ?? null,
     out: (line) => process.stdout.write(`${line}\n`),
     colour: colourOn(process.stdout),
@@ -816,6 +820,7 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
   if (asksHelp(rest)) return writeCommandHelp(command, rest[0]?.startsWith("-") ? undefined : rest[0]);
+  if (!(await humanSaysYes(argv))) return 1;
   try {
     return await dispatch(command, rest);
   } catch (error) {
@@ -823,6 +828,32 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(usageErrorText(`tmb ${command}`, error.message, errPaint()));
     return 2;
   }
+}
+
+/**
+ * A step only the Human may take runs only on a terminal, once the Human types yes there
+ * (trustmybot/tmb#179): an agent's shell has no terminal, so it is refused before the record is
+ * opened. A run that is truly the Human's with no terminal, such as CI, may set the review mode
+ * only when unattended mode is on for that run. True when the call may go on.
+ */
+async function humanSaysYes(argv: string[]): Promise<boolean> {
+  const step = humanOnlyStep(argv);
+  if (step === null) return true;
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+    if (step.command === "tmb onboard --review-mode" && hookRun().unattended) return true;
+    process.stderr.write(`tmb: ${noTerminalRefusal(step)}\n`);
+    return false;
+  }
+  const terminal = terminalAsk();
+  let answer: string | null;
+  try {
+    answer = await terminal.ask(humanYesQuestion(step, argv));
+  } finally {
+    terminal.close();
+  }
+  if (answer?.trim().toLowerCase() === HUMAN_YES) return true;
+  process.stderr.write(`tmb: ${notConfirmedRefusal(step)}\n`);
+  return false;
 }
 
 /** The command a failure came from, for a report: its name and, when it is a plain word, its action; never its values. */

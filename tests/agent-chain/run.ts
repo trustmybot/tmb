@@ -25,7 +25,7 @@ try {
   fail(`git init failed in ${project}`);
 }
 tmb.shown(["init"], `tmb init failed in ${project}`);
-tmb.shown(["onboard", "--yes", "--review-mode", "agile"], `tmb onboard failed in ${project}`);
+tmb.human(["onboard", "--yes", "--review-mode", "agile"], `tmb onboard failed in ${project}`);
 
 // Each session is a new claude with tmb's tools allowed.
 const recordLog = path.join(logs, "record.log");

@@ -1,6 +1,6 @@
 // A feature branch after its pull request (trustmybot/tmb#131): merged or closed when GitHub says so,
 // left in pr_open when GitHub cannot be read, and read only when the caller says to.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +8,9 @@ import { featureList } from "../src/engine/handlers/index.ts";
 import { handleEvent, openProjectStore, PULL_REQUESTS_ENDED_HEADING } from "../src/engine/index.ts";
 import { CLOSED_UNMERGED, MERGED, type PullRequestReader, readPullRequestState, refreshPullRequestStates } from "../src/engine/pull-request-state.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

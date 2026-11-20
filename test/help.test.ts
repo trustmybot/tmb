@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   actionUsage,
   asksHelp,
@@ -12,6 +12,9 @@ import {
   unknownCommandText,
   usageErrorText,
 } from "../src/engine/doors/help.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const ESC = "\u001b[";
 const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "dashboard", "update", "help"];

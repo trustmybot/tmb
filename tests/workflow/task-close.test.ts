@@ -1,10 +1,13 @@
 // Workflow simulation: a task's close, scripted as the tool calls a planner and a worker make
 // through the tool server, with no model. The project's check fails until the fix lands, so the
 // close must wait for it, and a closed task never closes twice.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const VALUE_FILE = "value.txt";
 const CHECK = `grep -qx right ${VALUE_FILE}`;

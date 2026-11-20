@@ -1,6 +1,9 @@
 // Who a push is recorded as: the agent a push tmb runs names, or the Human (trustmybot/tmb#134).
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { PUSH_ACTOR_ENV, pushActorEnv, pushActorFrom } from "../src/engine/push-actor.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 describe("the push's actor", () => {
   test("a push tmb runs for an agent names it, and the hook reads it back", () => {

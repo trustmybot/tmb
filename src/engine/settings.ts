@@ -268,4 +268,4 @@ export function reviewModeChosenVia(store: Store): ReviewModeChooser | null {
 export const NO_REVIEW_MODE =
   "no review mode is chosen, and it is the Human's choice, as it decides how many tokens the project uses. " +
   "Ask the Human which mode they choose (agile or truest) and set their answer with settings_set; " +
-  "with no one to ask, the Human runs `tmb onboard` first (`tmb onboard --review-mode <mode> --yes` sets it without a question)";
+  "with no one to ask, the Human runs `tmb onboard` first (`tmb onboard --review-mode <mode>` sets it once they type yes on their terminal)";

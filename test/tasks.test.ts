@@ -1,6 +1,6 @@
 // The task flow: start a task on its own branch and worktree, brief it, and close it only
 // after the checks pass on its committed work. Runs against a real git repository.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +23,9 @@ import { runCheck, runChecks } from "../src/engine/checks.ts";
 import { newId } from "../src/engine/ids.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };
@@ -308,7 +311,7 @@ describe("task_start", () => {
 describe("task_brief and task_list", () => {
   test("the brief gives the spec, worktree, branch and checks; the list gives open tasks only", () => {
     const started = taskStart(store, PLANNER, spec(), context());
-    expect(taskBrief(store, REVIEWER, { id: started.id.toLowerCase() })).toEqual(started.brief);
+    expect(taskBrief(store, REVIEWER, { id: started.id.toLowerCase() }, context())).toEqual(started.brief);
     expect(taskList(store, WORKER, {})).toEqual([
       {
         id: started.id,
@@ -327,7 +330,7 @@ describe("task_brief and task_list", () => {
         repo: null,
       },
     ]);
-    expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" })).code).toBe("not_found");
+    expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" }, context())).code).toBe("not_found");
   });
 
   test("the list takes a state: open by default, closed, or all oldest first; any other is refused", async () => {
@@ -347,7 +350,7 @@ describe("task_brief and task_list", () => {
 
   test("a task recorded without a task_start spec reads as its text, holding no files", () => {
     const id = store.appendTask(HUMAN, { issueId, title: "by hand", spec: "## Goal", state: "open" });
-    expect(taskBrief(store, HUMAN, { id }).spec).toEqual({ intent: "## Goal", files: [], checks: [], criteria: [] });
+    expect(taskBrief(store, HUMAN, { id }, context()).spec).toEqual({ intent: "## Goal", files: [], checks: [], criteria: [] });
     expect(taskStart(store, PLANNER, spec(), context()).id).not.toBe(id);
   });
 });

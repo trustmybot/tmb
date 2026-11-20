@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { formatDevVersion, highestStableTag, prNumberFromSubject } from "../scripts/dev-version.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 describe("highestStableTag", () => {
   test("compares by SemVer, not by string", () => {

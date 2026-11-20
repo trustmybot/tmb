@@ -2,14 +2,17 @@
 // commit status tmb/review on the reviewed commit; a mark that could not be sent is recorded and
 // sent at the next occasion; a pull request and `tmb onboard` say whether the base branch
 // requires the mark. The project's origin has a GitHub address that git rewrites to a bare repository.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { githubStandIn, PR_URL } from "./github-stand-in.ts";
 import { callJson, tmbProcesses } from "./tmb-processes.ts";
 
-const { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-review-mark-");
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
+
+const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-review-mark-");
 afterAll(cleanup);
 const github = githubStandIn(scratch, env, git);
 
@@ -18,7 +21,7 @@ const PASSED = { state: "success", context: "tmb/review", description: "Passed t
 /** A truest project whose origin is the stand-in's repository; returns it and the bare repository behind it. */
 function truestProject(): { project: string; bare: string } {
   const project = setUpProject("true", undefined, { origin: true });
-  tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+  human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
   const bare = git(project, "config", "--get", "remote.origin.url");
   github.point(project);
   return { project, bare };
@@ -70,7 +73,7 @@ describe("the mark on GitHub, in truest mode", () => {
 
       // The waiver is that occasion; its own commit is not on GitHub yet, so the command line says when it goes.
       const waived = await closedTask(client, issue, "waive.txt");
-      expect(tmb(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(
+      expect(human(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(
         `GitHub does not have ${waived.sha.slice(0, 12)} yet; tmb sends its mark tmb/review success once it pushes the commit.`,
       );
       expect(github.statuses(failed.sha)).toEqual([{ state: "failure", context: "tmb/review", description: "Failed tmb's review: 1 blocking finding" }]);
@@ -82,7 +85,7 @@ describe("the mark on GitHub, in truest mode", () => {
       // A commit already on GitHub is marked at once.
       const early = await closedTask(client, issue, "early.txt");
       onOrigin(bare, project, early.branch);
-      expect(tmb(["task", "waive", early.id, "--reason", "pushed"], project)).toContain(`Marked tmb/review success on ${early.sha.slice(0, 12)} on GitHub.`);
+      expect(human(["task", "waive", early.id, "--reason", "pushed"], project)).toContain(`Marked tmb/review success on ${early.sha.slice(0, 12)} on GitHub.`);
     } finally {
       await client.close();
     }
@@ -105,14 +108,14 @@ describe("the mark on GitHub, in truest mode", () => {
       // GitHub is back: the waiver of another task sends the first task's mark.
       github.down(false);
       const second = await closedTask(client, issue, "second.txt");
-      tmb(["task", "waive", second.id, "--reason", "small"], project);
+      human(["task", "waive", second.id, "--reason", "small"], project);
       expect(github.statuses(first.sha)).toEqual([PASSED]);
       expect(github.statuses(second.sha)).toEqual([]);
 
       // A waiver while GitHub is down says so; the pull request, after its push, sends it.
       github.down(true);
       const third = await closedTask(client, issue, "third.txt");
-      const said = tmb(["task", "waive", third.id, "--reason", "small too"], project);
+      const said = human(["task", "waive", third.id, "--reason", "small too"], project);
       expect(said).toContain("The mark on GitHub was not sent (");
       expect(said).toContain("tmb sends it on the next review, waiver or pull request.");
       github.down(false);
@@ -188,7 +191,7 @@ describe("the mark on GitHub, in agile mode", () => {
       const failed = await callJson(client, "review_record", { feature: "feat/late", commit: lateTip, verdict: "fail", blocking: ["lib/b.txt:1 b"], role: "reviewer" });
       stopSubagent(project, "reviewer");
       expect(failed.mark).toMatchObject({ state: "failure", sent: false });
-      expect(tmb(["feature", "waive", "feat/late", "--reason", "The Human read it"], project)).toContain("The mark on GitHub was not sent");
+      expect(human(["feature", "waive", "feat/late", "--reason", "The Human read it"], project)).toContain("The mark on GitHub was not sent");
       github.down(false);
       expect(await callJson(client, "feature_pr", { feature: "feat/late", title: "Late" })).toMatchObject({ coveredBy: "waiver", markRequired: false });
       expect(github.statuses(lateTip)).toEqual([{ state: "success", context: "tmb/review", description: "Passed: review waived by the Human: The Human read it" }]);

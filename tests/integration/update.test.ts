@@ -1,6 +1,6 @@
 // Each channel's install updates itself from a release repo laid out like trustmybot/tmb-releases,
 // served locally, and never in the middle of a session or a task.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -12,6 +12,9 @@ import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, update
 import { buildTmb, cleanup, installedVersion, openTask, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
 import { projectDbPath } from "../../src/engine/project.ts";
 import { SCHEMA_VERSION } from "../../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const CHANNELS = {
   dev: { old: "0.1.0-dev.1", next: "0.1.0-dev.2" },

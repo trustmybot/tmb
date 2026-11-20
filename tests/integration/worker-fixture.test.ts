@@ -1,10 +1,13 @@
 // The worker agent run's fixture project: its own tests fail as shipped, so the run proves a
 // fix, and pass once add returns the sum.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const FIXTURE = path.resolve(import.meta.dir, "../agent-run/fixtures/math");
 

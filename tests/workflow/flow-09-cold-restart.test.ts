@@ -2,9 +2,12 @@
 // up and work is recorded, a new session's start, answered by the session start hook, lists the
 // open issue and the open task from the record, and asks for no init or onboarding; the settings
 // onboard stored are still in force. Scripted through the tool server and the hook, with no model.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { EMPTY_SETTINGS_HEADING, OPEN_WORK_HEADING, plannerRole } from "../../src/engine/index.ts";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { tmbJson, setUpProject, sessionStart, connect, cleanup } = tmbProcesses("tmb-flow-09-");
 afterAll(cleanup);

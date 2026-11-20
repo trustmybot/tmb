@@ -3,11 +3,14 @@
 // a fail, has no mark until it is reviewed and on GitHub, and its review leaves the old commit's
 // mark as it was.
 // A stand-in for GitHub keeps the marks; the project's origin has a GitHub address.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { githubStandIn } from "../integration/github-stand-in.ts";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
 
-const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-mark-");
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
+
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-mark-");
 afterAll(cleanup);
 const github = githubStandIn(scratch, env, git);
 
@@ -51,7 +54,7 @@ describe("a new commit has no mark until it is reviewed", () => {
 
   test("truest: rework after a fail is a new commit with no mark until the reviewer passes it and task_pr pushes it", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+    human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
     const bare = git(project, "config", "--get", "remote.origin.url");
     github.point(project);
     const issue = tmbJson(["issue", "create", "Lines"], project).id as string;

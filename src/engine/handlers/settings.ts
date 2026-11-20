@@ -179,7 +179,7 @@ export function settingsSet(store: Store, actor: Actor, input: unknown, context:
   if (context.unattended === true && named.includes("review_mode") && values.review_mode !== readSettings(store).review_mode) {
     throw new HandlerError(
       "refused",
-      "the review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --review-mode <mode> --yes` without a question)",
+      "the review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --review-mode <mode>`, once they type yes on their terminal)",
     );
   }
   const nextRepos = repos !== null && named.includes("repos") ? mergedRepos(repos, values.repos) : null;

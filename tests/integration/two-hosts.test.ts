@@ -2,11 +2,14 @@
 // record, and both write at the same time. Every write lands, each names the host that made
 // it, and the database stays whole.
 import { Database } from "bun:sqlite";
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { openProjectStore, projectDbPath } from "../../src/engine/index.ts";
 import { CLI, callJson, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const t = tmbProcesses("tmb-two-hosts-");
 afterAll(() => t.cleanup());

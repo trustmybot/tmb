@@ -1,10 +1,13 @@
 // A Claude Code subagent's cost from its transcript (trustmybot/tmb#133): each message counted
 // once by its id, the last line of a message winning, summed per model.
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { usageOfTranscript, usageOfTranscriptFile } from "../src/adapters/claude-code/usage.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const line = (id: string, model: string, input: number, output: number, cacheRead = 0, cacheWrite = 0) =>
   JSON.stringify({

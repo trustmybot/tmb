@@ -26,6 +26,7 @@ import {
   type Settings,
   type SettingValues,
   tieProgram,
+  tiedProgram,
   validateHostRole,
   validateSetting,
   writeSetting,
@@ -37,7 +38,7 @@ import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
 import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
-import { installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
+import { addToForeignHook, foreignHooks, installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
 import { runGit } from "./engine/git.ts";
 import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
 import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./engine/settings.ts";
@@ -57,6 +58,8 @@ export type SetupFlags = {
   repo?: string;
   /** onboard in a workspace: the repo --repo names is one tmb does no work in. */
   exempt?: boolean;
+  /** onboard: the Human's yes to adding tmb's one line to each pre-push hook that is another tool's (trustmybot/tmb#184). --yes does not give it. */
+  addPushGate?: boolean;
 };
 
 /** Shows a prompt and reads one line; null once input has ended. */
@@ -558,7 +561,7 @@ function repoModeFlag(value: string): { mode: ReviewMode | undefined } {
 /** The refusal every task start meets until the review mode is chosen, said where the Human can act on it. */
 const NO_REVIEW_MODE_LINE =
   "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. " +
-  `Run tmb onboard on a terminal, or tmb onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}> --yes.`;
+  `Run tmb onboard, or tmb onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}>, on a terminal.`;
 
 function sayNoReviewMode(reviewMode: ReviewMode | null, out: (line: string) => void): void {
   if (reviewMode === null) out(NO_REVIEW_MODE_LINE);
@@ -641,6 +644,39 @@ export async function runOnboard(options: SetupOptions): Promise<void> {
   sayNoReviewMode(onboarded.reviewMode, out);
   if (onboarded.repos === undefined) sayMarkRule(projectDir, onboarded.base, out);
   else for (const name of workingRepoNames(onboarded.repos)) sayMarkRule(repoDirOf(projectDir, name), onboarded.repos[name]!.base_branch ?? null, out);
+  await offerPushGate(options, onboarded.repos ?? null);
+}
+
+/**
+ * A pre-push hook that is another tool's, as husky and lefthook write, leaves the push gate off
+ * (trustmybot/tmb#184). tmb adds its one line to it only with the Human's yes: --add-push-gate,
+ * or a yes on the terminal; --yes does not give it. With neither, it says the gate is off.
+ */
+async function offerPushGate(options: SetupOptions, repos: RepoPolicies | null): Promise<void> {
+  const { projectDir, flags, out } = options;
+  const hooks = foreignHooks(projectDir, repos);
+  if (hooks.length === 0) return;
+  const program = tiedProgramName(projectDir) ?? options.program?.name ?? "tmb";
+  const ask = flags.yes === true ? null : options.ask;
+  for (const hook of hooks) {
+    let yes = flags.addPushGate === true;
+    if (!yes && ask !== null) {
+      const answer = await ask(`git's pre-push hook ${hook.file} is another tool's, so the push gate is off in ${hook.dir}. Add tmb's one line to it? [y/N]: `);
+      yes = /^y(es)?$/i.test(answer?.trim() ?? "");
+    }
+    out(yes ? addToForeignHook(hook, program, projectDir) : `The push gate stays off in ${hook.dir}: its pre-push hook ${hook.file} is another tool's. \`${program} onboard --add-push-gate\` adds tmb's one line to it.`);
+  }
+}
+
+/** The program the project is tied to, by name, as the line tmb adds to another tool's hook calls it. */
+function tiedProgramName(projectDir: string): string | null {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return null;
+  try {
+    return tiedProgram(opened.store)?.program ?? null;
+  } finally {
+    opened.store.close();
+  }
 }
 
 /** Whether the base branch's protection requires tmb's mark on GitHub, and how to turn it on; nothing when origin is no GitHub repository. */
