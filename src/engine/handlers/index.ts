@@ -75,7 +75,7 @@ export const OPERATIONS = {
   },
   feature_list: {
     description:
-      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. A feature branch in pr_open whose pull request merged or closed moves to merged or closed first, read through the Human's GitHub command line. Use it before starting a task to see which feature branch it belongs on.",
+      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. A feature branch in pr_open whose pull request merged or closed moves to merged or closed first, read through the Human's GitHub command line; a ready one (a repo with no remote) moves to merged once the local base branch holds its tip. Use it before starting a task to see which feature branch it belongs on.",
     inputSchema: feature.featureListSchema,
     run: feature.featureList,
   },
@@ -99,7 +99,7 @@ export const OPERATIONS = {
   },
   feature_pr: {
     description:
-      "Open the one pull request of a feature branch into the base branch, once the reviewer passed the branch at its tip or the Human waived the review: tmb pushes the branch to origin and opens the pull request with the GitHub command line. Refused while neither covers the tip. For the planner.",
+      "Open the one pull request of a feature branch into the base branch, once the reviewer passed the branch at its tip or the Human waived the review: tmb pushes the branch to origin and opens the pull request with the GitHub command line. In a repo with no remote nothing is pushed and no pull request opens: the branch is recorded ready, and the answer gives the Human the command to merge it locally. Refused while neither covers the tip. For the planner.",
     inputSchema: review.featurePrSchema,
     run: review.featurePr,
   },
@@ -135,7 +135,7 @@ export const OPERATIONS = {
   },
   task_pr: {
     description:
-      "Open a truest task's own pull request into the base branch, once the reviewer passed it at its commit or the Human waived the review. When the base branch moved, tmb first rebases the task onto it and runs the checks again: an unchanged patch keeps its review, a changed one needs a new review, a conflict reopens the task. Then tmb pushes the task's branch and opens the pull request with the GitHub command line. For the planner.",
+      "Open a truest task's own pull request into the base branch, once the reviewer passed it at its commit or the Human waived the review. When the base branch moved, tmb first rebases the task onto it and runs the checks again: an unchanged patch keeps its review, a changed one needs a new review, a conflict reopens the task. Then tmb pushes the task's branch and opens the pull request with the GitHub command line. In a repo with no remote nothing is pushed and no pull request opens: the task is recorded ready, its worktree goes and its branch stays, and the answer gives the Human the command to merge it locally. For the planner.",
     inputSchema: truest.taskPrSchema,
     run: truest.taskPr,
   },
@@ -147,7 +147,7 @@ export const OPERATIONS = {
   },
   task_list: {
     description:
-      "List the open tasks in the project's tmb record, or those in review, the closed ones, the dropped ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
+      "List the open tasks in the project's tmb record, or those in review, the ready ones (waiting for the Human's local merge in a repo with no remote; one the base branch holds moves to closed first), the closed ones, the dropped ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },

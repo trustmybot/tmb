@@ -21,6 +21,16 @@ export const PR_OPEN = "pr_open";
 export const MERGED = "merged";
 /** A feature branch whose pull request closed without a merge; a task or a new pull request reopens it (trustmybot/tmb#152). */
 export const CLOSED_UNMERGED = CLOSED;
+/**
+ * A feature branch, or a truest task, in a repo with no remote whose review passed or was waived:
+ * nothing was pushed and no pull request opened; the Human merges it locally (trustmybot/tmb#183).
+ * It moves on once the local base branch holds its tip: a feature to merged, a task to closed.
+ */
+export const READY = "ready";
+/** The commands the Human runs, in `dir`, to merge `branch` into `base` locally. */
+export function localMergeCommand(base: string, branch: string): string {
+  return `git switch ${base} && git merge --no-ff ${branch}`;
+}
 export const TRUEST = "truest";
 /** Task branches live under this prefix, so no feature branch may take it. */
 export const TASK_BRANCH_PREFIX = "tmb/";

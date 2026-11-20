@@ -134,7 +134,7 @@ describe("task_drop", () => {
     expect(refusal(() => taskDrop(store, PLANNER, { id: "01KA0000000000000000000000", reason: "x" }, context())).code).toBe("not_found");
 
     taskDrop(store, PLANNER, { id: started.id, reason: "wrong" }, context());
-    expect(refusal(() => taskDrop(store, PLANNER, { id: started.id, reason: "again" }, context())).message).toContain("is dropped; only an open task or one in review is dropped");
+    expect(refusal(() => taskDrop(store, PLANNER, { id: started.id, reason: "again" }, context())).message).toContain("is dropped; only an open task, one in review or a ready one is dropped");
 
     const closing = taskStart(store, PLANNER, spec(), context());
     commitWork(closing.worktree);

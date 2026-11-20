@@ -138,12 +138,13 @@ describe("truest mode", () => {
     expect(truestCoveredCommits(store)).toEqual([task.sha]);
   });
 
-  test("task_pr is the planner's, and is refused without a review or without origin", async () => {
+  test("task_pr is the planner's, is refused without a review, and without origin records the task ready", async () => {
     const task = await inReview();
     expect((await refusal(() => taskPr(store, WORKER, { id: task.id, title: "x" }, context()))).message).toContain("for the planner");
     expect((await refusal(() => taskPr(store, PLANNER, { id: task.id, title: "x" }, context()))).message).toContain("no reviewer has reviewed it");
     review(task.id, task.sha, "pass");
-    expect((await refusal(() => taskPr(store, PLANNER, { id: task.id, title: "x" }, context()))).message).toContain("no remote named origin");
+    expect(await taskPr(store, PLANNER, { id: task.id, title: "x" }, context())).toMatchObject({ url: null, push: expect.stringContaining("no remote named origin") });
+    expect(taskBrief(store, PLANNER, { id: task.id }).state).toBe("ready");
   });
 
   test("the mode is fixed at the task's start: an agile task stays agile when the mode changes", async () => {

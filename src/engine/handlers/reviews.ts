@@ -7,10 +7,10 @@ import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, OPEN, type OperationContext, PR_OPEN, requireRole } from "./common.ts";
+import { CLOSED_UNMERGED, localMergeCommand, OPEN, type OperationContext, PR_OPEN, READY, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureDir, featureTip, knownBase } from "./features.ts";
-import { isAncestor, pushFeature } from "./fold.ts";
+import { hasOrigin, isAncestor, pushFeature } from "./fold.ts";
 import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
 import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -71,7 +71,10 @@ export type ReviewRecordResult = { review: ReviewSummary; feature: string; cover
 export type WaiveResult = Waiver & { mark: MarkResult };
 export type FeaturePrResult = {
   feature: string;
-  url: string;
+  /** The pull request's address; null in a repo with no remote, where none opens. */
+  url: string | null;
+  /** Set in a repo with no remote: the branch is ready, and the Human merges it locally with these commands, in `dir`. */
+  localMerge: { dir: string; command: string } | null;
   base: string;
   tip: string;
   coveredBy: "review" | "waiver";
@@ -97,7 +100,7 @@ function requireFeature(store: Store, name: string): Feature {
 /** A feature branch that takes work: open, or with its pull request open, where fix tasks land (trustmybot/tmb#168). */
 function requireOpenFeature(store: Store, name: string, doing: string): Feature {
   const feature = requireFeature(store, name);
-  if (feature.state !== OPEN && feature.state !== PR_OPEN) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
+  if (feature.state !== OPEN && feature.state !== PR_OPEN && feature.state !== READY) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
   return feature;
 }
 
@@ -313,7 +316,9 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   const mark = markReviewed(store, actor, dir, tip, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
-    ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
+    ? hasOrigin(dir)
+      ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
+      : `the repository has no remote, so no pull request opens: the planner calls feature_pr for ${feature.name}, which records it ready for the Human to merge locally`
     : `the planner reworks each blocking finding as a task on ${feature.name}, then starts the reviewer again`;
   return { review, feature: feature.name, covered, next, mark };
 }
@@ -389,7 +394,8 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   requireRole(actor, "feature_pr", ["planner"]);
   // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
   const feature = requireFeature(store, given.feature);
-  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN) {
+  // A ready branch (no remote) may ask again: for the merge command, or for a pull request once a remote was added.
+  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN && feature.state !== READY) {
     throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}, so its pull request does not open again`);
   }
   const brief = featureBriefOf(store, context.projectDir, feature);
@@ -408,6 +414,12 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   }
 
   const dir = featureDir(store, context.projectDir, feature);
+  if (!hasOrigin(dir)) {
+    // No remote (trustmybot/tmb#183): nothing is pushed and no pull request opens; the Human merges locally.
+    store.updateFeature(actor, feature.id, { state: READY });
+    const localMerge = { dir, command: localMergeCommand(feature.baseBranch, feature.name) };
+    return { feature: feature.name, url: null, localMerge, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: "skipped: the repository has no remote named origin", markRequired: null };
+  }
   const push = pushFeature(dir, feature.name, actor);
   if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
   // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
@@ -419,7 +431,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   const markRequired = markRequiredOn(dir, feature.baseBranch);
   // Its pull request is open: the push of the reviewed tip is what updates it (trustmybot/tmb#168).
   if (feature.state === PR_OPEN && feature.prUrl !== null) {
-    return { feature: feature.name, url: feature.prUrl, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
+    return { feature: feature.name, url: feature.prUrl, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
   }
   const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
   let opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
@@ -430,6 +442,6 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   }
   if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
-  return { feature: feature.name, url: opened.url, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
+  return { feature: feature.name, url: opened.url, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
 }
 
