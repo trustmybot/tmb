@@ -107,3 +107,26 @@ export function removeRoleFiles(projectDir: string, only: (file: string) => bool
   }
   return removed;
 }
+
+/** What `tmb doctor` finds wrong with tmb's role files: one line each, none when init would change nothing. Never writes. */
+export function roleFileGaps(projectDir: string, roles: readonly SubagentRole[]): string[] {
+  const gaps: string[] = [];
+  for (const role of roles) {
+    const file = roleFilePath(projectDir, role.name);
+    const shown = path.relative(projectDir, file);
+    if (!existsSync(file)) gaps.push(`${shown} is missing: the ${role.name} role is not written`);
+    else if (!isTmbRoleFile(file)) gaps.push(`${shown} is not tmb's, so the ${role.name} role is not tmb's either; tmb leaves it alone`);
+    else if (readFileSync(file, "utf8") !== roleFileText(role)) gaps.push(`${shown} is not this version's ${role.name} role`);
+  }
+  const wanted = new Set(roles.map((role) => roleFilePath(projectDir, role.name)));
+  const dir = agentsDir(projectDir);
+  if (existsSync(dir)) {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.endsWith(".md") && !wanted.has(file) && isTmbRoleFile(file)) {
+        gaps.push(`${path.relative(projectDir, file)} is tmb's role file for a role this version no longer has`);
+      }
+    }
+  }
+  return gaps;
+}

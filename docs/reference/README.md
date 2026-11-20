@@ -184,6 +184,43 @@ For more information, try 'tmb --help'.
 - A usage mistake goes to stderr and exits with code 2: an unknown command, a flag a command does not take, or `tmb` with no command, which prints the short help.
 - Help and errors are coloured on a terminal. `NO_COLOR` turns colour off and `FORCE_COLOR` turns it on; with both set, `NO_COLOR` wins. Output sent to a file or a pipe, or a terminal with `TERM=dumb`, has no colour.
 
+## Check this machine and project
+
+`tmb doctor` checks the machine and the project you run it in, and prints one line per check: `✓` fine, `!` a warning, `✗` a failure, each with the command or the step that fixes it. It only reads, and exits 1 when a check failed.
+
+| Command | Does |
+|---|---|
+| `tmb doctor` | Runs every check and prints what it finds. |
+| `tmb doctor --json` | Prints the same findings as data. |
+| `tmb doctor --fix` | Asks about each fix it can do, one at a time, `[y/N]`, and does only what you say yes to. Without a terminal it changes nothing and says so. |
+
+| On this machine | Fix |
+|---|---|
+| The program: its name, version, channel, where it is installed, and whether it is the one on the PATH | The install step |
+| Old builds kept on disk, each with its version, its size and the sessions that use it | Deletes each one no running session uses, on your yes. One a session uses is never offered |
+| A downloaded update that has not applied, and why; a look for an update that failed | `tmb update` |
+| Entries of sessions whose process ended | Removes them, on your yes |
+| Files an update left when it stopped half-way | Removes them, on your yes |
+| Other channels' programs installed side by side, each with its version | Shown only |
+| The state folder can be read and written | The step that gives you access |
+
+| In this project | Fix |
+|---|---|
+| The record: readable, its shape's version, and which program wrote it | Repairs a damaged record on your yes, keeping the damaged file beside it; for a newer shape, the program to use |
+| The host files and git's pre-push hook match what this tmb wires | `tmb init --host <id>` |
+| The program the project is tied to, and any running session that keeps it on an older build | Shown only |
+| Empty settings, and the review mode not chosen | `tmb onboard` |
+| Runs and checks with a start and no end, and open tasks no agent run is on | Shown only: the planner decides |
+| Worktrees and branches of closed and dropped tasks still on disk | Removes each on your yes, by the same rules as closing a task: a worktree with work nobody committed stays |
+| The code graph behind its base branch, built by an older indexer, or with files not parsed | `tmb index` |
+| GitHub's CLI installed and signed in | `gh auth login` |
+| Other records in a folder above the project or below it | Shown only |
+
+- **It never deletes without your yes**, and never touches a file tmb did not write.
+- **It runs with a broken record.** Every check that does not need the record still runs, and the ones that do say why they were skipped. A record an older tmb wrote is upgraded by the next tmb command, not by doctor.
+- **A check that fails by itself looks like tmb's own bug.** Its line says so and names `tmb feedback`, which can put that error in a report.
+- **The planner's session start names what doctor finds**, in one line: how many findings, and how many runs or tasks have a start and no end. It runs only the quick checks, and says nothing when there is nothing to say.
+
 ## Report a bug in tmb
 
 When tmb itself goes wrong, a bug report can reach tmb's maintainers as a public issue on `trustmybot/tmb`, from your own GitHub account. Nothing is ever sent by itself: you read each report whole and say yes or no to it.

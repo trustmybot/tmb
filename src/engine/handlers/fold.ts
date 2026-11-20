@@ -213,20 +213,34 @@ export function removeTaskCheckout(projectDir: string, worktree: string, branch:
  * branch still here. Run at a session start with no task open; returns what it removed, one line each.
  */
 export function retryKeptCheckouts(projectDir: string, tasks: readonly Task[]): string[] {
+  const removed: string[] = [];
+  for (const { task, worktree, branch } of keptCheckouts(projectDir, tasks)) {
+    const cleanup = removeTaskCheckout(projectDir, worktree, branch);
+    if (cleanup.problems.length === 0) removed.push(`task ${task.id}: ${[worktree, branch].filter((part) => part !== null).join(" and ")}`);
+  }
+  return removed;
+}
+
+/**
+ * What closed tasks left on disk: each worktree git still lists, and each agile task's branch still
+ * here, with the worktree to remove and the branch to delete (null for a truest task's, which stays
+ * for its pull request). Reads only.
+ */
+export function keptCheckouts(projectDir: string, tasks: readonly Task[]): { task: Task; worktree: string; branch: string | null; listed: boolean }[] {
   const listed = listedWorktrees(projectDir);
   const refs = runGit(projectDir, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
   const branches = new Set(refs.ok ? refs.stdout.split("\n") : []);
-  const removed: string[] = [];
+  const kept: { task: Task; worktree: string; branch: string | null; listed: boolean }[] = [];
   for (const task of tasks) {
     if (task.worktree === null) continue;
     // A truest task's branch stays for its pull request, and a dropped task's while it holds commits; only the worktree goes.
     const keepBranch = task.state === DROPPED ? branchHoldsWork(projectDir, task) : task.reviewMode === TRUEST;
     const branch = keepBranch || task.branch === null || !branches.has(task.branch) ? null : task.branch;
-    if (!listed.has(realPath(task.worktree)) && branch === null) continue;
-    const cleanup = removeTaskCheckout(projectDir, task.worktree, branch);
-    if (cleanup.problems.length === 0) removed.push(`task ${task.id}: ${[task.worktree, branch].filter((part) => part !== null).join(" and ")}`);
+    const isListed = listed.has(realPath(task.worktree));
+    if (!isListed && branch === null) continue;
+    kept.push({ task, worktree: task.worktree, branch, listed: isListed });
   }
-  return removed;
+  return kept;
 }
 
 /**

@@ -625,6 +625,22 @@ export class Store {
     return rows.map(toCheckRun);
   }
 
+  /** Runs of any role that have a start and no end, oldest first: what is stuck, or still running. */
+  unendedRuns(): Run[] {
+    return (this.db.query("SELECT * FROM runs WHERE ended_at IS NULL ORDER BY id").all() as RunRow[]).map(toRun);
+  }
+
+  /** Check runs that have a start and no end, oldest first. */
+  unendedCheckRuns(): CheckRun[] {
+    return (this.db.query("SELECT * FROM check_runs WHERE ended_at IS NULL ORDER BY id").all() as CheckRunRow[]).map(toCheckRun);
+  }
+
+  /** The tasks any agent run names. */
+  tasksWithRuns(): Set<string> {
+    const rows = this.db.query("SELECT DISTINCT task_id FROM runs WHERE task_id IS NOT NULL").all() as { task_id: string }[];
+    return new Set(rows.map((row) => row.task_id));
+  }
+
   appendReview(actor: Actor, review: NewReview): string {
     return this.create(actor, "review", {
       target_kind: review.target.kind,

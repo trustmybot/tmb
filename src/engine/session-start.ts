@@ -22,6 +22,7 @@ export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your rev
 export const OPEN_WORK_MAX = 20;
 export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
 export const HOST_FILES_HEADING = "## tmb's files in this project";
+export const DOCTOR_HEADING = "## What tmb doctor finds";
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
 const PROJECT_MAP_DEPTH = 2;
@@ -238,12 +239,12 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
  * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
  * instruction for it. Nothing about the mode is stored in the project.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null): string {
+export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null, doctor?: (projectDir: string) => string | null): string {
   if (reviewsHere(projectDir, host)) {
     const context = withHostFiles(reviewerContext(projectDir, host!), refreshed, unattended);
     return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
   }
-  const context = withHostFiles(plannerContext(projectDir, unattended), refreshed, unattended);
+  const context = withDoctor(withHostFiles(plannerContext(projectDir, unattended), refreshed, unattended), projectDir, doctor, unattended);
   if (unattended) return `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`;
   // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
   const told = feedback === undefined ? "" : feedbackSection(feedback);
@@ -258,6 +259,22 @@ function withHostFiles(context: string, refreshed: string | null, unattended: bo
   if (refreshed === null) return context;
   const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
   return `${context.trimEnd()}\n\n${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tell}\n`;
+}
+
+/**
+ * The planner's one line on what \`tmb doctor\` finds (trustmybot/tmb#160), run after the session
+ * start's own clean-up so it counts only what is left. Never throws.
+ */
+function withDoctor(context: string, projectDir: string, doctor: ((projectDir: string) => string | null) | undefined, unattended: boolean): string {
+  let line: string | null = null;
+  try {
+    line = doctor?.(projectDir) ?? null;
+  } catch {
+    line = null;
+  }
+  if (line === null) return context;
+  const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
+  return `${context.trimEnd()}\n\n${DOCTOR_HEADING}\n\n${oneLine(line)} ${tell}\n`;
 }
 
 /** The feedback program's first-run section; never throws, as a session start must not fail. */
