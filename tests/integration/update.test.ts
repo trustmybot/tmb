@@ -273,7 +273,9 @@ describe("programs side by side (trustmybot/tmb#89)", () => {
     const fakeHost = path.join(side.root, "fake-host");
     mkdirSync(fakeHost, { recursive: true });
     copyFileSync(side.files.tmb!, path.join(fakeHost, `claude${EXE}`));
-    side.env.PATH = `${fakeHost}${path.delimiter}${side.env.PATH ?? ""}`;
+    // Windows names the variable Path, and a plain copy of process.env keeps that case: read it through process.env and drop the copy.
+    for (const key of Object.keys(side.env)) if (key.toUpperCase() === "PATH") delete side.env[key];
+    side.env.PATH = `${fakeHost}${path.delimiter}${process.env.PATH ?? ""}`;
     const project = path.join(side.root, "project");
     mkdirSync(project, { recursive: true });
     expect(spawnSync("git", ["init", "-q"], { cwd: project }).status).toBe(0);
