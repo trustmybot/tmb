@@ -9,8 +9,8 @@ import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, op
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
 import { OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
-import { featureDir, featureTip } from "./features.ts";
-import { pushFeature } from "./fold.ts";
+import { featureDir, featureTip, knownBase } from "./features.ts";
+import { isAncestor, pushFeature } from "./fold.ts";
 import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
 import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -51,6 +51,9 @@ export type FeatureBrief = {
   /** Where the feature branch leaves the base branch: the diff to review is from here to the tip. */
   mergeBase: string;
   tip: string;
+  /** The base branch's commit as tmb last fetched it (the local one when that is ahead), and whether the tip holds it; feature_update brings it in. */
+  base: string | null;
+  holdsBase: boolean;
   /** Each closed task's commits on the branch, in the order they landed. */
   groups: ReviewGroup[];
   reviews: ReviewSummary[];
@@ -143,21 +146,33 @@ export function coveredCommits(store: Store): string[] {
   return [...commits];
 }
 
-/** Each closed task's commits on the branch, in the order git holds them between the merge base and the tip. */
+/**
+ * Each closed task's commits on the branch, in the order they landed: along the branch's own line
+ * of commits from where it leaves the base branch. A merge of the base branch starts the next
+ * group after it, so no group shows the base's changes as the task's.
+ */
 function groupsOf(store: Store, projectDir: string, feature: Feature, mergeBase: string, tip: string): ReviewGroup[] {
-  const listed = runGit(projectDir, ["rev-list", "--reverse", `${mergeBase}..${tip}`]);
-  const order = listed.ok ? listed.stdout.split("\n").filter((sha) => sha !== "") : [];
-  const position = new Map(order.map((sha, i) => [sha, i]));
-  const landed = store
-    .listFeatureTasks(feature.id)
-    .filter((task) => task.commitSha !== null && position.has(task.commitSha))
-    .sort((a, b) => position.get(a.commitSha!)! - position.get(b.commitSha!)!);
-  let from = mergeBase;
-  return landed.map((task) => {
-    const group = { task: task.id, title: task.title, kind: task.kind, from, to: task.commitSha! };
-    from = task.commitSha!;
-    return group;
-  });
+  const listed = runGit(projectDir, ["rev-list", "--reverse", "--first-parent", "--parents", `${mergeBase}..${tip}`]);
+  const lines = listed.ok ? listed.stdout.split("\n").filter((line) => line !== "").map((line) => line.split(" ")) : [];
+  const tasks = new Map(
+    store
+      .listFeatureTasks(feature.id)
+      .filter((task) => task.commitSha !== null)
+      .map((task) => [task.commitSha!, task]),
+  );
+  let from = lines[0]?.[1] ?? mergeBase;
+  const groups: ReviewGroup[] = [];
+  for (const [sha, ...parents] of lines) {
+    const task = tasks.get(sha!);
+    if (task !== undefined) {
+      groups.push({ task: task.id, title: task.title, kind: task.kind, from, to: sha! });
+      from = sha!;
+    } else if (parents.length > 1) {
+      // A merge of the base branch: what came in with it is the base's, not the next task's.
+      from = sha!;
+    }
+  }
+  return groups;
 }
 
 /**
@@ -178,6 +193,12 @@ export function featureBriefOf(store: Store, projectDir: string, feature: Featur
   const reviews = store.listFeatureReviews(feature.id);
   const waivers = allWaivers(store).filter((waiver) => waiver.featureId === feature.id);
   const mergeBase = mergeBaseOf(dir, feature, tip);
+  let base: string | null = null;
+  try {
+    base = knownBase(dir, feature.baseBranch, `the feature branch ${feature.name}`);
+  } catch {
+    // A base branch git cannot read leaves the brief without it.
+  }
   const coveredBy = coverageAt(reviews, waivers, tip);
   return {
     name: feature.name,
@@ -187,6 +208,8 @@ export function featureBriefOf(store: Store, projectDir: string, feature: Featur
     baseCommit: feature.baseCommit,
     mergeBase,
     tip,
+    base,
+    holdsBase: base !== null && isAncestor(dir, base, tip),
     groups: groupsOf(store, dir, feature, mergeBase, tip),
     reviews: reviews.map(summaryOf),
     waivers: waivers.map(({ featureId: _, ...waiver }) => waiver),

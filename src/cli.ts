@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
@@ -30,7 +31,10 @@ import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts
 import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
 import { type FeedbackEnv, feedbackEnv, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
-import { openProjectStore, projectRootOf } from "./engine/project.ts";
+import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
+import { runGit } from "./engine/git.ts";
+import { repoOf, workspaceRepos } from "./engine/repos.ts";
+import type { Store } from "./engine/store/index.ts";
 import { judgePush, removePushGates } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { runningProgram } from "./program.ts";
@@ -60,8 +64,9 @@ const USAGE: Record<string, string> = {
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept`,
   migrate: `  tmb migrate [--from <plugin db>] [--repo <name>] [--json]
-                            Copy a tmb plugin project's records into this project's new
-                            record; the plugin's database is left untouched`,
+                            Copy a tmb plugin project's records into the new record tmb init
+                            made for this project; run tmb init first. The plugin's database is
+                            left untouched`,
   dashboard: `  tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one`,
@@ -442,15 +447,21 @@ function runMigrateCommand(args: string[]): number {
   const projectDir = projectRootOf(process.cwd());
   const from = values.from === undefined ? findPluginDb(projectDir) : path.resolve(values.from);
   if (from === null) throw new Error(`no plugin database in ${projectDir} or a folder above it; name one with --from`);
-  const opened = openProjectStore(projectDir, { create: true });
+  // The records go only into a record init made for this project; migrate never creates one (trustmybot/tmb#161).
+  const recordPath = projectDbPath(projectDir);
+  if (!existsSync(recordPath)) {
+    throw new Error(`there is no tmb record in ${process.cwd()} or a folder above it; run tmb init here first, then tmb migrate`);
+  }
+  const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw opened.error;
   try {
+    refuseRecordOfAnotherProject(opened.store, projectDir, process.cwd());
     const result = migratePluginProject(opened.store, { pluginDbPath: from, projectDir, repo: values.repo });
     if (values.json) {
       console.log(JSON.stringify(result));
     } else {
       const { counts } = result;
-      console.log(`Copied from ${result.from}${result.repo === null ? "" : ` (repo ${result.repo})`}:`);
+      console.log(`Copied from ${result.from}${result.repo === null ? "" : ` (repo ${result.repo})`} into ${recordPath}:`);
       console.log(
         `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
           `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
@@ -462,12 +473,31 @@ function runMigrateCommand(args: string[]): number {
       if (left.length > 0) {
         console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
       }
-      console.log("The plugin's database is unchanged. Run tmb init here if you have not, to wire tmb into your host.");
+      console.log("The plugin's database is unchanged.");
     }
   } finally {
     opened.store.close();
   }
   return 0;
+}
+
+/**
+ * The nearest record wins, so a repo with no record of its own would find one in a folder above
+ * it. migrate copies only into the record of the project it runs in: the repo's own, or the
+ * workspace's that registers this repo. Any other record above is refused, and named.
+ */
+function refuseRecordOfAnotherProject(store: Store, projectDir: string, cwd: string): void {
+  const top = runGit(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!top.ok) return;
+  const repoTop = realpathSync(top.stdout);
+  const relative = path.relative(realpathSync(projectDir), repoTop);
+  // The record is in the repo itself, or below the repo's top level: it is this project's.
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return;
+  if (workspaceRepos(store) !== null && repoOf(store, projectDir, cwd) !== null) return;
+  throw new Error(
+    `the nearest tmb record, ${projectDbPath(projectDir)}, belongs to a folder above this repo and does not serve it; ` +
+      `run tmb init in ${repoTop} first, then tmb migrate there`,
+  );
 }
 
 /** `tmb feedback`: asks only when a person is at both ends. */
