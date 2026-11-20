@@ -1,4 +1,4 @@
-// A role per host: setup names each host's role, and the main agent of a host set up as the
+// A role per host: init names each host's role, and the main agent of a host set up as the
 // reviewer is briefed, guarded and recorded as the reviewer. Its run opens at its session start,
 // ends with its verdict or with the session, and opens again when it next reads a brief.
 import { Database } from "bun:sqlite";
@@ -95,7 +95,7 @@ function openRunsOf(host: string) {
 }
 
 describe("host roles", () => {
-  test("a host takes the role setup gave it, and a host setup never named is the planner", () => {
+  test("a host takes the role init gave it, and a host init never named is the planner", () => {
     expect(hostRole(store, "host-a")).toBe("planner");
     expect(hostRole(store, REVIEWER_HOST)).toBe("reviewer");
     expect(hostRole(store, "host-c")).toBe("planner");

@@ -45,7 +45,7 @@ describe(".codex/config.toml", () => {
     }
   });
 
-  test("a file whose line endings turned CRLF after setup still gives up its block, and setup runs again", () => {
+  test("a file whose line endings turned CRLF after init still gives up its block, and init runs again", () => {
     mkdirSync(path.dirname(configTomlPath(project)), { recursive: true });
     writeFileSync(configTomlPath(project), 'model = "gpt-5"\n');
     registerServer(project, TMB);
@@ -56,6 +56,20 @@ describe(".codex/config.toml", () => {
     expect(readFileSync(configTomlPath(project), "utf8")).not.toMatch(/[^\r]\n/);
     expect(unregisterServer(project).removed).toBe(true);
     expect(readFileSync(configTomlPath(project), "utf8")).toBe('model = "gpt-5"\r\n');
+  });
+
+  test("finds the block an earlier build marked as written by tmb setup, and replaces or removes it", () => {
+    mkdirSync(path.dirname(configTomlPath(project)), { recursive: true });
+    writeFileSync(configTomlPath(project), 'model = "gpt-5"\n');
+    registerServer(project, TMB);
+    const earlier = readFileSync(configTomlPath(project), "utf8").replace("written by tmb init and deleted by tmb remove; tmb init replaces", "written by tmb setup and deleted by tmb remove; tmb setup replaces");
+    expect(earlier).toContain("tmb setup");
+    writeFileSync(configTomlPath(project), earlier);
+    expect(registerServer(project, TMB).changed).toBe(true);
+    expect(readFileSync(configTomlPath(project), "utf8")).not.toContain("tmb setup");
+    writeFileSync(configTomlPath(project), earlier);
+    expect(unregisterServer(project).removed).toBe(true);
+    expect(readFileSync(configTomlPath(project), "utf8")).toBe('model = "gpt-5"\n');
   });
 
   test("a file tmb created is deleted on remove", () => {

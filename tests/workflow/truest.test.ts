@@ -30,7 +30,8 @@ const LINES = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
 /** A truest project with an origin, its checks `true`. */
 function truestProject(): string {
   const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": LINES }, { origin: true });
-  tmb(["setup", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+  tmb(["init"], project);
+  tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
   return project;
 }
 

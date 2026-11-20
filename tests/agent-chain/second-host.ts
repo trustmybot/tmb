@@ -57,8 +57,9 @@ fixtureProject(fixture, project, {
   before: () => writeFileSync(path.join(project, "src/math.ts"), "export function add(a: number, b: number): number {\n  return a + b;\n}\n"),
 });
 if (!bunTest(project, path.join(logs, "base.log"))) fail(`the project's tests fail before any work: ${readFileSync(path.join(logs, "base.log"), "utf8")}`);
-tmb.shown(["setup", "--host", "claude-code", "--role", "planner", "--yes", "--base", base, "--check", check], `tmb setup for Claude Code failed in ${project}`);
-tmb.shown(["setup", "--host", "codex", "--role", "reviewer", "--yes"], `tmb setup for Codex failed in ${project}`);
+tmb.shown(["init", "--host", "claude-code", "--role", "planner"], `tmb init for Claude Code failed in ${project}`);
+tmb.shown(["onboard", "--host", "claude-code", "--yes", "--base", base, "--check", check], `tmb onboard failed in ${project}`);
+tmb.shown(["init", "--host", "codex", "--role", "reviewer"], `tmb init for Codex failed in ${project}`);
 
 const plannerLog = path.join(logs, "planner.log");
 console.log(`Planner session, asking claude (${MODEL}): ${plannerPrompt}`);

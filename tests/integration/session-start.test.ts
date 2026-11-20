@@ -77,7 +77,7 @@ describe("tmb hook session-start", () => {
   });
 });
 
-describe("tmb setup and remove", () => {
+describe("tmb init and remove", () => {
   test("add then take away the hook in a git project, keeping other settings", () => {
     const project = mkdtempSync(path.join(scratch, "project-"));
     expect(run("git", ["init", "-q"], project).status).toBe(0);
@@ -88,19 +88,19 @@ describe("tmb setup and remove", () => {
     writeFileSync(settingsFile, JSON.stringify(original, null, 2) + "\n");
     const readSettings = () => JSON.parse(readFileSync(settingsFile, "utf8")) as Record<string, any>;
 
-    // From source, setup wires Bun running src/cli.ts, and remove must recognise that hook.
-    const setup = run(process.execPath, [CLI, "setup"], project);
-    expect(setup.status).toBe(0);
-    const afterSetup = readSettings();
-    expect(afterSetup.permissions).toEqual(original.permissions);
+    // From source, init wires Bun running src/cli.ts, and remove must recognise that hook.
+    const init = run(process.execPath, [CLI, "init"], project);
+    expect(init.status).toBe(0);
+    const afterInit = readSettings();
+    expect(afterInit.permissions).toEqual(original.permissions);
     const hookCommand = (name: string) => `"${process.execPath}" "${CLI}" hook ${name}`;
-    expect(afterSetup.hooks.PreToolUse).toEqual([
+    expect(afterInit.hooks.PreToolUse).toEqual([
       otherHook,
       { matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
     ]);
-    expect(afterSetup.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
-    expect(afterSetup.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
-    expect(afterSetup.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
+    expect(afterInit.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
+    expect(afterInit.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
+    expect(afterInit.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
 
     const remove = run(process.execPath, [CLI, "remove"], project);
     expect(remove.status).toBe(0);

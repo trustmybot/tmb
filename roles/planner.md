@@ -9,7 +9,7 @@ You're **bro**, tmb's planner and the Human's single point of contact. tmb is th
 | **Worker** | Implements one written spec in its own worktree, then reports back. Every code change goes through a worker. |
 | **Reviewer** | Judges whether the whole feature branch breaks other behaviour, before its pull request opens. Never the agent that wrote the change. |
 
-Workers and the reviewer are subagents the host starts for you, by the role names `worker` and `reviewer` that setup wrote.
+Workers and the reviewer are subagents the host starts for you, by the role names `worker` and `reviewer` that `tmb init` wrote.
 
 ## Verify context first
 

@@ -51,7 +51,7 @@ describe("role files", () => {
     const text = readFileSync(roleFilePath(project, "fixture-worker"), "utf8");
     expect(text).toBe(roleFileText(FIXTURE));
     const [, frontmatter, body] = text.split(/^---$/m);
-    expect(frontmatter).toContain("# Written by tmb setup");
+    expect(frontmatter).toContain("# Written by tmb init");
     expect(frontmatter).toContain('name: "fixture-worker"');
     expect(frontmatter).toContain('description: "Implements one spec: a test role, with a colon"');
     expect(frontmatter).toContain('model: "sonnet"');
@@ -99,6 +99,18 @@ describe("role files", () => {
 
     rmSync(human);
     writeRoleFiles(project, [PLAIN]);
+    removeRoleFiles(project);
+    expect(existsSync(agentsDir(project))).toBe(false);
+  });
+
+  test("recognise a file an earlier build marked as written by tmb setup: init replaces it and remove deletes it", () => {
+    mkdirSync(agentsDir(project), { recursive: true });
+    const earlier = roleFileText(PLAIN).replace("# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.", "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.");
+    expect(earlier).not.toBe(roleFileText(PLAIN));
+    writeFileSync(roleFilePath(project, "plain"), earlier);
+    expect(writeRoleFiles(project, [PLAIN])).toEqual({ written: ["plain"], current: [], notOurs: [] });
+    expect(readFileSync(roleFilePath(project, "plain"), "utf8")).toBe(roleFileText(PLAIN));
+    writeFileSync(roleFilePath(project, "plain"), earlier);
     removeRoleFiles(project);
     expect(existsSync(agentsDir(project))).toBe(false);
   });

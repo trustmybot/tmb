@@ -55,6 +55,7 @@ The Install, Agent run and Agent chain layers are plain scripts rather than `bun
 |---|---|---|
 | [tests/install/smoke.ts](install/smoke.ts) | `bun run test:install` | Install |
 | [tests/install/update.ts](install/update.ts) | `bun run test:install:update` | Install |
+| [tests/install/channels.ts](install/channels.ts) | `bun run test:install:channels` | Install |
 | [tests/agent-run/run.ts](agent-run/run.ts) | `bun run test:agent` | Agent run |
 | [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
 | [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
@@ -73,19 +74,19 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
 | Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
-| Before an rc or stable release | All of them |
+| Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
 
 No test fixes the OS, the model or the machine's setup. Each is a setting of the run, so the same test runs unchanged on another OS, with another model, or on a machine set up differently. A test that only passes with one of them names it and says why.
 
 ## Tests each level adds
 
-Each level's milestone holds one test issue with this list. A later level keeps every earlier level's tests passing.
+Each level has one test issue with this list. A later level keeps every earlier level's tests passing.
 
 | Level | Tests it adds |
 |---|---|
 | 0. Wake up | **Install:** the dev build downloads and starts on macOS, Windows and Linux with no login. **Lint:** types and links. **Integration:** a session start event passed through the adapter returns the planner's role and rules. **Agent run:** Claude Code, opened in a project, answers as bro. |
 | 1. Memory | **Unit:** each record rule. **Integration:** every tool answers through the tool server and the command line. **Agent chain:** bro records an issue, and a new session picks it up. |
-| 2. Setup | **Integration:** setup on a fresh project writes the three registrations and the database; removal restores the project and leaves the Human's own settings unchanged. **Agent run:** bro answers as bro after a full setup. |
+| 2. Setup | **Integration:** init on a fresh project writes the three registrations and the database; removal restores the project and leaves the Human's own settings unchanged. **Agent run:** bro answers as bro after init and onboard. |
 | 3. Workers | **Unit:** task rules. **Workflow simulation:** a task cannot close until its checks pass. **Agent run:** bro hands a code task to a worker and it closes. |
 | 4. Agile mode | **Workflow simulation:** the plugin's workflow flows, ported as contract tests. **Agent chain:** a feature branch collects several tasks across sessions. |
 | 5. Code graph | **Unit:** parsing and lookups per language. **Integration:** the graph is current after a change. **Agent run:** bro scopes a task from the graph. |
@@ -94,6 +95,7 @@ Each level's milestone holds one test issue with this list. A later level keeps 
 | 8. Distribution | **Install:** an install updates itself on each channel, and never in the middle of a task. **Integration:** a plugin project's records carry over. |
 | 9. More hosts | **Integration:** one shared set of adapter tests that every host adapter must pass. **Agent chain:** a second host reviews work on the same record. |
 | 10. Truest mode | **Workflow simulation:** a task cannot be pushed unreviewed. **Agent run:** one task from request to its pull request. |
+| After level 10, in v1.x: sessions and the syncer | **Unit:** each change the session start check looks for. **Integration:** the syncer against a local remote, and with no network. **Workflow simulation:** a pull request merged outside tmb closes its feature branch and issue in the record; a freeze from one session holds in a second. **Agent chain:** a task left half done is reported at the next session's start. |
 
 ## Level 5 tests
 
@@ -126,7 +128,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 10 Roundtable | Not planned: the roundtable is not carried over ([GLOSSARY.md](../docs/architecture/GLOSSARY.md#not-carried-over)). |
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts) |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
-| 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). tmb issues have no labels, so only the milestone, title and body move. |
+| 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). An issue in tmb's record has no labels, so only the milestone, title and body move. |
 | 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
 
 ## Level 6 tests
@@ -134,7 +136,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Layer | Test | What it proves |
 |---|---|---|
 | Unit | [test/commands.test.ts](../test/commands.test.ts), [test/decide.test.ts](../test/decide.test.ts) | The command reader finds git and gh through quotes, prefixes, `sh -c` and `eval`; the host guards deny skipping git's hook, a push by a worker or the reviewer, a hand-made pull request, a subcommand that is not plain text, and a write outside an open task's worktree. |
-| Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Setup writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
+| Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Init writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
 | Workflow simulation | [tests/workflow/review-gate.test.ts](workflow/review-gate.test.ts) | Review, fail, rework, pass and the pull request on one feature branch, and a Human waiver on a second; only a reviewer run records a verdict, and only on the branch's tip. |
 | Agent run | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) (`bun run test:reviewer`) | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
 
@@ -149,10 +151,31 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 
 | Layer | Test | What it proves |
 |---|---|---|
-| Install | [tests/install/update.ts](install/update.ts) (`bun run test:install:update <channel>`) | An older install on the channel, in a throwaway HOME, updates itself to the channel's newest release from the real release repo: the build is kept at a session's start, `tmb update` waits while a session runs, nothing swaps at a session's end while another session still runs, and the last session's end swaps it in, even with a task open. Runs after each dev build and each rc or stable release on macOS, Windows and Linux; a channel with no release yet is skipped. |
+| Install | [tests/install/update.ts](install/update.ts) (`bun run test:install:update <channel>`) | An older install on the channel, in a throwaway HOME, updates itself to the channel's newest release from the real release repo: the build is kept at a session's start, `tmb update` waits while a session runs, nothing swaps at a session's end while a task is open, `tmb update` then names the open task that holds it back, and the next session's end with no task open swaps it in. Runs after each dev build and each rc or stable release on macOS, Windows and Linux; a channel with no release yet is skipped. |
 | Install | [tests/install/smoke.ts](install/smoke.ts) (`bun run test:install [channel] [version]`) | The installer of each channel installs the release it should, on macOS, Linux and Windows. |
-| Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
+| Integration | [tests/integration/update.test.ts](integration/update.test.ts) | The same story for each of dev, rc and stable against a local release repo, an open task holding the update back until it closes, plus `tmb update --check`, an update with no session, no network, a checksum mismatch, `TMB_NO_UPDATE=1`, and a dev build whose count restarted. |
 | Integration | [tests/integration/migrate.test.ts](integration/migrate.test.ts) | `tmb migrate` copies a plugin project's issues, notes and decisions, tasks, reviews, check runs and agent runs, with their original times, from a database at plugin schema v76; leaves the plugin's file byte for byte unchanged; carries nothing of other repos or dropped features; and refuses a second run, another schema version, an unnamed repo among several and a missing database. |
+
+## Channels side by side tests
+
+trustmybot/tmb#89, Part 2: `tmb`, `tmb-rc`, `tmb-dev` and `tmb-<version>` on one machine.
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/store.test.ts](../test/store.test.ts) | A new or upgraded record is signed with the version and program that wrote its shape; an older tmb refuses a newer record and names them. |
+| Unit | [test/setup.test.ts](../test/setup.test.ts) | init ties the project to the program running it, records the tie once, and says when another program's init moves it. |
+| Integration | [tests/integration/update.test.ts](integration/update.test.ts) | A program's name says what it follows and where it keeps its state. `tmb`, `tmb-rc`, `tmb-dev` and a pinned `tmb-<version>` installed in one home each report their own channel and update only themselves from a local release repo; the pinned one never does. A project initialised with `tmb-dev` has its tool server, hooks and push hook call `tmb-dev`, until `tmb init` moves it. |
+| Install | [tests/install/channels.ts](install/channels.ts) (`bun run test:install:channels`) | The published installer puts `tmb`, `tmb-rc` and `tmb-dev` side by side in one throwaway home; each reports its own channel, looks for updates only there, keeps its own state and leaves the others' files alone. A channel with no release yet is skipped. |
+
+## Package manager tests
+
+Part 3 of trustmybot/tmb#89.
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/package-managers.test.ts](../test/package-managers.test.ts) | From a release's `SHA256SUMS`, each channel gets a Homebrew cask, a Scoop manifest and three winget manifests under its own program name, with every platform's file and checksum, no placeholder left, and updates left to tmb. A missing checksum or a version that is not a release's is refused. Only the newest build on a channel counts as current. Publishing skips when the token or the repo is missing, pushes one commit, pushes nothing when the manifests are already there, and keeps the other channels' manifests. |
+
+Not automated yet: a tap install and a bucket install start. They wait for the tap and the bucket to exist.
 
 ## Level 9 tests
 
@@ -161,9 +184,9 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 | Layer | Test | What it proves |
 |---|---|---|
 | Lint | [tests/lint/host-neutral.test.ts](lint/host-neutral.test.ts) | The engine names no host, Codex included; only the adapters do. |
-| Unit | [test/host-roles.test.ts](../test/host-roles.test.ts) | Setup gives each host a role, planner by default. A host set up as the reviewer has its main agent briefed, guarded and recorded as the reviewer, is told which feature branches wait for a review at their tip, and has a run that opens at its session start, ends with its verdict or with no verdict at its session end, and opens again at its next brief. |
-| Unit | [test/codex-adapter.test.ts](../test/codex-adapter.test.ts) | Codex's config block, hooks file and agent files are added and removed leaving the Human's files byte for byte; a model the Human names, a local one included, reaches both hosts' role files; setup names the trust steps the Human must take; shell commands, each file of a patch and a spawned agent become tmb events in the host's role. |
-| Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | One shared set of tests that Claude Code and Codex both pass: setup and removal, session start, guarded tool calls, agent start and stop, and a host set up as the reviewer. |
+| Unit | [test/host-roles.test.ts](../test/host-roles.test.ts) | Init gives each host a role, planner by default. A host set up as the reviewer has its main agent briefed, guarded and recorded as the reviewer, is told which feature branches wait for a review at their tip, and has a run that opens at its session start, ends with its verdict or with no verdict at its session end, and opens again at its next brief. |
+| Unit | [test/codex-adapter.test.ts](../test/codex-adapter.test.ts) | Codex's config block, hooks file and agent files are added and removed leaving the Human's files byte for byte; a model the Human names, a local one included, reaches both hosts' role files; files and a config block an earlier build marked as written by `tmb setup` are still found and replaced or removed; init names the trust steps the Human must take; shell commands, each file of a patch and a spawned agent become tmb events in the host's role. |
+| Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | One shared set of tests that Claude Code and Codex both pass: init and onboard, removal, session start, guarded tool calls, agent start and stop, and a host set up as the reviewer. |
 | Integration | [tests/integration/two-hosts.test.ts](integration/two-hosts.test.ts) | Two hosts write one record at once and nothing is lost. |
 | Agent chain | [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) (`bun run test:chain:second-host`) | Claude Code, set up as the planner, builds a feature branch, and Codex, set up as the reviewer in the same project, records a verdict at its tip in a run its own session start opened. Needs a logged-in claude and codex, and the Human's prompt in `prompts/second-host-reviewer.txt`; it exits 2 without them. |
 
@@ -174,6 +197,17 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 | Unit | [test/truest.test.ts](../test/truest.test.ts) | In truest mode a task is cut from the base branch and feature_start is refused; close runs the checks and leaves the task in review with its worktree, folding nothing; a fail reopens the task and a pass covers only the commit it names; only a reviewer run reviews and only the Human waives; task_pr is the planner's and needs a pass or a waiver and an origin; a task keeps the review mode of its start. |
 | Workflow simulation | [tests/workflow/truest.test.ts](workflow/truest.test.ts) | A task cannot be pushed unreviewed: task_pr and a push typed by hand through git's pre-push hook are refused. Review, fail, rework and pass on one task, then task_pr rebases onto a base branch that moved, carries the review over the unchanged patch, pushes the task branch and opens its pull request. A rebase that changes the patch needs a new review, a conflict reopens the task, and a Human waiver lets a task through. |
 | Agent run | [tests/agent-run/truest.ts](agent-run/truest.ts) (`bun run test:truest`) | One task from request to its pull request: bro has a worker fix add, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |
+
+## Init and onboard
+
+`tmb init` asks nothing and leaves the settings empty, and `tmb onboard` asks the questions; at the first session with empty settings the planner applies the ones it recommends. They replaced `tmb setup`, which is gone (trustmybot/tmb#89).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/setup.test.ts](../test/setup.test.ts) | init never asks, stores only the host and its role, keeps what onboard stored and refuses an unknown role; onboard refuses a project or a host init has not prepared, changes a setting and can be run twice, and asks a host's role, the base branch, the review mode and the checks. |
+| Unit | [test/settings-tools.test.ts](../test/settings-tools.test.ts) | settings_get shows the settings, the empty ones and what tmb found; settings_set is the planner's, changes only what it is given and refuses an empty request or a bad value. |
+| Unit | [test/session-start.test.ts](../test/session-start.test.ts) | With the settings empty the planner's session start tells it to apply its recommendation, with what tmb found, and to remind the Human of `tmb onboard`; an unattended run is told to name the values; only the empty ones are named, and once all are set the section is gone. |
+| Integration | [tests/integration/init-onboard.test.ts](integration/init-onboard.test.ts) | As separate processes: `tmb init` on a fresh project asks no question, refuses any flag but the host and role, and ends saying the settings are empty and how they get filled; the next session start tells the planner, settings_set through the tool server fills them, and the section is gone after; `tmb onboard` changes a setting and can be run twice; `tmb remove` undoes `tmb init`, keeping the record and the `.gitignore` lines; `tmb setup` is refused as an unknown command. |
 
 ## Docs task check
 

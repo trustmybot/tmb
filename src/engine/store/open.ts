@@ -2,8 +2,10 @@
 // the path; the store never works out where the file lives.
 import { Database, SQLiteError } from "bun:sqlite";
 import { existsSync } from "node:fs";
+import { runningProgram } from "../../program.ts";
+import { version as tmbVersion } from "../../version.ts";
 import { SCHEMA_STEPS, SCHEMA_VERSION } from "./schema.ts";
-import { Store } from "./store.ts";
+import { SHAPE_WRITER_KEY, type ShapeWriter, Store } from "./store.ts";
 
 const BUSY_TIMEOUT_MS = 5000;
 
@@ -14,15 +16,34 @@ export class StoreOpenError extends Error {
   constructor(
     readonly failure: StoreOpenFailure,
     message: string,
+    /** For a newer database: the tmb that wrote its shape, when it says. */
+    readonly writer: ShapeWriter | null = null,
   ) {
     super(message);
   }
 }
 
+/** The tmb that is running, as it signs a shape it writes. */
+export function currentWriter(): ShapeWriter {
+  return { version: tmbVersion, program: runningProgram(tmbVersion).name };
+}
+
 export type OpenResult = { ok: true; store: Store } | { ok: false; error: StoreOpenError };
 
-function failed(failure: StoreOpenFailure, message: string): OpenResult {
-  return { ok: false, error: new StoreOpenError(failure, message) };
+function failed(failure: StoreOpenFailure, message: string, writer: ShapeWriter | null = null): OpenResult {
+  return { ok: false, error: new StoreOpenError(failure, message, writer) };
+}
+
+/** The tmb a newer database names as the writer of its shape; null when it names none. */
+function readShapeWriter(db: Database): ShapeWriter | null {
+  try {
+    const row = db.query("SELECT value FROM meta WHERE key = ?").get(SHAPE_WRITER_KEY) as { value: string } | null;
+    if (!row) return null;
+    const writer = JSON.parse(row.value) as Partial<ShapeWriter>;
+    return typeof writer.version === "string" && typeof writer.program === "string" ? { version: writer.version, program: writer.program } : null;
+  } catch {
+    return null;
+  }
 }
 
 function describe(error: unknown): string {
@@ -64,11 +85,13 @@ function useWal(db: Database): void {
  * between versions. The version is read again under the write lock: another process may
  * have upgraded the file since it was first read.
  */
-function upgrade(db: Database): void {
+function upgrade(db: Database, writer: ShapeWriter): void {
   db.transaction(() => {
     const { user_version: from } = db.query("PRAGMA user_version").get() as { user_version: number };
     if (from >= SCHEMA_VERSION) return;
     for (const step of SCHEMA_STEPS.slice(from)) db.run(step);
+    // The shape is signed by the tmb that wrote it, so an older one that meets it can say which.
+    db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(SHAPE_WRITER_KEY, JSON.stringify({ ...writer, shape: SCHEMA_VERSION }));
     db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   }).immediate();
 }
@@ -76,9 +99,10 @@ function upgrade(db: Database): void {
 /**
  * Opens the trajectory database at `dbPath`. With `create`, a missing file is made and
  * given the current schema; a database an older tmb made is upgraded. Refuses a missing file without `create`, a file that is not
- * a readable tmb database, and a database made by a newer tmb.
+ * a readable tmb database, and a database made by a newer tmb, naming the tmb that wrote it.
+ * `writer` signs a shape this open writes; the running tmb unless given.
  */
-export function openStore(dbPath: string, options: { create: boolean }): OpenResult {
+export function openStore(dbPath: string, options: { create: boolean; writer?: ShapeWriter }): OpenResult {
   if (!existsSync(dbPath) && !options.create) return failed("missing", `no tmb database at ${dbPath}`);
 
   let db: Database;
@@ -99,10 +123,14 @@ export function openStore(dbPath: string, options: { create: boolean }): OpenRes
     }
 
     if (header.version > SCHEMA_VERSION) {
+      const writer = readShapeWriter(db);
       db.close();
+      const by = writer === null ? "made by a newer tmb" : `made by a newer tmb (${writer.program} ${writer.version} wrote it)`;
+      const remedy = writer === null ? "" : `; run ${writer.program} in this project, or a tmb at least as new as ${writer.version}`;
       return failed(
         "newer",
-        `${dbPath} has schema version ${header.version}, made by a newer tmb; this build reads up to version ${SCHEMA_VERSION}`,
+        `${dbPath} has schema version ${header.version}, ${by}; this tmb (${tmbVersion}) reads up to version ${SCHEMA_VERSION}${remedy}`,
+        writer,
       );
     }
     if (header.version === 0 && header.tables > 0) {
@@ -116,7 +144,7 @@ export function openStore(dbPath: string, options: { create: boolean }): OpenRes
 
     useWal(db);
     db.run("PRAGMA foreign_keys = ON");
-    if (header.version < SCHEMA_VERSION) upgrade(db);
+    if (header.version < SCHEMA_VERSION) upgrade(db, options.writer ?? currentWriter());
     return { ok: true, store: new Store(db) };
   } catch (error) {
     db.close();

@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+PackageIdentifier: {{WINGET_ID}}
+PackageVersion: {{VERSION}}
+PackageLocale: en-US
+Publisher: trustmybot
+PublisherUrl: https://github.com/trustmybot
+PackageName: {{NAME}}
+PackageUrl: https://github.com/trustmybot/tmb-releases
+License: FSL-1.1-ALv2
+LicenseUrl: https://fsl.software/FSL-1.1-ALv2.template.md
+ShortDescription: A harness for coding agents, with a record, a code graph and an enforced workflow.
+Moniker: {{PROGRAM}}
+Tags:
+  - agents
+  - ai
+  - cli
+  - workflow
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0

@@ -7,6 +7,7 @@
 // release's installer.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { type Channel, CHANNELS, programName } from "../../src/program.ts";
 import { IS_WINDOWS, pathOf, run, runToFile, tempDir, withEnv } from "../lib/driver.ts";
 
 const channel = process.argv[2] || process.env.TMB_CHANNEL || "dev";
@@ -39,8 +40,10 @@ const home = path.join(work, "home");
 const project = path.join(work, "project");
 mkdirSync(home, { recursive: true });
 mkdirSync(project, { recursive: true });
-const tmb = path.join(home, ".local", "bin", IS_WINDOWS ? "tmb.exe" : "tmb");
-const where = IS_WINDOWS ? "%USERPROFILE%\\.local\\bin\\tmb.exe" : "$HOME/.local/bin/tmb";
+// Each channel installs under its own name: tmb, tmb-rc or tmb-dev.
+const name = CHANNELS.includes(channel as Channel) ? programName(channel as Channel) : "tmb";
+const tmb = path.join(home, ".local", "bin", IS_WINDOWS ? `${name}.exe` : name);
+const where = IS_WINDOWS ? `%USERPROFILE%\\.local\\bin\\${name}.exe` : `$HOME/.local/bin/${name}`;
 
 // Every run sees the throwaway home: HOME, and on Windows the USERPROFILE and LOCALAPPDATA the
 // installer and tmb read. ZDOTDIR would point zsh's profile outside it.
@@ -84,24 +87,25 @@ async function smoke(): Promise<void> {
   const installedVersion = versionLine.split(/\s+/)[1];
   if (version.status !== 0) fail(`tmb --version exited ${version.status}: ${versionLine}`);
   else if (expectedVersion && installedVersion !== expectedVersion) fail(`tmb --version: expected ${expectedVersion}, got '${versionLine}'`);
+  else if (!versionLine.includes(`on the ${channel} channel`)) fail(`${name} --version names the ${channel} channel: '${versionLine}'`);
   else pass(`tmb --version: ${versionLine}`);
 
-  // Setup needs an installed host, and a clean machine has none: a copy of tmb named claude
-  // stands in, since setup only needs `claude --version` to answer.
+  // Init needs an installed host, and a clean machine has none: a copy of tmb named claude
+  // stands in, since init only needs `claude --version` to answer.
   const fakeHost = path.join(work, "fake-host");
   mkdirSync(fakeHost, { recursive: true });
   copyFileSync(tmb, path.join(fakeHost, IS_WINDOWS ? "claude.exe" : "claude"));
-  const setupLog = path.join(work, "setup.log");
+  const initLog = path.join(work, "init.log");
   const gitInit = run("git", ["init", "-q"], { cwd: project, env: homeEnv });
-  const setupStatus =
-    gitInit.status === 0 ? runToFile(tmb, ["setup"], setupLog, { cwd: project, env: withEnv({ PATH: `${fakeHost}${path.delimiter}${pathOf(homeEnv)}` }, homeEnv) }) : -1;
+  const initStatus =
+    gitInit.status === 0 ? runToFile(tmb, ["init"], initLog, { cwd: project, env: withEnv({ PATH: `${fakeHost}${path.delimiter}${pathOf(homeEnv)}` }, homeEnv) }) : -1;
   const settings = path.join(project, ".claude", "settings.local.json");
-  if (setupStatus === 0 && existsSync(settings) && readFileSync(settings, "utf8").includes("hook session-start")) {
-    pass("tmb setup wired the SessionStart hook in a fresh git repo");
+  if (initStatus === 0 && existsSync(settings) && readFileSync(settings, "utf8").includes("hook session-start")) {
+    pass("tmb init wired the SessionStart hook in a fresh git repo");
   } else {
     if (gitInit.status !== 0) console.log(`  | git init: ${gitInit.output.trim()}`);
-    showLog(setupLog);
-    fail("tmb setup wired the SessionStart hook in a fresh git repo");
+    showLog(initLog);
+    fail("tmb init wired the SessionStart hook in a fresh git repo");
   }
 
   const hook = run(tmb, ["hook", "session-start"], { cwd: project, env: homeEnv, input: "{}" });

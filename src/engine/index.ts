@@ -41,10 +41,11 @@ export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from
 export { OPERATIONS } from "./handlers/index.ts";
 export { installPushGate, judgePush, parsePushRefs, type PushRef, removePushGate } from "./push-gate.ts";
 export { statements, toolCalls, type ToolCall } from "./commands.ts";
-export { AWAITING_REVIEW_HEADING, OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole, reviewerRole, UNATTENDED_INSTRUCTION } from "./session-start.ts";
+export { AWAITING_REVIEW_HEADING, EMPTY_SETTINGS_HEADING, OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole, reviewerRole, UNATTENDED_INSTRUCTION } from "./session-start.ts";
 export { NO_VERDICT } from "./host-runs.ts";
 export { openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "./project.ts";
 export { detectBaseBranch, FALLBACK_BASE_BRANCH } from "./base-branch.ts";
+export { type ProgramTie, tiedProgram, tieProgram } from "./program-tie.ts";
 export { detectChecks } from "./check-detection.ts";
 export {
   AVAILABLE_REVIEW_MODES,

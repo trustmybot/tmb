@@ -72,11 +72,11 @@ All rules stay in the engine. An adapter that grows a rule is a defect.
 
 ## Cold start
 
-How a plain host agent becomes the planner. The agent does not work this out itself: tmb tells it at the start of every session, through what setup wired once.
+How a plain host agent becomes the planner. The agent does not work this out itself: tmb tells it at the start of every session, through what `tmb init` wired once.
 
 ```mermaid
 flowchart TD
-    S[Once: the Human runs tmb setup] --> W[The adapter writes the tool registration, the role files and the event wiring into the project]
+    S[Once: the Human runs tmb init] --> W[The adapter writes the tool registration, the role files and the event wiring into the project]
     W --> O[The Human opens the host in the project]
     O --> SS[The host raises its session start event]
     SS --> E[The engine answers: you are the planner, with the rules and the open work from the record]
@@ -91,7 +91,7 @@ flowchart TD
 
 ## Unattended mode
 
-Planned. A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.
+A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.
 
 - Whoever starts the run sets the mode, for that run only. It is not stored in the project, so the next session the Human opens is a normal one.
 - It comes from the engine, so it works the same on every host and the Human's prompt needs no special wording.
@@ -123,8 +123,6 @@ flowchart LR
 | Before a push | Commits are about to leave the machine | git, and the host for a push an agent types |
 | After a branch moves | A merge, a fetch or a checkout moved a branch | git |
 
-The event list is proposed, for the Human's review.
-
 - An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
 - A rule answers allow or deny, and a deny always says why and what would be allowed.
 - Version 1 ships tmb's own rules only. Users cannot add rules of their own on these events.
@@ -135,7 +133,7 @@ The event list is proposed, for the Human's review.
 | Host | Status | Tools | Roles | Events that can deny |
 |---|---|---|---|---|
 | Claude Code, command line and desktop app | First | Tool server from the project's settings | Agent files in the project | Yes, from the project's settings, inside subagents too |
-| Codex | Planned | Tool server from its config | Agent files in the project | Yes, after the Human trusts them |
+| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from its config | Agent files in the project | Yes, after the Human trusts them |
 | Others | Planned | | | |
 
 The same three building blocks exist in both hosts checked so far, which is what makes one adapter shape enough.
@@ -149,7 +147,7 @@ tmb starts no agent, runs no model and manages no parallel sessions. Hosts do th
 ## Different models on one task
 
 - **One vendor, several models.** The host already runs a different model per subagent. The adapter writes each role's model into the host's role definitions.
-- **Several vendors.** Planned, after the first host works end to end. Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
+- **Several vendors.** Built at level 9, and not supported or tested before v2. Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
 - **Local models.** They arrive through a host that supports them.
 
 Every record names the role and the host that made it, so a review is known to come from a different agent than the one that wrote the change.
@@ -161,7 +159,7 @@ Every record names the role and the host that made it, so a review is known to c
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
 | Host events | The host, before an agent acts | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push is checked even when typed by hand. |
-| Command line | The Human | Setup, indexing, health checks. |
+| Command line | The Human | Init and onboard, indexing, health checks. |
 | Dashboard | The Human | A local web page over the record. |
 
 All of them call the same engine, so a rule cannot be skipped by choosing another way in.
