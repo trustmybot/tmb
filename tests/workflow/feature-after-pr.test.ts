@@ -4,10 +4,13 @@
 // leaves the branch closed: it takes a new pull request, or a rework task that reopens it. A
 // merged branch is final. A fake `gh` on PATH
 // stands in for GitHub, answering from files the test writes.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-workflow-after-pr-");
 afterAll(cleanup);

@@ -2,10 +2,13 @@
 // reviewer and the Human make, with no model. The reviewer fails the branch, the planner reworks
 // it in a task, the reviewer passes the new tip, and the pull request opens; on a second branch
 // the Human waives the review instead. A fake `gh` on PATH stands in for GitHub.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-review-");
 afterAll(cleanup);

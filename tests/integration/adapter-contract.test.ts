@@ -3,7 +3,7 @@
 // them, and the tool server init registered. A new adapter adds a harness to HARNESSES and passes all of it.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +15,9 @@ import { claudeCodeHarness } from "./adapters/claude-code.ts";
 import { codexHarness } from "./adapters/codex.ts";
 import type { ContractEvent, HostHarness } from "./adapters/harness.ts";
 import { asHuman } from "../lib/as-human.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HARNESSES: readonly HostHarness[] = [claudeCodeHarness, codexHarness];
 

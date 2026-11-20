@@ -2,7 +2,7 @@
 // agents' lookups hold every function (trustmybot/tmb#140): lookups still name the nearest named
 // function, and nothing is skipped in silence. The TypeScript and JavaScript function tests are
 // in src/engine/graph/languages/typescript/, beside their rules.
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +13,9 @@ import { loadParsers, type Parsers } from "../src/engine/graph/loader.ts";
 import { find, lookupSymbol } from "../src/engine/graph/lookups.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 let parsers: Parsers;
 beforeAll(async () => {

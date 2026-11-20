@@ -1,7 +1,7 @@
 // The review mode is the Human's choice (trustmybot/tmb#114): no task starts until it is chosen.
 // With a Human to ask, the planner is refused and asks; with no one to ask, the task is refused
 // and the planner cannot pick the mode itself. The record keeps which way it was chosen.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +9,9 @@ import path from "node:path";
 import { featureStart, HandlerError, issueCreate, settingsSet, taskStart } from "../src/engine/handlers/index.ts";
 import { chooseReviewMode, openProjectStore, readSettings, reviewModeChosenVia, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "test" };

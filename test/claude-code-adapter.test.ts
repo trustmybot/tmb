@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +9,9 @@ import { mcpJsonPath, registerServer, serverEntry, unregisterServer } from "../s
 import { setUpRecord } from "../src/adapters/common/record.ts";
 import { hookCommand, install, isTmbHookCommand, remove, settingsPath } from "../src/adapters/claude-code/settings.ts";
 import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath } from "../src/engine/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const EXE = path.join(tmpdir(), "tmb bin", "tmb");
 const BINARY = [EXE];

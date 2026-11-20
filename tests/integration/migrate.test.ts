@@ -1,6 +1,6 @@
 // A plugin project's records carry over: `tmb migrate` run in a project copies a plugin
 // database at schema v76 into the project's new record, and leaves the plugin's file as it was.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,6 +8,9 @@ import path from "node:path";
 import { openProjectStore } from "../../src/engine/project.ts";
 import type { Store } from "../../src/engine/store/index.ts";
 import { tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const SCHEMA = readFileSync(path.join(import.meta.dir, "fixtures", "plugin-schema-v76.sql"), "utf8");
 const t = tmbProcesses("tmb-migrate-");

@@ -2,12 +2,15 @@
 // commit status tmb/review on the reviewed commit; a mark that could not be sent is recorded and
 // sent at the next occasion; a pull request and `tmb onboard` say whether the base branch
 // requires the mark. The project's origin has a GitHub address that git rewrites to a bare repository.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { githubStandIn, PR_URL } from "./github-stand-in.ts";
 import { callJson, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-review-mark-");
 afterAll(cleanup);

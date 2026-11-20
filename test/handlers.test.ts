@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +15,9 @@ import {
 } from "../src/engine/handlers/index.ts";
 import { openProjectStore, projectDbPath } from "../src/engine/index.ts";
 import { type Actor, SEARCH_LIMIT_MAX, type Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const WORKER: Actor = { kind: "agent", role: "worker", host: "test-host" };

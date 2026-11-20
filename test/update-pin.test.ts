@@ -1,13 +1,16 @@
 // An update applies at once; a running session pins its project to the build it started with
 // (trustmybot/tmb#159). These cover the updater's own bookkeeping; the update scenario test
 // covers the whole story with real builds.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter as claudeCode } from "../src/adapters/claude-code/index.ts";
 import { Updater } from "../src/update.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 let scratch: string;
 let alive: ReturnType<typeof spawn> | undefined;

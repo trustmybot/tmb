@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,6 +6,9 @@ import { adapter } from "../src/adapters/claude-code/index.ts";
 import { detectProgram } from "../src/adapters/common/detect.ts";
 import { adapterById, DEFAULT_HOST_ID, HOST_ADAPTERS } from "../src/adapters/index.ts";
 import { TMB_EVENT_TYPES } from "../src/engine/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 let bin: string;
 

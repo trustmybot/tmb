@@ -2,11 +2,14 @@
 // that starts in a worktree its host made. A commit outside the task's declared files closes and
 // the close names the files and leaves the spec as written; a change left in the main folder during the task is reported at
 // close, with how to put it back; the host's worktree is adopted as the task's and cleaned up at close.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CLI, callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { env, git, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-close-checks-");
 afterAll(cleanup);

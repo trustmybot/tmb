@@ -1,11 +1,14 @@
 // Claude Code's PreToolUse and SubagentStop hooks, translated into tmb events and answered.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { answerHook } from "../src/adapters/claude-code/hook.ts";
 import { AWAITING_REVIEW_HEADING, handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION, writeSetting } from "../src/engine/index.ts";
 import type { GuardDecision } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 let project: string;
 const savedProjectDir = process.env.CLAUDE_PROJECT_DIR;

@@ -1,9 +1,12 @@
 // The engine's subagent roles: what each may do, in host-neutral terms, and the prompt it is written with.
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { CAPABILITIES, SUBAGENT_ROLES } from "../src/engine/index.ts";
 import { ROLES } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "..");
 

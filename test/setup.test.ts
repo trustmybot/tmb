@@ -1,5 +1,5 @@
 // tmb init and tmb onboard with fake host adapters: host choice, defaults, the questions and flags.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,6 +7,9 @@ import { type HostAdapter, SUPPORTED_HOST_IDS } from "../src/adapters/index.ts";
 import { openProjectStore, readSettings, reviewModeChosenVia, SettingError, type Settings, tiedProgram, TMB_EVENT_TYPES } from "../src/engine/index.ts";
 import type { AuditEntry } from "../src/engine/store/index.ts";
 import { type Ask, runInit, runOnboard, SetupError, type SetupFlags, type SetupOptions } from "../src/setup.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 let project: string;
 let output: string[];

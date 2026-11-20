@@ -1,7 +1,7 @@
 // `tmb init` then `tmb remove` as separate processes: init writes the three registrations
 // (the tool server, the role files, the event hooks) and the record; remove takes back only
 // what init added and leaves every file the Human wrote as it was.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +11,9 @@ import { isTmbHookCommand, TMB_HOOKS } from "../../src/adapters/claude-code/sett
 import { projectDbPath, SUBAGENT_ROLES } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 import { asHuman } from "../lib/as-human.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");

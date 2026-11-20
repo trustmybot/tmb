@@ -4,11 +4,14 @@
 // feature branch merged, or the task closed, once the base branch holds its tip. A fake `gh` on PATH
 // logs every call, so a pull request step that reached GitHub would show, and opens a pull request
 // only once a remote was added.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } = tmbProcesses("tmb-workflow-no-remote-");
 afterAll(cleanup);

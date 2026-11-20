@@ -1,6 +1,6 @@
 // Steps only the Human may take (trustmybot/tmb#179): which commands they are, how the guard finds
 // one in an agent's shell command, and that the guard denies it and records the deny.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +8,9 @@ import { decide, openProjectStore, projectDbPath, type TmbEvent } from "../src/e
 import { humanOnlyInShell, humanOnlyStep } from "../src/engine/human-only.ts";
 import { answerHook as claudeCodeHook } from "../src/adapters/claude-code/hook.ts";
 import { answerHook as codexHook, shellTextOf } from "../src/adapters/codex/hook.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 describe("humanOnlyStep", () => {
   test("both waivers, setting the review mode and tmb remove are the Human's; tmb update and the rest are not", () => {

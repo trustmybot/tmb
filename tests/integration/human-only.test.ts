@@ -1,13 +1,16 @@
 // Steps only the Human may take run only on a terminal, once the Human types yes there
 // (trustmybot/tmb#179). An agent's shell has no terminal: each such step run without one is
 // refused, and the record holds no entry by the Human from it.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { asHuman } from "../lib/as-human.ts";
 import { CLI, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { env, run, tmb, human, setUpProject, hook, cleanup } = tmbProcesses("tmb-human-only-");
 afterAll(cleanup);

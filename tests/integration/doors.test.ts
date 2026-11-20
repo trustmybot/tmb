@@ -1,6 +1,6 @@
 // Both ways into the record, driven as separate processes the way a host and the Human use
 // them: init, onboard and remove, the tool server over stdio, the record commands, and session start.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { spawnSync } from "node:child_process";
@@ -9,6 +9,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathWithFakeClaude } from "./fake-host.ts";
 import { asHuman } from "../lib/as-human.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");

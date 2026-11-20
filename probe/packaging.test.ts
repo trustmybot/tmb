@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 import { ECHO_TOOL, checkFts, checkServe, handleRequest, parseSymbols } from "./packaging.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 describe("packaging probe", () => {
   test("FTS5 MATCH finds the one matching row", () => {

@@ -2,9 +2,12 @@
 // issue, starts a feature branch and a task, a worker commits the work and closes it, and the
 // close folds it into the feature branch. Along the way the worker is refused the planner's
 // steps. Scripted as tool calls through the tool server, with no model.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const FEATURE = "feat/hello";
 const FILE = "hello.txt";
