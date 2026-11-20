@@ -73,6 +73,9 @@ flowchart TD
 - The Human can try the feature branch in a separate worktree while tasks continue.
 - **The feature branch starts from the remote's base branch** (trustmybot/tmb#169). The engine fetches it first. It uses the local base branch instead when that holds a commit the remote lacks, when there is no remote, or when the remote is out of reach.
 - **The base branch is brought in before the review.** On the planner's request the engine merges the base branch into the feature branch, with a merge commit and never a rebase, and pushes the branch as a backup. A conflict changes nothing and names the files: the planner settles it in a task, or raises it to the Human. The feature branch's brief says whether it holds the base branch. Nothing refuses a review of a branch that does not; the brief is how the planner and the reviewer know. Proposed, for the Human's review.
+- **A feature branch ends as merged or closed** (trustmybot/tmb#131). Once its pull request is open, tmb reads that pull request's state through the Human's own GitHub CLI: merged makes the branch merged, closed without a merge makes it closed. tmb reads it when the planner's session starts, when the features are listed, and for the dashboard at most once a minute per branch. A read that fails changes nothing, so with no network the branch stays as it was. tmb never deletes the branch.
+- The planner's session start names each pull request that ended since the last session.
+- Planned for v1.0.0 (trustmybot/tmb#152): a second pull request on a closed feature branch. Today the gate still needs the branch open.
 
 ## Truest mode
 
