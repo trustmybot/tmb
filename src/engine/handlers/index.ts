@@ -203,6 +203,7 @@ export { HandlerError, type HandlerErrorCode } from "./errors.ts";
 export { type FieldSchema, type InputSchema } from "./input.ts";
 export * from "./features.ts";
 export * from "./graph.ts";
+export * from "./marks.ts";
 export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
 export * from "./reviews.ts";

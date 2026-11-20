@@ -56,6 +56,8 @@ export function roleFileText(role: SubagentRole): string {
   ];
   const denied = roleDeniedTools(role);
   if (denied.length > 0) lines.push(`disallowedTools: ${JSON.stringify(denied.join(", "))}`);
+  // Claude Code makes the worktree the role's working folder and keeps its edits there; tmb adopts it as the task's.
+  if (role.ownWorktree) lines.push(`isolation: "worktree"`);
   if (role.model) lines.push(`model: ${JSON.stringify(role.model)}`);
   if (role.effort) lines.push(`effort: ${JSON.stringify(role.effort)}`);
   lines.push("---", "", role.prompt.trimEnd(), "");
