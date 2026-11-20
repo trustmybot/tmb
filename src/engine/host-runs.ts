@@ -4,8 +4,12 @@
 import { hostRole } from "./settings.ts";
 import type { Actor, Run, Store } from "./store/index.ts";
 
+/** A run that did what it was started for: a worker's task left the open state, a reviewer recorded its verdict (trustmybot/tmb#133). */
+export const FINISHED = "finished";
+/** A run that ended any other way. */
+export const STOPPED = "stopped";
 /** The outcome of a reviewer host's run whose session ended before a verdict. */
-export const NO_VERDICT = "session ended with no verdict";
+export const NO_VERDICT = STOPPED;
 
 /** Whether the host's main agent is the project's reviewer. */
 export function isReviewerHost(store: Store, host: string): boolean {
@@ -16,8 +20,8 @@ function reviewerActor(host: string): Actor {
   return { kind: "agent", role: "reviewer", host };
 }
 
-/** The host's open reviewer runs, oldest first. */
-function openRunsOf(store: Store, host: string): Run[] {
+/** The host's open reviewer runs, oldest first; the oldest is the one a verdict from that host is written by. */
+export function openRunsOf(store: Store, host: string): Run[] {
   return store.openRuns("reviewer").filter((run) => run.createdBy.kind === "agent" && run.createdBy.host === host);
 }
 

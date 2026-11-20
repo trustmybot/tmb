@@ -37,7 +37,11 @@ The examples on this page say `tmb`; use the name of the program you installed. 
 
 Before the channels had their own names, every channel installed as `tmb`. Such a `tmb` keeps following the channel it was on, and the installer points it out when it installs the channel's new name.
 
-Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. A project whose record a newer tmb reshaped never holds the swap back: this program can do nothing there, so no task there runs on it. Until then it keeps running the version it has, and with no network it simply runs that version.
+Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. `tmb update`, or the end of any session, installs it at once; with no network tmb simply runs the version it has.
+
+A session that is running keeps the build it started with, and so does its project: while it runs, every tmb call there (its hooks, its tool server, git's push hook, a command you type) runs that build, the record keeps its shape and the host files are left as they are. The session moves to the new build by itself at its next tool call once no task is open in the project, and says so in one line; you do nothing, and the conversation is kept. If the move fails, the session keeps its build and says how to restart tmb's tool server (in Claude Code: `/mcp`, then Reconnect on tmb). `tmb update` names each session still on an old build by its folder, title and start time, and why. The replaced build is kept; tmb says how many old builds no session uses and their size, and never deletes one by itself.
+
+A project whose record a newer tmb reshaped never holds an update back: this program can do nothing there.
 
 | Command | Does |
 |---|---|
@@ -68,11 +72,11 @@ tmb is set up for Claude Code. Next:
   2. Send `@bro`.
 ```
 
-On a terminal, init first asks one question: the review mode, with what each mode costs. It is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). At the first session the planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
+Init asks nothing. At the first session the planner asks you for the review mode among its onboarding questions, with what each mode costs; it is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). The planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | One, on a terminal: the review mode |
+| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | None |
 | `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks; in a workspace, each repo's base branch and checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
@@ -84,7 +88,7 @@ It then wires tmb into that host, as listed below, and stores the host and its r
 
 Run again, init replaces what an earlier tmb wrote and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
 
-On a terminal it asks for the review mode before those lines, unless one is stored. Without a terminal it asks nothing, never waits for input, and ends by saying that no review mode is chosen and that no task starts until it is.
+It asks nothing and never waits for input, on a terminal or not. With no review mode stored, it ends by saying that none is chosen, how to choose it, and that no task starts until it is.
 
 ### onboard
 
@@ -117,7 +121,7 @@ In a workspace, `base_branch` and `checks` are not used: each repo has its own i
 
 ### Onboarding by itself
 
-When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. Once all are set, the session start says nothing about them.
+When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. The review mode it never applies: it asks you for it among its onboarding questions, with the host's question tool (AskUserQuestion in Claude Code), showing each mode with what it costs and marking agile as recommended, and stores your answer. Once all are set, the session start says nothing about them.
 
 `settings_get` reads the settings and what tmb found; `settings_set` is the planner's alone.
 
@@ -125,9 +129,11 @@ When a session starts as the planner and the base branch, the review mode or the
 
 The review mode decides how many tokens a project uses, so tmb recommends one and never picks it. While none is set, tmb refuses to start a task and says how to choose. There are three ways:
 
-- answer the question at the end of `tmb init`, on a terminal;
-- run `tmb onboard`, or `tmb onboard --review-mode <mode> --yes` to set it without a question;
-- tell the planner when it asks before the first task. It stores your answer.
+- answer the planner's onboarding question at the first session. It stores your answer;
+- run `tmb onboard` on a terminal;
+- run `tmb onboard --review-mode <mode> --yes` to set it without a question.
+
+`tmb init` never asks for it.
 
 In an unattended run nobody can answer, so the task start is refused, the refusal names `tmb onboard`, and the planner cannot set or change the mode. Set it before the run. The record keeps which way the mode was chosen.
 
@@ -232,7 +238,7 @@ When tmb itself goes wrong, a bug report can reach tmb's maintainers as a public
 | `tmb feedback status` | Shows whether the program is on, and why. |
 
 - **On or off only decides whether the planner offers a report.** With the program on, the planner may draft one when tmb breaks, and shows it to you first. `tmb feedback` works either way.
-- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The first run is the end of `tmb init` on a terminal, else the planner's first session.
+- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The notice comes at the end of `tmb init` on a terminal, else at the planner's first session; the question on stable is always the planner's, as init asks nothing.
 - **The setting is yours, not the project's.** It is kept once per machine for each channel's program.
 - **How a report is sent.** With GitHub's CLI signed in, tmb files the issue after your yes and prints its link. Otherwise it opens the repo's bug form in your browser, filled in, and you press submit there; with no browser it prints the link. A report too long for a link is saved to a file, and the form asks you to attach it.
 - **Without a terminal** the draft is only saved to a file, and nothing is sent.
@@ -262,12 +268,13 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
 | `tmb config` | Show the project's settings: host, each host's role, base branch, review mode, checks and, in a workspace, the repos, one per line. In a project where `tmb init` has not run, it says so. |
-| `tmb feature start <name>` | Start a feature branch: tmb cuts it from the latest commit of the base branch, without checking it out anywhere, and records it. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project with no base branch set. In truest mode it is refused: a task there is cut from the base branch. In a workspace, `--repo <name>` names the repo. |
-| `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks |
+| `tmb feature start <name>` | Start a feature branch: tmb fetches the base branch from `origin` and cuts the feature branch from its latest commit there, without checking it out anywhere, and records it. It uses your local base branch when that holds a commit `origin` lacks, when there is no `origin`, or when `origin` is out of reach. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project with no base branch set. In truest mode it is refused: a task there is cut from the base branch. In a workspace, `--repo <name>` names the repo. |
+| `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks. A branch whose pull request is open is checked on GitHub first, through `gh`: it shows as `merged` once the pull request merged, and as `closed` when it was closed without a merge |
 | `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. It also refuses when no base branch is set or no review mode is chosen. When a file is also in another open task's spec, the task still starts and tmb names the tasks that share it. In truest mode the task is cut from the base branch and `--feature` is refused. In a workspace, `--repo <name>` names the repo. |
 | `tmb task list [--state open\|in_review\|closed\|all]` | List the open tasks, or those in review, or the closed ones, each with the commit it closed at, or all |
 | `tmb task brief <id>` | Show a task's kind, feature branch, spec, branch, worktree and the checks that run when it closes |
 | `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin`. In truest mode the task is not folded: it goes into review at that commit. |
+| `tmb feature update <name>` | Bring the base branch into a feature branch before its review: tmb fetches the base, merges it in with a merge commit and pushes the branch as a backup. A conflict changes nothing and names the files. |
 | `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
 | `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only. |
 | `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review |
@@ -310,7 +317,9 @@ tmb migrate
 
 tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into the new record `tmb init` made for this project, and names that record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
 
-The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. It also refuses before `tmb init` has made the project's record, and a record in a folder above a repo that the record does not serve, naming that record; it never creates a record itself.
+In a workspace of several repos ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)), run `tmb migrate` in the workspace folder after `tmb init` there. Each plugin repo goes into the workspace's one record, to the workspace repo of the same name, and each copied task names that repo; issues name no repo. With no `--repo`, every plugin repo that maps is copied in one go, and tmb names each one it left out with the flag that maps it. `--repo <name>` copies one plugin repo, and `--repo <name> --into <workspace repo>` sends it to a repo of another name. tmb never guesses a repo, and refuses an exempt repo or a folder that is not a repo as the target. A plugin repo already migrated into the record is refused, so a re-run copies nothing twice, and the plugin's issues of no repo are copied once, with the first migration.
+
+The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and, in a single-repo project, a record that already holds issues or tasks, so it runs once. It also refuses before `tmb init` has made the project's record, and a record in a folder above a repo that the record does not serve, naming that record; it never creates a record itself.
 
 ## Remove
 

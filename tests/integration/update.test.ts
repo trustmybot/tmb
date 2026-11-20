@@ -94,12 +94,12 @@ function releaseEnv(): Record<string, string> {
 
 describe("an install updates itself", () => {
   for (const [channel, { old, next }] of Object.entries(CHANNELS)) {
-    test(`on the ${channel} channel, between sessions and never with a task open`, async () => {
+    test(`on the ${channel} channel, at once, while a running session keeps its build until it is free (trustmybot/tmb#159)`, async () => {
       const scenario = install(old, releaseEnv());
       {
         const steps: string[] = [];
         await updatesItself(scenario, next, (line) => steps.push(line));
-        expect(steps).toHaveLength(7);
+        expect(steps).toHaveLength(8);
         expect(installedVersion(scenario)).toBe(next);
       }
     }, 120_000);

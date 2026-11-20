@@ -185,6 +185,7 @@ export function settingLines(settings: Settings): string[] {
 // --- the review mode: the Human's choice -------------------------------------------------
 
 /** The ways the Human chooses the review mode: at the end of `tmb init`, with `tmb onboard`, or by answering the planner. */
+// "init" is kept for records written before init stopped asking (trustmybot/tmb#162).
 export const REVIEW_MODE_CHOOSERS = ["init", "onboard", "planner"] as const;
 export type ReviewModeChooser = (typeof REVIEW_MODE_CHOOSERS)[number];
 

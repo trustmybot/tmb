@@ -67,7 +67,7 @@ export function issues(db: Database): Row[] {
 
 const TASK_SQL = `
 SELECT t.id, t.issue_id, i.title AS issue_title, t.title, t.spec, t.state, t.kind, t.branch, t.worktree,
-  t.base_commit, t.commit_sha, t.feature_id, f.name AS feature_name, t.review_mode, t.push_result,
+  t.base_commit, t.commit_sha, t.feature_id, f.name AS feature_name, f.state AS feature_state, f.pr_url AS feature_pr_url, t.review_mode, t.push_result,
   t.push_detail, t.created_by, t.created_at, t.updated_at,
   (SELECT c.result FROM check_runs c WHERE c.task_id = t.id ORDER BY c.id DESC LIMIT 1) AS last_check
 FROM tasks t
@@ -95,8 +95,10 @@ export function tasks(db: Database): Row[] {
 }
 
 const RUN_SQL = `
-SELECT r.id, r.task_id, t.title AS task_title, r.role, r.started_at, r.ended_at, r.outcome, r.cost, r.created_by, r.created_at
-FROM runs r LEFT JOIN tasks t ON t.id = r.task_id`;
+SELECT r.id, r.task_id, t.title AS task_title, COALESCE(r.feature_id, t.feature_id) AS feature_id, f.name AS feature_name,
+  r.role, r.started_at, r.ended_at, r.outcome, r.cost, r.created_by, r.created_at
+FROM runs r LEFT JOIN tasks t ON t.id = r.task_id
+LEFT JOIN features f ON f.id = COALESCE(r.feature_id, t.feature_id)`;
 
 const CHECK_RUN_SQL = `
 SELECT c.id, c.task_id, t.title AS task_title, c.commit_sha, c.started_at, c.ended_at, c.result, c.commands, c.created_by, c.created_at

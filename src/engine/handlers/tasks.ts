@@ -11,7 +11,7 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
 import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
-import { CLOSED, DROPPED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
@@ -407,6 +407,8 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
       requireOpenIssue(store, request.issue_id);
       if (request.replaces !== undefined) requireDropped(store, request.replaces);
       shared = sharedFiles(store, spec.files, repo.name);
+      // Rework on a branch whose pull request closed reopens it, so review and a new pull request run as before (trustmybot/tmb#152).
+      if (feature !== null && feature.state === CLOSED_UNMERGED) store.updateFeature(actor, feature.id, { state: OPEN });
       store.appendTask(actor, {
         id,
         issueId: request.issue_id,
@@ -673,7 +675,7 @@ function finishFold(
   const dir = taskDir(store, context.projectDir, task);
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, featureName);
+  const push = pushFeature(dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -751,7 +753,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, feature.name);
+  const push = pushFeature(dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }

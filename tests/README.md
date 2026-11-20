@@ -141,6 +141,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Unit | [test/decide.test.ts](../test/decide.test.ts) | The host guards deny a write outside an open task's worktree. tmb reads no shell command (trustmybot/tmb#98): [test/claude-code-hook.test.ts](../test/claude-code-hook.test.ts) and [test/codex-adapter.test.ts](../test/codex-adapter.test.ts) show a push that skips git's hook is neither refused nor recorded. |
 | Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Init writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
 | Workflow simulation | [tests/workflow/review-gate.test.ts](workflow/review-gate.test.ts) | Review, fail, rework, pass and the pull request on one feature branch, and a Human waiver on a second; only a reviewer run records a verdict, and only on the branch's tip. |
+| Workflow simulation | [tests/workflow/feature-after-pr.test.ts](workflow/feature-after-pr.test.ts) | A feature branch after its pull request: closed without a merge, it takes a new pull request or a rework task that reopens it; a pull request already open from the branch is recorded, not opened twice; merged, it takes neither (trustmybot/tmb#152). |
 | Agent run | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) (`bun run test:reviewer`) | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
 
 ## Level 7 tests
@@ -231,6 +232,17 @@ What a close checks beyond the checks, and a worker started in a worktree its ho
 | Unit | [test/claude-code-role-files.test.ts](../test/claude-code-role-files.test.ts) | The worker's Claude Code agent file asks for worktree isolation; the reviewer's does not. |
 | Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | Claude Code raises a worker's folder when the worker names its task with task_brief or task_close; Codex, whose worker works in the worktree tmb cut, does not. |
 | Workflow simulation | [tests/workflow/close-checks.test.ts](workflow/close-checks.test.ts) | A commit outside the task's files closes, and the close names those files and leaves the spec as written; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |
+
+## Runs and feature branches after a pull request
+
+How a run ended and what it cost, and a feature branch once its pull request merged or closed (trustmybot/tmb#131, trustmybot/tmb#133, trustmybot/tmb#135).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/claude-code-usage.test.ts](../test/claude-code-usage.test.ts) | A Claude Code transcript gives tokens per model, each message counted once; an unreadable one gives no cost. |
+| Unit | [test/decide.test.ts](../test/decide.test.ts), [test/host-roles.test.ts](../test/host-roles.test.ts) | A run ends finished or stopped, and a review of a feature branch links its run to that branch. |
+| Unit | [test/pull-request-state.test.ts](../test/pull-request-state.test.ts) | A feature branch in pr_open moves to merged or closed from the pull request's state; a failed read leaves it; the planner's session start names the ones that ended. |
+| Integration | [tests/integration/dashboard-pull-requests.test.ts](integration/dashboard-pull-requests.test.ts) | The dashboard's reads move a feature branch, at most once a minute per branch. |
 
 ## Refresh after an update
 

@@ -300,3 +300,110 @@ describe("tmb migrate refuses", () => {
     expect(t.tmb(["migrate"], project)).toContain(`into ${path.join(project, ".tmb", "trajectory.db")}`);
   });
 });
+
+// trustmybot/tmb#193: a multi-repo plugin project goes into one workspace record.
+describe("a multi-repo plugin project into a workspace", () => {
+  /** A workspace (not a git work tree) holding a git repo per name, set up by tmb init, over the plugin database. */
+  function workspaceOver(repoNames: string[], options: { repoless?: boolean } = {}): { workspace: string } {
+    const plugin = pluginWorkspace();
+    if (options.repoless) {
+      const db = new Database(plugin.dbPath);
+      db.exec(`INSERT INTO issues (id, objective, description, status, created_at, updated_at, repo) VALUES
+        (4, 'Shared docs', 'For every repo.', 'open', '2026-01-05T10:00:00.000Z', '2026-01-05T10:00:00.000Z', NULL)`);
+      db.close();
+    }
+    for (const name of repoNames) {
+      const repo = path.join(plugin.workspace, name);
+      mkdirSync(repo);
+      t.git(repo, "init", "-q", "-b", "main");
+      writeFileSync(path.join(repo, "README.md"), name);
+      t.git(repo, "add", ".");
+      t.git(repo, "commit", "-q", "-m", "first");
+    }
+    t.tmb(["init"], plugin.workspace);
+    return { workspace: plugin.workspace };
+  }
+
+  function tasksByRepo(workspace: string): Record<string, string[]> {
+    const store = openRecord(workspace);
+    try {
+      const byRepo: Record<string, string[]> = {};
+      for (const task of store.listTasks()) (byRepo[task.repo ?? "."] ??= []).push(task.branch ?? "");
+      for (const branches of Object.values(byRepo)) branches.sort();
+      return byRepo;
+    } finally {
+      store.close();
+    }
+  }
+
+  test("with no --repo, every plugin repo of the same name is copied in one run, each task naming its repo", () => {
+    const { workspace } = workspaceOver(["app", "other"], { repoless: true });
+    const output = t.tmb(["migrate"], workspace);
+    expect(output).toContain("(repo app)");
+    expect(output).toContain("(repo other)");
+    expect(tasksByRepo(workspace)).toEqual({ app: ["docs/dark-mode", "feat/dark-mode", "perf/search"], other: ["other/x"] });
+    // The plugin's issue of no repo is copied once.
+    const titles = t.tmbJson<{ title: string }[]>(["issue", "list"], workspace).map((issue) => issue.title);
+    expect(titles.filter((title) => title === "Shared docs")).toHaveLength(1);
+    expect(titles).toHaveLength(4);
+
+    // A re-run copies nothing twice.
+    const again = t.run(["migrate"], workspace);
+    expect(again.status).toBe(1);
+    expect(again.stderr).toContain("app: already migrated into this record");
+    const named = t.run(["migrate", "--repo", "app"], workspace);
+    expect(named.status).toBe(1);
+    expect(named.stderr).toContain("the plugin's repo app is already migrated into this record");
+  });
+
+  test("one repo at a time: a second repo is no longer refused, and shared issues come only with the first", () => {
+    const { workspace } = workspaceOver(["app", "other"], { repoless: true });
+    expect(t.tmb(["migrate", "--repo", "app"], workspace)).toContain("3 issues");
+    const second = t.tmb(["migrate"], workspace);
+    expect(second).toContain("(repo other)");
+    expect(second).toContain("1 issues, 1 notes and decisions, 1 tasks");
+    expect(second).toContain("Not copied: the plugin's repo app: already migrated into this record.");
+    expect(t.tmbJson<unknown[]>(["issue", "list"], workspace)).toHaveLength(4);
+  });
+
+  test("a plugin repo with no workspace repo of its name is named with the flag that maps it, and --into maps it", () => {
+    const { workspace } = workspaceOver(["web", "other"]);
+    mkdirSync(path.join(workspace, "notes"));
+    t.tmb(["init"], workspace);
+    const first = t.tmb(["migrate"], workspace);
+    expect(first).toContain("(repo other)");
+    expect(first).toContain("Not copied: the plugin's repo app: the workspace has no repo of that name; map it with --repo app --into <workspace repo>.");
+
+    // No fallback: --repo alone does not guess.
+    const unmapped = t.run(["migrate", "--repo", "app"], workspace);
+    expect(unmapped.status).toBe(1);
+    expect(unmapped.stderr).toContain("name where its rows go with --repo app --into <workspace repo>");
+    expect(unmapped.stderr).toContain("the plugin's repos are app, other; the workspace's are notes, other, web");
+
+    const folder = t.run(["migrate", "--repo", "app", "--into", "notes"], workspace);
+    expect(folder.status).toBe(1);
+    expect(folder.stderr).toContain("notes is a folder that is not a repo");
+
+    expect(t.tmb(["migrate", "--repo", "app", "--into", "web"], workspace)).toContain("(repo app, into web)");
+    expect(tasksByRepo(workspace)).toEqual({ web: ["docs/dark-mode", "feat/dark-mode", "perf/search"], other: ["other/x"] });
+  });
+
+  test("an exempt repo takes no rows", () => {
+    const { workspace } = workspaceOver(["app", "other"]);
+    t.tmb(["onboard", "--repo", "app", "--exempt", "--yes"], workspace);
+    const output = t.tmb(["migrate"], workspace);
+    expect(output).toContain("Not copied: the plugin's repo app: app is exempt, so tmb does no work in it; map it with --repo app --into <workspace repo>.");
+    expect(tasksByRepo(workspace)).toEqual({ other: ["other/x"] });
+  });
+
+  test("--into is refused in a single-repo project", () => {
+    const plugin = pluginWorkspace();
+    const project = path.join(plugin.workspace, "app");
+    mkdirSync(project);
+    t.git(project, "init", "-q", "-b", "main");
+    t.tmb(["init"], project);
+    const refused = t.run(["migrate", "--repo", "app", "--into", "web"], project);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("--into names a workspace repo, and this project is a single repo");
+  });
+});

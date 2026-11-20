@@ -13,13 +13,15 @@ import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
+import { refreshPullRequestStates } from "./pull-request-state.ts";
 import { repoDirOf, workspaceRepos } from "./repos.ts";
-import { readSettings, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode } from "./settings.ts";
-import { type Store, type Task, clip } from "./store/index.ts";
+import { readSettings, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode } from "./settings.ts";
+import { type Actor, type Store, type Task, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
 export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
+export const PULL_REQUESTS_ENDED_HEADING = "## Pull requests that ended since the last session";
 export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
 export const HOST_FILES_HEADING = "## tmb's files in this project";
 export const DOCTOR_HEADING = "## What tmb doctor finds";
@@ -141,8 +143,8 @@ const SETTING_LABELS = { base_branch: "base branch", review_mode: "review mode",
 /**
  * When the project's settings are empty, as `tmb init` leaves them, the planner onboards the
  * project itself: it applies the base branch and checks it recommends and shows them. The review
- * mode is the Human's choice: the planner asks for it before the first task, and with no one to
- * ask leaves it unset, so task_start is refused. Empty when all are set.
+ * mode is the Human's choice: init asks nothing, so the planner asks for it among its onboarding
+ * questions, and with no one to ask leaves it unset, so task_start is refused. Empty when all are set.
  */
 function emptySettingsSection(store: Store, projectDir: string, unattended: boolean): string {
   const empty = emptySettings(readSettings(store));
@@ -172,7 +174,8 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
         ? "The review mode is the Human's choice, as it decides how many tokens the project uses, and no one can answer in this run: do not set it. " +
             "task_start is refused until the Human runs `tmb onboard`; say so in your answer."
         : "The review mode is the Human's choice, as it decides how many tokens the project uses: do not set it yourself. " +
-            "Before the first task, ask the Human which mode they choose, with the mode you recommend and what each costs, and set their answer with settings_set. task_start is refused until it is set.",
+            `Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, ${RECOMMENDED_REVIEW_MODE} marked as recommended. ` +
+            "Set their answer with settings_set. task_start is refused until it is set.",
     );
   }
   return `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ${parts.join(" ")}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`;
@@ -244,7 +247,7 @@ export function sessionStartContext(projectDir: string, unattended: boolean, hos
     const context = withHostFiles(reviewerContext(projectDir, host!), refreshed, unattended);
     return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
   }
-  const context = withDoctor(withHostFiles(plannerContext(projectDir, unattended), refreshed, unattended), projectDir, doctor, unattended);
+  const context = withDoctor(withHostFiles(plannerContext(projectDir, unattended, host), refreshed, unattended), projectDir, doctor, unattended);
   if (unattended) return `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`;
   // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
   const told = feedback === undefined ? "" : feedbackSection(feedback);
@@ -302,15 +305,26 @@ function tidyClosedTasks(store: Store, projectDir: string): void {
   }
 }
 
+/**
+ * Reads the pull request of each feature branch in pr_open and moves it to merged or closed once
+ * GitHub says so (trustmybot/tmb#131); a section naming those it moved, empty when none. Never throws.
+ */
+function endedPullRequests(store: Store, projectDir: string, host?: string): string {
+  const actor: Actor = host === undefined ? { kind: "human" } : { kind: "agent", role: "planner", host };
+  const moved = refreshPullRequestStates(store, actor, projectDir);
+  return moved.length === 0 ? "" : `\n\n${PULL_REQUESTS_ENDED_HEADING}\n\n${moved.map((line) => `- ${line}`).join("\n")}`;
+}
+
 /** Never throws: a missing record gives the role alone, a bad one the role and a line naming the problem. */
-function plannerContext(projectDir: string, unattended: boolean): string {
+function plannerContext(projectDir: string, unattended: boolean, host?: string): string {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     return opened.error.failure === "missing" ? plannerRole : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
   }
   try {
     tidyClosedTasks(opened.store, projectDir);
-    return withRole(`${openWork(opened.store)}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir, opened.store)}`);
+    const ended = endedPullRequests(opened.store, projectDir, host);
+    return withRole(`${openWork(opened.store)}${ended}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir, opened.store)}`);
   } catch (error) {
     return withRole(`tmb could not read the record: ${oneLine(error)}`);
   } finally {

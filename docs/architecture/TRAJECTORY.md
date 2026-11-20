@@ -8,9 +8,9 @@ The record of the work: what was asked, what was decided, what each agent did an
 |---|---|
 | Issue | A goal, its state and its milestone. |
 | Discussion | Notes and decisions on an issue. The newest decision is the one in force. |
-| Feature branch | A branch tasks fold into, its base branch and commit, and, in a workspace, its repo. |
+| Feature branch | A branch tasks fold into, its base branch and commit, its state and, in a workspace, its repo. |
 | Task | A spec, its state, its branch and its commit, and, in a workspace, its repo. |
-| Run | One agent working on one task or one review, from start to end. Its cost is not recorded yet (trustmybot/tmb#133). |
+| Run | One agent working on one task or one review, from start to end, with how it ended and its cost ([Runs](#runs)). |
 | Check run | The checks run on a commit and their result. |
 | Review | A reviewer's verdict on a commit or a feature branch, with its findings. |
 | Guard decision | Every allow and deny the gate gave, and why. |
@@ -23,8 +23,17 @@ The record of the work: what was asked, what was decided, what each agent did an
 - **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
 - **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump. Agents spend their context on the work.
 - **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
-- **Every record names who made it.** The Human, or the role and host that acted. Two gaps: every call through the command line and every push is recorded as the Human's, an agent's too (trustmybot/tmb#179, trustmybot/tmb#134). Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
+- **Every record names who made it.** The Human, or the role and host that acted. A push tmb makes for an agent is recorded as that agent's, and a push typed by hand as the Human's (trustmybot/tmb#134). One gap: every call through the command line is recorded as the Human's, an agent's too (trustmybot/tmb#179). Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
 - **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering.
+
+## Runs
+
+Decided by bro, for the Human's review (trustmybot/tmb#133, trustmybot/tmb#135).
+
+- **A run ends as finished or stopped.** A worker's run is finished when its task left the open state during the run. A reviewer's run is finished when it recorded a review. Every other end is stopped, a reviewer that gave no verdict included.
+- **Cost is tokens, per model:** input, output, cache read and cache write. The host's adapter gives them. For Claude Code they come from the subagent's transcript, each message counted once. A run whose transcript cannot be read has no cost, and that is not an error.
+- **tmb records no price.** Prices change and a subscription has none per run.
+- **A run names its task or its feature branch.** A review of a whole feature branch has no task, so its run is linked to the branch it reviewed. A review names the run that wrote it.
 
 ## Where it lives
 

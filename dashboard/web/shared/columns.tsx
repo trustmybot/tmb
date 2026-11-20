@@ -72,6 +72,7 @@ export const TASK_TITLE_COLUMN: Column = { key: 'task_title', header: 'Task', ce
 export const RUN_COLUMNS: Column[] = [
   { key: 'role', header: 'Role', cell: (r) => <span className="inline-flex items-center gap-1.5"><Avatar author={String(r['role'])} size="small" />{String(r['role'])}</span> },
   TASK_TITLE_COLUMN,
+  { key: 'feature_name', header: 'Feature', cell: entityLink('feature', 'feature_id', 'feature_name'), truncate: true, hideBelow: 'sm' },
   { key: 'host', header: 'Host', cell: (r) => actorText(r['created_by']), hideBelow: 'md' },
   { key: 'started_at', header: 'Started', cell: time('started_at') },
   { key: 'ended_at', header: 'Ended', cell: time('ended_at'), hideBelow: 'sm' },

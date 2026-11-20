@@ -1,10 +1,11 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
 import { gitFailure, runGit } from "../git.ts";
+import { refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { branchRef, isAncestor, moveFeature, type PushOutcome, pushFeature } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -87,9 +88,10 @@ export function featureTip(projectDir: string, feature: Feature): string {
 }
 
 /**
- * The open feature branch a task starts on: the one named, or with none named the only one
- * open (in `repo` when the task names one). Refuses none open, several open, and a name the
- * record does not hold open.
+ * The feature branch a task starts on: the one named, or with none named the only one open (in
+ * `repo` when the task names one). A branch named whose pull request closed without a merge takes
+ * the task too: the task start moves it back to open (trustmybot/tmb#152). Refuses none open,
+ * several open, and a name the record does not hold open or closed.
  */
 export function featureForTask(store: Store, name: string | undefined, repo?: string): Feature {
   const open = store.listFeatures(OPEN).filter((feature) => name !== undefined || repo === undefined || feature.repo === repo);
@@ -99,7 +101,9 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
     if (!feature) {
       throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? HOW_TO_START : `the open ones are ${names}`}`);
     }
-    if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one`);
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
+      throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one, or on one whose pull request closed without a merge`);
+    }
     return feature;
   }
   if (open.length === 1) return open[0]!;
@@ -277,14 +281,16 @@ export function featureUpdate(store: Store, actor: Actor, input: unknown, contex
     undo();
     throw error;
   }
-  return result(to, how, pushFeature(dir, feature.name));
+  return result(to, how, pushFeature(dir, feature.name, actor));
 }
 
 // --- feature_list -------------------------------------------------------------------------
 
 export const featureListSchema: InputSchema = { type: "object", properties: {}, required: [], additionalProperties: false };
 
-export function featureList(store: Store, _actor: Actor, input: unknown): FeatureSummary[] {
+export function featureList(store: Store, actor: Actor, input: unknown, context?: OperationContext): FeatureSummary[] {
   validateInput("feature_list", featureListSchema, input);
+  // A feature whose pull request merged or closed moves on first (trustmybot/tmb#131); a read that fails changes nothing.
+  if (context !== undefined) refreshPullRequestStates(store, actor, context.projectDir);
   return store.listFeatures().map((feature) => summaryOf(store, feature));
 }

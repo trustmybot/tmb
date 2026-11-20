@@ -64,7 +64,7 @@ describe("tmb init", () => {
       "  1. Run `claude` in this folder.",
       "  2. Send `@bro`.",
       "The settings are still empty: base branch and checks; bro applies the ones it recommends. To set them yourself, run `tmb onboard`.",
-      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, bro asks you before the first task, or run `tmb onboard`; no task starts until it is set.",
+      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, bro asks you among its onboarding questions at the first session, or run `tmb onboard`; no task starts until it is set.",
     ]);
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, ...EMPTY });
     for (const file of [".tmb/trajectory.db", ".mcp.json", ".claude/settings.local.json", ".claude/agents/worker.md", ".git/hooks/pre-push"]) {

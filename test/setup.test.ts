@@ -29,6 +29,7 @@ function fakeHost(id: string, installed: boolean): HostAdapter {
     id,
     name: `Host ${id.toUpperCase()}`,
     command: `host-${id}`,
+    reconnectToolServer: "restart the host",
     limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
     detect: () => ({ installed }),
     setup(projectDir) {
@@ -190,33 +191,18 @@ describe("tmb init", () => {
       "  1. Run `host-a` in this folder.",
       "  2. Send `@bro`.",
       "The settings are still empty: base branch and checks; bro applies the ones it recommends. To set them yourself, run `tmb onboard`.",
-      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, bro asks you before the first task, or run `tmb onboard`; no task starts until it is set.",
+      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, bro asks you among its onboarding questions at the first session, or run `tmb onboard`; no task starts until it is set.",
     ]);
   });
 
-  test("on a terminal, asks one question, the review mode, with what each mode costs, and records that init chose it", async () => {
+  // trustmybot/tmb#162: init is non-interactive; the review mode is asked at onboarding.
+  test("on a terminal too, asks nothing, not even the review mode, and leaves it to onboarding", async () => {
     const ask = scripted(["truest"]);
     await init({ ask });
-    expect(ask.prompts).toEqual([REVIEW_MODE_PROMPT]);
-    expect(output).toContain("  agile: one review of each feature branch as a whole; the fewer tokens (recommended)");
-    expect(output).toContain("  truest: a review of every task before its push; more tokens, as every task is reviewed");
-    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: "truest", checks: null, repos: null });
-    expect(chosenVia()).toBe("init");
-    expect(output.join("\n")).not.toContain("No review mode is chosen");
-
-    // A project that has a review mode is not asked again.
-    const again = scripted(["agile"]);
-    await init({ ask: again });
-    expect(again.prompts).toEqual([]);
-    expect(settings().review_mode).toBe("truest");
-  });
-
-  test("on a terminal whose input ends before an answer, chooses nothing", async () => {
-    const ask = scripted([]);
-    await init({ ask });
-    expect(ask.prompts).toEqual([REVIEW_MODE_PROMPT]);
-    expect(settings().review_mode).toBeNull();
+    expect(ask.prompts).toEqual([]);
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: null, repos: null });
     expect(chosenVia()).toBeNull();
+    expect(output.at(-1)).toContain("bro asks you among its onboarding questions at the first session");
   });
 
   test("names the channel's program in the onboard hint", async () => {
@@ -320,10 +306,9 @@ describe("the questions", () => {
 
   test("on a terminal, are asked in turn showing their default, and the answers stored", async () => {
     writeFileSync(path.join(project, "Cargo.toml"), "");
-    const ask = scripted(["", "", "trunk", "", "cargo test", "cargo clippy", ""]);
+    const ask = scripted(["", "trunk", "", "cargo test", "cargo clippy", ""]);
     await initAndOnboardOutsideGit({ ask });
     expect(ask.prompts).toEqual([
-      REVIEW_MODE_PROMPT,
       "Role of Host A's main agent, one of: planner, reviewer [planner]: ",
       "Base branch, the branch pull requests merge into: ",
       REVIEW_MODE_PROMPT,
@@ -337,14 +322,14 @@ describe("the questions", () => {
   });
 
   test("with no detected base branch, asks again until it gets one", async () => {
-    const ask = scripted(["", "", "", "  ", "main"]);
+    const ask = scripted(["", "", "  ", "main"]);
     await initAndOnboardOutsideGit({ ask });
-    expect(ask.prompts.slice(2, 5)).toEqual(Array(3).fill("Base branch, the branch pull requests merge into: "));
+    expect(ask.prompts.slice(1, 4)).toEqual(Array(3).fill("Base branch, the branch pull requests merge into: "));
     expect(settings().base_branch).toBe("main");
   });
 
   test("refuse a role or review mode that does not exist, and ask again", async () => {
-    const ask = scripted(["strict", "truest", "boss", "reviewer", "main", ""]);
+    const ask = scripted(["boss", "reviewer", "main", "strict", "truest", ""]);
     await initAndOnboard({ ask });
     expect(output).toContain('a host\'s role must be planner or reviewer, got "boss"');
     expect(output).toContain('review mode must be agile or truest, got "strict"');
@@ -354,7 +339,7 @@ describe("the questions", () => {
 
   test("none clears the checks; Enter keeps the default", async () => {
     writeFileSync(path.join(project, "go.mod"), "");
-    await initAndOnboard({ ask: scripted(["", "", "main", "", "none"]) });
+    await initAndOnboard({ ask: scripted(["", "main", "", "none"]) });
     expect(settings().checks).toEqual([]);
     await initAndOnboard({ ask: scripted(["", "", "", ""]) });
     expect(output).toContain("  Stored: none.");
