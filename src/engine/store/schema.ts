@@ -232,7 +232,14 @@ const VERSION_7_SQL = `
 ALTER TABLE tasks ADD COLUMN main_snapshot TEXT;
 `;
 
+// Version 8: a workspace of several repos shares one record, so a feature branch and a task
+// record the repo they were cut in; NULL is the project folder itself (trustmybot/tmb#163).
+const VERSION_8_SQL = `
+ALTER TABLE features ADD COLUMN repo TEXT;
+ALTER TABLE tasks ADD COLUMN repo TEXT;
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

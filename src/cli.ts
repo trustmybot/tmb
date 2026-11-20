@@ -31,7 +31,7 @@ import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
 import { type FeedbackEnv, feedbackEnv, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
-import { judgePush, removePushGate } from "./engine/push-gate.ts";
+import { judgePush, removePushGates } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { runningProgram } from "./program.ts";
 import { refreshProject } from "./refresh.ts";
@@ -51,10 +51,12 @@ const USAGE: Record<string, string> = {
                             applies the ones it recommends at its first session. Run it once
                             per host to use two hosts on one record`,
   onboard: `  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-              [--check <command>]... [--yes]
+              [--check <command>]... [--repo <name> [--exempt]] [--yes]
                             Set the project's settings: a host's role, the base branch, the
-                            review mode and the checks. Asks on a terminal, else keeps the
-                            stored values; run it again at any time`,
+                            review mode and the checks. In a workspace of several repos, --repo
+                            names the repo --base and --check set, and --exempt makes tmb do no
+                            work in it. Asks on a terminal, else keeps the stored values; run it
+                            again at any time`,
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept`,
   migrate: `  tmb migrate [--from <plugin db>] [--repo <name>] [--json]
@@ -239,7 +241,8 @@ async function runPrePush(args: string[]): Promise<number> {
   const remote = args[0];
   if (remote === undefined) throw new Error("pre-push needs the remote's name, as git passes it");
   // A push from a task worktree runs the hook there; the record is in the project that holds it.
-  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text());
+  // In a workspace, the folder git runs the hook in names the repo whose base branch is judged.
+  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text(), process.cwd());
   if (decision.decision === "deny") {
     console.error(decision.reason ?? `tmb refused the push to ${remote}`);
     return 1;
@@ -371,6 +374,8 @@ const SETTING_OPTIONS = {
   base: { type: "string" },
   "review-mode": { type: "string" },
   check: { type: "string", multiple: true },
+  repo: { type: "string" },
+  exempt: { type: "boolean" },
 } as const;
 
 /** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting. */
@@ -378,7 +383,7 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
   const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
-  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean };
+  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean; repo?: string; exempt?: boolean };
   // Ask only when a person is at both ends; otherwise never wait for input. init asks only for the review mode.
   const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
   const run = { init: runInit, onboard: runOnboard }[command];
@@ -387,7 +392,7 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
     tmbCommand: tmbCommand(),
     program: { name: runningProgram(version).name, version },
     adapters: HOST_ADAPTERS,
-    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes },
+    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes, repo: given.repo, exempt: given.exempt },
     ask: terminal?.ask ?? null,
     out: (line) => process.stdout.write(`${line}\n`),
     colour: colourOn(process.stdout),
@@ -416,7 +421,7 @@ function runRemoveCommand(args: string[]): number {
       return [];
     }
   });
-  if (values.host === undefined) lines.push(...removePushGate(process.cwd()));
+  if (values.host === undefined) lines.push(...removePushGates(process.cwd()));
   // Each adapter says the record is kept; say it once.
   for (const line of new Set(lines)) console.log(line);
   for (const failure of failures) console.error(failure);

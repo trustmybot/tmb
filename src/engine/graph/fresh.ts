@@ -4,7 +4,7 @@
 import type { Database } from "bun:sqlite";
 import { detectBaseBranch } from "../base-branch.ts";
 import { HandlerError } from "../handlers/errors.ts";
-import { readSettings } from "../settings.ts";
+import { type Repo, repoOfRow, resolveRepo } from "../repos.ts";
 import type { Store } from "../store/index.ts";
 import { buildLayer, type BuildStats, EXTRACTOR_VERSION } from "./build.ts";
 import { BASE_LAYER, dropLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
@@ -23,9 +23,15 @@ export type Freshness = {
 
 export type GraphView = { db: Database; layer: string; freshness: Freshness };
 
-export function baseBranchOf(store: Store, projectDir: string): string {
-  const branch = readSettings(store).base_branch ?? detectBaseBranch(projectDir);
-  if (branch === null) throw new HandlerError("refused", `the code graph is built from git, and ${projectDir} is not a git repository`);
+/** The branch a repo's graph is built from: its base branch, else, in a single-repo project, the one tmb detects. */
+export function baseBranchOf(repo: Repo): string {
+  const branch = repo.baseBranch ?? (repo.name === null ? detectBaseBranch(repo.dir) : null);
+  if (branch === null) {
+    throw new HandlerError(
+      "refused",
+      repo.name === null ? `the code graph is built from git, and ${repo.dir} is not a git repository` : `the code graph of the repo ${repo.name} is built from its base branch, and it has none set`,
+    );
+  }
   return branch;
 }
 
@@ -75,18 +81,19 @@ function taskCommit(store: Store, taskId: string): string {
  * Opens the graph for a read: brought forward to the base branch's newest commit, and for a
  * task, with the task's commit laid on top. The caller closes `view.db`.
  */
-export async function openView(projectDir: string, store: Store, options: { taskId?: string } = {}): Promise<GraphView> {
-  const baseBranch = baseBranchOf(store, projectDir);
-  const commit = currentBaseCommit(projectDir, baseBranch);
-  const db = openGraphDb(projectDir);
+export async function openView(projectDir: string, store: Store, options: { taskId?: string; repo?: string } = {}): Promise<GraphView> {
+  const repo = viewRepo(store, projectDir, options);
+  const baseBranch = baseBranchOf(repo);
+  const commit = currentBaseCommit(repo.dir, baseBranch);
+  const db = openGraphDb(projectDir, repo.name);
   try {
-    const { from } = await bringForward(db, projectDir, BASE_LAYER, commit);
+    const { from } = await bringForward(db, repo.dir, BASE_LAYER, commit);
     dropClosedTaskLayers(db, store);
     const freshness: Freshness = { baseBranch, commit, broughtForwardFrom: from, task: null };
     if (options.taskId === undefined) return { db, layer: BASE_LAYER, freshness };
     const onTop = taskCommit(store, options.taskId);
     const layer = taskLayer(options.taskId);
-    await bringForward(db, projectDir, layer, onTop);
+    await bringForward(db, repo.dir, layer, onTop);
     return { db, layer, freshness: { ...freshness, task: { id: options.taskId, commit: onTop } } };
   } catch (error) {
     db.close();
@@ -94,16 +101,33 @@ export async function openView(projectDir: string, store: Store, options: { task
   }
 }
 
-/** Indexes the base branch now; with `rebuild`, forgets every cached parse and rebuilds from scratch. */
-export async function indexProject(projectDir: string, store: Store, options: { rebuild: boolean }): Promise<BuildStats & { baseBranch: string }> {
-  const baseBranch = baseBranchOf(store, projectDir);
-  const commit = currentBaseCommit(projectDir, baseBranch);
-  const db = openGraphDb(projectDir);
+/** The repo a read is for: a task's own, else the repo named, else the only one. */
+function viewRepo(store: Store, projectDir: string, options: { taskId?: string; repo?: string }): Repo {
+  if (options.taskId === undefined) return resolveRepo(store, projectDir, options.repo);
+  const task = store.getTask(options.taskId);
+  if (task === null) throw new HandlerError("not_found", `no task ${options.taskId}`);
+  const repo = repoOfRow(store, projectDir, task);
+  if (options.repo !== undefined && resolveRepo(store, projectDir, options.repo).name !== repo.name) {
+    throw new HandlerError("refused", `task ${task.id} works in the repo ${repo.name ?? "(the project folder)"}, not ${options.repo}; leave repo out with task_id`);
+  }
+  return repo;
+}
+
+/** Indexes a repo's base branch now (the project folder's in a single-repo project); with `rebuild`, forgets every cached parse and rebuilds from scratch. */
+export async function indexProject(
+  projectDir: string,
+  store: Store,
+  options: { rebuild: boolean; repo?: Repo },
+): Promise<BuildStats & { baseBranch: string; repo: string | null }> {
+  const repo = options.repo ?? resolveRepo(store, projectDir, undefined);
+  const baseBranch = baseBranchOf(repo);
+  const commit = currentBaseCommit(repo.dir, baseBranch);
+  const db = openGraphDb(projectDir, repo.name);
   try {
     if (options.rebuild) db.run("DELETE FROM parsed");
-    const stats = await buildLayer(db, projectDir, commit, BASE_LAYER, { force: true });
+    const stats = await buildLayer(db, repo.dir, commit, BASE_LAYER, { force: true });
     dropClosedTaskLayers(db, store);
-    return { ...stats, baseBranch };
+    return { ...stats, baseBranch, repo: repo.name };
   } finally {
     db.close();
   }

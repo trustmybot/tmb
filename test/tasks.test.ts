@@ -322,6 +322,7 @@ describe("task_brief and task_list", () => {
         commitSha: null,
         files: ["src/a"],
         prUrl: null,
+        repo: null,
       },
     ]);
     expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" })).code).toBe("not_found");

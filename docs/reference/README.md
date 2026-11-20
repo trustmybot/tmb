@@ -73,7 +73,7 @@ On a terminal, init first asks one question: the review mode, with what each mod
 | Command | Does | Asks questions |
 |---|---|---|
 | `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | One, on a terminal: the review mode |
-| `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks. Run it again at any time. | Yes |
+| `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks; in a workspace, each repo's base branch and checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
 ### init
@@ -102,6 +102,18 @@ On a terminal it asks for the review mode before those lines, unless one is stor
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
 - The review mode has no default. Without a terminal it is set only by `--review-mode`, also when `--yes` is given; otherwise it stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
+
+### A workspace of several repos
+
+When the folder you run `tmb init` in is not a git work tree but holds git repos, tmb sets it up as a workspace: its repos share one record in that folder ([Several repos in one workspace](../architecture/WORKFLOW.md#several-repos-in-one-workspace)). init then also:
+
+- Finds the repos up to two folders down and stores them in the `repos` setting, each with the base branch its own git points at and the checks found in it. It prints a line for each repo it added, with where its base branch came from, and for each one it dropped because it is gone. A repo's policy set before is kept.
+- Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each.
+- Indexes each repo's code graph from its own base branch.
+
+`tmb onboard --repo <name>` sets one repo: `--base <branch>` and `--check <command>` set its base branch and checks, and `--exempt` makes tmb do no work in it. With one repo tmb works in, `--repo` may be left out. On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. The planner sets the same with `settings_set` and `repos`; a repo it names keeps no part of its old policy, and repos it does not name keep theirs.
+
+In a workspace, `base_branch` and `checks` are not used: each repo has its own in `repos`, and `settings_set` refuses them. `tmb feature start <name> --repo <name>` and `tmb task start ... --repo <name>` name the repo; with several repos, one that names none is refused with the list.
 
 ### Onboarding by itself
 
@@ -134,8 +146,8 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
-- In a git work tree, writes git's pre-push hook, so every push asks tmb first. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
-- Indexes the code graph of the base branch, once it has a commit.
+- In a git work tree, writes git's pre-push hook, so every push asks tmb first; in a workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
+- Indexes the code graph of the base branch, once it has a commit; in a workspace, each repo's from its own base branch.
 
 Running init or onboard again with the same answers changes no file and records nothing.
 
