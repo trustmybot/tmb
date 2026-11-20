@@ -58,7 +58,15 @@ In the project's root folder:
 tmb init
 ```
 
-Then open the host. At the first session the planner applies the settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
+Init ends by naming the next steps. For Claude Code as the planner:
+
+```
+tmb is set up for Claude Code. Next:
+  1. Run `claude` in this folder.
+  2. Send `@bro`.
+```
+
+At the first session the planner applies the settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
 
 | Command | Does | Asks questions |
 |---|---|---|
@@ -70,7 +78,7 @@ Then open the host. At the first session the planner applies the settings it rec
 
 `tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
 
-It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings, saying which are still empty and how they get filled. It never waits for input.
+It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands). It never waits for input.
 
 ### onboard
 
