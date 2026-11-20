@@ -8,7 +8,7 @@ import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
-import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
+import { repoChecks, repoDirOf, repoOfRow, resolveRepo } from "../repos.ts";
 import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
@@ -546,11 +546,30 @@ function refuseProgrammingFiles(task: Task, base: string, head: string): void {
   );
 }
 
-/** The files the task's work changed from its base commit that none of its declared files covers. */
-function filesOutsideSpec(task: Task, base: string, head: string): string[] {
+/**
+ * Where the project folder sits below its repo's top, as git names it: "" at the top, else a
+ * relative path with forward slashes that ends in a slash. A project may be one package of a
+ * monorepo (trustmybot/tmb#178), and a task's worktree checks out the whole repo.
+ */
+export function projectPrefix(repoDir: string): string {
+  const prefix = runGit(repoDir, ["rev-parse", "--show-prefix"]);
+  return prefix.ok ? prefix.stdout.trim() : "";
+}
+
+/** The project folder inside a task's worktree: the worktree itself unless the project is below its repo's top. */
+export function projectInWorktree(task: Task, repoDir: string): string {
+  const prefix = projectPrefix(repoDir);
+  return prefix === "" ? task.worktree! : path.join(task.worktree!, ...prefix.split("/").filter((part) => part !== ""));
+}
+
+/** The files the task's work changed from its base commit that none of its declared files covers, relative to the project as the spec's are. */
+function filesOutsideSpec(task: Task, base: string, head: string, repoDir: string): string[] {
   const declared = specOf(task).files;
+  const prefix = projectPrefix(repoDir);
   const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
-  return touched.filter((file) => !declared.some((mine) => pathsOverlap(file, mine)));
+  // git names files from the repo's top; a file outside the project folder keeps its way out, with .., and no spec path covers it.
+  const ofProject = touched.map((file) => (prefix === "" ? file : path.posix.relative(prefix, file)));
+  return ofProject.filter((file) => file.startsWith("../") || !declared.some((mine) => pathsOverlap(file, mine)));
 }
 
 /**
@@ -560,7 +579,7 @@ function filesOutsideSpec(task: Task, base: string, head: string): string[] {
  * git when the work is merged (trustmybot/tmb#98).
  */
 export function closeFindings(task: Task, head: string, projectDir: string): CloseFindings {
-  const outsideSpec = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head);
+  const outsideSpec = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head, projectDir);
   const mainFolder = mainFolderReport(projectDir, task.mainSnapshot);
   const notes = [
     ...(outsideSpec.length === 0 ? [] : [`The commit changed files outside the task's declared files, for the planner or the reviewer to check: ${outsideSpec.join(", ")}.`]),
@@ -598,7 +617,8 @@ export async function checkCommit(
   const checkRunId = store.appendCheckRun(actor, { taskId: task.id, commitSha: commit });
   let results: CheckCommandResult[];
   try {
-    results = await runChecks(commands, task.worktree!, context.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
+    // The checks run in the project folder, which may be below the top of the worktree's repo.
+    results = await runChecks(commands, projectInWorktree(task, repoDirOf(context.projectDir, task.repo)), context.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
   } catch (error) {
     const reason = `the checks could not run: ${error instanceof Error ? error.message : String(error)}`;
     store.endCheckRun(actor, checkRunId, { result: "not_run", commands: commands.map((command) => ({ command, status: "not_run", reason })) });
