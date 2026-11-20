@@ -3,6 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter } from "../src/adapters/claude-code/index.ts";
+import { detectProgram } from "../src/adapters/common/detect.ts";
 import { adapterById, DEFAULT_HOST_ID, HOST_ADAPTERS } from "../src/adapters/index.ts";
 import { TMB_EVENT_TYPES } from "../src/engine/index.ts";
 
@@ -41,6 +42,20 @@ describe.skipIf(process.platform === "win32")("detect", () => {
   test("reports not installed when claude fails", () => {
     fakeClaude("broken", 1);
     expect(adapter.detect(bin)).toEqual({ installed: false });
+  });
+
+  test("reports installed without a version when claude does not answer in time (trustmybot/tmb#207)", () => {
+    const file = path.join(bin, "claude");
+    writeFileSync(file, "#!/bin/sh\nsleep 5\necho '2.1.37 (Claude Code)'\n");
+    chmodSync(file, 0o755);
+    expect(detectProgram("claude", bin, 200)).toEqual({ installed: true });
+  });
+
+  test("reports installed without a version when claude cannot be started (trustmybot/tmb#207)", () => {
+    const file = path.join(bin, "claude");
+    writeFileSync(file, "#!/no/such/interpreter\n");
+    chmodSync(file, 0o755);
+    expect(adapter.detect(bin)).toEqual({ installed: true });
   });
 });
 
