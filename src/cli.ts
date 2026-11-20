@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
-import { adapterById, DEFAULT_HOST_ID, findPluginDb, HOST_ADAPTERS, migratePluginProject } from "./adapters/index.ts";
+import { adapterById, DEFAULT_HOST_ID, findPluginDb, HOST_ADAPTERS, type MigrationResult, migratePluginProject, migratePluginWorkspace } from "./adapters/index.ts";
 import {
   CONFIG_USAGE,
   INDEX_USAGE,
@@ -68,10 +68,11 @@ const USAGE: Record<string, string> = {
                             again at any time`,
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept`,
-  migrate: `  tmb migrate [--from <plugin db>] [--repo <name>] [--json]
+  migrate: `  tmb migrate [--from <plugin db>] [--repo <name> [--into <repo>]] [--json]
                             Copy a tmb plugin project's records into the new record tmb init
-                            made for this project; run tmb init first. The plugin's database is
-                            left untouched`,
+                            made for this project; run tmb init first. In a workspace, each
+                            plugin repo goes to the repo of the same name, or --into's. The
+                            plugin's database is left untouched`,
   dashboard: `  tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one`,
@@ -503,7 +504,7 @@ function runRemoveCommand(args: string[]): number {
 function runMigrateCommand(args: string[]): number {
   const { values, positionals } = parseArgs({
     args,
-    options: { from: { type: "string" }, repo: { type: "string" }, json: { type: "boolean" } },
+    options: { from: { type: "string" }, repo: { type: "string" }, into: { type: "string" }, json: { type: "boolean" } },
     allowPositionals: true,
     strict: true,
   });
@@ -520,29 +521,41 @@ function runMigrateCommand(args: string[]): number {
   if (!opened.ok) throw opened.error;
   try {
     refuseRecordOfAnotherProject(opened.store, projectDir, process.cwd());
-    const result = migratePluginProject(opened.store, { pluginDbPath: from, projectDir, repo: values.repo });
+    // A workspace takes each plugin repo into its one record (trustmybot/tmb#193); a single-repo project, one repo.
+    const repos = workspaceRepos(opened.store);
+    if (repos === null && values.into !== undefined) throw new Error("--into names a workspace repo, and this project is a single repo");
+    const migration =
+      repos === null
+        ? { results: [migratePluginProject(opened.store, { pluginDbPath: from, projectDir, repo: values.repo })], leftOut: [] }
+        : migratePluginWorkspace(opened.store, repos, { pluginDbPath: from, repo: values.repo, into: values.into });
     if (values.json) {
-      console.log(JSON.stringify(result));
+      console.log(JSON.stringify(repos === null ? migration.results[0] : migration));
     } else {
-      const { counts } = result;
-      console.log(`Copied from ${result.from}${result.repo === null ? "" : ` (repo ${result.repo})`} into ${recordPath}:`);
-      console.log(
-        `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
-          `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
-      );
-      if (counts.openTasks > 0) {
-        console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
-      }
-      const left = Object.entries(result.leftBehind).sort(([a], [b]) => a.localeCompare(b));
-      if (left.length > 0) {
-        console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
-      }
+      for (const result of migration.results) printMigration(result, recordPath);
+      for (const left of migration.leftOut) console.log(`Not copied: the plugin's repo ${left.repo}: ${left.reason}.`);
       console.log("The plugin's database is unchanged.");
     }
   } finally {
     opened.store.close();
   }
   return 0;
+}
+
+function printMigration(result: MigrationResult, recordPath: string): void {
+  const { counts } = result;
+  const repo = result.repo === null ? "" : result.into === null || result.into === result.repo ? ` (repo ${result.repo})` : ` (repo ${result.repo}, into ${result.into})`;
+  console.log(`Copied from ${result.from}${repo} into ${recordPath}:`);
+  console.log(
+    `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
+      `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
+  );
+  if (counts.openTasks > 0) {
+    console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
+  }
+  const left = Object.entries(result.leftBehind).sort(([a], [b]) => a.localeCompare(b));
+  if (left.length > 0) {
+    console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
+  }
 }
 
 /**
