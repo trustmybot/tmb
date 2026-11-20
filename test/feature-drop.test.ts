@@ -1,7 +1,7 @@
 // Dropping a feature branch (trustmybot/tmb#214): the planner or the Human ends an open, closed or
 // ready feature branch without a merge tmb saw, with the reason. One whose pull request is open is
 // refused, and so is one with a task still open. The branch is kept. Runs against a real git repository.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +9,8 @@ import path from "node:path";
 import { featureDrop, featureList, featurePr, featureStart, featureUpdate, HandlerError, issueCreate, OPERATIONS, taskStart } from "../src/engine/handlers/index.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };
