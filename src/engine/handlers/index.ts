@@ -117,7 +117,7 @@ export const OPERATIONS = {
   },
   task_brief: {
     description:
-      "Read one task's brief: its spec, its worktree and branch, and every check that must pass before it closes. A worker reads it first and works only in that worktree.",
+      "Read one task's brief: its spec, its worktree and branch, and every check that must pass before it closes. A worker reads it first and works only in that worktree, in its project folder, which is the worktree unless the project is below its repo's top.",
     inputSchema: task.taskBriefSchema,
     run: task.taskBrief,
   },

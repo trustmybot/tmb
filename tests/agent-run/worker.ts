@@ -28,7 +28,7 @@ if (bunTest(project, path.join(work, "base.log"))) {
   fail(`the fixture's tests already pass before any fix, so this run would prove nothing: ${readFileSync(path.join(work, "base.log"), "utf8")}`);
 }
 tmb.shown(["init"], `tmb init failed in ${project}`);
-tmb.shown(["onboard", "--yes", "--base", base, "--review-mode", "agile", "--check", check], `tmb onboard failed in ${project}`);
+tmb.human(["onboard", "--yes", "--base", base, "--review-mode", "agile", "--check", check], `tmb onboard failed in ${project}`);
 
 console.log(`Asking claude (${MODEL}): ${prompt}`);
 const status = askClaude(project, prompt, log, { allowedTools: CODE_TOOLS });

@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { asHuman } from "../lib/as-human.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
@@ -50,6 +51,16 @@ export function tmbProcesses(prefix: string) {
     return result.stdout;
   }
 
+  /**
+   * Runs a step only the Human may take, on a terminal where the Human types yes, and returns
+   * what the terminal showed; throws when it fails (trustmybot/tmb#179).
+   */
+  function human(args: string[], cwd: string): string {
+    const result = asHuman(process.execPath, [CLI, ...args], { cwd, env });
+    if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.output}`);
+    return result.output;
+  }
+
   function tmbJson<T = any>(args: string[], cwd: string): T {
     return JSON.parse(tmb([...args, "--json"], cwd)) as T;
   }
@@ -78,7 +89,7 @@ export function tmbProcesses(prefix: string) {
       git(project, "push", "-q", "-u", "origin", BASE_BRANCH);
     }
     tmb(["init"], project);
-    tmb(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", check, "--yes"], project);
+    human(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", check, "--yes"], project);
     return project;
   }
 
@@ -134,7 +145,7 @@ export function tmbProcesses(prefix: string) {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  return { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
+  return { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
 }
 
 /** Calls a tool that must succeed and parses its JSON answer. */

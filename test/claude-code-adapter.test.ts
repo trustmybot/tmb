@@ -51,7 +51,7 @@ function gitInit(dir: string): void {
   expect(result.status).toBe(0);
 }
 
-const GUARDED_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|mcp__tmb__task_brief|mcp__tmb__task_close";
+const GUARDED_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close";
 const tmbHooks = (tmbCommand: readonly string[]) => ({
   SessionStart: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start") }] }],
   PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: hookCommand(tmbCommand, "pre-tool-use") }] }],
@@ -71,10 +71,10 @@ describe("settings: setup", () => {
     expect(hookCommand(BINARY, "subagent-stop")).toBe(`"${EXE}" hook subagent-stop`);
   });
 
-  test("the PreToolUse matcher covers the six guarded tools and the tools a worker names its task with, and not the shell", () => {
+  test("the PreToolUse matcher covers the six guarded tools, the shell, and the tools a worker names its task with", () => {
     install(project, BINARY);
     const [group] = (readJson(settingsPath(project)) as { hooks: { PreToolUse: { matcher: string }[] } }).hooks.PreToolUse;
-    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
+    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
   });
 
   test("merges into an existing file, keeping other keys, hooks and enabled servers", () => {

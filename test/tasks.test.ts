@@ -311,7 +311,7 @@ describe("task_start", () => {
 describe("task_brief and task_list", () => {
   test("the brief gives the spec, worktree, branch and checks; the list gives open tasks only", () => {
     const started = taskStart(store, PLANNER, spec(), context());
-    expect(taskBrief(store, REVIEWER, { id: started.id.toLowerCase() })).toEqual(started.brief);
+    expect(taskBrief(store, REVIEWER, { id: started.id.toLowerCase() }, context())).toEqual(started.brief);
     expect(taskList(store, WORKER, {})).toEqual([
       {
         id: started.id,
@@ -330,7 +330,7 @@ describe("task_brief and task_list", () => {
         repo: null,
       },
     ]);
-    expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" })).code).toBe("not_found");
+    expect(refusal(() => taskBrief(store, HUMAN, { id: "01KA0000000000000000000000" }, context())).code).toBe("not_found");
   });
 
   test("the list takes a state: open by default, closed, or all oldest first; any other is refused", async () => {
@@ -350,7 +350,7 @@ describe("task_brief and task_list", () => {
 
   test("a task recorded without a task_start spec reads as its text, holding no files", () => {
     const id = store.appendTask(HUMAN, { issueId, title: "by hand", spec: "## Goal", state: "open" });
-    expect(taskBrief(store, HUMAN, { id }).spec).toEqual({ intent: "## Goal", files: [], checks: [], criteria: [] });
+    expect(taskBrief(store, HUMAN, { id }, context()).spec).toEqual({ intent: "## Goal", files: [], checks: [], criteria: [] });
     expect(taskStart(store, PLANNER, spec(), context()).id).not.toBe(id);
   });
 });

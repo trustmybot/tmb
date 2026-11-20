@@ -28,7 +28,7 @@ fixtureProject(fixture, project, { base, name: "tmb truest run", email: "truest-
 const origin = path.join(work, "origin.git");
 bareOrigin(project, origin, base);
 tmb.shown(["init"], `tmb init failed in ${project}`);
-tmb.shown(["onboard", "--yes", "--base", base, "--review-mode", "truest", "--check", check], `tmb onboard failed in ${project}`);
+tmb.human(["onboard", "--yes", "--base", base, "--review-mode", "truest", "--check", check], `tmb onboard failed in ${project}`);
 
 // A fake gh: it logs its arguments and prints a pull request address, as `gh pr create` does.
 const ghLog = path.join(work, "gh.log");

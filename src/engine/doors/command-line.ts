@@ -65,7 +65,7 @@ ${JSON_NOTE}`,
   tmb feature list          List the feature branches with their base, state and tasks
   tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
   tmb feature waive <name> --reason <text>
-                            Waive the review of the feature branch at its tip (the Human only)
+                            Waive the review of the feature branch at its tip (the Human only, on a terminal)
   tmb feature pr <name> --title <text> [--body <text>]
                             Open the feature branch's pull request into the base branch, once
                             the reviewer passed its tip or the Human waived the review
@@ -89,7 +89,7 @@ ${JSON_NOTE}`,
                             Drop a task whose approach is wrong or that nobody will finish;
                             its worktree goes unless it holds uncommitted work
   tmb task waive <id> --reason <text>
-                            Waive the review of a truest task at its commit (the Human only)
+                            Waive the review of a truest task at its commit (the Human only, on a terminal)
   tmb task pr <id> --title <text> [--body <text>]
                             Open a truest task's pull request into the base branch, once
                             the reviewer passed it or the Human waived the review

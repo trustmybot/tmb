@@ -207,7 +207,7 @@ describe("replaces", () => {
     const next = taskStart(store, PLANNER, spec({ replaces: old.id.toLowerCase() }), context());
 
     expect(next.brief.replaces).toBe(old.id);
-    expect(taskBrief(store, HUMAN, { id: old.id }).replacedBy).toEqual([next.id]);
+    expect(taskBrief(store, HUMAN, { id: old.id }, context()).replacedBy).toEqual([next.id]);
     expect(taskList(store, HUMAN, { state: "dropped" }).map((task) => [task.id, task.dropReason])).toEqual([[old.id, "the approach is wrong"]]);
     expect(taskList(store, HUMAN, {}).map((task) => [task.id, task.replaces])).toEqual([[next.id, old.id]]);
   });

@@ -19,6 +19,7 @@ const TOOL_EVENTS: Record<string, { type: TmbEventType; actionField: string; rol
   NotebookEdit: { type: "before-file-write", actionField: "notebook_path" },
   Agent: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
   Task: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
+  Bash: { type: "before-shell-command", actionField: "command" },
 };
 
 function stringField(object: JsonObject, key: string): string | undefined {

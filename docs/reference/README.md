@@ -104,7 +104,7 @@ It asks nothing and never waits for input, on a terminal or not. With no review 
 - The host is the one init stored; `--host <id>` names another host init wired.
 - A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
-- The review mode has no default. Without a terminal it is set only by `--review-mode`, also when `--yes` is given; otherwise it stays as it is and onboard says so.
+- The review mode has no default. `--review-mode` is a [step only you may take](#steps-only-you-may-take): it asks you to type yes on the terminal, also when `--yes` is given. Without a terminal it is refused, unless unattended mode is on for the run (`TMB_UNATTENDED=1`), as in CI. Without the flag and with no terminal, the review mode stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
 
 ### One repo or a workspace of several
@@ -131,7 +131,7 @@ The review mode decides how many tokens a project uses, so tmb recommends one an
 
 - answer the planner's onboarding question at the first session. It stores your answer;
 - run `tmb onboard` on a terminal;
-- run `tmb onboard --review-mode <mode> --yes` to set it without a question.
+- run `tmb onboard --review-mode <mode>` on a terminal and type yes.
 
 `tmb init` never asks for it.
 
@@ -147,7 +147,7 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
 - Adds four hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - A SessionStart hook runs `tmb hook session-start`, which starts each session with the role this host was set up with, the planner unless you chose the reviewer, and the open work from the record.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb does not read shell commands; git's pre-push hook checks every push.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. It also runs before a shell command, and denies one that runs a [step only you may take](#steps-only-you-may-take); tmb reads no other shell command, and git's pre-push hook checks every push.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
@@ -277,11 +277,11 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin`. While the feature branch's pull request is open the push is left out, and tmb says so: the new tip reaches the pull request through `tmb feature pr`, after its review. In truest mode the task is not folded: it goes into review at that commit. |
 | `tmb feature update <name>` | Bring the base branch into a feature branch before its review: tmb fetches the base, merges it in with a merge commit and pushes the branch as a backup. While the branch's pull request is open the push is left out, as for `tmb task close`. A conflict changes nothing and names the files. A merged branch is refused. |
 | `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
-| `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only. |
+| `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only, on a terminal: it asks you to type yes. |
 | `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review. When the pull request is already open, it pushes the reviewed tip to it and returns the same pull request. On a closed branch it opens a new one, or records the one already open from the branch. In a repo with no remote nothing is pushed: the branch is recorded ready and tmb prints the command to merge it locally, and how to end the branch with `tmb feature drop` if its work reaches the base branch in a way tmb cannot see. A merged or dropped branch is refused. |
 | `tmb feature drop <name> --reason <text>` | End a feature branch without a merge tmb saw: one nobody will merge, or one whose work reached the base branch another way (say where in the reason). An open, closed or ready branch is dropped; one whose pull request is open is refused, so close the pull request first. Refused while a task on it is open or in review. The branch is recorded as dropped with the reason and kept in git; tmb names the command that deletes it. A dropped branch takes no task and opens no pull request. The planner may drop one too. |
 | `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules below for a closed task; its branch is kept while it holds commits, and tmb names it and the command that deletes it. `tmb task start --replaces <id>` starts the task that takes up a dropped task's work another way, and is refused for a task that is not dropped. `tmb task list --state dropped` lists the dropped tasks. |
-| `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only. |
+| `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only, on a terminal: it asks you to type yes. |
 | `tmb task pr <id> --title <text> [--body <text>]` | Open a truest task's pull request into the base branch, once the reviewer passed it or you waived the review. In a repo with no remote nothing is pushed: the task is recorded ready and tmb prints the command to merge its branch locally |
 | `tmb graph map\|find\|symbol\|scope\|concepts\|areas` | Look things up in the code graph: the project's files with their summaries, where a name lives, what calls it, a draft of a task's files, the recorded concepts, and the project's areas with the files in no area. `find` and `scope` take `--area <name>` to stay inside one area and the areas nested in it, and `--skip-area <name>`, which can be repeated, to leave areas out, such as `tests`; an unknown area is refused with the list of areas. `--task <id>` reads as that open task sees the code; a closed task's id reads its feature branch. `--feature <name>` reads a feature branch at its tip, with the work already folded into it; it is refused together with `--task`. With neither, `scope` reads the repo's only open feature branch, and the base branch when several are open. |
 | `tmb index [--rebuild]` | Bring the code graph up to date, or build it again from nothing. It prints how many files could not be parsed and how many imports of the repo's own code link to no file |
@@ -350,4 +350,13 @@ It removes only what `tmb init` added:
 - `.mcp.json` itself, only if init created that file and nothing else is left in it.
 - git's pre-push hook, if tmb wrote it.
 
-It keeps the record in `.tmb/`, because that is your data; delete the folder yourself to drop it. It does not remove the `.gitignore` lines.
+It keeps the record in `.tmb/`, because that is your data; delete the folder yourself to drop it. It does not remove the `.gitignore` lines. It runs only on a terminal, once you type yes.
+
+## Steps only you may take
+
+Some commands are yours alone (trustmybot/tmb#179): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, and `tmb remove`. `tmb update` is not one.
+
+- Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
+- Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.
+- In Claude Code and Codex, tmb's hook also denies one in an agent's shell command before it runs, and tells the agent to ask you.
+- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`).
