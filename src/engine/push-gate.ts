@@ -243,7 +243,7 @@ export function installPushGate(dir: string, tmbCommand: readonly string[], proj
   const other = otherProjectInRepo(dir, projectDir);
   if (other !== null) return [`git's pre-push hook ${file} is the push gate of the tmb project in ${other}, and one repo holds one tmb project for now, so it was left alone; the push gate is off for this project.`];
   if (existsSync(file) && !isOurs(file)) {
-    return [`git's pre-push hook ${file} is not tmb's, so it was left alone; add this line to it to turn the push gate on: ${command} "$@"`];
+    return [foreignHookLine(dir, file)];
   }
   const script = `#!/bin/sh\n${HOOK_MARK} tmb init wrote this file and tmb remove deletes it.\nexec ${command} "$@"\n`;
   const before = existsSync(file) ? readFileSync(file, "utf8") : null;
@@ -256,7 +256,12 @@ export function installPushGate(dir: string, tmbCommand: readonly string[], proj
 export function removePushGate(dir: string, projectDir: string = dir): string[] {
   const file = hookPath(dir);
   if (file === null || !(statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) return [];
-  if (!isOurs(file)) return [`git's pre-push hook ${file} is not tmb's, so it was left alone.`];
+  if (!isOurs(file)) {
+    const text = readFileSync(file, "utf8");
+    if (!hasAddedLine(text)) return [`git's pre-push hook ${file} is not tmb's, so it was left alone.`];
+    writeFileSync(file, text.split("\n").filter((line) => !line.includes(ADDED_MARK)).join("\n"));
+    return [`Took tmb's line out of git's pre-push hook ${file}; the rest of it was left alone.`];
+  }
   const owner = hookProject(readFileSync(file, "utf8"), dir);
   if (owner !== null && real(owner) !== real(projectDir)) return [`git's pre-push hook ${file} is the push gate of the tmb project in ${owner}, so it was left alone.`];
   rmSync(file);
@@ -307,7 +312,84 @@ export function pushGateGaps(projectDir: string, repos: RepoPolicies | null, tmb
     if (file === null) return [];
     if (!existsSync(file)) return [`git's pre-push hook is missing in ${dir}: the push gate is off there`];
     const text = readFileSync(file, "utf8");
-    if (!isOurs(file)) return text.includes(`${command} "$@"`) ? [] : [`git's pre-push hook ${file} is not tmb's and does not run the push gate`];
+    if (!isOurs(file)) return hasAddedLine(text) || text.includes(`${command} "$@"`) ? [] : [`${FOREIGN_GAP} ${file} is not tmb's and does not run the push gate`];
     return text.includes(`exec ${command} "$@"`) ? [] : [`git's pre-push hook ${file} runs another tmb than this one, or names another project folder than ${projectDir}`];
   });
+}
+
+// --- a pre-push hook that is not tmb's (trustmybot/tmb#184) -------------------------------
+
+/**
+ * The mark on the one line tmb adds to a pre-push hook that is not its own, such as husky's or
+ * lefthook's, so \`tmb remove\` takes out that line alone. It does not hold HOOK_MARK: the hook
+ * stays the other tool's.
+ */
+const ADDED_MARK = "# tmb: added for the push gate; tmb remove takes this line out.";
+
+/** How a doctor gap on a hook that is not tmb's begins, so doctor can offer to add tmb's line. */
+export const FOREIGN_GAP = "git's pre-push hook";
+
+function hasAddedLine(text: string): boolean {
+  return text.split("\n").some((line) => line.includes(ADDED_MARK));
+}
+
+/** What init and refresh say about a hook that is not tmb's: the gate is off there, and how to turn it on. */
+function foreignHookLine(dir: string, file: string): string {
+  return `The push gate is off in ${dir}: git's pre-push hook ${file} is not tmb's, so it was left alone. \`tmb onboard --add-push-gate\` or \`tmb doctor --fix\` adds tmb's one line to it, with your yes.`;
+}
+
+/**
+ * The line tmb adds to a hook that is not its own. It is safe to commit, as husky's and lefthook's
+ * hook files often are: it calls the program by name and names the project from the repo's top,
+ * no machine's path, and it does nothing where the program is not installed. It never ends the
+ * hook early: the lines after it still run, unless the gate refuses the push.
+ */
+export function addedLine(program: string, dir: string, projectDir: string): string {
+  const name = shellQuote(program);
+  const run = [program, "pre-push", "--project", projectFromTop(dir, projectDir)].map(shellQuote).join(" ");
+  return `if command -v ${name} >/dev/null 2>&1; then ${run} "$@" || exit 1; fi ${ADDED_MARK}`;
+}
+
+/** A repo whose pre-push hook is not tmb's and does not run the push gate: its folder and the hook file. */
+export type ForeignHook = { dir: string; file: string };
+
+/** The repos, among those that should run the push gate, whose pre-push hook is another tool's and does not run it. */
+export function foreignHooks(projectDir: string, repos: RepoPolicies | null): ForeignHook[] {
+  return gatedDirs(projectDir, repos, false).flatMap((dir) => {
+    const file = hookPath(dir);
+    if (file === null || !existsSync(file) || isOurs(file)) return [];
+    const text = readFileSync(file, "utf8");
+    return hasAddedLine(text) || /'pre-push' '--project' /.test(text) ? [] : [{ dir, file }];
+  });
+}
+
+/** Adds tmb's one line to the end of a hook that is not tmb's, after the Human's yes. Returns what it did. */
+export function addToForeignHook(hook: ForeignHook, program: string, projectDir: string): string {
+  const text = readFileSync(hook.file, "utf8");
+  if (hasAddedLine(text)) return `git's pre-push hook ${hook.file} already runs the push gate.`;
+  writeFileSync(hook.file, `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${addedLine(program, hook.dir, projectDir)}\n`);
+  return `Added tmb's line to git's pre-push hook ${hook.file}: every push from ${hook.dir} asks tmb first, and \`tmb remove\` takes the line out.`;
+}
+
+/**
+ * What a session start says while the push gate is off in a repo because its pre-push hook is
+ * another tool's: every time, until the gate is on or the repo is exempt. Null when none is. Never throws.
+ */
+export function pushGateOffLine(projectDir: string): string | null {
+  try {
+    const opened = openProjectStore(projectDir, { create: false });
+    if (!opened.ok) return null;
+    let repos: RepoPolicies | null;
+    try {
+      repos = readSettings(opened.store).repos;
+    } finally {
+      opened.store.close();
+    }
+    const off = foreignHooks(projectDir, repos);
+    if (off.length === 0) return null;
+    const where = off.map((hook) => `${hook.dir} (its hook ${hook.file} is another tool's)`).join(", ");
+    return `The push gate is off in ${where}: a push from there reaches the remote without tmb's review. \`tmb onboard --add-push-gate\` or \`tmb doctor --fix\` adds tmb's one line to the hook, with the Human's yes.`;
+  } catch {
+    return null;
+  }
 }
