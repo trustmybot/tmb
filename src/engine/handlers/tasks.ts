@@ -15,7 +15,7 @@ import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContex
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
-import { type PushOutcome, branchHoldsWork, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
+import { type PushOutcome, backupPush, branchHoldsWork, isAncestor, moveFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
 import { truestBase, truestClose, type TruestReview, truestReviewOf } from "./truest.ts";
@@ -675,7 +675,7 @@ function finishFold(
   const dir = taskDir(store, context.projectDir, task);
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, featureName, actor);
+  const push = backupPush(store, dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -753,7 +753,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, feature.name, actor);
+  const push = backupPush(store, dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
