@@ -47,7 +47,7 @@ At the milestone, first bring the base branch in with `feature_update`: tmb fetc
 
 ## The review mode
 
-The review mode is the Human's choice, as it decides how many tokens the project uses. `tmb init` asks nothing, so when it is not set, ask for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, agile marked as recommended. Never set it yourself; set the Human's answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`.
+The review mode is the Human's choice, as it decides how many tokens the project uses. `tmb init` asks nothing, so when it is not set, ask for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, agile marked as recommended. Never set it yourself; set the Human's answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`. In a workspace of several repos, a repo can have a mode of its own, which only the Human chooses too; set their answer as that repo's `review_mode` in `repos`, or `workspace` to make it follow the workspace's again. A repo with none follows the workspace's mode, and when the repos follow different modes, `task_start` names its repo.
 
 ## The project's areas
 
@@ -55,7 +55,7 @@ An area is a logical part of the project, such as login, billing or the dashboar
 
 ## Truest mode
 
-When the project's review mode is `truest`, there are no feature branches: every task gets its own review and its own pull request. `feature_start` is refused, and `task_start` cuts the task's branch from the base branch.
+When the project's review mode, or in a workspace the repo's, is `truest`, there are no feature branches in it: every task gets its own review and its own pull request. `feature_start` is refused, and `task_start` cuts the task's branch from the base branch.
 
 > spec → `task_start` → a worker implements it → `task_close` runs the checks → the task is in review → the reviewer reviews its commit → a fail reopens it for rework, a pass covers it → `task_pr` → the Human merges
 

@@ -40,7 +40,7 @@ import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
 import { installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
 import { runGit } from "./engine/git.ts";
 import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
-import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName } from "./engine/settings.ts";
+import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./engine/settings.ts";
 import type { Actor } from "./engine/store/index.ts";
 import { version as packageVersion } from "./version.ts";
 import { Paint } from "./engine/doors/help.ts";
@@ -123,7 +123,8 @@ function validatedFlags(flags: SetupFlags): Answered {
   return {
     role: flags.role === undefined ? undefined : validateHostRole(flags.role),
     base_branch: flags.base === undefined ? undefined : validateSetting("base_branch", flags.base),
-    review_mode: flags.reviewMode === undefined ? undefined : validateSetting("review_mode", flags.reviewMode),
+    // With --repo, --review-mode is that repo's own, which onboardWorkspace reads (trustmybot/tmb#216).
+    review_mode: flags.reviewMode === undefined || flags.repo !== undefined ? undefined : validateSetting("review_mode", flags.reviewMode),
     checks: flags.checks === undefined || flags.checks.length === 0 ? undefined : validateSetting("checks", flags.checks),
   };
 }
@@ -196,6 +197,36 @@ async function askReviewMode(ask: Ask, stored: ReviewMode | null, out: (line: st
   }
 }
 
+/**
+ * A repo's own review mode, asked once onboarding offered the change per repo: a mode, or
+ * workspace to follow the workspace's. Returns the repo's own mode, undefined to follow the workspace's.
+ */
+async function askRepoReviewMode(ask: Ask, repo: string, stored: ReviewMode | undefined, out: (line: string) => void): Promise<ReviewMode | undefined> {
+  const choices = [...AVAILABLE_REVIEW_MODES, WORKSPACE_REVIEW_MODE];
+  const fallback = stored ?? WORKSPACE_REVIEW_MODE;
+  for (;;) {
+    const answer = await ask(`Review mode of ${repo}, one of: ${choices.join(", ")} (the workspace's) [${fallback}]: `);
+    if (answer === null) return stored;
+    const given = answer.trim() === "" ? fallback : answer.trim();
+    if (given === WORKSPACE_REVIEW_MODE) return undefined;
+    try {
+      return validateSetting("review_mode", given);
+    } catch (error) {
+      if (!(error instanceof SettingError)) throw error;
+      out(error.message);
+    }
+  }
+}
+
+/** Whether the Human wants a review mode per repo; offered once, not asked per repo. Yes by default while a repo has one. */
+async function askModePerRepo(ask: Ask, before: RepoPolicies, working: readonly string[]): Promise<boolean> {
+  const any = working.some((repo) => before[repo]!.review_mode !== undefined);
+  const answer = await ask(`Does any repo take a review mode other than the workspace's? (y/n) [${any ? "y" : "n"}]: `);
+  if (answer === null) return any;
+  const given = answer.trim().toLowerCase();
+  return given === "" ? any : given.startsWith("y");
+}
+
 async function askChecks(ask: Ask, fallback: string[], source: string, out: (line: string) => void): Promise<string[]> {
   out("Checks are the shell commands that must pass before a task closes.");
   if (fallback.length === 0) {
@@ -240,7 +271,12 @@ function storeAnswers(projectDir: string, answers: Partial<SettingValues>, via: 
     for (const name of SETTING_NAMES) {
       const value = answers[name];
       if (value === undefined) continue;
-      const wrote = name === "review_mode" ? chooseReviewMode(opened.store, HUMAN, value, via) : writeSetting(opened.store, HUMAN, name, value);
+      const wrote =
+        name === "review_mode"
+          ? chooseReviewMode(opened.store, HUMAN, value, via)
+          : name === "repos"
+            ? writeRepos(opened.store, HUMAN, value, via)
+            : writeSetting(opened.store, HUMAN, name, value);
       if (wrote) recorded++;
     }
     return recorded;
@@ -458,6 +494,7 @@ async function onboardWorkspace(
 ): Promise<Onboarded> {
   const { projectDir, flags, out } = options;
   const working = workingRepoNames(before);
+  const repoMode = flags.repo !== undefined && flags.reviewMode !== undefined ? repoModeFlag(flags.reviewMode) : null;
   let targets: string[];
   if (flags.repo !== undefined) {
     const repo = validateRepoName(flags.repo);
@@ -476,6 +513,8 @@ async function onboardWorkspace(
     answered.role ??
     (ask ? await askValid(ask, `Role of ${name}'s main agent, one of: ${HOST_ROLES.join(", ")}`, roleFallback, validateHostRole, out) : roleFallback);
   const reviewMode = answered.review_mode ?? (ask ? await askReviewMode(ask, stored.review_mode, out) : stored.review_mode);
+  // The workspace's mode is asked once; a mode per repo is offered once, then asked only of the repos (trustmybot/tmb#216).
+  const perRepo = repoMode === null && ask !== null && targets.length > 0 && working.length > 1 ? await askModePerRepo(ask, before, working) : null;
 
   const repos: RepoPolicies = { ...before };
   for (const repo of targets) {
@@ -489,7 +528,15 @@ async function onboardWorkspace(
     const base = answered.base_branch ?? (ask ? await askText(ask, `Base branch of ${repo}, the branch its pull requests merge into`, baseFallback) : baseFallback);
     const checksFallback = policy.checks ?? detectChecks(dir);
     const checks = answered.checks ?? (ask ? await askChecks(ask, checksFallback, `${repo}'s ${policy.checks === undefined ? "detected" : "stored"} checks`, out) : checksFallback);
-    repos[repo] = { base_branch: base ?? baseFallback, checks };
+    const ownMode =
+      repoMode !== null
+        ? repoMode.mode
+        : perRepo === true && ask !== null
+          ? await askRepoReviewMode(ask, repo, policy.review_mode, out)
+          : perRepo === false
+            ? undefined
+            : policy.review_mode;
+    repos[repo] = { base_branch: base ?? baseFallback, checks, ...(ownMode === undefined ? {} : { review_mode: ownMode }) };
   }
 
   const hostRoles = { ...(stored.host_roles ?? {}), [hostId]: role };
@@ -501,6 +548,11 @@ async function onboardWorkspace(
     }
   }
   return { recorded, base: null, role, reviewMode, repos };
+}
+
+/** --review-mode with --repo: the repo's own mode, or none for workspace. Throws SettingError. */
+function repoModeFlag(value: string): { mode: ReviewMode | undefined } {
+  return { mode: value === WORKSPACE_REVIEW_MODE ? undefined : validateSetting("review_mode", value) };
 }
 
 /** The refusal every task start meets until the review mode is chosen, said where the Human can act on it. */

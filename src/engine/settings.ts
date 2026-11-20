@@ -21,9 +21,10 @@ export const DEFAULT_HOST_ROLE: HostRole = "planner";
 /**
  * One folder's policy in a workspace: for a repo, the branch its pull requests merge into and the
  * checks its tasks run, or exempt, when tmb wires nothing in it; git false for a folder that is no
- * repo, recorded and left alone (trustmybot/tmb#163).
+ * repo, recorded and left alone (trustmybot/tmb#163). A repo may name its own review mode, the
+ * Human's choice; one that names none uses the workspace's (trustmybot/tmb#216).
  */
-export type RepoPolicy = { base_branch?: string; checks?: string[]; exempt?: boolean; git?: false };
+export type RepoPolicy = { base_branch?: string; checks?: string[]; review_mode?: ReviewMode; exempt?: boolean; git?: false };
 /** Each folder of a workspace by its path from the workspace folder, with forward slashes. */
 export type RepoPolicies = Record<string, RepoPolicy>;
 
@@ -85,12 +86,12 @@ function repoPolicies(value: unknown): RepoPolicies {
     const given = (value as Record<string, unknown>)[raw];
     if (typeof given !== "object" || given === null || Array.isArray(given)) throw new SettingError(`the repo ${name}'s policy must be an object, got ${JSON.stringify(given)}`);
     const fields = given as Record<string, unknown>;
-    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "exempt", "git"].includes(key));
-    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, exempt and git, not ${unknown.join(", ")}`);
+    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "review_mode", "exempt", "git"].includes(key));
+    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, review_mode, exempt and git, not ${unknown.join(", ")}`);
     if (fields.git !== undefined) {
       // A folder that is no repo takes no policy: tmb records it and leaves it alone.
       if (fields.git !== false) throw new SettingError(`git is given only as false, for a folder that is not a repo; got ${JSON.stringify(fields.git)} for ${name}`);
-      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks or exempt`);
+      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks, review_mode or exempt`);
       repos[name] = { git: false };
       continue;
     }
@@ -99,6 +100,7 @@ function repoPolicies(value: unknown): RepoPolicies {
     if (fields.exempt === true) policy.exempt = true;
     if (fields.base_branch !== undefined) policy.base_branch = nonEmptyText(`the repo ${name}'s base branch`, fields.base_branch);
     if (fields.checks !== undefined) policy.checks = checkList(fields.checks);
+    if (fields.review_mode !== undefined) policy.review_mode = reviewMode(fields.review_mode);
     if (policy.exempt !== true && policy.base_branch === undefined) throw new SettingError(`the repo ${name} needs a base_branch, or exempt: true`);
     repos[name] = policy;
   }
@@ -145,6 +147,16 @@ export function writeSetting<N extends SettingName>(store: Store, actor: Actor, 
   return true;
 }
 
+/**
+ * The review mode work in a repo follows: the repo's own, else the workspace's (trustmybot/tmb#216).
+ * `repo` null is the project folder of a single-repo project, which has only the project's mode.
+ * Null while neither is chosen.
+ */
+export function reviewModeOf(settings: Settings, repo: string | null): ReviewMode | null {
+  if (repo === null) return settings.review_mode;
+  return settings.repos?.[repo]?.review_mode ?? settings.review_mode;
+}
+
 /** The role the host's main agent takes in the project: its role in the record, else the planner. */
 export function hostRole(store: Store, host: string): HostRole {
   const entry = store.newestAudit(AUDIT_PREFIX + "host_roles");
@@ -154,12 +166,17 @@ export function hostRole(store: Store, host: string): HostRole {
 
 const LABELS: Record<SettingName, string> = { host: "host", host_roles: "host roles", base_branch: "base branch", review_mode: "review mode", checks: "checks", repos: "repos" };
 
-/** One repo's policy in a line: its base branch and checks, or exempt. */
-export function repoPolicyLine(name: string, policy: RepoPolicy): string {
+/**
+ * One repo's policy in a line: its base branch, checks and review mode, or exempt. `workspaceMode`
+ * is the workspace's, which a repo with no mode of its own follows.
+ */
+export function repoPolicyLine(name: string, policy: RepoPolicy, workspaceMode: ReviewMode | null = null): string {
   if (policy.git === false) return `${name} (not a repo)`;
   if (policy.exempt === true) return `${name} (exempt)`;
   const checks = policy.checks ?? [];
-  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}`;
+  const mode =
+    policy.review_mode !== undefined ? `, review mode ${policy.review_mode} (its own)` : workspaceMode !== null ? `, review mode ${workspaceMode} (the workspace's)` : "";
+  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}${mode}`;
 }
 
 /** One line per setting, as the command line shows them. */
@@ -170,7 +187,7 @@ export function settingLines(settings: Settings): string[] {
     if (name === "repos") {
       if (value === null) return null;
       const entries = Object.entries(value as RepoPolicies);
-      return `${LABELS[name]}: ${entries.length === 0 ? "(none found)" : entries.map(([repo, policy]) => repoPolicyLine(repo, policy)).join("; ")}`;
+      return `${LABELS[name]}: ${entries.length === 0 ? "(none found)" : entries.map(([repo, policy]) => repoPolicyLine(repo, policy, settings.review_mode)).join("; ")}`;
     }
     if (name === "host_roles" && value !== null) {
       const entries = Object.entries(value as HostRoles);
@@ -208,6 +225,33 @@ export function chooseReviewMode(store: Store, actor: Actor, value: unknown, via
   return store.transaction(() => {
     if (!writeSetting(store, actor, "review_mode", value)) return false;
     store.recordAudit(actor, { what: CHOSEN_WHAT, detail: via });
+    return true;
+  });
+}
+
+/** The word that takes a repo's own review mode away, so it follows the workspace's again. */
+export const WORKSPACE_REVIEW_MODE = "workspace";
+
+const REPO_CHOSEN_WHAT = "repo_review_mode_chosen";
+
+/** The repos whose own review mode differs between two policies, by name. */
+export function reviewModeChanges(before: RepoPolicies | null, after: RepoPolicies): string[] {
+  return Object.keys(after).filter((name) => before?.[name]?.review_mode !== after[name]!.review_mode);
+}
+
+/**
+ * Sets the repos setting, and records for each repo whose own review mode changed which way the
+ * Human chose it, as chooseReviewMode does for the workspace's (trustmybot/tmb#216). A value equal
+ * to the current one records nothing. Returns whether it changed.
+ */
+export function writeRepos(store: Store, actor: Actor, value: unknown, via: ReviewModeChooser): boolean {
+  return store.transaction(() => {
+    const before = readSettings(store).repos;
+    if (!writeSetting(store, actor, "repos", value)) return false;
+    const after = readSettings(store).repos!;
+    for (const repo of reviewModeChanges(before, after)) {
+      store.recordAudit(actor, { what: REPO_CHOSEN_WHAT, detail: JSON.stringify({ repo, review_mode: after[repo]!.review_mode ?? null, via }) });
+    }
     return true;
   });
 }

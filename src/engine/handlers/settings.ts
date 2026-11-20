@@ -5,7 +5,22 @@
 import { detectBaseBranch } from "../base-branch.ts";
 import { detectChecks } from "../check-detection.ts";
 import { inGitWorkTree, repoDirOf, scanRepos } from "../repos.ts";
-import { AVAILABLE_REVIEW_MODES, chooseReviewMode, readSettings, type RepoPolicies, type Settings, SettingError, validateSetting, writeSetting } from "../settings.ts";
+import {
+  AVAILABLE_REVIEW_MODES,
+  chooseReviewMode,
+  readSettings,
+  type RepoPolicies,
+  reviewModeChanges,
+  reviewModeOf,
+  type Settings,
+  SettingError,
+  validateRepoName,
+  validateSetting,
+  WORKSPACE_REVIEW_MODE,
+  writeRepos,
+  writeSetting,
+} from "../settings.ts";
+import { workingRepos } from "../repos.ts";
 import type { Actor, Store } from "../store/index.ts";
 import { type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
@@ -20,7 +35,12 @@ export type ProjectSetting = (typeof PROJECT_SETTINGS)[number];
  * checks in repos, so only the review mode can be empty.
  */
 export function emptySettings(settings: Settings): ProjectSetting[] {
-  if (settings.repos !== null) return settings.review_mode === null ? ["review_mode"] : [];
+  if (settings.repos !== null) {
+    // A repo with a mode of its own needs none from the workspace; the mode is empty while a repo tmb works in follows none.
+    const working = workingRepos(settings.repos);
+    const unchosen = working.length === 0 ? settings.review_mode === null : working.some((name) => reviewModeOf(settings, name) === null);
+    return unchosen ? ["review_mode"] : [];
+  }
   return PROJECT_SETTINGS.filter((name) => settings[name] === null);
 }
 
@@ -78,12 +98,19 @@ export const settingsSetSchema: InputSchema = {
       type: "object",
       description:
         "Only in a workspace of several repos: each named repo's policy, replacing that repo's; repos not named keep theirs. " +
-        "base_branch is the branch its pull requests merge into, checks the commands its tasks run before they close, exempt true for a repo tmb does no work in.",
+        "base_branch is the branch its pull requests merge into, checks the commands its tasks run before they close, review_mode its own review mode when the Human chose one, exempt true for a repo tmb does no work in.",
       additionalProperties: {
         type: "object",
         properties: {
           base_branch: { type: "string", pattern: NOT_BLANK },
           checks: { type: "array", items: { type: "string", pattern: NOT_BLANK } },
+          review_mode: {
+            type: "string",
+            description:
+              "Only the mode the Human chose for this repo when you asked them; never one you picked. " +
+              `${WORKSPACE_REVIEW_MODE} takes the repo's own mode away, so it follows the workspace's review_mode. Left out, the repo keeps the mode it has.`,
+            enum: [...AVAILABLE_REVIEW_MODES, WORKSPACE_REVIEW_MODE],
+          },
           exempt: { type: "boolean" },
         },
         required: [],
@@ -102,9 +129,18 @@ export type SettingsSetResult = SettingsView & { changed: SetName[] };
 
 /** The workspace's repos with the named ones' policies replaced; a repo must already be registered. */
 function mergedRepos(current: RepoPolicies, value: unknown): RepoPolicies {
+  // A repo's review mode is the Human's choice: left out, the repo keeps its own; the workspace word takes it away.
+  const modes = new Map<string, unknown>();
+  const rest: Record<string, unknown> = {};
   let given: RepoPolicies;
   try {
-    given = validateSetting("repos", value);
+    for (const [raw, policy] of Object.entries(value as Record<string, Record<string, unknown>>)) {
+      const { review_mode: mode, ...others } = policy;
+      const name = validateRepoName(raw);
+      modes.set(name, mode);
+      rest[name] = mode === undefined || mode === WORKSPACE_REVIEW_MODE ? others : { ...others, review_mode: mode };
+    }
+    given = validateSetting("repos", rest);
   } catch (error) {
     if (error instanceof SettingError) throw new HandlerError("invalid_input", error.message);
     throw error;
@@ -118,6 +154,8 @@ function mergedRepos(current: RepoPolicies, value: unknown): RepoPolicies {
     if (current[name]!.git === false) {
       throw new HandlerError("refused", `the folder ${name} is not a repo, so it takes no policy; once it is a repo, tmb init records it as one`);
     }
+    const kept = current[name]!.review_mode;
+    if (modes.get(name) === undefined && kept !== undefined) given[name] = { ...given[name]!, review_mode: kept };
   }
   return { ...current, ...given };
 }
@@ -144,6 +182,13 @@ export function settingsSet(store: Store, actor: Actor, input: unknown, context:
       "the review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --review-mode <mode> --yes` without a question)",
     );
   }
+  const nextRepos = repos !== null && named.includes("repos") ? mergedRepos(repos, values.repos) : null;
+  if (context.unattended === true && nextRepos !== null && reviewModeChanges(repos, nextRepos).length > 0) {
+    throw new HandlerError(
+      "refused",
+      "a repo's review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --repo <repo> --review-mode <mode> --yes` without a question)",
+    );
+  }
   const changed: SetName[] = [];
   try {
     store.transaction(() => {
@@ -153,7 +198,7 @@ export function settingsSet(store: Store, actor: Actor, input: unknown, context:
           name === "review_mode"
             ? chooseReviewMode(store, actor, values[name], "planner")
             : name === "repos"
-              ? writeSetting(store, actor, "repos", mergedRepos(repos ?? {}, values.repos))
+              ? writeRepos(store, actor, nextRepos, "planner")
               : writeSetting(store, actor, name, values[name]);
         if (wrote) changed.push(name);
       }

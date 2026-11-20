@@ -16,7 +16,7 @@ import { truestTaskCommits } from "./handlers/truest.ts";
 import { openProjectStore, projectDbPath } from "./project.ts";
 import { TRUEST } from "./handlers/common.ts";
 import { repoDirOf, repoOf } from "./repos.ts";
-import { readSettings, type RepoPolicies } from "./settings.ts";
+import { readSettings, type RepoPolicies, reviewModeOf } from "./settings.ts";
 import type { Actor, Store } from "./store/index.ts";
 
 /** One line git writes to the pre-push hook's stdin. */
@@ -131,7 +131,8 @@ export function judgePush(projectDir: string, remote: string, stdin: string, pus
     const settings = readSettings(store);
     const repo = repoOf(store, projectDir, pushDir);
     const base = repo?.baseBranch ?? null;
-    const truest = settings.review_mode === TRUEST;
+    // Each repo's push asks for what its own review mode requires (trustmybot/tmb#216).
+    const truest = repo !== null && reviewModeOf(settings, repo.name) === TRUEST;
     let decision: Decision;
     if (refs === null) decision = denied(remote, "git passed the hook a line that is not `<local-ref> <local-sha> <remote-ref> <remote-sha>`");
     else if (repo === null) decision = { decision: "allow", reason: "the push is from a repo this workspace does not register, or registers as exempt, so tmb has no policy for it" };

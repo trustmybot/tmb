@@ -9,8 +9,8 @@ import { newId } from "../ids.ts";
 import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../docs-files.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
-import { repoChecks, repoDirOf, repoOfRow, resolveRepo } from "../repos.ts";
-import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
+import { repoChecks, repoDirOf, repoOfRow, resolveRepo, workingRepos } from "../repos.ts";
+import { NO_REVIEW_MODE, readSettings, type ReviewMode, reviewModeOf, type Settings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
@@ -348,6 +348,35 @@ function titleOf(intent: string): string {
   return clip(intent.trim().split("\n")[0]!);
 }
 
+/**
+ * The review mode a task start follows, and the repo it is that repo's mode for. A repo named, or
+ * the named feature branch's repo, gives its own mode. With neither, every repo the task may be cut
+ * in must follow the same mode; when they differ the start is refused until it names its repo, as
+ * tmb never picks a repo, or a mode, for the planner.
+ */
+function taskReviewMode(
+  store: Store,
+  settings: Settings,
+  projectDir: string,
+  repo: string | undefined,
+  feature: string | undefined,
+): { repo: string | null; reviewMode: ReviewMode | null } {
+  if (settings.repos === null) return { repo: null, reviewMode: settings.review_mode };
+  if (repo !== undefined) {
+    const name = resolveRepo(store, projectDir, repo).name;
+    return { repo: name, reviewMode: reviewModeOf(settings, name) };
+  }
+  const named = feature === undefined ? undefined : store.findFeature(feature);
+  if (named) return { repo: named.repo, reviewMode: reviewModeOf(settings, named.repo) };
+  const working = workingRepos(settings.repos);
+  const modes = new Set(working.map((name) => reviewModeOf(settings, name)));
+  if (modes.size > 1) {
+    const each = working.map((name) => `${name} ${reviewModeOf(settings, name) ?? "(no mode chosen)"}`).join(", ");
+    throw new HandlerError("refused", `the repos of this workspace follow different review modes (${each}); name the repo this task works in with repo`);
+  }
+  return { repo: working.length === 1 ? working[0]! : null, reviewMode: working.length === 0 ? settings.review_mode : [...modes][0]! };
+}
+
 export function taskStart(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskStartResult {
   const request = validateInput<{
     issue_id: string;
@@ -371,17 +400,19 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   if (request.replaces !== undefined) requireDropped(store, request.replaces);
   const settings = readSettings(store);
   // The review mode decides how many tokens the project uses, so no task starts until the Human chose it.
-  const truest = settings.review_mode === TRUEST;
+  // In a workspace each repo follows its own mode, or the workspace's (trustmybot/tmb#216).
+  const mode = taskReviewMode(store, settings, context.projectDir, request.repo, request.feature);
+  const truest = mode.reviewMode === TRUEST;
   if (truest && request.feature !== undefined) {
     const base = resolveRepo(store, context.projectDir, request.repo).baseBranch ?? "base branch";
     throw new HandlerError(
       "refused",
-      `the project is in truest mode, which has no feature branches: each task is cut from the base branch ${base} and reaches it through its own pull request. Start the task without feature.`,
+      `${mode.repo === null ? "the project is" : `the repo ${mode.repo} is`} in truest mode, which has no feature branches: each task is cut from the base branch ${base} and reaches it through its own pull request. Start the task without feature.`,
     );
   }
   let feature: Feature | null = null;
   let repo;
-  if (truest || settings.review_mode === null) {
+  if (truest || mode.reviewMode === null) {
     repo = resolveRepo(store, context.projectDir, request.repo);
   } else {
     // The repo named, when it is registered, narrows which open feature branch is meant.
@@ -396,7 +427,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   }
   const baseBranch = repo.baseBranch;
   if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
-  if (settings.review_mode === null) throw new HandlerError("refused", NO_REVIEW_MODE);
+  if (mode.reviewMode === null) throw new HandlerError("refused", NO_REVIEW_MODE);
   const dir = repo.dir;
 
   const id = newId();
