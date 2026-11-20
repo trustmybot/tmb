@@ -1,0 +1,27 @@
+name: windows-hook
+
+# The line tmb adds to another tool's pre-push hook, run by Git for Windows' sh (trustmybot/tmb#221).
+# Only pull requests that touch the push gate's hook code run it, so other pull requests stay as
+# fast as before; workflow_dispatch runs it on any branch. Needs no secret.
+
+on:
+  pull_request:
+    paths:
+      - src/engine/push-gate.ts
+      - test/push-gate-line.test.ts
+      - .github/workflows/windows-hook.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hook-line:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: bun test test/push-gate-line.test.ts
