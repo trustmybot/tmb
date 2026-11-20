@@ -216,8 +216,8 @@ describe("feature_update brings the base branch in", () => {
     featureStart(store, PLANNER, { name: FEATURE }, context());
     for (const actor of [WORKER, REVIEWER]) expect(refusal(() => featureUpdate(store, actor, { feature: FEATURE }, context())).message).toContain("is for the planner");
     expect(refusal(() => featureUpdate(store, PLANNER, { feature: "feat/none" }, context())).code).toBe("not_found");
-    store.updateFeature(HUMAN, store.findFeature(FEATURE)!.id, { state: "pr_open" });
-    expect(refusal(() => featureUpdate(store, PLANNER, { feature: FEATURE }, context())).message).toContain("only an open one");
+    store.updateFeature(HUMAN, store.findFeature(FEATURE)!.id, { state: "merged" });
+    expect(refusal(() => featureUpdate(store, PLANNER, { feature: FEATURE }, context())).message).toContain("is merged; only an open one, or one whose pull request is open");
   });
 });
 

@@ -1,13 +1,13 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
 import { gitFailure, runGit } from "../git.ts";
-import { refreshPullRequestStates } from "../pull-request-state.ts";
+import { refreshLocalMerges, refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, PR_OPEN, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
-import { branchRef, isAncestor, moveFeature, type PushOutcome, pushFeature } from "./fold.ts";
+import { backupPush, branchRef, isAncestor, moveFeature, type PushOutcome } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
 export type FeatureSummary = {
@@ -90,7 +90,8 @@ export function featureTip(projectDir: string, feature: Feature): string {
 /**
  * The feature branch a task starts on: the one named, or with none named the only one open (in
  * `repo` when the task names one). A branch named whose pull request closed without a merge takes
- * the task too: the task start moves it back to open (trustmybot/tmb#152). Refuses none open,
+ * the task too: the task start moves it back to open (trustmybot/tmb#152). So does one whose pull
+ * request is open, which stays pr_open: a fix task (trustmybot/tmb#168). Refuses none open,
  * several open, and a name the record does not hold open or closed.
  */
 export function featureForTask(store: Store, name: string | undefined, repo?: string): Feature {
@@ -101,8 +102,11 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
     if (!feature) {
       throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? HOW_TO_START : `the open ones are ${names}`}`);
     }
-    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
-      throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one, or on one whose pull request closed without a merge`);
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN && feature.state !== READY) {
+      throw new HandlerError(
+        "refused",
+        `the feature branch ${name} is ${feature.state}; a task starts only on an open one, one whose pull request is open, one ready for a local merge, or one whose pull request closed without a merge`,
+      );
     }
     return feature;
   }
@@ -239,9 +243,13 @@ function mergeTree(dir: string, ours: string, theirs: string): { tree: string } 
 export function featureUpdate(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureUpdateResult {
   const given = validateInput<{ feature: string }>("feature_update", featureUpdateSchema, input);
   requireRole(actor, "feature_update", ["planner"]);
+  // A ready branch the Human already merged locally is merged, not updated (trustmybot/tmb#183).
+  refreshLocalMerges(store, actor, context.projectDir);
   const feature = store.findFeature(given.feature);
   if (!feature) throw new HandlerError("not_found", `no feature branch ${given.feature} in the record; feature_list lists them`);
-  if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}; only an open one takes the base branch in`);
+  if (feature.state !== OPEN && feature.state !== PR_OPEN && feature.state !== READY) {
+    throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}; only an open one, one whose pull request is open, or one ready for a local merge takes the base branch in`);
+  }
   const dir = featureDir(store, context.projectDir, feature);
   const from = featureTip(dir, feature);
   const base = fetchedBase(dir, feature.baseBranch, `into the feature branch ${feature.name}`);
@@ -276,12 +284,16 @@ export function featureUpdate(store: Store, actor: Actor, input: unknown, contex
   const why = `tmb: feature_update ${feature.name} with ${feature.baseBranch} at ${base}`;
   const undo = moveFeature(dir, feature.name, from, to, why);
   try {
-    store.recordAudit(actor, { what: FEATURE_UPDATE, detail: JSON.stringify({ feature_id: feature.id, feature: feature.name, base, from, to, how }) });
+    store.transaction(() => {
+      store.recordAudit(actor, { what: FEATURE_UPDATE, detail: JSON.stringify({ feature_id: feature.id, feature: feature.name, base, from, to, how }) });
+      // A ready branch's tip moved: it is open again until a pass or a waiver covers the new tip and feature_pr makes it ready.
+      if (feature.state === READY) store.updateFeature(actor, feature.id, { state: OPEN });
+    });
   } catch (error) {
     undo();
     throw error;
   }
-  return result(to, how, pushFeature(dir, feature.name, actor));
+  return result(to, how, backupPush(store, dir, feature.name, actor));
 }
 
 // --- feature_list -------------------------------------------------------------------------

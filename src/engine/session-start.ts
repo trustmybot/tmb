@@ -193,12 +193,14 @@ export const UNATTENDED_INSTRUCTION =
   "## Unattended run\n\nNo one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.";
 
 /**
- * Open feature branches with work on them and no review or waiver at their tip, oldest first.
+ * Open feature branches, and those whose pull request is open, with work on them and no review or
+ * waiver at their tip, oldest first within each.
  * A branch whose newest review at the tip failed waits for rework, not for a review.
  */
 function awaitingReview(store: Store, projectDir: string): string {
   const lines: string[] = [];
-  for (const feature of store.listFeatures("open")) {
+  // A branch whose pull request is open takes fix tasks, and its new tip waits for a review too (trustmybot/tmb#168).
+  for (const feature of [...store.listFeatures("open"), ...store.listFeatures("pr_open"), ...store.listFeatures("ready")]) {
     const brief = featureBriefOf(store, projectDir, feature);
     if (brief.groups.length === 0 || brief.covered || brief.reviews.some((review) => review.commit === brief.tip)) continue;
     lines.push(`- ${reviewLine(feature.name)} at ${brief.tip.slice(0, 12)}: ${brief.groups.length} task${brief.groups.length === 1 ? "" : "s"} onto ${brief.baseBranch}`);

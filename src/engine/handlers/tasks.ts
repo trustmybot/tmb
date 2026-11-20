@@ -15,7 +15,7 @@ import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContex
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
-import { type PushOutcome, branchHoldsWork, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
+import { type PushOutcome, backupPush, branchHoldsWork, isAncestor, moveFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
 import { refreshLocalMerges } from "../pull-request-state.ts";
@@ -385,6 +385,8 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   } else {
     // The repo named, when it is registered, narrows which open feature branch is meant.
     const named = request.repo === undefined ? undefined : resolveRepo(store, context.projectDir, request.repo).name ?? undefined;
+    // A ready branch the Human already merged locally is merged, and takes no task (trustmybot/tmb#183).
+    refreshLocalMerges(store, actor, context.projectDir);
     feature = featureForTask(store, request.feature, named);
     repo = repoOfRow(store, context.projectDir, feature);
     if (named !== undefined && feature.repo !== named) {
@@ -409,7 +411,8 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
       if (request.replaces !== undefined) requireDropped(store, request.replaces);
       shared = sharedFiles(store, spec.files, repo.name);
       // Rework on a branch whose pull request closed reopens it, so review and a new pull request run as before (trustmybot/tmb#152).
-      if (feature !== null && feature.state === CLOSED_UNMERGED) store.updateFeature(actor, feature.id, { state: OPEN });
+      // So does a fix task on a branch ready for a local merge: its tip will move, so it is not ready until covered again (trustmybot/tmb#183).
+      if (feature !== null && (feature.state === CLOSED_UNMERGED || feature.state === READY)) store.updateFeature(actor, feature.id, { state: OPEN });
       store.appendTask(actor, {
         id,
         issueId: request.issue_id,
@@ -678,7 +681,7 @@ function finishFold(
   const dir = taskDir(store, context.projectDir, task);
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, featureName, actor);
+  const push = backupPush(store, dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -756,7 +759,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, feature.name, actor);
+  const push = backupPush(store, dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }

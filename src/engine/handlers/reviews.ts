@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, localMergeCommand, OPEN, type OperationContext, READY, requireRole } from "./common.ts";
+import { CLOSED_UNMERGED, localMergeCommand, OPEN, type OperationContext, PR_OPEN, READY, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureDir, featureTip, knownBase } from "./features.ts";
 import { hasOrigin, isAncestor, pushFeature } from "./fold.ts";
@@ -19,7 +19,7 @@ export const VERDICTS = ["pass", "fail"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 /** The state of a feature branch once the engine has opened its pull request. */
-export const PR_OPEN = "pr_open";
+export { PR_OPEN };
 /** What an audit entry of a Human waiver is about. */
 export const WAIVER = "waiver";
 
@@ -97,9 +97,10 @@ function requireFeature(store: Store, name: string): Feature {
   return feature;
 }
 
+/** A feature branch that takes work: open, or with its pull request open, where fix tasks land (trustmybot/tmb#168). */
 function requireOpenFeature(store: Store, name: string, doing: string): Feature {
   const feature = requireFeature(store, name);
-  if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
+  if (feature.state !== OPEN && feature.state !== PR_OPEN && feature.state !== READY) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
   return feature;
 }
 
@@ -394,7 +395,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
   const feature = requireFeature(store, given.feature);
   // A ready branch (no remote) may ask again: for the merge command, or for a pull request once a remote was added.
-  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== READY) {
+  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN && feature.state !== READY) {
     throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}, so its pull request does not open again`);
   }
   const brief = featureBriefOf(store, context.projectDir, feature);
@@ -427,6 +428,11 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
     brief.coveredBy === "review"
       ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
       : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
+  const markRequired = markRequiredOn(dir, feature.baseBranch);
+  // Its pull request is open: the push of the reviewed tip is what updates it (trustmybot/tmb#168).
+  if (feature.state === PR_OPEN && feature.prUrl !== null) {
+    return { feature: feature.name, url: feature.prUrl, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
+  }
   const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
   let opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
   if (!opened.ok) {
@@ -436,7 +442,6 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   }
   if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
-  const markRequired = markRequiredOn(dir, feature.baseBranch);
   return { feature: feature.name, url: opened.url, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
 }
 

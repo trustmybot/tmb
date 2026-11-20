@@ -59,16 +59,26 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       const ready = await callJson(client, "feature_pr", { feature: "feat/greet", title: "Greet" });
       expect(ready).toMatchObject({ url: null, tip: brief.tip, localMerge: { dir: project, command: "git switch main && git merge --no-ff feat/greet" } });
       expect((await callJson(client, "feature_brief", { feature: "feat/greet" })).state).toBe("ready");
-      expect(await callRefused(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/greet", intent: "More", files: ["src"], criteria: ["SC1: x"] })).toContain("is ready");
       expect(ghCalled()).toBe(false);
 
-      // 4. Until the Human merges, it stays ready; after, it is merged and the session start says so.
+      // 4. A fix task opens the ready branch again; its new tip needs a new pass or waiver before it is ready.
+      const fix = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/greet", intent: "Greet by name", files: ["src"], criteria: ["SC1: x"] });
+      expect((await callJson(client, "feature_brief", { feature: "feat/greet" })).state).toBe("open");
+      const fixed = commitFile(fix.worktree, "src/greet.ts", "export const greet = (name) => 'hi ' + name;\n", "greet by name");
+      await callJson(client, "task_close", { id: fix.id, role: "worker" });
+      expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet" })).toContain(`at its tip ${fixed}`);
+      tmb(["feature", "waive", "feat/greet", "--reason", "The Human read the fix"], project);
+      const readyAgain = await callJson(client, "feature_pr", { feature: "feat/greet", title: "Greet" });
+      expect(readyAgain).toMatchObject({ url: null, tip: fixed, localMerge: ready.localMerge });
+
+      // 5. Until the Human merges, it stays ready; after, it is merged and the session start says so.
       const list = async () => (await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/greet");
       expect(await list()).toMatchObject({ state: "ready" });
       humanMerges(ready.localMerge);
       expect(sessionStart(project)).toContain("feat/greet: the base branch main holds its tip");
       expect(await list()).toMatchObject({ state: "merged" });
       expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet" })).toContain("is merged");
+      expect(await callRefused(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/greet", intent: "More", files: ["src"], criteria: ["SC1: x"] })).toContain("is merged");
     } finally {
       await client.close();
     }
