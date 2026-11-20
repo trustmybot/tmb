@@ -7,7 +7,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { githubStandIn } from "../integration/github-stand-in.ts";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
 
-const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-mark-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-mark-");
 afterAll(cleanup);
 const github = githubStandIn(scratch, env, git);
 
@@ -51,7 +51,7 @@ describe("a new commit has no mark until it is reviewed", () => {
 
   test("truest: rework after a fail is a new commit with no mark until the reviewer passes it and task_pr pushes it", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+    human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
     const bare = git(project, "config", "--get", "remote.origin.url");
     github.point(project);
     const issue = tmbJson(["issue", "create", "Lines"], project).id as string;

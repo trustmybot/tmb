@@ -59,7 +59,7 @@ if (!bunTest(project, path.join(logs, "base.log"))) {
   fail(`the project's tests fail before any work, so a refused close would prove nothing: ${readFileSync(path.join(logs, "base.log"), "utf8")}`);
 }
 tmb.shown(["init"], `tmb init failed in ${project}`);
-tmb.shown(["onboard", "--yes", "--base", base, "--review-mode", "agile", "--check", check], `tmb onboard failed in ${project}`);
+tmb.human(["onboard", "--yes", "--base", base, "--review-mode", "agile", "--check", check], `tmb onboard failed in ${project}`);
 
 const firstLog = path.join(logs, "session-1.log");
 console.log(`Session 1, asking claude (${MODEL}): ${firstPrompt}`);

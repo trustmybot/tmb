@@ -10,7 +10,7 @@ import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { BASE_BRANCH, callJson, tmbProcesses } from "./tmb-processes.ts";
 
-const { env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
+const { env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
 afterAll(cleanup);
 
 /** A push typed by hand: git runs the pre-push hook; returns its exit status and what it said. */
@@ -39,13 +39,13 @@ describe("the push gate", () => {
     const file = hookFile(project);
     expect(readFileSync(file, "utf8")).toContain("# tmb: the push gate.");
     expect(statSync(file).mode & 0o111).not.toBe(0);
-    expect(tmb(["remove"], project)).toContain("Removed git's pre-push hook");
+    expect(human(["remove"], project)).toContain("Removed git's pre-push hook");
     expect(existsSync(file)).toBe(false);
 
     writeFileSync(file, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     expect(tmb(["init"], project)).toContain("is not tmb's, so it was left alone");
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
-    tmb(["remove"], project);
+    human(["remove"], project);
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
   });
 

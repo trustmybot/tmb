@@ -10,6 +10,7 @@ import { roleFilePath } from "../../src/adapters/claude-code/role-files.ts";
 import { isTmbHookCommand, TMB_HOOKS } from "../../src/adapters/claude-code/settings.ts";
 import { projectDbPath, SUBAGENT_ROLES } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
+import { asHuman } from "../lib/as-human.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
@@ -38,6 +39,13 @@ beforeAll(() => {
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
+
+/** Runs a step only the Human may take, on a terminal where the Human types yes; returns what the terminal showed. */
+function human(args: string[], cwd: string): string {
+  const result = asHuman(process.execPath, [CLI, ...args], { cwd, env });
+  if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.output}`);
+  return result.output;
+}
 
 function tmb(args: string[], cwd: string): string {
   const result = spawnSync(process.execPath, [CLI, ...args], { cwd, env, encoding: "utf8", timeout: 30_000 });
@@ -134,7 +142,7 @@ describe("tmb remove", () => {
     expect(tmbHooksByEvent(readJson(path.join(project, SETTINGS)))).toEqual(Object.fromEntries(TMB_HOOKS.map((hook) => [hook.hookEvent, [hook.name]])));
     expect(Object.keys(readJson(path.join(project, MCP_JSON)).mcpServers as object).sort()).toEqual(["mine", "tmb"]);
 
-    tmb(["remove"], project);
+    human(["remove"], project);
 
     expect(readJson(path.join(project, SETTINGS))).toEqual(humanSettings);
     expect(readJson(path.join(project, MCP_JSON))).toEqual(humanMcp);
@@ -151,7 +159,7 @@ describe("tmb remove", () => {
     setUp(project);
     expect(existsSync(path.join(project, MCP_JSON))).toBe(true);
 
-    tmb(["remove"], project);
+    human(["remove"], project);
 
     expect(existsSync(path.join(project, MCP_JSON))).toBe(false);
     for (const name of ROLE_NAMES) expect(existsSync(roleFilePath(project, name))).toBe(false);

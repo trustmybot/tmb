@@ -14,6 +14,7 @@ import type { Store } from "../../src/engine/store/index.ts";
 import { claudeCodeHarness } from "./adapters/claude-code.ts";
 import { codexHarness } from "./adapters/codex.ts";
 import type { ContractEvent, HostHarness } from "./adapters/harness.ts";
+import { asHuman } from "../lib/as-human.ts";
 
 const HARNESSES: readonly HostHarness[] = [claudeCodeHarness, codexHarness];
 
@@ -44,6 +45,13 @@ afterAll(() => {
 test("every host adapter has a harness, so none skips the shared tests", () => {
   expect(HARNESSES.map((harness) => harness.adapter.id).sort()).toEqual(HOST_ADAPTERS.map((adapter) => adapter.id).sort());
 });
+
+/** Runs a step only the Human may take, on a terminal where the Human types yes; returns what the terminal showed. */
+function human(args: string[], cwd: string): string {
+  const result = asHuman(process.execPath, [CLI, ...args], { cwd, env });
+  if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.output}`);
+  return result.output;
+}
 
 function tmb(args: string[], cwd: string): string {
   const result = spawnSync(process.execPath, [CLI, ...args], { cwd, env, encoding: "utf8", timeout: 60_000 });
@@ -129,6 +137,7 @@ for (const harness of HARNESSES) {
         "before-agent-start": { type: "before-agent-start", role: "reviewer", prompt: "review" },
         "after-agent-stop": { type: "after-agent-stop", role: "reviewer" },
         "worker-in-folder": { type: "worker-in-folder", task: "01ARZ3NDEKTSV4RRFFQ69G5FAV", folder: project },
+        "before-shell-command": { type: "before-shell-command", role: "planner", command: "ls" },
       };
       for (const type of TMB_EVENT_TYPES) {
         const raised = harness.hookCall(project, samples[type]!) !== null;
@@ -151,7 +160,7 @@ for (const harness of HARNESSES) {
       setUp(project);
       expect(snapshot(project)).toEqual(afterSetup);
 
-      tmb(["remove", "--host", adapter.id], project);
+      human(["remove", "--host", adapter.id], project);
       const afterRemove = snapshot(project);
       // The lines init added to .gitignore stay with the record they hide.
       expect(Buffer.from(afterRemove[".gitignore"]!, "base64").toString()).toStartWith("node_modules/\n");
@@ -190,11 +199,16 @@ for (const harness of HARNESSES) {
     test("a guarded action is denied in the host's own terms, an allowed one goes through, and both are recorded under this host", () => {
       const project = newProject();
       setUp(project);
-      // tmb reads no shell command: a push that skips git's hook is neither refused nor recorded, from any role.
+      // tmb reads a shell command only for a step only the Human may take: a push that skips git's hook is neither refused nor recorded, from any role.
       for (const role of ["planner", "worker", "reviewer"]) {
-        expect(raise(project, { type: "shell-command", role, command: "git push --no-verify origin main" }).deny).toBeNull();
+        expect(raise(project, { type: "before-shell-command", role, command: "git push --no-verify origin main" }).deny).toBeNull();
       }
       expect(withStore(project, (store) => store.listGuardDecisions())).toHaveLength(0);
+      // A step only the Human may take is denied from any role, in the host's own terms, and recorded (trustmybot/tmb#179).
+      for (const role of ["planner", "worker", "reviewer"]) {
+        expect(raise(project, { type: "before-shell-command", role, command: "tmb task waive T-1 --reason fine" }).deny).toContain("only the Human may take");
+      }
+      expect(withStore(project, (store) => store.listGuardDecisions().filter((row) => row.decision === "deny"))).toHaveLength(3);
       if (adapter.limits.events.includes("before-file-write")) {
         const write = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
         if (adapter.limits.namesAgentOnToolCall) {

@@ -7,6 +7,7 @@
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { asHuman } from "./as-human.ts";
 import path from "node:path";
 
 export const IS_WINDOWS = process.platform === "win32";
@@ -179,6 +180,13 @@ export class Tmb {
   /** Runs tmb with its output shown; fails the test with `what` when it exits non-zero. */
   shown(args: string[], what = `tmb ${args.join(" ")} failed in ${this.project}`): void {
     if (runShown(this.bin, args, { cwd: this.project }) !== 0) fail(what);
+  }
+
+  /** Runs a step only the Human may take, on a terminal where the Human types yes; fails the test with `what` when it exits non-zero. */
+  human(args: string[], what = `tmb ${args.join(" ")} failed in ${this.project}`): void {
+    const result = asHuman(this.bin, args, { cwd: this.project });
+    process.stdout.write(result.output);
+    if (result.status !== 0) fail(what);
   }
 
   /** Runs tmb and returns what it printed; fails the test, showing that output, on an error. */

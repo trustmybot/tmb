@@ -2,10 +2,11 @@
 // is written against them here. A worker starts only on an open task with its worktree
 // ready, and once it names that task from a worktree its host made for it, tmb adopts that
 // worktree as the task's; a worker's and a reviewer's start and stop are recorded as a run. A
-// reviewer host's main agent writes nothing. tmb reads no shell command: git's pre-push hook
-// holds every push, whatever was typed. A record tmb cannot read denies, so nothing runs
-// unguarded in a project whose record is broken.
+// reviewer host's main agent writes nothing. tmb reads a shell command only for a step only the
+// Human may take (trustmybot/tmb#179): git's pre-push hook holds every push, whatever was typed.
+// A record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
 import { adoptWorktree } from "./handlers/adopt.ts";
+import { humanOnlyInShell, shellDenyReason } from "./human-only.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
 import { hostRole } from "./settings.ts";
@@ -13,7 +14,7 @@ import { FINISHED, STOPPED } from "./host-runs.ts";
 import { OPEN } from "./handlers/common.ts";
 import { type Actor, type ModelUsage, ROLES, type Role, type Run, type Store, type StoreOpenError } from "./store/index.ts";
 
-export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop", "worker-in-folder"] as const;
+export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop", "worker-in-folder", "before-shell-command"] as const;
 export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
 
 /**
@@ -41,7 +42,7 @@ export type TmbEvent = {
   cost?: ModelUsage[] | null;
   /**
    * What is about to happen: the file path, the start prompt of an agent starting, or the role of
-   * one stopping; for a worker naming its task, the folder it works in.
+   * one stopping; for a worker naming its task, the folder it works in; for a shell command, its text.
    */
   action: string;
 };
@@ -168,12 +169,36 @@ function rule(store: Store, event: TmbEvent, mainAgent: boolean): Decision {
 }
 
 /**
+ * An agent's shell command: denied when it runs a step only the Human may take, whatever the
+ * agent and whether or not the project has a record; the deny is recorded when the record can be
+ * read. Any other command is allowed and not recorded, as tmb reads no other shell command.
+ */
+function shellCommand(event: TmbEvent): Decision {
+  const step = humanOnlyInShell(event.action);
+  if (step === null) return { decision: "allow" };
+  const decision: Decision = { decision: "deny", reason: shellDenyReason(step) };
+  const opened = openProjectStore(event.projectDir, { create: false });
+  if (!opened.ok) return decision;
+  try {
+    const role = event.role === MAIN_AGENT ? hostRole(opened.store, event.host) : event.role;
+    const recorded = { ...event, role };
+    opened.store.appendGuardDecision(actorOf(recorded), { event: recordedEvent(recorded), decision: decision.decision, reason: decision.reason });
+  } catch {
+    // The deny stands whether or not it could be recorded.
+  } finally {
+    opened.store.close();
+  }
+  return decision;
+}
+
+/**
  * Allows or denies a host event. With no record in the project it allows and records
  * nothing; a record it cannot read, or one a newer tmb made, denies with the cause. With a
  * readable record each decision is recorded as a guard decision, together with the run it
  * starts or ends.
  */
 export function decide(event: TmbEvent): Decision {
+  if (event.type === "before-shell-command") return shellCommand(event);
   const opened = openProjectStore(event.projectDir, { create: false });
   if (!opened.ok) return opened.error.failure === "missing" ? { decision: "allow" } : unreadableRecord(opened.error);
   const store = opened.store;

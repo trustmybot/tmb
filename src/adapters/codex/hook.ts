@@ -46,6 +46,15 @@ export function patchFilesOf(toolInput: JsonObject): string[] {
   return [...new Set(files)];
 }
 
+/** A shell call's command text: Codex gives it as a string, or as argv such as ["bash", "-lc", "<command>"]. */
+export function shellTextOf(toolInput: JsonObject): string {
+  const command = toolInput.command ?? toolInput.cmd;
+  if (typeof command === "string") return command;
+  if (!Array.isArray(command)) return "";
+  const words = command.filter((part): part is string => typeof part === "string");
+  return words.map((word) => (/[\s'"]/.test(word) ? `'${word.replace(/'/g, "'\\''")}'` : word)).join(" ");
+}
+
 function spawnOf(toolInput: JsonObject): { role: string; prompt: string } {
   const role = stringField(toolInput, "agent_type", "subagent_type", "agent", "name") ?? UNNAMED_AGENT;
   const items = toolInput.items;
@@ -73,9 +82,10 @@ function preToolUse(input: JsonObject): string {
   const writes = (files: string[]) => files.map((file) => decide(eventOf(input, "before-file-write", path.resolve(cwdOf(input), file))));
   let decisions: Decision[];
   if (SHELL_TOOLS.has(toolName)) {
-    // tmb reads no shell command, but Codex also runs apply_patch through the shell: each file the patch names is a write.
+    // tmb reads a shell command for a step only the Human may take (trustmybot/tmb#179); Codex
+    // also runs apply_patch through the shell, and each file the patch names is a write.
     const { file_path: _file, path: _path, ...shellInput } = toolInput;
-    decisions = writes(patchFilesOf(shellInput));
+    decisions = [decide(eventOf(input, "before-shell-command", shellTextOf(shellInput))), ...writes(patchFilesOf(shellInput))];
   } else if (PATCH_TOOLS.has(toolName)) {
     const files = patchFilesOf(toolInput);
     decisions = files.length > 0 ? writes(files) : [decide(eventOf(input, "before-file-write", ""))];

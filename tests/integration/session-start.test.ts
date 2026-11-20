@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { UNATTENDED_INSTRUCTION } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
+import { asHuman } from "../lib/as-human.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
@@ -26,8 +27,8 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-function run(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}) {
-  // Keep the machine's global git ignore rules, and any unattended mode it runs in, out of the project under test.
+/** The environment each command runs in: the machine's global git ignore rules, and any unattended mode it runs in, stay out of the project under test. */
+function testEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {
     ...process.env,
     XDG_CONFIG_HOME: path.join(scratch, "no-xdg"),
@@ -35,6 +36,11 @@ function run(command: string, args: string[], cwd: string, input?: string, extra
     PATH: pathWithFakeClaude(scratch),
   };
   delete env.TMB_UNATTENDED;
+  return env;
+}
+
+function run(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}) {
+  const env = testEnv();
   const result = spawnSync(command, args, { cwd, input, encoding: "utf8", timeout: 30_000, env: { ...env, ...extraEnv } });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -101,13 +107,13 @@ describe("tmb init and remove", () => {
     const hookCommand = (name: string) => `"${process.execPath}" "${CLI}" hook ${name}`;
     expect(afterInit.hooks.PreToolUse).toEqual([
       otherHook,
-      { matcher: "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|mcp__tmb__task_brief|mcp__tmb__task_close", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
+      { matcher: "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
     ]);
     expect(afterInit.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
     expect(afterInit.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
     expect(afterInit.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
 
-    const remove = run(process.execPath, [CLI, "remove"], project);
+    const remove = asHuman(process.execPath, [CLI, "remove"], { cwd: project, env: testEnv() });
     expect(remove.status).toBe(0);
     expect(existsSync(settingsFile)).toBe(true);
     expect(readSettings()).toEqual(original);

@@ -498,7 +498,7 @@ async function onboardWorkspace(
 /** The refusal every task start meets until the review mode is chosen, said where the Human can act on it. */
 const NO_REVIEW_MODE_LINE =
   "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. " +
-  `Run tmb onboard on a terminal, or tmb onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}> --yes.`;
+  `Run tmb onboard, or tmb onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}>, on a terminal.`;
 
 function sayNoReviewMode(reviewMode: ReviewMode | null, out: (line: string) => void): void {
   if (reviewMode === null) out(NO_REVIEW_MODE_LINE);

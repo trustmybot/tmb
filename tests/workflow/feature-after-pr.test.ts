@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
 
-const { scratch, env, tmb, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-workflow-after-pr-");
+const { scratch, env, tmb, human, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-workflow-after-pr-");
 afterAll(cleanup);
 
 const ghDir = path.join(scratch, "gh-state");
@@ -56,7 +56,7 @@ describe("a feature branch after its pull request", () => {
       const first = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add greet", files: ["src"], criteria: ["SC1: it greets"] });
       const tip = commitFile(first.worktree, "src/greet.ts", "export const greet = () => 'hi';\n", "add greet");
       await callJson(client, "task_close", { id: first.id, role: "worker" });
-      tmb(["feature", "waive", "feat/greet", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/greet", "--reason", "The Human read it"], project);
 
       // 1. The first pull request opens, then closes without a merge.
       github({ create: PR_1, view: "OPEN" });
@@ -77,7 +77,7 @@ describe("a feature branch after its pull request", () => {
       const reworked = commitFile(rework.worktree, "src/greet.ts", "export const greet = (name) => 'hi ' + name;\n", "greet by name");
       await callJson(client, "task_close", { id: rework.id, role: "worker" });
       expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet" })).toContain(`at its tip ${reworked}`);
-      tmb(["feature", "waive", "feat/greet", "--reason", "The Human read the rework"], project);
+      human(["feature", "waive", "feat/greet", "--reason", "The Human read the rework"], project);
 
       // 4. The Human reopened a pull request on GitHub: gh refuses a second, and tmb records the open one.
       github({ create: null, existing: PR_3, view: "OPEN" });

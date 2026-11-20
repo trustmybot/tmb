@@ -33,6 +33,7 @@ import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
 import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
+import { HUMAN_YES, humanOnlyStep, humanYesQuestion, noTerminalRefusal, notConfirmedRefusal } from "./engine/human-only.ts";
 import { pushActorFrom } from "./engine/push-actor.ts";
 import { runGit } from "./engine/git.ts";
 import { repoOf, workspaceRepos } from "./engine/repos.ts";
@@ -802,6 +803,7 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
   if (asksHelp(rest)) return writeCommandHelp(command, rest[0]?.startsWith("-") ? undefined : rest[0]);
+  if (!(await humanSaysYes(argv))) return 1;
   try {
     return await dispatch(command, rest);
   } catch (error) {
@@ -809,6 +811,32 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(usageErrorText(`tmb ${command}`, error.message, errPaint()));
     return 2;
   }
+}
+
+/**
+ * A step only the Human may take runs only on a terminal, once the Human types yes there
+ * (trustmybot/tmb#179): an agent's shell has no terminal, so it is refused before the record is
+ * opened. A run that is truly the Human's with no terminal, such as CI, may set the review mode
+ * only when unattended mode is on for that run. True when the call may go on.
+ */
+async function humanSaysYes(argv: string[]): Promise<boolean> {
+  const step = humanOnlyStep(argv);
+  if (step === null) return true;
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+    if (step.command === "tmb onboard --review-mode" && hookRun().unattended) return true;
+    process.stderr.write(`tmb: ${noTerminalRefusal(step)}\n`);
+    return false;
+  }
+  const terminal = terminalAsk();
+  let answer: string | null;
+  try {
+    answer = await terminal.ask(humanYesQuestion(step, argv));
+  } finally {
+    terminal.close();
+  }
+  if (answer?.trim().toLowerCase() === HUMAN_YES) return true;
+  process.stderr.write(`tmb: ${notConfirmedRefusal(step)}\n`);
+  return false;
 }
 
 /** The command a failure came from, for a report: its name and, when it is a plain word, its action; never its values. */

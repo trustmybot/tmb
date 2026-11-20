@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
 
-const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-review-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-review-");
 afterAll(cleanup);
 
 // A fake gh: it logs its arguments and prints a pull request address, as `gh pr create` does.
@@ -40,8 +40,8 @@ describe("the review of a feature branch", () => {
       const verdict = { feature: "feat/greet", commit: firstTip, verdict: "fail", blocking: ["src/greet.ts:1 greet(undefined) says 'hi undefined'"] };
       expect(await callRefused(client, "review_record", { ...verdict, role: "reviewer" })).toContain("no reviewer run is open");
       expect(await callRefused(client, "review_record", { ...verdict, role: "planner" })).toContain("for the reviewer");
-      const human = tmb(["feature", "brief", "feat/greet"], project);
-      expect(human).toContain("Covered at the tip: not yet");
+      const shownBrief = tmb(["feature", "brief", "feat/greet"], project);
+      expect(shownBrief).toContain("Covered at the tip: not yet");
 
       // 2. The reviewer fails the tip.
       expect(startSubagent(project, "reviewer", `${brief.reviewLine}\nReview the branch.`)).toBeNull();
@@ -96,7 +96,7 @@ describe("the review of a feature branch", () => {
       const waveTip = commitFile(wave.worktree, "src/wave.ts", "export const wave = () => 'o/';\n", "add wave");
       await callJson(client, "task_close", { id: wave.id, role: "worker" });
       expect(await callRefused(client, "feature_waive", { feature: "feat/wave", reason: "tiny", role: "planner" })).toContain("only the Human waives");
-      expect(tmb(["feature", "waive", "feat/wave", "--reason", "A one-line change the Human read"], project)).toContain(`at ${waveTip}`);
+      expect(human(["feature", "waive", "feat/wave", "--reason", "A one-line change the Human read"], project)).toContain(`at ${waveTip}`);
       expect(await callJson(client, "feature_brief", { feature: "feat/wave" })).toMatchObject({
         covered: true,
         coveredBy: "waiver",
