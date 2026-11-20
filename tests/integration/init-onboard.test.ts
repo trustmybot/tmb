@@ -68,6 +68,19 @@ describe("tmb init", () => {
     }
   });
 
+  test("the reviewer's agent file takes away exactly the three editing tools, and the worker's takes away none", () => {
+    const project = newProject();
+    expect(run(["init"], project).status).toBe(0);
+    const frontmatter = (role: string) => readFileSync(path.join(project, ".claude", "agents", `${role}.md`), "utf8").split(/^---$/m)[1]!;
+    const denied = (role: string) => {
+      const line = /^disallowedTools: (.*)$/m.exec(frontmatter(role));
+      return line ? (JSON.parse(line[1]!) as string).split(", ") : [];
+    };
+    expect(denied("reviewer")).toEqual(["Edit", "Write", "NotebookEdit"]);
+    expect(denied("worker")).toEqual([]);
+    for (const role of ["reviewer", "worker"]) expect(frontmatter(role)).not.toMatch(/^tools:/m);
+  });
+
   test("takes only the host and its role", () => {
     for (const flag of ["--yes", "--base"]) {
       const result = run(["init", flag, ...(flag === "--base" ? ["main"] : [])], newProject());

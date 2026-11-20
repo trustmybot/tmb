@@ -253,7 +253,7 @@ describe("the guards", () => {
     expect(command("gh pr view 3").decision).toBe("allow");
   });
 
-  test("the reviewer writes nothing; a worker writes in the project only inside an open task's worktree", () => {
+  test("tmb leaves the reviewer's writes to the host; a worker writes in the project only inside an open task's worktree", () => {
     createRecord();
     const worktree = mkdtempSync(path.join(project, "wt-"));
     const closedTree = mkdtempSync(path.join(project, "wt-"));
@@ -265,7 +265,7 @@ describe("the guards", () => {
     opened.store.close();
     const write = (role: string, action: string) => decide(event({ type: "before-file-write", role, action }));
 
-    expect(write("reviewer", path.join(worktree, "a.ts")).decision).toBe("deny");
+    expect(write("reviewer", path.join(worktree, "a.ts")).decision).toBe("allow");
     expect(write("worker", path.join(worktree, "src", "new", "a.ts")).decision).toBe("allow");
     expect(write("worker", path.join(project, "src", "a.ts")).reason).toContain("no open task's worktree");
     expect(write("worker", "src/a.ts").decision).toBe("deny");

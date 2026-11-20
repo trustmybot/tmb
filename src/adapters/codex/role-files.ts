@@ -22,8 +22,9 @@ function isTmbRoleFile(file: string): boolean {
 
 /**
  * The role as a Codex agent file. Values are JSON strings, which TOML reads as basic strings.
- * A role that may not run commands loses the shell tool; Codex has no per-agent switch for
- * file edits, so tmb's guard refuses those instead.
+ * A role that may not run commands loses the shell tool. Codex has no per-agent switch for
+ * file edits, and names no agent on a tool call, so a Codex reviewer can edit files; git's
+ * pre-push hook still judges every push.
  */
 export function roleFileText(role: SubagentRole): string {
   const lines = [

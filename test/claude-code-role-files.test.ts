@@ -5,7 +5,6 @@ import path from "node:path";
 import { adapter } from "../src/adapters/claude-code/index.ts";
 import { agentsDir, removeRoleFiles, roleFilePath, roleFileText, writeRoleFiles } from "../src/adapters/claude-code/role-files.ts";
 import { settingsPath } from "../src/adapters/claude-code/settings.ts";
-import { listTools } from "../src/engine/doors/tool-server.ts";
 import type { SubagentRole } from "../src/engine/index.ts";
 
 const FIXTURE: SubagentRole = {
@@ -17,7 +16,6 @@ const FIXTURE: SubagentRole = {
   effort: "high",
 };
 const PLAIN: SubagentRole = { name: "plain", description: "No model or effort", prompt: "Plain prompt.", capabilities: ["read-files"] };
-const FILE_EDIT_TOOLS = ["Edit", "MultiEdit", "Write", "NotebookEdit"];
 const BINARY = [path.join(tmpdir(), "tmb bin", "tmb")];
 
 let project: string;
@@ -30,11 +28,12 @@ afterEach(() => {
   rmSync(project, { recursive: true, force: true });
 });
 
-/** The tool list in an agent file's frontmatter, one name per item. */
-function toolsIn(agentFileText: string): string[] {
-  const line = /^tools: (.*)$/m.exec(agentFileText.split(/^---$/m)[1]!);
-  if (!line) throw new Error("the agent file has no tools line");
-  return (JSON.parse(line[1]!) as string).split(", ");
+/** The deny list in an agent file's frontmatter, one name per item; none when the file has no deny list. */
+function deniedIn(agentFileText: string): string[] {
+  const frontmatter = agentFileText.split(/^---$/m)[1]!;
+  expect(frontmatter).not.toMatch(/^tools:/m);
+  const line = /^disallowedTools: (.*)$/m.exec(frontmatter);
+  return line ? (JSON.parse(line[1]!) as string).split(", ") : [];
 }
 
 function writeHumanAgent(name: string, text: string): string {
@@ -63,14 +62,10 @@ describe("role files", () => {
     expect(plain).not.toContain("effort:");
   });
 
-  test("the tool list holds the host tools of the role's capabilities, then every tool the tool server publishes", () => {
-    const published = listTools().map((tool) => `mcp__tmb__${tool.name}`);
-    expect(published).toContain("mcp__tmb__task_close");
-
-    expect(toolsIn(roleFileText(FIXTURE))).toEqual(["Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash", ...published]);
-    const plain = toolsIn(roleFileText(PLAIN));
-    expect(plain).toEqual(["Read", "Glob", "Grep", ...published]);
-    expect(plain).not.toContain("Bash");
+  test("the deny list holds the host tools of the capabilities the role lacks, and a role that lacks none has no tool list at all", () => {
+    expect(deniedIn(roleFileText(FIXTURE))).toEqual([]);
+    expect(roleFileText(FIXTURE)).not.toContain("disallowedTools");
+    expect(deniedIn(roleFileText(PLAIN))).toEqual(["Edit", "Write", "NotebookEdit", "Bash"]);
   });
 
   test("a second write changes nothing, and a changed role rewrites tmb's own file", () => {
@@ -145,7 +140,7 @@ describe("adapter setup and remove with roles", () => {
     expect(readFileSync(file, "utf8")).toBe("The Human's own.\n");
   });
 
-  test("setup with the engine's list writes the worker and the reviewer, the reviewer with no file-editing tool", () => {
+  test("setup with the engine's list writes the worker and the reviewer, the reviewer denied the file-editing tools", () => {
     const helper = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
     adapter.setup(project, BINARY);
     expect(readdirSync(agentsDir(project)).sort()).toEqual(["helper.md", "reviewer.md", "worker.md"]);
@@ -157,15 +152,8 @@ describe("adapter setup and remove with roles", () => {
     expect(worker).toContain("# You are a worker");
     expect(reviewer).toContain("# You are the reviewer");
 
-    const workerTools = toolsIn(worker);
-    const reviewerTools = toolsIn(reviewer);
-    expect(workerTools).toEqual(expect.arrayContaining(["Edit", "Write", "Bash", "Read"]));
-    expect(reviewerTools).toEqual(expect.arrayContaining(["Bash", "Read", "Grep"]));
-    expect(reviewerTools.filter((tool) => FILE_EDIT_TOOLS.includes(tool))).toEqual([]);
-    for (const tool of listTools()) {
-      expect(workerTools).toContain(`mcp__tmb__${tool.name}`);
-      expect(reviewerTools).toContain(`mcp__tmb__${tool.name}`);
-    }
+    expect(deniedIn(worker)).toEqual([]);
+    expect(deniedIn(reviewer)).toEqual(["Edit", "Write", "NotebookEdit"]);
 
     expect(adapter.setup(project, BINARY).filter((line) => !/already|kept/.test(line))).toEqual([]);
     expect(readFileSync(roleFilePath(project, "worker"), "utf8")).toBe(worker);
