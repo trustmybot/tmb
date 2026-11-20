@@ -164,7 +164,7 @@ describe("task_start", () => {
     expect(started.brief.spec.files).toEqual(["src/a", "src/b"]);
   });
 
-  test("refuses with no base branch set, saying setup has not run, and writes nothing", () => {
+  test("refuses with no base branch set, saying tmb init has not run, and writes nothing", () => {
     const opened = openProjectStore(mkdtempSync(path.join(project, "fresh-")), { create: true });
     if (!opened.ok) throw opened.error;
     try {
@@ -172,7 +172,7 @@ describe("task_start", () => {
       const error = refusal(() => taskStart(opened.store, PLANNER, spec({ issue_id: id }), context()));
       expect(error.code).toBe("refused");
       expect(error.message).toContain("no base branch is set");
-      expect(error.message).toContain("tmb setup");
+      expect(error.message).toContain("tmb init");
       expect(opened.store.listTasks("open")).toEqual([]);
     } finally {
       opened.store.close();

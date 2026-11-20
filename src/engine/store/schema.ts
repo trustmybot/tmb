@@ -216,7 +216,17 @@ const VERSION_5_SQL = `
 ALTER TABLE tasks ADD COLUMN pr_url TEXT;
 `;
 
+// Version 6: the record's own facts, apart from its history: which tmb wrote its shape, so an
+// older tmb that meets it can name that version, and which tmb program the project is tied to,
+// so its hooks and tool server call it (trustmybot/tmb#89).
+const VERSION_6_SQL = `
+CREATE TABLE meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL CHECK (json_valid(value))
+);
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

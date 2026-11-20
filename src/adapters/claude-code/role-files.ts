@@ -9,7 +9,9 @@ import { SERVER_KEY } from "./mcp-json.ts";
 
 const AGENTS_RELATIVE = path.join(".claude", "agents");
 // A YAML comment as the frontmatter's first line: Claude Code ignores it, and it tells tmb the file is its own.
-const MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
+const MARKER = "# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
+// The marker builds before tmb init wrote, so their files are still recognised and replaced or removed.
+const EARLIER_MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
 const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
 
 /** Claude Code's own tools for each capability; a role gets only the tools of the capabilities it has. */
@@ -38,7 +40,8 @@ export function roleFilePath(projectDir: string, roleName: string): string {
 }
 
 function isTmbRoleFile(file: string): boolean {
-  return readFileSync(file, "utf8").replace(/\r\n/g, "\n").startsWith(`---\n${MARKER}\n`);
+  const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+  return [MARKER, EARLIER_MARKER].some((marker) => text.startsWith(`---\n${marker}\n`));
 }
 
 /**

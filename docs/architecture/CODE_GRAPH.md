@@ -31,7 +31,7 @@ The plugin called this the world model.
 
 ```mermaid
 flowchart TD
-    A[Setup, tmb index, or a merged change of structure] --> B[Read and parse each repo at its base commit]
+    A[tmb init, a new base branch from onboard, tmb index, or a merged change of structure] --> B[Read and parse each repo at its base commit]
     B --> C[Apply the whole graph in one step]
     C --> D[Re-check concepts]
     E[A read or a task start] --> F{Graph behind the base branch?}

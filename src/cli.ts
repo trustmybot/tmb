@@ -8,18 +8,25 @@ import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGate } from "./engine/push-gate.ts";
-import { runSetup, terminalAsk } from "./setup.ts";
+import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
+import { runningProgram } from "./program.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 
 const USAGE = `Usage:
   tmb --version             Print the version
-  tmb setup [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-            [--check <command>]... [--yes]
-                            Wire one host into the project in the current directory, in its
-                            role, and store the settings; asks on a terminal, else takes the
-                            defaults. Run it once per host to use two hosts on one record
-  tmb remove [--host <id>]  Undo what setup added for one host, or for every host and the
+  tmb init [--host <id>] [--role planner|reviewer]
+                            Prepare the project in the current directory: create its record,
+                            wire one host in its role, add git's push hook and index the code
+                            graph. Asks nothing and leaves the settings empty: the planner
+                            applies the ones it recommends at its first session. Run it once
+                            per host to use two hosts on one record
+  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
+              [--check <command>]... [--yes]
+                            Set the project's settings: a host's role, the base branch, the
+                            review mode and the checks. Asks on a terminal, else keeps the
+                            stored values; run it again at any time
+  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept
   tmb migrate [--from <plugin db>] [--repo <name>]
                             Copy a tmb plugin project's records into this project's new
@@ -27,9 +34,10 @@ const USAGE = `Usage:
 ${CONFIG_USAGE}
 ${RECORD_USAGE}
 ${INDEX_USAGE}
-  tmb update [--check]      Look for a newer build on this install's channel now and apply it
-                            when no other tmb session is running; with
-                            --check, only report
+  tmb update [--check]      Look for a newer build on this program's channel now and apply it
+                            when no session of it is running and no task is open; with
+                            --check, only report. tmb follows stable, tmb-rc rc and tmb-dev
+                            dev; tmb-<version> never updates
   tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one
@@ -134,40 +142,46 @@ async function runUpdateCommand(args: string[]): Promise<number> {
   if (positionals.length > 0) throw new Error(`update takes no arguments, got ${positionals.join(" ")}`);
   const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
+    const name = updater.program.name;
     console.log(
-      updater.options.enabled ? `tmb ${version} runs from source and does not update itself.` : `Updates are turned off (TMB_NO_UPDATE=1); this is tmb ${version}.`,
+      updater.pinned
+        ? `${name} is pinned to ${version} and never updates itself; install tmb, tmb-rc or tmb-dev to follow a channel.`
+        : updater.options.enabled
+          ? `tmb ${version} runs from source and does not update itself.`
+          : `Updates are turned off (TMB_NO_UPDATE=1); this is ${name} ${version}.`,
     );
     return 0;
   }
+  const name = updater.program.name;
   updater.tidy();
   const checked = await updater.check({ force: true });
   if (checked.outcome === "failed") {
-    console.error(`tmb update: could not reach the ${updater.channel} channel: ${checked.error}`);
+    console.error(`${name} update: could not reach the ${updater.channel} channel: ${checked.error}`);
     return 1;
   }
   if (checked.outcome === "current") {
-    console.log(`tmb ${version} is the newest on the ${updater.channel} channel.`);
+    console.log(`${name} ${version} is the newest on the ${updater.channel} channel.`);
     return 0;
   }
   const staged = updater.staged();
   if (!staged) {
-    console.log(`tmb ${version} is the newest on the ${updater.channel} channel.`);
+    console.log(`${name} ${version} is the newest on the ${updater.channel} channel.`);
     return 0;
   }
   if (values.check) {
-    console.log(`tmb ${staged.version} is ready on the ${updater.channel} channel; this is ${version}.`);
+    console.log(`${name} ${staged.version} is ready on the ${updater.channel} channel; this is ${version}.`);
     return 0;
   }
   const applied = updater.apply();
   if (applied.outcome === "applied") {
-    console.log(`Updated tmb from ${version} to ${applied.version}.`);
+    console.log(`Updated ${name} from ${version} to ${applied.version}.`);
     return 0;
   }
   if (applied.outcome === "waiting") {
-    console.log(`tmb ${applied.version} is ready and applies once no tmb session is running: ${applied.reason}.`);
+    console.log(`${name} ${applied.version} is ready and applies once no ${name} session is running and no task is open: ${applied.reason}.`);
     return 0;
   }
-  console.error(`tmb update: could not apply ${applied.version}: ${applied.reason}`);
+  console.error(`${name} update: could not apply ${applied.version}: ${applied.reason}`);
   return 1;
 }
 
@@ -193,32 +207,35 @@ async function runDashboard(args: string[]): Promise<number> {
   return 0;
 }
 
-async function runSetupCommand(args: string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args,
-    options: {
-      host: { type: "string" },
-      role: { type: "string" },
-      base: { type: "string" },
-      "review-mode": { type: "string" },
-      check: { type: "string", multiple: true },
-      yes: { type: "boolean", short: "y" },
-    },
-    allowPositionals: true,
-    strict: true,
-  });
-  if (positionals.length > 0) throw new Error(`setup takes no arguments, got ${positionals.join(" ")}`);
-  // Ask only when a person is at both ends; otherwise never wait for input.
-  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+const INIT_OPTIONS = { host: { type: "string" }, role: { type: "string" } } as const;
+
+const SETTING_OPTIONS = {
+  ...INIT_OPTIONS,
+  base: { type: "string" },
+  "review-mode": { type: "string" },
+  check: { type: "string", multiple: true },
+} as const;
+
+/** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting. */
+async function runPrepareCommand(command: "init" | "onboard", args: string[]): Promise<number> {
+  const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
+  const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
+  if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
+  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean };
+  // Ask only when a person is at both ends; otherwise never wait for input. init never asks.
+  const terminal = command !== "init" && process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  const run = { init: runInit, onboard: runOnboard }[command];
+  const setupOptions: SetupOptions = {
+    projectDir: process.cwd(),
+    tmbCommand: tmbCommand(),
+    program: { name: runningProgram(version).name, version },
+    adapters: HOST_ADAPTERS,
+    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes },
+    ask: terminal?.ask ?? null,
+    out: (line) => console.log(line),
+  };
   try {
-    await runSetup({
-      projectDir: process.cwd(),
-      tmbCommand: tmbCommand(),
-      adapters: HOST_ADAPTERS,
-      flags: { host: values.host, role: values.role, base: values.base, reviewMode: values["review-mode"], checks: values.check, yes: values.yes },
-      ask: terminal?.ask ?? null,
-      out: (line) => console.log(line),
-    });
+    await run(setupOptions);
   } finally {
     terminal?.close();
   }
@@ -271,11 +288,14 @@ function runMigrateCommand(args: string[]): number {
         `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
           `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
       );
+      if (counts.openTasks > 0) {
+        console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
+      }
       const left = Object.entries(result.leftBehind).sort(([a], [b]) => a.localeCompare(b));
       if (left.length > 0) {
         console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
       }
-      console.log("The plugin's database is unchanged. Run tmb setup here if you have not, to wire tmb into your host.");
+      console.log("The plugin's database is unchanged. Run tmb init here if you have not, to wire tmb into your host.");
     }
   } finally {
     opened.store.close();
@@ -292,10 +312,11 @@ async function main(argv: string[]): Promise<number> {
     case "--version":
     case "-v":
     case "version":
-      console.log(versionLine());
+      console.log(versionLine(updaterOptions(version, isCompiledEntry(Bun.main)).program!));
       return 0;
-    case "setup":
-      return runSetupCommand(rest);
+    case "init":
+    case "onboard":
+      return runPrepareCommand(command, rest);
     case "config":
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
     case "index":

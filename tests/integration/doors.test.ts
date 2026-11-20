@@ -1,5 +1,5 @@
 // Both ways into the record, driven as separate processes the way a host and the Human use
-// them: setup and remove, the tool server over stdio, the record commands, and session start.
+// them: init, onboard and remove, the tool server over stdio, the record commands, and session start.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -19,6 +19,8 @@ const TOOLS = [
   "discussion_append",
   "search",
   "history",
+  "settings_get",
+  "settings_set",
   "feature_start",
   "feature_list",
   "feature_brief",
@@ -112,8 +114,8 @@ async function callJson<T = any>(client: Client, name: string, args: Record<stri
   return JSON.parse(result.content[0]!.text) as T;
 }
 
-describe("setup and remove", () => {
-  test("setup creates the record, registers and enables the tool server, and is idempotent; remove undoes it and keeps the rest", () => {
+describe("init and remove", () => {
+  test("init creates the record, registers and enables the tool server, and is idempotent; remove undoes it and keeps the rest", () => {
     const project = newGitProject();
     const mcpFile = path.join(project, ".mcp.json");
     const settingsFile = path.join(project, ".claude", "settings.local.json");
@@ -123,7 +125,8 @@ describe("setup and remove", () => {
     const originalSettings = { permissions: { allow: ["Bash(ls:*)"] }, enabledMcpjsonServers: ["other"] };
     writeFileSync(settingsFile, JSON.stringify(originalSettings, null, 2) + "\n");
 
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     expect(existsSync(path.join(project, ".tmb", "trajectory.db"))).toBe(true);
     expect(readJson(mcpFile).mcpServers).toEqual({
       other: otherServer,
@@ -138,7 +141,8 @@ describe("setup and remove", () => {
 
     const files = [mcpFile, settingsFile, path.join(project, ".gitignore")];
     const before = files.map((file) => readFileSync(file, "utf8"));
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     expect(files.map((file) => readFileSync(file, "utf8"))).toEqual(before);
 
     const removed = tmb(["remove"], project);
@@ -148,9 +152,10 @@ describe("setup and remove", () => {
     expect(removed.split("\n").filter((line) => line.startsWith("Kept the record"))).toHaveLength(1);
   });
 
-  test("on a fresh project, remove deletes the files setup created", () => {
+  test("on a fresh project, remove deletes the files init created", () => {
     const project = newGitProject();
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe(".tmb/\n.mcp.json\n.claude/settings.local.json\n");
     tmb(["remove"], project);
     expect(existsSync(path.join(project, ".mcp.json"))).toBe(false);
@@ -162,7 +167,8 @@ describe("setup and remove", () => {
 describe("tool server", () => {
   test("answers initialize, lists every tool and runs each one", async () => {
     const project = newGitProject();
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     const client = await connect(project);
     try {
       expect(client.getServerVersion()?.name).toBe("tmb");
@@ -194,13 +200,13 @@ describe("tool server", () => {
     }
   });
 
-  test("tells the agent to run tmb setup when the project has no record", async () => {
+  test("tells the agent to run tmb init when the project has no record", async () => {
     const project = newGitProject();
     const client = await connect(project);
     try {
       const result = await call(client, "issue_list", {});
       expect(result.isError).toBe(true);
-      expect(result.content[0]?.text).toContain("tmb setup");
+      expect(result.content[0]?.text).toContain("tmb init");
     } finally {
       await client.close();
     }
@@ -224,7 +230,8 @@ describe("tool server", () => {
 describe("command line", () => {
   test("runs each record command as the Human", () => {
     const project = newGitProject();
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
 
     const created = tmb(["issue", "create", "Command", "line", "issue", "--body", "Typed by hand", "--milestone", "Level 1"], project);
     const id = /Created issue (\S+): Command line issue/.exec(created)?.[1];
@@ -251,9 +258,10 @@ describe("command line", () => {
     const project = newGitProject();
     const missing = run(["issue", "list"], project);
     expect(missing.status).toBe(1);
-    expect(missing.stderr).toContain("tmb setup");
+    expect(missing.stderr).toContain("tmb init");
 
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     const badState = run(["issue", "list", "--state", "done"], project);
     expect(badState.status).toBe(1);
     expect(badState.stderr).toContain("state must be one of open, closed");
@@ -269,7 +277,8 @@ describe("command line", () => {
 describe("one record, two doors", () => {
   test("a record written through one door reads back through the other", async () => {
     const project = newGitProject();
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     const created = tmbJson(["issue", "create", "Written on the command line"], project);
 
     const client = await connect(project);
@@ -291,7 +300,8 @@ describe("one record, two doors", () => {
 describe("session start", () => {
   test("lists an issue created through the command line", () => {
     const project = newGitProject();
-    tmb(["setup"], project);
+    tmb(["init"], project);
+    tmb(["onboard", "--yes"], project);
     const created = tmbJson(["issue", "create", "Resume this next session"], project);
     tmb(["note", created.id, "Start with the doors", "--decision"], project);
 

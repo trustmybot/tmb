@@ -119,7 +119,7 @@ jobs:
         run: bun tests/install/smoke.ts dev "$TMB_EXPECTED_VERSION"
 
   # An older dev install updates itself to the release just published, between sessions and
-  # never while a session runs, on every OS. Needs no secret.
+  # never with a task open, on every OS. Needs no secret.
   install-update:
     needs: [version, publish]
     strategy:
@@ -135,3 +135,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun tests/install/update.ts dev "${{ needs.version.outputs.tmb_version }}"
         shell: bash
+
+  # Fills in the Homebrew cask, the Scoop manifest and the winget manifests from this release.
+  # Skips cleanly while the tap, the bucket or their token do not exist.
+  package-managers:
+    needs: [version, publish]
+    uses: ./.github/workflows/package-managers.yml
+    with:
+      version: ${{ needs.version.outputs.tmb_version }}
+    secrets:
+      TMB_PACKAGING_TOKEN: ${{ secrets.TMB_PACKAGING_TOKEN }}

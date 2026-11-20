@@ -34,7 +34,7 @@ function summaryOf(store: Store, feature: Feature): FeatureSummary {
 /** The commit the base branch is at now, or a refusal naming why it cannot be read. */
 export function baseBranchTip(projectDir: string, baseBranch: string, cutting: string): string {
   // A leading dash would reach git as an option, and no branch name starts with one.
-  if (baseBranch.startsWith("-")) throw new HandlerError("refused", `the base branch ${baseBranch} is not a branch name; set another with \`tmb setup --base <branch>\``);
+  if (baseBranch.startsWith("-")) throw new HandlerError("refused", `the base branch ${baseBranch} is not a branch name; set another with \`tmb onboard --base <branch>\``);
   const resolved = runGit(projectDir, ["rev-parse", "--verify", "--quiet", `${baseBranch}^{commit}`]);
   if (!resolved.ok) {
     const why = resolved.stderr === "" ? `it names no commit in the git repository at ${projectDir}` : gitFailure(resolved);
@@ -110,7 +110,7 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
   requireBranchName(context.projectDir, name);
   const settings = readSettings(store);
   const baseBranch = settings.base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so setup has not run here; run `tmb setup` in the project first");
+  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first");
   if (settings.review_mode === TRUEST) {
     throw new HandlerError(
       "refused",

@@ -9,7 +9,7 @@ import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject 
 export const SERVER_KEY = "tmb";
 export const HOST_ID = "claude-code";
 const MCP_JSON = ".mcp.json";
-// Records that setup created .mcp.json, so remove deletes the file only when it was tmb's.
+// Records that init created .mcp.json, so remove deletes the file only when it was tmb's.
 const CREATED_MARKER = path.join(PROJECT_DIR_NAME, "claude-code-created.json");
 
 export function mcpJsonPath(projectDir: string): string {

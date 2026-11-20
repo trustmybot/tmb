@@ -24,7 +24,8 @@ const log = agentLog("tmb-scope-run");
 const tmb = new Tmb(tmbBin, project);
 
 fixtureProject(fixture, project, { base, name: "tmb scope run", email: "scope-run@example.com", message: "Add the shop" });
-tmb.shown(["setup", "--yes", "--base", base, "--check", check], `tmb setup failed in ${project}`);
+tmb.shown(["init"], `tmb init failed in ${project}`);
+tmb.shown(["onboard", "--yes", "--base", base, "--check", check], `tmb onboard failed in ${project}`);
 
 console.log(`Asking claude (${MODEL}): ${prompt}`);
 // The stream records every tool call in order, which is what this run checks. The same tools

@@ -40,7 +40,7 @@ export interface HostAdapter {
    * the subagent roles to write, the engine's list unless given.
    */
   setup(projectDir: string, tmbCommand: readonly string[], roles?: readonly SubagentRole[]): string[];
-  /** Undoes exactly what setup added; returns what changed, one line each. */
+  /** Undoes exactly what init added; returns what changed, one line each. */
   remove(projectDir: string): string[];
   /**
    * What the Human must still do in the host before it runs tmb in the project, such as trust

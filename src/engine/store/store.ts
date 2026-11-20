@@ -7,6 +7,11 @@ import { type EventType, type RecordKind, type StoredEvent, applyEvent } from ".
 import { PROJECTION_TABLES } from "./schema.ts";
 
 export const SNIPPET_MAX = 200;
+
+/** The key under which the record names the tmb that wrote its shape. */
+export const SHAPE_WRITER_KEY = "shape_writer";
+/** A tmb as it signs a shape it wrote: its version and the program it ran as. */
+export type ShapeWriter = { version: string; program: string };
 export const SEARCH_LIMIT_MAX = 50;
 
 export type IssueState = "open" | "closed";
@@ -379,6 +384,14 @@ export class Store {
 
   close(): void {
     this.db.close();
+  }
+
+  /** The tmb that wrote the record's current shape; null for a record from before it was signed. */
+  shapeWriter(): ShapeWriter | null {
+    const row = this.db.query("SELECT value FROM meta WHERE key = ?").get(SHAPE_WRITER_KEY) as { value: string } | null;
+    if (!row) return null;
+    const { version, program } = JSON.parse(row.value) as ShapeWriter;
+    return { version, program };
   }
 
   // --- issues -------------------------------------------------------------------------

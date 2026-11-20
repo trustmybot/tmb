@@ -8,7 +8,7 @@ export const HOST_ADAPTERS: readonly HostAdapter[] = [claudeCode, codex];
 
 /**
  * The hosts this release supports. Another host can be set up so its work can be tried, but
- * setup says it is not supported yet: mixed agent support is out of v1 (trustmybot/tmb#18).
+ * init says it is not supported yet: mixed agent support is out of v1 (trustmybot/tmb#18).
  */
 export const SUPPORTED_HOST_IDS: readonly string[] = [claudeCode.id];
 

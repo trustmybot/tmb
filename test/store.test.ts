@@ -53,9 +53,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 5 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 6 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -272,6 +272,39 @@ result.store.close();
       expect(result.error.failure).toBe("newer");
       expect(result.error.message).toContain(`version ${SCHEMA_VERSION + 1}`);
       expect(result.error.message).toContain(`up to version ${SCHEMA_VERSION}`);
+    }
+  });
+});
+
+describe("the shape's writer (trustmybot/tmb#89)", () => {
+  test("a new or upgraded database names the tmb that wrote its shape", () => {
+    const made = openStore(dbPath, { create: true, writer: { version: "1.0.0-dev.3", program: "tmb-dev" } });
+    if (!made.ok) throw made.error;
+    expect(made.store.shapeWriter()).toEqual({ version: "1.0.0-dev.3", program: "tmb-dev" });
+    made.store.close();
+    // Opening at the same shape signs nothing again.
+    const again = openStore(dbPath, { create: false, writer: { version: "1.0.0", program: "tmb" } });
+    if (!again.ok) throw again.error;
+    expect(again.store.shapeWriter()).toEqual({ version: "1.0.0-dev.3", program: "tmb-dev" });
+    again.store.close();
+  });
+
+  test("an older tmb refuses a newer database and names the version that wrote it", () => {
+    const made = openStore(dbPath, { create: true });
+    if (!made.ok) throw made.error;
+    made.store.close();
+    const db = new Database(dbPath);
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+    db.query("UPDATE meta SET value = ? WHERE key = ?").run(JSON.stringify({ version: "9.9.0-dev.4", program: "tmb-dev", shape: SCHEMA_VERSION + 1 }), "shape_writer");
+    db.close();
+    const result = openStore(dbPath, { create: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.failure).toBe("newer");
+      expect(result.error.writer).toEqual({ version: "9.9.0-dev.4", program: "tmb-dev" });
+      expect(result.error.message).toContain("made by a newer tmb (tmb-dev 9.9.0-dev.4 wrote it)");
+      expect(result.error.message).toContain(`reads up to version ${SCHEMA_VERSION}`);
+      expect(result.error.message).toContain("run tmb-dev in this project");
     }
   });
 });

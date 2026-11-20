@@ -1,4 +1,4 @@
-// Integration: git's pre-push hook, which setup writes, asks tmb about every push from the
+// Integration: git's pre-push hook, which init writes, asks tmb about every push from the
 // project, one an agent runs or one the Human types. A push to the base branch is refused while
 // it brings a commit no reviewed or waived feature branch tip holds, and the base branch is
 // never deleted; a feature branch's backup push goes through. Each push here is a real git push
@@ -34,7 +34,7 @@ function pushDecisions(project: string) {
 }
 
 describe("the push gate", () => {
-  test("setup writes git's pre-push hook, remove deletes it, and a hook that is not tmb's is left alone", () => {
+  test("init writes git's pre-push hook, remove deletes it, and a hook that is not tmb's is left alone", () => {
     const project = setUpProject("true");
     const file = hookFile(project);
     expect(readFileSync(file, "utf8")).toContain("# tmb: the push gate.");
@@ -43,7 +43,7 @@ describe("the push gate", () => {
     expect(existsSync(file)).toBe(false);
 
     writeFileSync(file, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-    expect(tmb(["setup", "--base", BASE_BRANCH, "--yes"], project)).toContain("is not tmb's, so it was left alone");
+    expect(tmb(["init"], project)).toContain("is not tmb's, so it was left alone");
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
     tmb(["remove"], project);
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");

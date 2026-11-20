@@ -1,14 +1,14 @@
-// Pushed updates: an install follows the channel its version names, looks for a newer build
+// Pushed updates: a program follows its own channel (program.ts), looks for a newer build
 // there when a session starts, keeps a verified copy next to it, and swaps it in only when
-// a session ends and no other tmb session is running, so no session ever mixes versions. An
-// open task does not hold it back: tasks can stay open for days (trustmybot/tmb#16).
+// no tmb session is running and no task is open, so no session or task ever mixes versions.
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { openProjectStore } from "./engine/project.ts";
+import { type Channel, channelOf, type Program, programOf } from "./program.ts";
 
-export const CHANNELS = ["dev", "rc", "stable"] as const;
-export type Channel = (typeof CHANNELS)[number];
+export { CHANNELS, type Channel, channelOf, isCompiledEntry } from "./program.ts";
 
 const DEFAULT_RELEASES_URL = "https://github.com/trustmybot/tmb-releases";
 const DEFAULT_RELEASES_API = "https://api.github.com/repos/trustmybot/tmb-releases";
@@ -18,21 +18,6 @@ const FETCH_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const RC_TAG = /^v(\d+\.\d+\.\d+-rc\.\d+)$/;
 const IS_WINDOWS = process.platform === "win32";
-
-/**
- * Whether Bun's entry point is a compiled tmb's embedded file rather than a source file. Compiled,
- * it is /$bunfs/root/... on macOS and Linux and B:/~BUN/root/... on Windows (seen with either slash).
- */
-export function isCompiledEntry(main: string): boolean {
-  return /^(?:\/\$bunfs\/|[A-Z]:[\\/]~BUN[\\/])/i.test(main);
-}
-
-/** The channel a version follows: its stamp names it. */
-export function channelOf(version: string): Channel {
-  if (/-dev\./.test(version)) return "dev";
-  if (/-rc\./.test(version)) return "rc";
-  return "stable";
-}
 
 type Parsed = { core: number[]; pre: (number | string)[] };
 
@@ -85,17 +70,23 @@ export type UpdaterOptions = {
   releasesApi: string;
   /** False when the Human turned updates off. */
   enabled: boolean;
+  /** The program this tmb is, named by its installed file; worked out from `target` when not given. */
+  program?: Program;
 };
 
 /** The updater's settings from the environment, for the tmb that is running. */
 export function updaterOptions(version: string, compiled: boolean, env: NodeJS.ProcessEnv = process.env): UpdaterOptions {
   const home = env.HOME || env.USERPROFILE || homedir();
   const stateRoot = IS_WINDOWS ? env.LOCALAPPDATA || path.join(home, "AppData", "Local") : env.XDG_STATE_HOME || path.join(home, ".local", "state");
+  // TMB_UPDATE_FILE names the file to update in place of the running executable, for a run from source.
+  const target = env.TMB_UPDATE_FILE || (compiled ? process.execPath : null);
+  const program = programOf(target, version);
   return {
     version,
-    // TMB_UPDATE_FILE names the file to update in place of the running executable, for a run from source.
-    target: env.TMB_UPDATE_FILE || (compiled ? process.execPath : null),
-    stateDir: env.TMB_STATE_DIR || path.join(stateRoot, "tmb"),
+    target,
+    program,
+    // Each program keeps its own machine-wide state, so one never swaps another's build in.
+    stateDir: env.TMB_STATE_DIR || path.join(stateRoot, program.name),
     releasesUrl: (env.TMB_RELEASES_URL || DEFAULT_RELEASES_URL).replace(/\/+$/, ""),
     releasesApi: (env.TMB_RELEASES_API || DEFAULT_RELEASES_API).replace(/\/+$/, ""),
     enabled: env.TMB_NO_UPDATE !== "1",
@@ -135,10 +126,20 @@ async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
 }
 
 export class Updater {
-  constructor(readonly options: UpdaterOptions) {}
+  readonly program: Program;
 
+  constructor(readonly options: UpdaterOptions) {
+    this.program = options.program ?? programOf(options.target, options.version);
+  }
+
+  /** The channel this program updates from; a pinned one reports its version's, and never updates. */
   get channel(): Channel {
-    return channelOf(this.options.version);
+    return this.program.channel ?? channelOf(this.options.version);
+  }
+
+  /** True for a program pinned to one version: tmb-<version>. */
+  get pinned(): boolean {
+    return this.program.channel === null;
   }
 
   private file(name: string): string {
@@ -149,9 +150,9 @@ export class Updater {
     return this.file("sessions");
   }
 
-  /** False when this tmb cannot update itself: run from source, or updates turned off. */
+  /** False when this tmb cannot update itself: run from source, pinned to one version, or updates turned off. */
   get active(): boolean {
-    return this.options.enabled && this.options.target !== null;
+    return this.options.enabled && this.options.target !== null && !this.pinned;
   }
 
   /** The newest build on this install's channel. dev and stable are plain downloads; rc's newest tag is read from the public releases API. */
@@ -305,11 +306,14 @@ export class Updater {
     if (kept === null) throw new Error("another tmb is updating; trying again later");
   }
 
-  // --- sessions ------------------------------------------------------------------------
+  // --- sessions and projects ------------------------------------------------------------
 
-  /** Marks a session as running in `projectDir` until `endSession`. */
+  /** Marks a session as running in `projectDir` until `endSession`, and remembers the project. */
   startSession(projectDir: string, pid: number = process.pid): void {
     writeJson(path.join(this.leaseDir, `${pid}.json`), { pid, project: projectDir, startedAt: new Date().toISOString() });
+    // One file per project, so sessions starting together never lose one another's project.
+    const name = createHash("sha256").update(projectDir).digest("hex").slice(0, 32);
+    writeJson(path.join(this.file("projects"), `${name}.json`), { project: projectDir });
   }
 
   endSession(pid: number = process.pid): void {
@@ -331,8 +335,36 @@ export class Updater {
   }
 
   /**
+   * The open tasks that hold an update back, one per project tmb has served that has one: the
+   * oldest, by id and title. A project whose record is gone is forgotten; one whose record this
+   * tmb cannot read, such as one a newer tmb made, holds it back with no task named.
+   */
+  openTasks(): { project: string; task: { id: string; title: string } | null }[] {
+    const dir = this.file("projects");
+    const busy: { project: string; task: { id: string; title: string } | null }[] = [];
+    for (const name of existsSync(dir) ? readdirSync(dir).filter((entry) => entry.endsWith(".json")) : []) {
+      const project = readJson<{ project: string }>(path.join(dir, name))?.project;
+      if (typeof project !== "string") continue;
+      const opened = openProjectStore(project, { create: false });
+      if (!opened.ok) {
+        // A record made by a newer tmb may still hold open tasks: keep the project and wait.
+        if (opened.error.failure === "missing") rmSync(path.join(dir, name), { force: true });
+        else busy.push({ project, task: null });
+        continue;
+      }
+      try {
+        const oldest = opened.store.listTasks("open")[0];
+        if (oldest) busy.push({ project, task: { id: oldest.id, title: oldest.title } });
+      } finally {
+        opened.store.close();
+      }
+    }
+    return busy;
+  }
+
+  /**
    * Swaps the kept build in for the installed file, only between sessions: when no other
-   * tmb session is running. An open task does not hold it back. The swap is a rename, so a
+   * tmb session is running and no project holds an open task. The swap is a rename, so a
    * process still running the old file keeps it until it ends.
    */
   apply(except: number = process.pid): { outcome: "off" | "none" | "waiting" | "applied" | "failed"; version?: string; reason?: string } {
@@ -341,6 +373,11 @@ export class Updater {
     if (!staged) return { outcome: "none" };
     const sessions = this.liveSessions(except);
     if (sessions.length > 0) return { outcome: "waiting", version: staged.version, reason: `a tmb session is running in ${sessions[0]}` };
+    const busy = this.openTasks()[0];
+    if (busy) {
+      const reason = busy.task ? `task ${busy.task.id} "${busy.task.title}" is open in ${busy.project}` : `a task may be open in ${busy.project}, whose record this tmb cannot read`;
+      return { outcome: "waiting", version: staged.version, reason };
+    }
     const target = this.options.target!;
     const swapped = this.withLock(() => {
       // Copied next to the target first, under a name of this process's own, and checked there,

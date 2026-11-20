@@ -1,5 +1,5 @@
 // Suggests the checks a project already runs, from the files its stack leaves behind.
-// A suggestion only: the Human confirms or replaces it at setup.
+// A suggestion only: the Human confirms or replaces it with tmb onboard, or the planner with settings_set.
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -34,7 +34,7 @@ function packageScripts(projectDir: string): Record<string, unknown> {
   try {
     manifest = JSON.parse(readFileSync(file, "utf8"));
   } catch {
-    // A package.json that does not parse suggests no scripts; setup still offers the rest.
+    // A package.json that does not parse suggests no scripts; onboard still offers the rest.
     return {};
   }
   const scripts = (manifest as { scripts?: unknown } | null)?.scripts;
