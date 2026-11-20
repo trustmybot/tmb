@@ -69,12 +69,14 @@ The installer scripts stay. Package managers are added beside them.
 
 | Where | Route | Channels |
 |---|---|---|
-| macOS and Linux | tmb's own Homebrew tap, as a cask | `tmb`, `tmb@rc` and `tmb@dev`, installing `tmb`, `tmb-rc` and `tmb-dev` |
+| macOS and Linux | tmb's own Homebrew tap, as a cask. On macOS it waits for notarization. | `tmb`, `tmb@rc` and `tmb@dev`, installing `tmb`, `tmb-rc` and `tmb-dev` |
 | Windows | tmb's own Scoop bucket, then winget's community list | Scoop: `tmb`, `tmb-rc` and `tmb-dev`. winget: one package per channel. |
 | Linux without Homebrew | The installer script | |
 
 - **Who updates.** tmb keeps its own updater on every route. The cask says so with `auto_updates`, and the winget package refuses winget's own upgrade, so the package manager leaves upgrades to tmb.
 - **How a manifest is filled.** Every manifest is a template in the source repo. When a release is published, the release workflow fills in its version and the checksums from its `SHA256SUMS`, and pushes the cask to the tap and the Scoop manifest to the bucket. A release that is no longer the newest on its channel leaves them as they are. The winget manifests are kept with the workflow run, for a submission to winget's list.
+- **macOS needs a signed and notarized program first.** Homebrew marks what it downloads as quarantined, for casks and formulae alike, and macOS refuses to run a quarantined program that is only signed ad hoc. So a Homebrew install of tmb on macOS installs, then does not run. The release workflow must sign the macOS files with a Developer ID and have Apple notarize them before Homebrew can serve macOS. The Human decided on 2026-11-20 to wait with that: until then the installer script is the only route on macOS, and the tap says so. The installer script works because curl does not quarantine. Tested on macOS 15 with Homebrew 7.0.15 (trustmybot/tmb#91).
+- **A cask, not a formula.** A formula would not avoid the quarantine, and Homebrew does not allow a formula name with `@` before a letter, such as `tmb@dev`.
 - **Until the tap and the bucket exist.** The step skips, and the release still succeeds. Planned for v1.x (trustmybot/tmb#91): the Human creates the tap, the bucket and their token, and submits to winget.
 
 A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
