@@ -93,8 +93,8 @@ export type TaskCloseResult = {
   cleanupProblems: string[];
   /** In truest mode, what comes next: the task waits in review at its commit. */
   next?: string;
-  /** Files the task's commit touched outside its declared files, which the close added to its spec. */
-  addedFiles: string[];
+  /** Files the task's commit touched outside its declared files, from git; the spec stays as the planner wrote it. */
+  outsideSpec: string[];
   /** The main folder's uncommitted changes that differ from the task's start, each with how to put it back. */
   mainFolder: MainFolderReport;
   /** What the close says about the two above, one line each; empty when there is nothing to say. */
@@ -102,7 +102,7 @@ export type TaskCloseResult = {
 };
 
 /** What a close found beyond its checks; it reports both and refuses neither. */
-export type CloseFindings = Pick<TaskCloseResult, "addedFiles" | "mainFolder" | "notes">;
+export type CloseFindings = Pick<TaskCloseResult, "outsideSpec" | "mainFolder" | "notes">;
 
 /** The line that names a task to the gate when a worker starts on it. */
 export function taskStartLine(id: string): string {
@@ -490,21 +490,17 @@ function filesOutsideSpec(task: Task, base: string, head: string): string[] {
  * git when the work is merged (trustmybot/tmb#98).
  */
 export function closeFindings(task: Task, head: string, projectDir: string): CloseFindings {
-  const addedFiles = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head);
+  const outsideSpec = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head);
   const mainFolder = mainFolderReport(projectDir, task.mainSnapshot);
   const notes = [
-    ...(addedFiles.length === 0 ? [] : [`The commit touched files outside the task's declared files, so tmb added them to the task: ${addedFiles.join(", ")}.`]),
+    ...(outsideSpec.length === 0 ? [] : [`The commit changed files outside the task's declared files, for the planner or the reviewer to check: ${outsideSpec.join(", ")}.`]),
     ...mainFolderNotes(mainFolder),
   ];
-  return { addedFiles, mainFolder, notes };
+  return { outsideSpec, mainFolder, notes };
 }
 
-/** Once the close is recorded: adds the files found outside the spec to it, and lets go of the main folder's copy. */
-export function recordFindings(store: Store, actor: Actor, task: Task, findings: CloseFindings, projectDir: string): void {
-  if (findings.addedFiles.length > 0) {
-    const spec = specOf(requireTask(store, task.id));
-    store.updateTask(actor, task.id, { spec: JSON.stringify({ ...spec, files: [...spec.files, ...findings.addedFiles] }) });
-  }
+/** Once the close is recorded: lets go of the main folder's copy. The spec stays as the planner wrote it. */
+export function recordFindings(task: Task, projectDir: string): void {
   dropMainFolderSnapshot(projectDir, task.id);
 }
 
@@ -604,7 +600,7 @@ function finishFold(
     requireHeadAt(worktree, head);
     store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
   });
-  recordFindings(store, actor, task, findings, context.projectDir);
+  recordFindings(task, context.projectDir);
   const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
   const push = pushFeature(context.projectDir, featureName);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
@@ -637,7 +633,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
       requireHeadAt(worktree, head);
       store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
     });
-    recordFindings(store, actor, task, findings, context.projectDir);
+    recordFindings(task, context.projectDir);
     return closeResult(store, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
   }
 
@@ -681,7 +677,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
     throw error;
   }
 
-  recordFindings(store, actor, task, findings, context.projectDir);
+  recordFindings(task, context.projectDir);
   const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
   const push = pushFeature(context.projectDir, feature.name);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });

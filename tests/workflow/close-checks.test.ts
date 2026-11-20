@@ -1,6 +1,6 @@
 // Workflow simulation: what a close checks beyond the checks (trustmybot/tmb#98), and a worker
 // that starts in a worktree its host made. A commit outside the task's declared files closes and
-// the files are added to the task; a change left in the main folder during the task is reported at
+// the close names the files and leaves the spec as written; a change left in the main folder during the task is reported at
 // close, with how to put it back; the host's worktree is adopted as the task's and cleaned up at close.
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -28,7 +28,7 @@ function sh(cwd: string, command: string): void {
 }
 
 describe("a close's checks beyond the checks", () => {
-  test("a commit outside the task's files closes, and the close adds them to the task and says so", async () => {
+  test("a commit outside the task's files closes, and the close names them and leaves the spec as written", async () => {
     const project = setUpProject(CHECK);
     const { client, started, worker } = await startTask(project, ["src/a.txt"]);
     try {
@@ -36,10 +36,10 @@ describe("a close's checks beyond the checks", () => {
       commitFile(started.worktree, "docs/extra.md", "one more\n", "extra");
       const closed = await callJson(client, "task_close", worker);
       expect(closed.brief.state).toBe("closed");
-      expect(closed.addedFiles).toEqual(["docs/extra.md"]);
-      expect(closed.notes.join("\n")).toContain("added them to the task: docs/extra.md");
-      expect(closed.brief.spec.files).toEqual(["src/a.txt", "docs/extra.md"]);
-      expect((await callJson(client, "task_brief", worker)).spec.files).toEqual(["src/a.txt", "docs/extra.md"]);
+      expect(closed.outsideSpec).toEqual(["docs/extra.md"]);
+      expect(closed.notes.join("\n")).toContain("outside the task's declared files, for the planner or the reviewer to check: docs/extra.md");
+      expect(closed.brief.spec.files).toEqual(["src/a.txt"]);
+      expect((await callJson(client, "task_brief", worker)).spec.files).toEqual(["src/a.txt"]);
     } finally {
       await client.close();
     }
@@ -85,7 +85,7 @@ describe("a close's checks beyond the checks", () => {
     try {
       commitFile(started.worktree, "src/a.txt", "a\n", "a");
       const closed = await callJson(client, "task_close", worker);
-      expect(closed).toMatchObject({ addedFiles: [], notes: [], mainFolder: { changes: [] } });
+      expect(closed).toMatchObject({ outsideSpec: [], notes: [], mainFolder: { changes: [] } });
     } finally {
       await client.close();
     }
@@ -126,7 +126,7 @@ describe("a worker in a worktree its host made", () => {
 
       commitFile(hostWorktree, "src/a.txt", "a\n", "a");
       const closed = await callJson(client, "task_close", worker);
-      expect(closed).toMatchObject({ brief: { state: "closed" }, cleanupProblems: [], addedFiles: [], mainFolder: { changes: [] } });
+      expect(closed).toMatchObject({ brief: { state: "closed" }, cleanupProblems: [], outsideSpec: [], mainFolder: { changes: [] } });
       expect(existsSync(hostWorktree)).toBe(false);
       expect(git(project, "branch", "--list", started.branch)).toBe("");
     } finally {

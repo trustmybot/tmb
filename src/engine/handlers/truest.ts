@@ -203,7 +203,7 @@ export async function truestClose(store: Store, actor: Actor, task: Task, contex
     requireHeadAt(worktree, head);
     store.updateTask(actor, task.id, { state: IN_REVIEW, commitSha: head, ...(baseCommit === null ? {} : { baseCommit }) });
   });
-  recordFindings(store, actor, task, findings, context.projectDir);
+  recordFindings(task, context.projectDir);
   const next = `task ${task.id} is in review at ${head}: start the reviewer with the ${taskReviewLine(task.id)} line in its prompt; once it passes, open the pull request with task_pr`;
   return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [], ...findings }), next };
 }

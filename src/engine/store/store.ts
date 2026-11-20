@@ -103,8 +103,6 @@ export type TaskChanges = {
   prUrl?: string | null;
   /** A truest task rebased onto a moved base branch now leaves it at the new base. */
   baseCommit?: string | null;
-  /** The spec, as JSON: a close adds the files a commit touched outside the declared ones. */
-  spec?: string;
   /** The worktree a worker's host made and tmb adopted as the task's. */
   worktree?: string | null;
 };
@@ -497,7 +495,6 @@ export class Store {
       push_detail: changes.pushDetail,
       pr_url: changes.prUrl,
       base_commit: changes.baseCommit,
-      spec: changes.spec,
       worktree: changes.worktree,
     });
   }
