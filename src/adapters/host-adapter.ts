@@ -25,6 +25,11 @@ export type HookRun = {
   unattended: boolean;
   /** The feedback program's environment, so a first session can tell the Human about it once. */
   feedback?: FeedbackEnv;
+  /**
+   * At a session start: brings the project's host files to the running tmb when another version of
+   * it wired them, and returns the one line the session start says, or null. Never throws.
+   */
+  refresh?: (projectDir: string) => string | null;
 };
 
 /** What every host adapter gives the command line. */

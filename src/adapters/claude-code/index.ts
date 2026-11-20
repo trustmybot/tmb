@@ -14,6 +14,7 @@ function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): str
     ...result.written.map((name) => `Wrote the ${name} role to ${file(name)}.`),
     ...result.current.map((name) => `${file(name)} already holds the ${name} role; nothing to change.`),
     ...result.notOurs.map((name) => `${file(name)} is not tmb's, so it was kept as it is and the ${name} role was not written.`),
+    ...result.removed.map((removed) => `Removed tmb's role file ${shown(projectDir, removed)}, for a role this version no longer has.`),
   ];
 }
 
@@ -43,6 +44,7 @@ export const adapter: HostAdapter = {
         ? `Added the ${listed(settings.hooksAdded)} hook${settings.hooksAdded.length > 1 ? "s" : ""} to ${file}.`
         : `${file} already has tmb's hooks; nothing to add.`,
     );
+    if (settings.hooksRemoved.length > 0) lines.push(`Removed tmb's hooks this version no longer wires under ${listed(settings.hooksRemoved)} from ${file}.`);
     if (settings.gitignoreChanged) lines.push(`Added ${file} to .gitignore.`);
 
     lines.push(...setUpRoleFiles(projectDir, roles));

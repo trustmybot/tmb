@@ -368,7 +368,7 @@ describe("the questions", () => {
 });
 
 describe("the program the project is tied to (trustmybot/tmb#89)", () => {
-  test("is the one whose init wired it, and moves only when another program's init runs", async () => {
+  test("is the one whose init wired it, and moves only when another program's init runs; another version is recorded quietly", async () => {
     await init({ program: { name: "tmb-dev", version: "1.0.0-dev.3" }, tmbCommand: ["/bin/tmb-dev"] });
     expect(output).toContain("This project runs tmb-dev: its hooks and tool server call /bin/tmb-dev.");
     const opened = openProjectStore(project, { create: false });
@@ -383,11 +383,19 @@ describe("the program the project is tied to (trustmybot/tmb#89)", () => {
     const before = auditCount();
     await init({ program: { name: "tmb-dev", version: "1.0.0-dev.4" }, tmbCommand: ["/bin/tmb-dev"] });
     expect(output.some((line) => line.startsWith("This project runs") || line.startsWith("Moved"))).toBe(false);
-    expect(auditCount()).toBe(before);
+    // The record names the version that last wired the project, so a session start can tell when to refresh (trustmybot/tmb#128).
+    expect(auditCount()).toBe(before + 1);
+    const reopened = openProjectStore(project, { create: false });
+    if (!reopened.ok) throw reopened.error;
+    try {
+      expect(tiedProgram(reopened.store)?.version).toBe("1.0.0-dev.4");
+    } finally {
+      reopened.store.close();
+    }
 
     output = [];
     await init({ program: { name: "tmb", version: "1.0.0" }, tmbCommand: ["/bin/tmb"] });
-    expect(output).toContain("Moved this project from tmb-dev 1.0.0-dev.3 to tmb 1.0.0.");
+    expect(output).toContain("Moved this project from tmb-dev 1.0.0-dev.4 to tmb 1.0.0.");
     expect(output).toContain("This project runs tmb: its hooks and tool server call /bin/tmb.");
   });
 });

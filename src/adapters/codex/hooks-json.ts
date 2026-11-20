@@ -21,7 +21,13 @@ export const TMB_HOOKS = [
 
 export type HookName = (typeof TMB_HOOKS)[number]["name"];
 
-const HOOK_NAMES = TMB_HOOKS.map((hook) => hook.name).join("|");
+/**
+ * The hooks an earlier version wired and this one no longer does. tmb still knows them as its own,
+ * so init and remove take them out; a hook that moves to another event needs no entry here.
+ */
+export const RETIRED_HOOK_NAMES: readonly string[] = [];
+
+const HOOK_NAMES = [...TMB_HOOKS.map((hook) => hook.name), ...RETIRED_HOOK_NAMES].join("|");
 // tmb's hook: its quoted command (the executable, and the entry file when run from source), then the hook and the host.
 const TMB_HOOK_COMMAND = new RegExp(String.raw`^(?:"[^"]*"\s+){1,2}hook\s+(${HOOK_NAMES})\s+--host\s+${HOST_ID}$`);
 
@@ -73,7 +79,7 @@ function humansPart(config: JsonObject, file: string): string {
   return JSON.stringify(Object.keys(kept).length > 0 ? { ...rest, hooks: kept } : rest);
 }
 
-export type InstallResult = { file: string; hooksAdded: string[]; created: boolean; gitignoreChanged: boolean };
+export type InstallResult = { file: string; hooksAdded: string[]; hooksRemoved: string[]; created: boolean; gitignoreChanged: boolean };
 
 export function installHooks(projectDir: string, tmbCommand: readonly string[]): InstallResult {
   const file = hooksJsonPath(projectDir);
@@ -81,6 +87,7 @@ export function installHooks(projectDir: string, tmbCommand: readonly string[]):
   const config = readJsonObject(file);
   const hooks = hooksOf(config, file);
   const hooksAdded: string[] = [];
+  const hooksRemoved: string[] = [];
   for (const hook of TMB_HOOKS) {
     const groups = groupsOf(hooks, hook.hookEvent, file);
     const ours = { hooks: [{ type: "command", command: hookCommand(tmbCommand, hook.name) }] };
@@ -90,7 +97,17 @@ export function installHooks(projectDir: string, tmbCommand: readonly string[]):
     hooks[hook.hookEvent] = wanted;
     hooksAdded.push(hook.hookEvent);
   }
-  if (hooksAdded.length > 0) {
+  // A tmb hook under an event no current hook uses is a retired one, or one an earlier version wired there.
+  for (const event of Object.keys(hooks)) {
+    if (TMB_HOOKS.some((hook) => hook.hookEvent === event)) continue;
+    const groups = groupsOf(hooks, event, file);
+    const kept = withoutTmb(groups);
+    if (JSON.stringify(kept) === JSON.stringify(groups)) continue;
+    if (kept.length === 0) delete hooks[event];
+    else hooks[event] = kept;
+    hooksRemoved.push(event);
+  }
+  if (hooksAdded.length > 0 || hooksRemoved.length > 0) {
     // Keep the Human's file as it was, the first time tmb changes it, so remove gives it back unchanged.
     const original = originalHooksPath(projectDir);
     if (!created && !existsSync(original)) writeJsonObject(original, { text: readFileSync(file, "utf8") });
@@ -100,7 +117,7 @@ export function installHooks(projectDir: string, tmbCommand: readonly string[]):
   }
   // A hooks.json tmb made holds only a machine-specific path, so it stays out of git.
   const gitignoreChanged = existsSync(createdMarkerPath(projectDir, "hooks")) && ignoreInGit(projectDir, `${CODEX_DIR}/hooks.json`, path.join(CODEX_DIR, "hooks.json"));
-  return { file, hooksAdded, created: created && hooksAdded.length > 0, gitignoreChanged };
+  return { file, hooksAdded, hooksRemoved, created: created && hooksAdded.length > 0, gitignoreChanged };
 }
 
 export type RemoveResult = { file: string; hooksRemoved: string[]; fileDeleted: boolean };

@@ -34,6 +34,7 @@ import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGate } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { runningProgram } from "./program.ts";
+import { refreshProject } from "./refresh.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 import type { HostAdapter } from "./adapters/host-adapter.ts";
@@ -197,6 +198,11 @@ function feedbackEnvironment(hosts: readonly HostAdapter[] = HOST_ADAPTERS): Fee
   return feedbackEnv({ stateDir: options.stateDir, program, version, versionLine: versionLine(program), hosts: () => hostLines(hosts) });
 }
 
+/** Brings a project's host files to this tmb after an update, at a session start (trustmybot/tmb#128). Never throws. */
+function hostFileRefresh(projectDir: string): string | null {
+  return refreshProject({ projectDir, program: { name: runningProgram(version).name, version }, tmbCommand: tmbCommand(), adapters: HOST_ADAPTERS });
+}
+
 /**
  * Whoever starts a run sets this to `1` when no one can answer in it. Only this door reads it;
  * the adapter and the engine get a plain flag.
@@ -217,8 +223,8 @@ async function runHook(args: string[]): Promise<number> {
     if (extra.length > 0) throw new Error(`hook takes one event name, got ${positionals.join(" ")}`);
     const adapter = adapterById(values.host ?? DEFAULT_HOST_ID);
     const stdinText = await Bun.stdin.text();
-    // Only a session's start may tell the Human about the feedback program.
-    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]) } : hookRun();
+    // Only a session's start may tell the Human about the feedback program, or bring the project's host files to this tmb.
+    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: hostFileRefresh } : hookRun();
     const output = adapter.answerHook(event, stdinText, run);
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
     if (output !== "") process.stdout.write(output + "\n");
