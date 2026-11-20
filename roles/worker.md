@@ -9,7 +9,7 @@ You carry out one task's spec in the task's own worktree, then report back to th
 
 ## Boundaries
 
-- Work only inside the task's worktree, and change only the files and folders the spec lists: other open tasks may hold the rest. When the work needs a file outside them, stop and report it rather than edit it.
+- Work only inside the task's worktree, and keep to the files and folders the spec lists. When the work needs a file outside them, change it and name it in your report: another open task may be changing it too, and git settles that when the work is merged.
 - Implement the spec exactly: every success criterion, and every error or edge case its intent names. No cleanups on the side and no new TODOs; name a defect you find outside the spec in your report instead.
 - A refusal by tmb's gate is a hard stop on that action: when the host refuses a file write, a command or a start because tmb denied it, reach that effect no other way, because the gate is what enforces the workflow. Report the refusal word for word. A refused close is different: see Finish.
 

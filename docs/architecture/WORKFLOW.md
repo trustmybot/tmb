@@ -103,7 +103,7 @@ flowchart TD
 Code enforces the workflow; prompts only guide. Three layers, each owned by the engine:
 
 1. **Checks at close.** A task cannot close until the engine has run its checks on the commit and recorded a pass.
-2. **Guards in the host.** The host adapter asks the engine before an agent writes a file, starts a subagent or runs a git command that moves a branch. The engine answers allow or deny from the record ([HOSTS.md](HOSTS.md)).
+2. **Guards in the host.** The host adapter asks the engine before an agent writes a file or starts a subagent. The engine answers allow or deny from the record ([HOSTS.md](HOSTS.md)). The engine reads no shell command: a push is judged by layer 3, whoever typed it.
 3. **Git's own pre-push hook.** A push is refused unless the record holds what the review mode requires for those commits. This layer does not depend on the host, so it also holds for a push typed by hand.
 
 A gate denies when it cannot read the record, and allows in a project tmb has never been set up in.

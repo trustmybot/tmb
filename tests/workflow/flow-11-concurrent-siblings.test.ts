@@ -1,12 +1,12 @@
 // Workflow simulation, ported from the plugin's flow 11 (concurrent sibling tasks): two open
-// tasks on one feature branch, each on its own branch and worktree; a third that would share a
-// file is refused. Closing the first folds it and leaves the second open with its worktree; closing
+// tasks on one feature branch, each on its own branch and worktree (open tasks sharing a file are
+// covered by shared-files.test.ts). Closing the first folds it and leaves the second open with its worktree; closing
 // the second then rebases it onto the moved feature branch, runs the checks again on the rebased
 // commit and folds it. Scripted as tool calls through the tool server, with no model.
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
 
 const FEATURE = "feat/siblings";
 
@@ -14,7 +14,7 @@ const { scratch, git, tmbJson, setUpProject, commitFile, connect, cleanup } = tm
 afterAll(cleanup);
 
 describe("flow 11: concurrent sibling tasks", () => {
-  test("two tasks on one feature branch; an overlapping third is refused; each close folds, the second rebased and checked again", async () => {
+  test("two tasks on one feature branch; each close folds, the second rebased and checked again", async () => {
     const project = setUpProject("true");
     const base = git(project, "rev-parse", "main");
     const issue = tmbJson(["issue", "create", "Two independent changes"], project);
@@ -36,9 +36,7 @@ describe("flow 11: concurrent sibling tasks", () => {
         expect(task.brief).toMatchObject({ state: "open", feature: FEATURE, baseCommit: base });
       }
 
-      // A third task that would share a file with an open one is refused, and nothing is cut for it.
-      const overlap = await callRefused(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Touch a again", files: ["src/a/one.ts"], criteria: ["SC1"] });
-      expect(overlap).toContain(`src/a/one.ts overlaps src/a of open task ${a.id}`);
+      expect(b.sharedFiles).toEqual([]);
       expect((await callJson(client, "task_list", {})).map((task: any) => task.id)).toEqual([a.id, b.id]);
       expect(git(project, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(3);
 

@@ -104,7 +104,7 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
 - Adds three hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - A SessionStart hook runs `tmb hook session-start`, which starts each session with the planner role and the open work from the record.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, runs a shell command or starts a subagent.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file or starts a subagent. tmb does not read shell commands; git's pre-push hook checks every push.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
@@ -116,8 +116,8 @@ Running init or onboard again with the same answers changes no file and records 
 
 Once the project is set up:
 
-- tmb records each file write, shell command, subagent start and subagent end that the hooks report.
-- tmb refuses file writes, shell commands and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb.
+- tmb records each file write, subagent start and subagent end that the hooks report.
+- tmb refuses file writes and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb.
 - tmb lets a worker start only when its start prompt names an open task as `task_id=<id>` and that task's worktree exists. It records the worker's run from its start to its end.
 - When tmb allows an action it says nothing, so Claude Code still asks you for permission as it would without tmb.
 

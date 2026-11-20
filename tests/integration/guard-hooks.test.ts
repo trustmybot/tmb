@@ -78,13 +78,13 @@ function expectDeny(result: ReturnType<typeof runPreToolUse>): void {
 }
 
 describe("tmb hook pre-tool-use", () => {
-  test("allows a Write and a Bash call with empty output, and records both", () => {
+  test("allows a Write and a Bash call with empty output, and records the write: tmb reads no shell command, not even a push that skips git's hook", () => {
     const project = setUpProject();
     const file = path.join(project, "src", "a.ts");
 
     for (const [tool, input] of [
       ["Write", { file_path: file, content: "export {};\n" }],
-      ["Bash", { command: "git status" }],
+      ["Bash", { command: "git push --no-verify origin main" }],
     ] as const) {
       const result = runPreToolUse(project, tool, input);
       expect(result).toEqual({ status: 0, stdout: "", stderr: "" });
@@ -96,20 +96,19 @@ describe("tmb hook pre-tool-use", () => {
     opened.store.close();
     expect(recorded.map((decision) => [JSON.parse(decision.event), decision.decision, decision.createdBy])).toEqual([
       [{ type: "before-file-write", role: "planner", action: file }, "allow", { kind: "agent", role: "planner", host: "claude-code" }],
-      [{ type: "before-command", role: "planner", action: "git status" }, "allow", { kind: "agent", role: "planner", host: "claude-code" }],
     ]);
   });
 
-  test("denies a Write and a Bash call with the cause when the record cannot be read", () => {
+  test("denies a Write with the cause when the record cannot be read, and leaves a Bash call alone", () => {
     const project = setUpProject();
     breakRecord(project);
 
     for (const [tool, input] of [
       ["Write", { file_path: path.join(project, "a.ts"), content: "" }],
-      ["Bash", { command: "git push" }],
     ] as const) {
       expectDeny(runPreToolUse(project, tool, input));
     }
+    expect(runPreToolUse(project, "Bash", { command: "git push" })).toEqual({ status: 0, stdout: "", stderr: "" });
   });
 
   test("finds the record from a subfolder the session moved into", () => {
@@ -117,15 +116,15 @@ describe("tmb hook pre-tool-use", () => {
     const sub = path.join(project, "src", "deep");
     mkdirSync(sub, { recursive: true });
 
-    expect(runPreToolUse(project, "Bash", { command: "ls" }, { cwd: sub })).toEqual({ status: 0, stdout: "", stderr: "" });
+    expect(runPreToolUse(project, "Write", { file_path: "a.ts", content: "" }, { cwd: sub })).toEqual({ status: 0, stdout: "", stderr: "" });
     const opened = openProjectStore(project, { create: false });
     if (!opened.ok) throw opened.error;
     const recorded = opened.store.listGuardDecisions();
     opened.store.close();
-    expect(recorded.map((decision) => JSON.parse(decision.event))).toEqual([{ type: "before-command", role: "planner", action: "ls" }]);
+    expect(recorded.map((decision) => JSON.parse(decision.event))).toEqual([{ type: "before-file-write", role: "planner", action: "a.ts" }]);
 
     breakRecord(project);
-    expectDeny(runPreToolUse(project, "Bash", { command: "echo hi" }, { cwd: sub }));
-    expectDeny(runPreToolUse(project, "Bash", { command: "echo hi" }, { cwd: sub, claudeProjectDir: project }));
+    expectDeny(runPreToolUse(project, "Write", { file_path: "a.ts", content: "" }, { cwd: sub }));
+    expectDeny(runPreToolUse(project, "Write", { file_path: "a.ts", content: "" }, { cwd: sub, claudeProjectDir: project }));
   });
 });
