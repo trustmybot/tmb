@@ -13,8 +13,9 @@ import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
-import { readSettings, REVIEW_MODE_COSTS, type ReviewMode } from "./settings.ts";
-import { type Store, clip } from "./store/index.ts";
+import { repoDirOf, workspaceRepos } from "./repos.ts";
+import { readSettings, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode } from "./settings.ts";
+import { type Store, type Task, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
 export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
@@ -72,7 +73,9 @@ const shorten = (text: string): string => (text.length <= MAP_SUMMARY_MAX ? text
  * session start must stay fast, and graph_map answers from the newest commit. Empty when the
  * project has no graph yet or it cannot be read.
  */
-function projectMapSection(projectDir: string): string {
+function projectMapSection(projectDir: string, store: Store): string {
+  const repos = workspaceRepos(store);
+  if (repos !== null) return workspaceSection(projectDir, repos);
   if (!existsSync(graphDbPath(projectDir))) return "";
   try {
     const db = openGraphDb(projectDir);
@@ -100,6 +103,38 @@ function projectMapSection(projectDir: string): string {
   }
 }
 
+/** A repo's graph as last indexed, in a few words, without bringing it forward. */
+function indexedLine(projectDir: string, repo: string): string {
+  if (!existsSync(graphDbPath(projectDir, repo))) return "not indexed yet";
+  try {
+    const db = openGraphDb(projectDir, repo);
+    try {
+      const layer = layerRow(db, BASE_LAYER);
+      return layer === null ? "not indexed yet" : `indexed at ${layer.commit_sha.slice(0, 12)}: ${layer.files} files, ${layer.symbols} symbols`;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return "its graph cannot be read";
+  }
+}
+
+/** In a workspace: its repos, each with its base branch and graph, and that work names its repo. */
+function workspaceSection(projectDir: string, repos: RepoPolicies): string {
+  const names = Object.keys(repos);
+  const lines = names.map((name) => {
+    const policy = repos[name]!;
+    if (policy.git === false) return `- ${oneLineText(name)}: not a repo, tmb does no work in it`;
+    if (policy.exempt === true) return `- ${oneLineText(name)}: exempt, tmb does no work in it`;
+    return `- ${oneLineText(name)} on \`${oneLineText(policy.base_branch ?? "")}\`: ${indexedLine(projectDir, name)}`;
+  });
+  return (
+    `\n\n${PROJECT_MAP_HEADING}\n\nThis project is a workspace of ${names.length} repo${names.length === 1 ? "" : "s"} sharing one record. ` +
+    "feature_start, task_start and the graph tools take repo, the repo's name below; with several repos they refuse a call that names none. " +
+    `A task works in its feature branch's repo. ${UNTRUSTED_NOTE}\n\n${lines.length === 0 ? "- none found; `tmb init` finds them" : lines.join("\n")}`
+  );
+}
+
 const SETTING_LABELS = { base_branch: "base branch", review_mode: "review mode", checks: "checks" } as const;
 
 /**
@@ -113,9 +148,11 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
   if (empty.length === 0) return "";
   const detected = detectedSettings(projectDir);
   const checks = detected.checks.length === 0 ? "none found" : detected.checks.map((check) => `\`${oneLineText(check)}\``).join(", ");
+  const branch = (name: string | null) => (name === null ? "none found" : `\`${oneLineText(name)}\``);
   const found = [
-    `base branch: ${detected.base_branch === null ? "none found, as this is not a git work tree" : `\`${oneLineText(detected.base_branch)}\``}`,
-    `checks: ${checks}`,
+    ...(detected.repos === undefined
+      ? [`base branch: ${detected.base_branch === null ? "none found, as this is not a git work tree" : branch(detected.base_branch)}`, `checks: ${checks}`]
+      : Object.entries(detected.repos).map(([name, repo]) => `repo ${oneLineText(name)}: base branch ${branch(repo.base_branch)}`)),
     `review modes: ${detected.review_modes.map((mode) => `${mode} (${REVIEW_MODE_COSTS[mode as ReviewMode]})`).join(" or ")}`,
   ];
   const others = empty.filter((name) => name !== "review_mode");
@@ -239,7 +276,10 @@ function feedbackSection(feedback: FeedbackEnv): string {
 function tidyClosedTasks(store: Store, projectDir: string): void {
   try {
     if (store.listTasks("open").length > 0 || store.listTasks("in_review").length > 0) return;
-    retryKeptCheckouts(projectDir, store.listTasks("closed"));
+    // Each repo's git holds its own tasks' worktrees and branches.
+    const byRepo = new Map<string | null, Task[]>();
+    for (const task of store.listTasks("closed")) byRepo.set(task.repo, [...(byRepo.get(task.repo) ?? []), task]);
+    for (const [repo, tasks] of byRepo) retryKeptCheckouts(repoDirOf(projectDir, repo), tasks);
   } catch {
     // A session start never fails over a cleanup; the next one tries again.
   }
@@ -253,7 +293,7 @@ function plannerContext(projectDir: string, unattended: boolean): string {
   }
   try {
     tidyClosedTasks(opened.store, projectDir);
-    return withRole(`${openWork(opened.store)}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir)}`);
+    return withRole(`${openWork(opened.store)}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir, opened.store)}`);
   } catch (error) {
     return withRole(`tmb could not read the record: ${oneLine(error)}`);
   } finally {
