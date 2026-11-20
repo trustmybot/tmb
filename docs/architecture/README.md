@@ -93,12 +93,13 @@ What each version delivers. Decided by the Human on 2026-11-19. Each version is 
 |---|---|---|
 | v1 | A complete tmb on Claude Code: what the plugin ships today, with the dashboard as a local web page. | Levels 0 to 8 and level 10 of the build order, and the fixes decided on the way. |
 | v1.x | A record that stays true when several sessions work on one project, and when work moves on the remote. | Which session made each entry, a freeze for all sessions, a check of open tasks at session start, and a syncer that brings what happened on the remote into the record. Planned. Also install through a package manager, which is built but not supported before v1.x. Proposed, for the Human's review: the Human asked for each, and how they are designed is bro's proposal. |
-| v2 | Mixed agents on one task, such as Claude as the planner, Codex as the reviewer and a local model as a worker. A desktop program to watch the work live. | Level 9 of the build order, and the desktop program. Planned. |
+| v2 | Mixed agents on one task, such as Claude as the planner, Codex as the reviewer and a local model as a worker. A desktop program to watch the work live. | Level 9 of the build order, the desktop program, and cheatcodes: a skill given to a role once, for every host in that role (trustmybot/tmb#112). Planned. |
 | v3 | Undecided: managing agents from the desktop. | It would make tmb the program that starts hosts, which tmb does not do today ([HOSTS.md](HOSTS.md#what-tmb-leaves-to-the-host)). |
 
 - v1 supports one host, Claude Code. Parts of level 9 may be built before v1 is released, but mixed agents are not supported and not tested in v1: no v1 release waits for, or runs, a test that needs a second host. In v1, tmb says that a host other than Claude Code is not supported yet.
 - v1 supports one way to install, tmb's own installer and updater. Install through a package manager is built, but not supported and not tested in v1 ([DISTRIBUTION.md](DISTRIBUTION.md#package-managers)).
-- The desktop program of v2 only watches. It reads the record, which already holds every session, agent start and stop, and gate decision, so tmb still starts no agent.
+- The desktop program of v2 only watches. It reads the record, which already holds every agent start and stop and every gate decision, and will hold every session (trustmybot/tmb#63), so tmb still starts no agent.
+- v1 is not everything the plugin ships. What it leaves out, and where each part went, is in [Reuse from the plugin](#reuse-from-the-plugin) and in the comparison with the plugin's design (trustmybot/tmb#165): the plugin's pull request comment triage and its issue sync are planned for v1.x, most of its rules for a task that fails are not built ([WORKFLOW.md](WORKFLOW.md#when-a-task-does-not-close)), and tmb works with GitHub only.
 - A pending feature of the plugin is not a version of its own. Each one is placed in a version above or left out.
 
 ## Build order
@@ -135,13 +136,15 @@ Most of the plugin's logic is host-neutral and carries over. What is tied to Cla
 | Code graph: parsing, symbols, graph, freshness, concepts | Reuse as is. |
 | Search by meaning | Leave out at first: its model is the one part that needs a native module and a download. |
 | Git's pre-push judge | Reuse as is. |
-| Git and pull request helpers, issue sync | Reuse as is. |
+| Git and pull request helpers | Reuse as is. |
+| Issue sync | Rebuild inside the syncer, planned for v1.x (trustmybot/tmb#70). Decided by the Human on 2026-11-20: it runs both ways. The record's issues go to GitHub, and a change on GitHub updates an issue the record already holds. Issues that exist only on GitHub are not all copied in, because some are not the user's. |
 | Dashboard, server and pages | Reuse, reading the engine's database. |
 | Guards written as Claude Code hooks | Rebuild: the rules move into the engine, the adapter only translates events. |
 | Shell command analysis for guards | Decide at level 6. |
 | Role prompts and skills | Rewrite once, host-neutral. |
 | Workflow tests that drive the tools end to end | Port as the engine's contract tests. |
-| Roundtable, cheatcodes, lanes, headless shim, sandbox setup | Drop. |
+| Cheatcodes | Bring back in v2 with a larger scope: a skill given to a role once, for every host in that role (trustmybot/tmb#112). Decided by the Human on 2026-11-20. |
+| Roundtable, lanes, headless shim, sandbox setup | Drop. |
 
 ## Open
 

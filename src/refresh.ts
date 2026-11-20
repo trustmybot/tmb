@@ -6,7 +6,7 @@
 // open, leaves a project tied to another program to the Human's `tmb init`, and never fails the
 // session: it says what failed and names `tmb init`.
 import type { HostAdapter } from "./adapters/index.ts";
-import { installPushGate, openProjectStore, type ProgramTie, readSettings, tiedProgram, tieProgram } from "./engine/index.ts";
+import { installPushGates, openProjectStore, type ProgramTie, readSettings, tiedProgram, tieProgram } from "./engine/index.ts";
 import type { Actor } from "./engine/store/index.ts";
 
 /** The refresh is tmb's own step, on the Human's behalf: the update was theirs, as is the tie init records. */
@@ -75,11 +75,13 @@ export function refreshProject(options: RefreshOptions): string | null {
     return `This project's host files are still ${program.name} ${from.version}'s, and ${program.version} runs now: tmb refreshes them at the first session start with no task open.`;
   }
   try {
-    const lines = [...plan.hosts.flatMap((adapter) => adapter.setup(projectDir, tmbCommand)), ...installPushGate(projectDir, tmbCommand)];
-    const changed = lines.filter((line) => !UNCHANGED.test(line));
+    const lines = plan.hosts.flatMap((adapter) => adapter.setup(projectDir, tmbCommand));
     const opened = openProjectStore(projectDir, { create: false });
     if (!opened.ok) throw new Error(opened.error.message);
+    let changed: string[];
     try {
+      lines.push(...installPushGates(projectDir, readSettings(opened.store).repos, tmbCommand));
+      changed = lines.filter((line) => !UNCHANGED.test(line));
       opened.store.recordAudit(HUMAN, {
         what: REFRESH_AUDIT,
         detail: JSON.stringify({ program: program.name, from: from.version, to: program.version, hosts: plan.hosts.map((adapter) => adapter.id), changed }),

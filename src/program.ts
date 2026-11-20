@@ -58,6 +58,23 @@ export function runningProgram(version: string): Program {
   return programOf(isCompiledEntry(Bun.main) ? process.execPath : null, version);
 }
 
+const INSTALLER_BASE = "https://github.com/trustmybot/tmb-releases/releases/download/dev";
+
+/**
+ * How to move a program to a newer build, in words the person can act on: its own `update`
+ * when it follows a channel, else the installer for the channel its version names. Never a
+ * bare version: the build that needs it may be one no channel offers.
+ */
+export function upgradeAdvice(program: Program, version: string, platform: string = process.platform): string {
+  if (program.channel !== null) return `update this program with \`${program.name} update\``;
+  const channel = channelOf(version);
+  const installer =
+    platform === "win32"
+      ? `$env:TMB_CHANNEL="${channel}"; irm ${INSTALLER_BASE}/install.ps1 | iex`
+      : `curl -fsSL ${INSTALLER_BASE}/install.sh | TMB_CHANNEL=${channel} sh`;
+  return `install a newer tmb with \`${installer}\``;
+}
+
 /** How a program describes itself: its name, version and what it follows. */
 export function describeProgram(program: Program, version: string): string {
   return `${program.name} ${version}, ${program.channel === null ? "pinned: it never updates itself" : `on the ${program.channel} channel`}`;

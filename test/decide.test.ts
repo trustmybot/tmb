@@ -156,7 +156,7 @@ describe("the worker gate", () => {
     });
     expect(guardDecisions().map((decision) => decision.reason)).toEqual([
       expect.stringContaining(`started on open task ${taskId}`),
-      `worker run ${run!.id} ended`,
+      `worker run ${run!.id} ended, stopped`,
     ]);
   });
 
@@ -172,6 +172,25 @@ describe("the worker gate", () => {
 
     decide(event({ type: "after-agent-stop", role: "worker", task: second, action: "worker" }));
     withStore((store) => expect(store.openRuns("worker").map((run) => run.taskId)).toEqual([first]));
+  });
+
+  test("a worker run whose task left the open state ends finished, and keeps the cost its stop carried", () => {
+    createRecord();
+    const taskId = openTask();
+    workerStart(`task_id=${taskId}`);
+    const [run] = withStore((store) => store.openRuns("worker"));
+    withStore((store) => store.updateTask(PLANNER, taskId, { state: "in_review" }));
+    const cost = [{ model: "claude-opus-5-5", inputTokens: 5, outputTokens: 6, cacheReadTokens: 7, cacheWriteTokens: 8 }];
+    expect(decide(event({ type: "after-agent-stop", role: "worker", action: "worker", cost })).reason).toBe(`worker run ${run!.id} ended, finished`);
+    withStore((store) => expect(store.getRun(run!.id)).toMatchObject({ outcome: "finished", cost }));
+  });
+
+  test("a reviewer run that recorded no review ends stopped, with no cost when its stop carried none", () => {
+    createRecord();
+    decide(event({ type: "before-agent-start", role: "reviewer", action: "review" }));
+    const [run] = withStore((store) => store.openRuns("reviewer"));
+    decide(event({ type: "after-agent-stop", role: "reviewer", action: "reviewer" }));
+    withStore((store) => expect(store.getRun(run!.id)).toMatchObject({ outcome: "stopped", cost: null }));
   });
 
   test("records a reviewer's start and stop as a run with no task", () => {

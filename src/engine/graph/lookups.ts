@@ -89,7 +89,7 @@ export function projectMap(db: Database, layer: string, options: { path?: string
     .query("SELECT path, summary, file_count, depth FROM dirs WHERE layer = ? AND (path = ? OR path LIKE ? ESCAPE '\\') AND depth <= ? ORDER BY path")
     .all(layer, root, `${prefix.replace(/[\\%_]/g, "\\$&")}%`, rootRow.depth + depth - 1) as { path: string; summary: string; file_count: number; depth: number }[];
   const fileQuery = db.query(
-    "SELECT f.path, f.lane, f.summary, f.lang, (SELECT count(*) FROM symbols s WHERE s.layer = f.layer AND s.path = f.path AND s.kind <> 'module') AS symbols FROM files f WHERE f.layer = ? AND f.dir = ? ORDER BY f.path",
+    "SELECT f.path, f.lane, f.summary, f.lang, (SELECT count(*) FROM symbols s WHERE s.layer = f.layer AND s.path = f.path AND s.kind <> 'module' AND s.unnamed = 0) AS symbols FROM files f WHERE f.layer = ? AND f.dir = ? ORDER BY f.path",
   );
   const dirs: DirNode[] = [];
   let nodes = 0;
@@ -161,11 +161,11 @@ function ftsHits(db: Database, layer: string, words: string[], joiner: "AND" | "
   return out.sort((a, b) => a.rank - b.rank);
 }
 
-/** Symbols named `name`, by qualified or short name, ignoring case; modules left out. */
+/** Symbols named `name`, by qualified or short name, ignoring case; modules and unnamed functions left out. */
 export function symbolsNamed(db: Database, layer: string, name: string, path?: string): SymbolRow[] {
   const rows = db
     .query(
-      `SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.kind <> 'module'
+      `SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.kind <> 'module' AND s.unnamed = 0
          AND (s.qualified_name = ? COLLATE NOCASE OR s.name = ? COLLATE NOCASE)
        ORDER BY s.qualified_name = ? DESC, s.name = ? DESC, s.exported DESC, s.path`,
     )
@@ -210,11 +210,14 @@ export function find(db: Database, layer: string, query: string, k = 10): Hit[] 
 
 // --- symbol card ---
 
+// A reference made inside an unnamed function is reported from the nearest named symbol around it.
+const NAMED_SOURCE = "JOIN symbols src ON src.id = e.src_id JOIN symbols s ON s.id = COALESCE(src.named_id, src.id)";
+
 function refsInto(db: Database, ids: readonly number[], kinds: readonly string[]): (SymbolRef & { id: number })[] {
   if (ids.length === 0) return [];
   const rows = db
     .query(
-      `SELECT DISTINCT s.id, s.qualified_name, s.kind, s.path, e.line FROM edges e JOIN symbols s ON s.id = e.src_id
+      `SELECT DISTINCT s.id, s.qualified_name, s.kind, s.path, e.line FROM edges e ${NAMED_SOURCE}
         WHERE e.dst_id IN (${placeholders(ids)}) AND e.kind IN (${placeholders(kinds)}) ORDER BY s.path, e.line`,
     )
     .all(...ids, ...kinds) as { id: number; qualified_name: string; kind: string; path: string; line: number | null }[];
@@ -236,9 +239,10 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
     db
       .query(
         `SELECT e.dst_name, e.kind, e.line, e.resolution, d.qualified_name AS target_name, d.path AS target_path
-           FROM edges e LEFT JOIN symbols d ON d.id = e.dst_id WHERE e.src_id = ? ORDER BY e.line LIMIT ?`,
+           FROM edges e LEFT JOIN symbols d ON d.id = e.dst_id
+          WHERE e.src_id = ? OR e.src_id IN (SELECT id FROM symbols WHERE named_id = ?) ORDER BY e.line LIMIT ?`,
       )
-      .all(row.id, CARD_LIST_MAX) as { dst_name: string; kind: string; line: number | null; resolution: string; target_name: string | null; target_path: string | null }[]
+      .all(row.id, row.id, CARD_LIST_MAX) as { dst_name: string; kind: string; line: number | null; resolution: string; target_name: string | null; target_path: string | null }[]
   ).map((e) => ({
     name: e.dst_name,
     edge: e.kind,
@@ -257,7 +261,7 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
     ? []
     : (db
         .query(
-          `SELECT s.qualified_name, s.kind, s.path, e.line FROM edges e JOIN symbols s ON s.id = e.src_id
+          `SELECT s.qualified_name, s.kind, s.path, e.line FROM edges e ${NAMED_SOURCE}
             WHERE e.layer = ? AND e.dst_name = ? AND e.resolution = 'unresolved' AND e.kind <> 'imports' ORDER BY s.path, e.line`,
         )
         .all(layer, row.name) as { qualified_name: string; kind: string; path: string; line: number | null }[]);

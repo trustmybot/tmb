@@ -1,6 +1,7 @@
 // Each channel's install updates itself from a release repo laid out like trustmybot/tmb-releases,
 // served locally, and never in the middle of a session or a task.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -8,7 +9,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { programOf } from "../../src/program.ts";
 import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, updaterOptions } from "../../src/update.ts";
-import { buildTmb, cleanup, installedVersion, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
+import { buildTmb, cleanup, installedVersion, openTask, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
+import { projectDbPath } from "../../src/engine/project.ts";
+import { SCHEMA_VERSION } from "../../src/engine/store/index.ts";
 
 const CHANNELS = {
   dev: { old: "0.1.0-dev.1", next: "0.1.0-dev.2" },
@@ -41,7 +44,8 @@ function releaseFile(version: string, name: string): Response {
 }
 
 beforeAll(() => {
-  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-update-builds-")));
+  // .native expands Windows 8.3 short names (RUNNER~1), so expected paths match the long form tmb prints.
+  scratch = realpathSync.native(mkdtempSync(path.join(tmpdir(), "tmb-update-builds-")));
   for (const { old, next } of Object.values(CHANNELS)) {
     for (const version of [old, next]) {
       const file = path.join(scratch, version, process.platform === "win32" ? "tmb.exe" : "tmb");
@@ -156,6 +160,21 @@ describe("tmb update", () => {
     expect(installedVersion(scenario)).toBe(CHANNELS.stable.next);
   }, 60_000);
 
+  test("a record a newer tmb reshaped never holds the update back (trustmybot/tmb#173)", async () => {
+    const scenario = install(CHANNELS.dev.old, releaseEnv());
+    // A session served the project, then a newer tmb reshaped its record and left a task open there.
+    const updater = new Updater({ ...updaterOptions(CHANNELS.dev.old, false, scenario.env), target: scenario.installed });
+    updater.startSession(scenario.project, 1_000_000_000);
+    openTask(scenario);
+    const db = new Database(projectDbPath(scenario.project));
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+    db.close();
+    const updated = await runUpdate(scenario);
+    expect(updated).toMatchObject({ status: 0 });
+    expect(updated.output).toContain(`Updated tmb from ${CHANNELS.dev.old} to ${CHANNELS.dev.next}`);
+    expect(installedVersion(scenario)).toBe(CHANNELS.dev.next);
+  }, 60_000);
+
   test("with no network, keeps the version it has", async () => {
     const scenario = install(CHANNELS.dev.old, { TMB_RELEASES_URL: "http://127.0.0.1:9", TMB_RELEASES_API: "http://127.0.0.1:9" });
     const updated = await runUpdate(scenario);
@@ -198,7 +217,7 @@ const EXE = process.platform === "win32" ? ".exe" : "";
 
 /** Several tmb programs installed side by side in one throwaway home, each from a build. */
 function sideBySide(programs: Record<string, string>, extraEnv: Record<string, string> = {}) {
-  const root = realpathSync(mkdtempSync(path.join(scratch, "side-by-side-")));
+  const root = realpathSync.native(mkdtempSync(path.join(scratch, "side-by-side-")));
   const bin = path.join(root, "home", ".local", "bin");
   mkdirSync(bin, { recursive: true });
   const files: Record<string, string> = {};
@@ -272,7 +291,9 @@ describe("programs side by side (trustmybot/tmb#89)", () => {
     const fakeHost = path.join(side.root, "fake-host");
     mkdirSync(fakeHost, { recursive: true });
     copyFileSync(side.files.tmb!, path.join(fakeHost, `claude${EXE}`));
-    side.env.PATH = `${fakeHost}${path.delimiter}${side.env.PATH ?? ""}`;
+    // Windows names the variable Path, and a plain copy of process.env keeps that case: read it through process.env and drop the copy.
+    for (const key of Object.keys(side.env)) if (key.toUpperCase() === "PATH") delete side.env[key];
+    side.env.PATH = `${fakeHost}${path.delimiter}${process.env.PATH ?? ""}`;
     const project = path.join(side.root, "project");
     mkdirSync(project, { recursive: true });
     expect(spawnSync("git", ["init", "-q"], { cwd: project }).status).toBe(0);

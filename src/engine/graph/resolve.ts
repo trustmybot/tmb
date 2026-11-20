@@ -6,8 +6,13 @@ import { basename, posix } from "node:path";
 import type { EdgeKind, ExtractedEdge, SymbolKind } from "./extract.ts";
 import { isTestPath } from "./test-paths.ts";
 
-/** A symbol an edge may link to; `id` is the caller's own index for it. */
-export type Candidate = { id: number; path: string; kind: SymbolKind; qualified_name: string };
+/**
+ * A symbol an edge may link to; `id` is the caller's own index for it. `reach` marks a function
+ * nested in another, which only its own file's bare call may name, and one bound as an object's
+ * key or an assignment's target, which no bare call names. `within` is a nested function's
+ * parent's lines: the only lines whose bare call may name it.
+ */
+export type Candidate = { id: number; path: string; kind: SymbolKind; qualified_name: string; reach?: "nested" | "member"; within?: [number, number] };
 
 /** Why a reference was linked: `exact` on a proof that names the definition, `name` on a receiver's declared type. */
 export type Link = { dst: number; how: "exact" | "name" };
@@ -148,11 +153,16 @@ export class Resolver {
       const qualified = `${edge.hint}.${edge.dst_name}`;
       return link(cands.find((c) => c.kind === "method" && c.path === classFile && c.qualified_name === qualified)?.id, "exact");
     }
-    const same = cands.find((c) => c.path === from);
+    const declared = cands.filter((c) => c.reach === undefined);
+    const same = declared.find((c) => c.path === from);
     if (same) return link(same.id, "exact");
+    // A function nested in another is linked by its bare name from inside its parent, and only when
+    // no other nested function of that name is in reach there.
+    const nested = cands.filter((c) => c.reach === "nested" && c.path === from && c.within && edge.line >= c.within[0] && edge.line <= c.within[1]);
+    if (nested.length === 1) return link(nested[0]!.id, "exact");
     const viaImport = this.importMap.get(from)?.get(edge.dst_name);
-    if (viaImport) return link(cands.find((c) => c.path === viaImport)?.id, "exact");
-    const viaSource = (this.sourced.get(from) ?? []).map((p) => cands.find((c) => c.path === p)).find(Boolean);
+    if (viaImport) return link(declared.find((c) => c.path === viaImport)?.id, "exact");
+    const viaSource = (this.sourced.get(from) ?? []).map((p) => declared.find((c) => c.path === p)).find(Boolean);
     return link(viaSource?.id, "exact");
   }
 }

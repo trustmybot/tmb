@@ -21,9 +21,12 @@ export function TaskSidebar({ task }: { task: TaskDetail['task'] }) {
           {
             term: 'Feature',
             detail: task['feature_id'] ? (
-              <a href={hrefFor('feature', task['feature_id'])} className={ENTITY_LINK}>
-                {mono(task['feature_name'] ?? task['feature_id'])}
-              </a>
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                <a href={hrefFor('feature', task['feature_id'])} className={ENTITY_LINK}>
+                  {mono(task['feature_name'] ?? task['feature_id'])}
+                </a>
+                {task['feature_state'] ? <Badge value={task['feature_state']} /> : null}
+              </span>
             ) : (
               DASH
             ),

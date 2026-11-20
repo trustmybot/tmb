@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
@@ -28,11 +29,18 @@ import {
 } from "./engine/doors/help.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
-import { type FeedbackEnv, feedbackEnv, keepLastError } from "./engine/feedback/index.ts";
+import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
-import { openProjectStore, projectRootOf } from "./engine/project.ts";
-import { judgePush, removePushGate } from "./engine/push-gate.ts";
+import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
+import { pushActorFrom } from "./engine/push-actor.ts";
+import { runGit } from "./engine/git.ts";
+import { repoOf, workspaceRepos } from "./engine/repos.ts";
+import type { Store } from "./engine/store/index.ts";
+import { judgePush, removePushGates } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
+import { spawnSync } from "node:child_process";
+import { isProcessRunning } from "./builds.ts";
+import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
 import { runningProgram } from "./program.ts";
 import { refreshProject } from "./refresh.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
@@ -44,6 +52,7 @@ const USAGE: Record<string, string> = {
   ...RECORD_USAGE,
   config: CONFIG_USAGE,
   index: INDEX_USAGE,
+  doctor: DOCTOR_USAGE,
   init: `  tmb init [--host <id>] [--role planner|reviewer]
                             Prepare the project in the current directory: create its record,
                             wire one host in its role, add git's push hook and index the code
@@ -51,15 +60,18 @@ const USAGE: Record<string, string> = {
                             applies the ones it recommends at its first session. Run it once
                             per host to use two hosts on one record`,
   onboard: `  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-              [--check <command>]... [--yes]
+              [--check <command>]... [--repo <name> [--exempt]] [--yes]
                             Set the project's settings: a host's role, the base branch, the
-                            review mode and the checks. Asks on a terminal, else keeps the
-                            stored values; run it again at any time`,
+                            review mode and the checks. In a workspace of several repos, --repo
+                            names the repo --base and --check set, and --exempt makes tmb do no
+                            work in it. Asks on a terminal, else keeps the stored values; run it
+                            again at any time`,
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept`,
   migrate: `  tmb migrate [--from <plugin db>] [--repo <name>] [--json]
-                            Copy a tmb plugin project's records into this project's new
-                            record; the plugin's database is left untouched`,
+                            Copy a tmb plugin project's records into the new record tmb init
+                            made for this project; run tmb init first. The plugin's database is
+                            left untouched`,
   dashboard: `  tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one`,
@@ -116,6 +128,7 @@ const GROUPS: HelpGroup[] = [
     commands: [
       { name: "dashboard", summary: "Open the dashboard" },
       { name: "update", summary: "Look for a newer build" },
+      { name: "doctor", summary: "Check this machine and project, and clean up" },
       { name: "feedback", summary: "Report a bug in tmb itself" },
       { name: "help", summary: "Show help for a command" },
     ],
@@ -203,6 +216,62 @@ function hostFileRefresh(projectDir: string): string | null {
   return refreshProject({ projectDir, program: { name: runningProgram(version).name, version }, tmbCommand: tmbCommand(), adapters: HOST_ADAPTERS });
 }
 
+/** How long doctor waits for another tmb program's `--version`. */
+const VERSION_TIMEOUT_MS = 5_000;
+
+/** What `tmb doctor` works with, for this tmb in `cwd`. */
+function doctorEnvironment(cwd: string): DoctorEnv {
+  const compiled = isCompiledEntry(Bun.main);
+  const options = updaterOptions(version, compiled);
+  return {
+    program: options.program!,
+    version,
+    installed: compiled ? process.execPath : null,
+    stateDir: options.stateDir,
+    tmbCommand: tmbCommand(),
+    adapters: HOST_ADAPTERS,
+    cwd,
+    path: process.env.PATH ?? "",
+    platform: process.platform,
+    isRunning: isProcessRunning,
+    versionOf: (file) => {
+      const result = spawnSync(file, ["--version"], { encoding: "utf8", timeout: VERSION_TIMEOUT_MS });
+      return result.status === 0 ? result.stdout.trim().split("\n")[0] || null : null;
+    },
+    gh: () => {
+      if (Bun.which("gh") === null) return { installed: false, signedIn: false };
+      return { installed: true, signedIn: GH_FEEDBACK_GITHUB.signedIn() };
+    },
+    now: () => new Date(),
+  };
+}
+
+/** The planner's one line on what doctor finds, at a session start (trustmybot/tmb#160). Never throws. */
+function doctorLine(projectDir: string): string | null {
+  try {
+    return sessionStartLine(doctorEnvironment(projectDir));
+  } catch {
+    return null;
+  }
+}
+
+/** `tmb doctor`: `--fix` asks only when a person is at both ends. */
+async function runDoctor(args: string[]): Promise<number> {
+  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  const env = doctorEnvironment(process.cwd());
+  try {
+    return await runDoctorCommand(args, env, {
+      out: stdout,
+      err: stderr,
+      ask: terminal?.ask ?? null,
+      keepBug: (finding) =>
+        keepLastError(env.stateDir, { at: env.now().toISOString(), command: `doctor ${finding.check}`, message: finding.summary, stack: null }),
+    });
+  } finally {
+    terminal?.close();
+  }
+}
+
 /**
  * Whoever starts a run sets this to `1` when no one can answer in it. Only this door reads it;
  * the adapter and the engine get a plain flag.
@@ -224,7 +293,7 @@ async function runHook(args: string[]): Promise<number> {
     const adapter = adapterById(values.host ?? DEFAULT_HOST_ID);
     const stdinText = await Bun.stdin.text();
     // Only a session's start may tell the Human about the feedback program, or bring the project's host files to this tmb.
-    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: hostFileRefresh } : hookRun();
+    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: hostFileRefresh, doctor: doctorLine } : hookRun();
     const output = adapter.answerHook(event, stdinText, run);
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
     if (output !== "") process.stdout.write(output + "\n");
@@ -239,7 +308,8 @@ async function runPrePush(args: string[]): Promise<number> {
   const remote = args[0];
   if (remote === undefined) throw new Error("pre-push needs the remote's name, as git passes it");
   // A push from a task worktree runs the hook there; the record is in the project that holds it.
-  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text());
+  // In a workspace, the folder git runs the hook in names the repo whose base branch is judged.
+  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text(), process.cwd(), pushActorFrom(process.env));
   if (decision.decision === "deny") {
     console.error(decision.reason ?? `tmb refused the push to ${remote}`);
     return 1;
@@ -283,6 +353,9 @@ async function runToolServer(args: string[]): Promise<number> {
     updater.endSession();
     const applied = updater.apply();
     if (applied.outcome === "applied") process.stderr.write(`tmb: updated to ${applied.version}; the next session runs it\n`);
+    // A kept build that stays kept says why, so a host's log shows what holds the update back.
+    else if (applied.outcome === "waiting") process.stderr.write(`tmb: the update to ${applied.version} waits: ${applied.reason}\n`);
+    else if (applied.outcome === "failed") process.stderr.write(`tmb: the update to ${applied.version} failed: ${applied.reason}\n`);
   };
   const onSignal = () => void end().finally(() => process.exit(0));
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, onSignal);
@@ -371,27 +444,31 @@ const SETTING_OPTIONS = {
   base: { type: "string" },
   "review-mode": { type: "string" },
   check: { type: "string", multiple: true },
+  repo: { type: "string" },
+  exempt: { type: "boolean" },
 } as const;
 
-/** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting. */
+/** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting (trustmybot/tmb#162). */
 async function runPrepareCommand(command: "init" | "onboard", args: string[]): Promise<number> {
   const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
-  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean };
-  // Ask only when a person is at both ends; otherwise never wait for input. init asks only for the review mode.
-  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean; repo?: string; exempt?: boolean };
+  // onboard asks only when a person is at both ends; init never asks or waits for input.
+  const attended = process.stdin.isTTY === true && process.stdout.isTTY === true;
+  const terminal = command === "onboard" && attended ? terminalAsk() : null;
   const run = { init: runInit, onboard: runOnboard }[command];
   const setupOptions: SetupOptions = {
     projectDir: process.cwd(),
     tmbCommand: tmbCommand(),
     program: { name: runningProgram(version).name, version },
     adapters: HOST_ADAPTERS,
-    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes },
+    flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes, repo: given.repo, exempt: given.exempt },
     ask: terminal?.ask ?? null,
     out: (line) => process.stdout.write(`${line}\n`),
     colour: colourOn(process.stdout),
-    feedback: command === "init" ? feedbackEnvironment() : undefined,
+    // The feedback program's notice at init's end is for a person at a terminal; with none, the planner gives it.
+    feedback: command === "init" && attended ? feedbackEnvironment() : undefined,
   };
   try {
     await run(setupOptions);
@@ -416,7 +493,7 @@ function runRemoveCommand(args: string[]): number {
       return [];
     }
   });
-  if (values.host === undefined) lines.push(...removePushGate(process.cwd()));
+  if (values.host === undefined) lines.push(...removePushGates(process.cwd()));
   // Each adapter says the record is kept; say it once.
   for (const line of new Set(lines)) console.log(line);
   for (const failure of failures) console.error(failure);
@@ -434,15 +511,21 @@ function runMigrateCommand(args: string[]): number {
   const projectDir = projectRootOf(process.cwd());
   const from = values.from === undefined ? findPluginDb(projectDir) : path.resolve(values.from);
   if (from === null) throw new Error(`no plugin database in ${projectDir} or a folder above it; name one with --from`);
-  const opened = openProjectStore(projectDir, { create: true });
+  // The records go only into a record init made for this project; migrate never creates one (trustmybot/tmb#161).
+  const recordPath = projectDbPath(projectDir);
+  if (!existsSync(recordPath)) {
+    throw new Error(`there is no tmb record in ${process.cwd()} or a folder above it; run tmb init here first, then tmb migrate`);
+  }
+  const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw opened.error;
   try {
+    refuseRecordOfAnotherProject(opened.store, projectDir, process.cwd());
     const result = migratePluginProject(opened.store, { pluginDbPath: from, projectDir, repo: values.repo });
     if (values.json) {
       console.log(JSON.stringify(result));
     } else {
       const { counts } = result;
-      console.log(`Copied from ${result.from}${result.repo === null ? "" : ` (repo ${result.repo})`}:`);
+      console.log(`Copied from ${result.from}${result.repo === null ? "" : ` (repo ${result.repo})`} into ${recordPath}:`);
       console.log(
         `  ${counts.issues} issues, ${counts.discussions} notes and decisions, ${counts.tasks} tasks, ` +
           `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
@@ -454,12 +537,31 @@ function runMigrateCommand(args: string[]): number {
       if (left.length > 0) {
         console.log(`Left behind, as tmb has no such kind: ${left.map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
       }
-      console.log("The plugin's database is unchanged. Run tmb init here if you have not, to wire tmb into your host.");
+      console.log("The plugin's database is unchanged.");
     }
   } finally {
     opened.store.close();
   }
   return 0;
+}
+
+/**
+ * The nearest record wins, so a repo with no record of its own would find one in a folder above
+ * it. migrate copies only into the record of the project it runs in: the repo's own, or the
+ * workspace's that registers this repo. Any other record above is refused, and named.
+ */
+function refuseRecordOfAnotherProject(store: Store, projectDir: string, cwd: string): void {
+  const top = runGit(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!top.ok) return;
+  const repoTop = realpathSync(top.stdout);
+  const relative = path.relative(realpathSync(projectDir), repoTop);
+  // The record is in the repo itself, or below the repo's top level: it is this project's.
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return;
+  if (workspaceRepos(store) !== null && repoOf(store, projectDir, cwd) !== null) return;
+  throw new Error(
+    `the nearest tmb record, ${projectDbPath(projectDir)}, belongs to a folder above this repo and does not serve it; ` +
+      `run tmb init in ${repoTop} first, then tmb migrate there`,
+  );
 }
 
 /** `tmb feedback`: asks only when a person is at both ends. */
@@ -494,6 +596,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return runDashboard(rest);
     case "feedback":
       return runFeedback(rest);
+    case "doctor":
+      return runDoctor(rest);
     case "mcp":
       return runToolServer(rest);
     case "hook":

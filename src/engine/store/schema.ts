@@ -232,7 +232,30 @@ const VERSION_7_SQL = `
 ALTER TABLE tasks ADD COLUMN main_snapshot TEXT;
 `;
 
+// Version 8: a workspace of several repos shares one record, so a feature branch and a task
+// record the repo they were cut in; NULL is the project folder itself (trustmybot/tmb#163).
+const VERSION_8_SQL = `
+ALTER TABLE features ADD COLUMN repo TEXT;
+ALTER TABLE tasks ADD COLUMN repo TEXT;
+`;
+
+// Version 9: a task can be dropped, with the reason, and a new task can name the dropped one it
+// replaces (trustmybot/tmb#170).
+const VERSION_9_SQL = `
+ALTER TABLE tasks ADD COLUMN drop_reason TEXT;
+ALTER TABLE tasks ADD COLUMN replaces TEXT REFERENCES tasks(id);
+`;
+
+// Version 10: a run links to what it worked on, a task or, for a branch review, a feature branch,
+// and a review names the run that wrote it (trustmybot/tmb#135). A run's cost is filled when it
+// ends (trustmybot/tmb#133).
+const VERSION_10_SQL = `
+ALTER TABLE runs ADD COLUMN feature_id TEXT REFERENCES features(id);
+CREATE INDEX idx_runs_feature ON runs(feature_id, id);
+ALTER TABLE reviews ADD COLUMN run_id TEXT REFERENCES runs(id);
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

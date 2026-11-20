@@ -2,7 +2,7 @@
 // the path; the store never works out where the file lives.
 import { Database, SQLiteError } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { runningProgram } from "../../program.ts";
+import { runningProgram, upgradeAdvice } from "../../program.ts";
 import { version as tmbVersion } from "../../version.ts";
 import { SCHEMA_STEPS, SCHEMA_VERSION } from "./schema.ts";
 import { SHAPE_WRITER_KEY, type ShapeWriter, Store } from "./store.ts";
@@ -50,11 +50,16 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Reads the schema version and whether the file holds any table, the first reads that fail on a non-database file. */
+/**
+ * Reads the schema version and whether the file holds any table, the first reads that fail on a
+ * non-database file. Both come from one statement, so one snapshot: read apart, another process
+ * creating the schema between them would show tables with no version, a file that is not tmb's.
+ */
 function readHeader(db: Database): { version: number; tables: number } {
-  const { user_version: version } = db.query("PRAGMA user_version").get() as { user_version: number };
-  const { tables } = db.query("SELECT count(*) AS tables FROM sqlite_master").get() as { tables: number };
-  return { version, tables };
+  return db.query("SELECT (SELECT user_version FROM pragma_user_version) AS version, (SELECT count(*) FROM sqlite_master) AS tables").get() as {
+    version: number;
+    tables: number;
+  };
 }
 
 function isBusy(error: unknown): boolean {
@@ -126,7 +131,10 @@ export function openStore(dbPath: string, options: { create: boolean; writer?: S
       const writer = readShapeWriter(db);
       db.close();
       const by = writer === null ? "made by a newer tmb" : `made by a newer tmb (${writer.program} ${writer.version} wrote it)`;
-      const remedy = writer === null ? "" : `; run ${writer.program} in this project, or a tmb at least as new as ${writer.version}`;
+      // Names a command the person can run, never a version: the writer may be a build no channel offers.
+      const running = runningProgram(tmbVersion);
+      const upgrade = upgradeAdvice(running, tmbVersion);
+      const remedy = writer === null || writer.program === running.name ? `; ${upgrade}` : `; run ${writer.program} in this project, or ${upgrade}`;
       return failed(
         "newer",
         `${dbPath} has schema version ${header.version}, ${by}; this tmb (${tmbVersion}) reads up to version ${SCHEMA_VERSION}${remedy}`,

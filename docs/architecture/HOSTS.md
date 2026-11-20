@@ -46,7 +46,7 @@ The host starts the workers and the reviewer as its own subagents. tmb does not 
 | Decide that a task needs a worker | Planner |
 | Prepare the task's branch, a worktree and the brief | Engine |
 | Start the worker as a subagent, in a folder of its own | Host |
-| Check that the start is allowed: the task exists, its worktree is ready, the role and effort match | Engine, asked by the adapter |
+| Check that the start is allowed: the task exists, its worktree is ready | Engine, asked by the adapter |
 | Make the worker's folder the task's worktree, when the worker first reads its brief | Engine |
 | Do the work, reading the brief and the code graph through tmb's tools | Worker |
 | Run the checks, record the result, close or refuse, and report what changed outside the task | Engine |
@@ -66,7 +66,7 @@ Running several workers at once, each on its own task and worktree, is the host'
 | Detect | Finds the host, its version and what it supports. |
 | Install | Registers tmb's tool server with the host, writes the role definitions in the host's format, and wires the host's events to the engine. Per project, with the Human's consent. |
 | Translate events | Turns a host event (a tool call, a subagent start or stop, a session start) into the engine's neutral question, and the engine's allow or deny into the host's answer. It holds no rules of its own. |
-| Report limits | Says what the host cannot do, such as deny a tool call or set a model per role, so the engine can fall back or refuse. |
+| Report limits | Says what the host cannot do, such as deny a tool call or set a model per role, so the engine can fall back or refuse. As built, each adapter states its limits and the engine does not read them yet. |
 | Remove | Undoes exactly what install added. |
 
 All rules stay in the engine. An adapter that grows a rule is a defect.
@@ -119,27 +119,25 @@ flowchart LR
 | A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | Host |
 | Before an agent start | The host is about to start a subagent | Host |
 | After an agent stop | A subagent has ended | Host |
-| Before a task start | The engine is asked to start a task | Engine |
-| Before a task close | The engine is asked to close a task | Engine |
 | Before a push | Commits are about to leave the machine | git |
-| After a branch moves | A merge, a fetch or a checkout moved a branch | git |
 
-- An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
+- An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen. A push tmb makes for an agent carries that agent's role and host; a push typed by hand is the Human's (trustmybot/tmb#134).
+- A task's start and close are not events. The engine checks them itself when it is asked, and a refusal there goes to the caller without a recorded decision.
 - A rule answers allow or deny, and a deny always says why and what would be allowed.
 - Version 1 ships tmb's own rules only. Users cannot add rules of their own on these events.
-- A host that cannot raise an event is reported by its adapter, and the rules on that event fall back to the next event that can catch the same thing, such as the close or the push.
+- A host that cannot raise an event is reported by its adapter. Nothing switches over: the close and the push check every change whatever the host raised, so they catch what an earlier event missed.
 
 ## Hosts
 
 | Host | Status | Tools | Roles | Events that can deny |
 |---|---|---|---|---|
 | Claude Code, command line and desktop app | First | Tool server from the project's settings | Agent files in the project | Yes, from the project's settings, inside subagents too |
-| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from the project's config | Agent files in the project | Yes, for commands, file writes, tmb's tools and a subagent's start, after the Human trusts the project and its hooks |
+| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from the project's config | Agent files in the project | The host can, for commands, file writes, tmb's tools and a subagent's start, after the Human trusts the project and its hooks. tmb judges file writes and a subagent's start only. |
 | Others | Planned | | | |
 
 The same three building blocks exist in both hosts checked so far, which is what makes one adapter shape enough.
 
-Setup never trusts a project or its hooks on the Human's behalf: it says what the Human must trust, and the adapter reports when that has not happened yet. Checked against Codex's docs on 2026-11-19; nothing was run.
+Setup never trusts a project or its hooks on the Human's behalf: it says what the Human must trust. It cannot tell whether the hooks have been trusted yet, so it always lists that step. Checked against Codex's docs on 2026-11-19; nothing was run.
 
 Codex does not say which agent makes a tool call. A call is judged under the role its host was set up with, so a Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a worker's write from the planner's, and that rule falls back to the close and the push. Proposed, for the Human's review, and to be confirmed on a real Codex.
 
@@ -157,7 +155,7 @@ tmb starts no agent, runs no model and manages no parallel sessions. Hosts do th
   - **A reviewer that is a host's main agent.** Its run opens at that host's session start and ends with the verdict it records.
 - **Local models.** They arrive through a host that supports them. The adapter writes a role's model as given, and the model's provider is the host's own setup.
 
-Every record names the role and the host that made it, so a review is known to come from a different agent than the one that wrote the change.
+Every record names the role and the host that made it. The role is the one the caller gives, checked against an open run of that role on that host: tmb cannot prove which agent called. With two hosts, the host's name shows that the review came from another vendor's agent.
 
 ## Ways into the engine
 
@@ -166,7 +164,7 @@ Every record names the role and the host that made it, so a review is known to c
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
 | Host events | The host, before an agent acts | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push is checked even when typed by hand. |
-| Command line | The Human | Init and onboard, indexing, health checks. |
+| Command line | The Human | Init and onboard, indexing, and `tmb doctor`, the health check (trustmybot/tmb#160). |
 | Dashboard | The Human | A local web page over the record. |
 
-All of them call the same engine, so a rule cannot be skipped by choosing another way in.
+All of them call the same engine, with one gap found on 2026-11-20: the command line treats every caller as the Human, so an agent with a shell can run a step only the Human may take, such as a waiver. Planned for v1.0.0 (trustmybot/tmb#179), decided by the Human on 2026-11-20: a step only the Human may take needs a terminal and a typed yes, and the host's guard denies it when an agent's shell runs it.

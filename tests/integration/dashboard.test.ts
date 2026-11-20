@@ -3,8 +3,8 @@
 // the refusals that guard them, and every page rendered against the running server.
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -19,6 +19,15 @@ let ids: SeededIds;
 let child: ChildProcess;
 let base: string;
 let realFetch: typeof fetch;
+
+const GRAPH_SOURCE = `export function toggleTheme(dark: boolean): string {
+  return pick(dark);
+}
+
+function pick(dark: boolean): string {
+  return [dark].map((d) => (d ? "dark" : "light"))[0]!;
+}
+`;
 
 /** Starts `tmb dashboard` from outside the repository, so the page's build settings must come from --config. */
 function startDashboard(projectDir: string): Promise<string> {
@@ -45,6 +54,13 @@ beforeAll(async () => {
   realFetch = globalThis.fetch;
   scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-dashboard-")));
   ids = seedRecord(scratch);
+  // A git repository, so the code graph page has a base branch to read.
+  mkdirSync(path.join(scratch, "src"), { recursive: true });
+  writeFileSync(path.join(scratch, "src", "theme.ts"), GRAPH_SOURCE);
+  for (const args of [["init", "-q", "-b", "main"], ["add", "src"], ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "first"]]) {
+    const result = spawnSync("git", args, { cwd: scratch, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
+  }
   base = await startDashboard(scratch);
 }, 60_000);
 
@@ -138,12 +154,44 @@ describe("the API reads the record", () => {
 
   test("features, runs, checks, gate decisions and the audit log", async () => {
     expect((await api("features"))[0]).toMatchObject({ id: ids.featureId, name: SEED.featureName, task_count: 1, open_task_count: 1 });
-    expect((await api("runs")).map((r: any) => r.role).sort()).toEqual(["planner", "worker"]);
+    const runs = await api("runs");
+    expect(runs.map((r: any) => r.role).sort()).toEqual(["planner", "worker"]);
+    // A worker's run names its feature branch through its task (trustmybot/tmb#135).
+    expect(runs.find((r: any) => r.role === "worker")).toMatchObject({ feature_id: ids.featureId, feature_name: SEED.featureName });
     expect(await api("runs?limit=1")).toHaveLength(1);
     expect((await api("checks"))[0]).toMatchObject({ task_id: ids.taskId, result: "failed" });
     expect((await api("guard-decisions"))[0]).toMatchObject({ decision: "deny", reason: SEED.guardReason, author: "worker" });
     expect((await api("audit"))[0]).toMatchObject({ what: SEED.auditWhat, detail: SEED.auditDetail, author: "human" });
     expect(typeof (await api("version")).data_version).toBe("number");
+  });
+});
+
+describe("the API reads the code graph", () => {
+  test("a folder, one level at a time, with function counts", async () => {
+    const top = await api("graph/tree?path=.");
+    expect(top.baseBranch).toBe("main");
+    expect(top.functions).toBe(3);
+    expect(top.children.find((c: any) => c.path === "src")).toMatchObject({ kind: "dir", functions: 3 });
+    const src = await api("graph/tree?path=src");
+    expect(src.children).toEqual([{ kind: "file", path: "src/theme.ts", name: "theme.ts", lang: "typescript", lane: "product", functions: 3, notParsed: null }]);
+  });
+
+  test("a file's functions, each inside its container, and one function with its callers and callees", async () => {
+    const theme = await api("graph/file?path=src/theme.ts");
+    const by = (name: string) => theme.symbols.find((s: any) => s.qualifiedName === name);
+    expect(by("callback of `map`").parent).toBe(by("pick").id);
+    expect(theme.links).toContainEqual({ from: by("toggleTheme").id, to: by("pick").id, count: 1 });
+    const pick = await api(`graph/function/${by("pick").id}`);
+    expect(pick.callers).toEqual([{ id: by("toggleTheme").id, qualifiedName: "toggleTheme", kind: "function", path: "src/theme.ts", line: 2 }]);
+    const found = await api("graph/search?q=toggle");
+    expect(found.hits.map((h: any) => h.qualifiedName)).toEqual(["toggleTheme"]);
+  });
+
+  test("answers 404 to a path or function the graph does not hold", async () => {
+    for (const route of ["graph/tree?path=nope", "graph/file?path=nope.ts", "graph/function/999999", "graph/function/abc"]) {
+      const res = await realFetch(new URL(`api/${route}`, base));
+      expect(res.status).toBe(404);
+    }
   });
 });
 
@@ -269,5 +317,13 @@ describe("every page shows its data", () => {
 
   test("audit", async () => {
     await show("#/audit", SEED.auditWhat, SEED.auditDetail);
+  });
+
+  test("code: folders, then a file's functions, then one function", async () => {
+    await show("#/code", "Code Graph", "src/", "3 functions", "From the graph of main");
+    await show("#/code?file=src/theme.ts", "toggleTheme", "pick", "callback of `map`", "3 functions in this file");
+    const theme = await api("graph/file?path=src/theme.ts");
+    const pick = theme.symbols.find((s: any) => s.qualifiedName === "pick");
+    await show(`#/code?fn=${pick.id}`, "Callers", "toggleTheme", "lines 5–7");
   });
 });

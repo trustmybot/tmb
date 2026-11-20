@@ -6,6 +6,7 @@ import path from "node:path";
 import { createIdFactory, idTime, isId, newId } from "../src/engine/ids.ts";
 import { type Actor, ActorError, SCHEMA_VERSION, SNIPPET_MAX, type Store, openStore } from "../src/engine/store/index.ts";
 import { PROJECTION_TABLES, SCHEMA_STEPS } from "../src/engine/store/schema.ts";
+import { upgradeAdvice } from "../src/program.ts";
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };
@@ -53,9 +54,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(7);
+    expect(SCHEMA_VERSION).toBe(10);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 7 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 10 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -305,7 +306,19 @@ describe("the shape's writer (trustmybot/tmb#89)", () => {
       expect(result.error.message).toContain("made by a newer tmb (tmb-dev 9.9.0-dev.4 wrote it)");
       expect(result.error.message).toContain(`reads up to version ${SCHEMA_VERSION}`);
       expect(result.error.message).toContain("run tmb-dev in this project");
+      // A command to run, never a version to find: the writer may be a build no channel offers (trustmybot/tmb#173).
+      expect(result.error.message).toContain("update this program with `tmb update`");
+      expect(result.error.message).not.toContain("9.9.0-dev.4;");
+      expect(result.error.message).not.toContain("at least as new");
     }
+  });
+
+  test("the way to a newer build is a command: the program's own update, or the installer when it is pinned (trustmybot/tmb#173)", () => {
+    expect(upgradeAdvice({ name: "tmb-dev", channel: "dev" }, "0.1.0-dev.75.gh144")).toBe("update this program with `tmb-dev update`");
+    expect(upgradeAdvice({ name: "tmb-1.0.0", channel: null }, "1.0.0", "darwin")).toBe(
+      "install a newer tmb with `curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh | TMB_CHANNEL=stable sh`",
+    );
+    expect(upgradeAdvice({ name: "tmb-1.0.0-rc.2", channel: null }, "1.0.0-rc.2", "win32")).toContain("install.ps1 | iex");
   });
 });
 
