@@ -18,7 +18,7 @@ const REPO = path.resolve(import.meta.dir, "..");
 const HUMAN: Actor = { kind: "human" };
 
 function git(cwd: string, ...args: string[]): string {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, encoding: "utf8" });
   if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
   return result.stdout.trim();
 }
@@ -240,7 +240,9 @@ describe("tmb's own repo", () => {
     const opened = openProjectStore(clone, { create: true });
     if (!opened.ok) throw opened.error;
     store = opened.store;
-    writeSetting(store, HUMAN, "base_branch", git(clone, "rev-parse", "--abbrev-ref", "HEAD"));
+    // CI checks out a detached HEAD: name the clone's commit as a branch of its own.
+    git(clone, "checkout", "-q", "-B", "graph-base");
+    writeSetting(store, HUMAN, "base_branch", "graph-base");
   });
 
   afterAll(() => {
