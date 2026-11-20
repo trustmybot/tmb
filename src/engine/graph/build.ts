@@ -7,13 +7,14 @@ import { type Extraction, extractFile, inSymbolScope, languageOf, type SourceLan
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
+import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
 import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
 import { laneOf } from "./test-paths.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 2;
+export const EXTRACTOR_VERSION = 3;
 const MAX_PARSE_BYTES = 1_000_000;
 const MAX_ERROR_CHARS = 200;
 
@@ -26,6 +27,8 @@ export type BuildStats = {
   symbols: number;
   edges: number;
   unresolved: number;
+  /** Imports that name the repo's own code and link no file; an installed package's import is not one (trustmybot/tmb#147). */
+  unresolvedImports: number;
   /** Functions and methods, unnamed ones included. */
   functions: number;
   /** Files in a language tmb parses that could not be parsed; each is in the graph with its reason. */
@@ -72,7 +75,7 @@ async function planCommit(
   db: Database,
   repoDir: string,
   commit: string,
-): Promise<{ plans: FilePlan[]; readmes: Map<string, string>; parsed: number; reused: number }> {
+): Promise<{ plans: FilePlan[]; readmes: Map<string, string>; configs: Map<string, string>; parsed: number; reused: number }> {
   const entries = listTree(repoDir, commit).filter((entry) => inSymbolScope(entry.path));
   const byExtension = new Map<string, SourceLanguage | null>();
   const needText: string[] = [];
@@ -90,10 +93,16 @@ async function planCommit(
     if (cached) reused++;
     plans.push({ entry, lang: headless ? null : lang, extraction: cached?.extraction ?? null, error: cached?.error ?? null, summary: "" });
     const parseable = entry.size <= MAX_PARSE_BYTES;
-    const wantsText = parseable && ((lang !== null && !cached) || headless || isReadme(entry.path) || /\.(md|markdown)$/i.test(entry.path));
+    const wantsText =
+      parseable && ((lang !== null && !cached) || headless || isReadme(entry.path) || /\.(md|markdown)$/i.test(entry.path) || isImportConfigPath(entry.path));
     if (wantsText) needText.push(entry.blob);
   }
   const texts = readBlobs(repoDir, needText);
+  const configs = new Map<string, string>();
+  for (const { entry } of plans) {
+    const text = isImportConfigPath(entry.path) ? texts.get(entry.blob) : undefined;
+    if (text !== undefined) configs.set(entry.path, text);
+  }
   for (const plan of plans) {
     const text = texts.get(plan.entry.blob) ?? null;
     if (plan.lang === null && text !== null && byExtension.get(plan.entry.path) === null) {
@@ -122,7 +131,7 @@ async function planCommit(
     plan.summary = fileSummary(plan.entry.path, moduleDoc, text);
     if (isReadme(plan.entry.path) && text !== null) readmes.set(dirOf(plan.entry.path), readmeSummary(text));
   }
-  return { plans, readmes, parsed, reused };
+  return { plans, readmes, configs, parsed, reused };
 }
 
 function ancestorsOf(dir: string): string[] {
@@ -133,7 +142,14 @@ function ancestorsOf(dir: string): string[] {
 }
 
 /** Writes one whole layer, replacing what it held. */
-function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan[], readmeByDir: Map<string, string>): Omit<BuildStats, "parsed" | "reused"> {
+function applyLayer(
+  db: Database,
+  layer: string,
+  commit: string,
+  plans: FilePlan[],
+  readmeByDir: Map<string, string>,
+  configs: Map<string, string>,
+): Omit<BuildStats, "parsed" | "reused"> {
   dropLayer(db, layer);
   const dirFiles = new Map<string, number>();
   for (const plan of plans) {
@@ -214,7 +230,7 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
   }
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
-  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })));
+  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs));
   const insertEdge = db.prepare("INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
   let unresolved = 0;
   for (const { file, symbolIndex, edge } of pending) {
@@ -222,8 +238,11 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
     insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint);
   }
-  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved, functions, notParsed };
-  db.run("INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, functions, not_parsed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+  const unresolvedImports = resolver.unresolvedImports;
+  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved, unresolvedImports, functions, notParsed };
+  db.run(
+    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
     layer,
     commit,
     EXTRACTOR_VERSION,
@@ -232,9 +251,11 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
     stats.symbols,
     stats.edges,
     stats.unresolved,
+    stats.unresolvedImports,
     stats.functions,
     stats.notParsed,
-  ]);
+    ],
+  );
   return stats;
 }
 
@@ -243,7 +264,7 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
  * already at `commit` and `force` is not set. A base layer then re-checks every concept.
  */
 export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: { force?: boolean } = {}): Promise<BuildStats> {
-  const { plans, readmes: readmeByDir, parsed, reused } = await planCommit(db, repoDir, commit);
+  const { plans, readmes: readmeByDir, configs, parsed, reused } = await planCommit(db, repoDir, commit);
   const stats = db
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.
@@ -256,11 +277,12 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
           symbols: current.symbols,
           edges: current.edges,
           unresolved: current.unresolved,
+          unresolvedImports: current.unresolved_imports,
           functions: current.functions,
           notParsed: current.not_parsed,
         };
       }
-      const applied = applyLayer(db, layer, commit, plans, readmeByDir);
+      const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs);
       if (layer === BASE_LAYER) recheckConcepts(db, commit);
       return applied;
     })
