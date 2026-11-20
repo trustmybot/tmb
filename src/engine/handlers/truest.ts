@@ -7,11 +7,11 @@
 // again, a changed one needs a new review, and a conflict reopens the task.
 import { spawnSync } from "node:child_process";
 import { gitFailure, runGit } from "../git.ts";
-import { readSettings } from "../settings.ts";
+import { repoOfRow } from "../repos.ts";
 import type { Actor, Review, Store, Task } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
-import { baseBranchTip } from "./features.ts";
+import { baseBranchTip, noBaseBranch } from "./features.ts";
 import { isAncestor, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
@@ -150,10 +150,11 @@ export function truestCoveredCommits(store: Store): string[] {
  * branch and to each commit of it the record names (a rebase leaves the reviewed one behind).
  * The push gate holds these to review on any branch; a commit of no task it lets through.
  */
-export function truestTaskCommits(store: Store, projectDir: string): Set<string> {
+export function truestTaskCommits(store: Store, projectDir: string, repo: string | null = null): Set<string> {
   const commits = new Set<string>();
   const audits = auditCoverage(store);
-  for (const task of store.listTasks()) {
+  // Only the tasks cut in the repo at projectDir: another repo's commits are not in its git.
+  for (const task of store.listTasks().filter((each) => each.repo === repo)) {
     // A closed task's branch is on origin with its pull request, its commits covered, so only live tasks are listed.
     if (task.reviewMode !== TRUEST || task.baseCommit === null || task.state === CLOSED) continue;
     const records = coverageRecords(store, task.id, audits);
@@ -196,14 +197,15 @@ export async function truestClose(store: Store, actor: Actor, task: Task, contex
   const head = committedHead(task, store);
   const commands = closeChecks(store, task);
   const runs: CheckRunOutcome[] = [await checkCommit(store, actor, task, head, commands, context)];
-  const findings = closeFindings(task, head, context.projectDir);
-  const baseCommit = movedBase(store, task, head, context.projectDir);
+  const repo = repoOfRow(store, context.projectDir, task);
+  const findings = closeFindings(task, head, repo.dir);
+  const baseCommit = movedBase(task, head, repo.dir, repo.baseBranch);
   store.transaction(() => {
     if (requireTask(store, task.id).state !== OPEN) throw new HandlerError("refused", `task ${task.id} was closed while its checks ran`);
     requireHeadAt(worktree, head);
     store.updateTask(actor, task.id, { state: IN_REVIEW, commitSha: head, ...(baseCommit === null ? {} : { baseCommit }) });
   });
-  recordFindings(task, context.projectDir);
+  recordFindings(task, repo.dir);
   const next = `task ${task.id} is in review at ${head}: start the reviewer with the ${taskReviewLine(task.id)} line in its prompt; once it passes, open the pull request with task_pr`;
   return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [], ...findings }), next };
 }
@@ -213,8 +215,7 @@ export async function truestClose(store: Store, actor: Actor, task: Task, contex
  * only: where the task's commit leaves the base branch's newest commit, when that is past the
  * commit the task was cut from. Null when the task still leaves the base where it was cut.
  */
-function movedBase(store: Store, task: Task, head: string, projectDir: string): string | null {
-  const baseBranch = readSettings(store).base_branch;
+function movedBase(task: Task, head: string, projectDir: string, baseBranch: string | null): string | null {
   if (baseBranch === null || task.baseCommit === null) return null;
   const tip = truestBase(projectDir, baseBranch, `task ${task.id}`);
   const meet = runGit(projectDir, ["merge-base", head, tip]);
@@ -280,7 +281,8 @@ export function taskReview(store: Store, actor: Actor, input: unknown, context: 
   if (given.verdict === "fail" && blocking.length === 0) throw new HandlerError("invalid_input", "a fail names at least one blocking finding");
 
   const task = requireInReview(store, given.id, "it takes no review");
-  const resolved = runGit(context.projectDir, ["rev-parse", "--verify", "--quiet", `${given.commit}^{commit}`]);
+  const dir = repoOfRow(store, context.projectDir, task).dir;
+  const resolved = runGit(dir, ["rev-parse", "--verify", "--quiet", `${given.commit}^{commit}`]);
   if (!resolved.ok || resolved.stdout !== task.commitSha) {
     throw new HandlerError(
       "refused",
@@ -295,7 +297,7 @@ export function taskReview(store: Store, actor: Actor, input: unknown, context: 
     return id;
   });
   const review = summaryOf(store.listTaskReviews(task.id).find((each) => each.id === reviewId)!);
-  const mark = markReviewed(store, actor, context.projectDir, task.commitSha!, given.verdict, blocking.length);
+  const mark = markReviewed(store, actor, dir, task.commitSha!, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
     ? `the pull request may open: the planner calls task_pr for task ${task.id}`
@@ -322,7 +324,7 @@ export function taskWaive(store: Store, actor: Actor, input: unknown, context: O
   const detail = { task_id: task.id, commit: task.commitSha, reason: given.reason.trim() };
   const id = store.recordAudit(actor, { what: TASK_WAIVER, detail: JSON.stringify(detail) });
   const waiver = allTaskWaivers(store).find((each) => each.id === id)!;
-  return { ...waiver, mark: markReviewed(store, actor, context.projectDir, task.commitSha!, "waiver", detail.reason) };
+  return { ...waiver, mark: markReviewed(store, actor, repoOfRow(store, context.projectDir, task).dir, task.commitSha!, "waiver", detail.reason) };
 }
 
 // --- task_pr ------------------------------------------------------------------------------
@@ -386,7 +388,8 @@ async function rebaseIfBaseMoved(
 ): Promise<{ commit: string; onto: string | null }> {
   const worktree = task.worktree!;
   const reviewed = task.commitSha!;
-  const tip = truestBase(context.projectDir, baseBranch, `task ${task.id}`);
+  const dir = repoOfRow(store, context.projectDir, task).dir;
+  const tip = truestBase(dir, baseBranch, `task ${task.id}`);
   if (isAncestor(worktree, tip, reviewed)) return { commit: reviewed, onto: null };
   requireHeadAt(worktree, reviewed);
   const what = `the base branch ${baseBranch}`;
@@ -403,7 +406,7 @@ async function rebaseIfBaseMoved(
     // Nothing is left to bring: the task is done without a pull request, and its files are free again.
     undo();
     store.updateTask(actor, task.id, { state: CLOSED });
-    const kept = removeTaskCheckout(context.projectDir, worktree, null).problems.map((problem) => ` Not cleaned up: ${problem}.`).join("");
+    const kept = removeTaskCheckout(dir, worktree, null).problems.map((problem) => ` Not cleaned up: ${problem}.`).join("");
     throw new HandlerError(
       "refused",
       `the base branch ${baseBranch} at ${tip} already holds the change of task ${task.id}, so its pull request would add nothing. The task is closed with no pull request; its branch ${task.branch} is kept.${kept}`,
@@ -446,9 +449,9 @@ async function rebaseIfBaseMoved(
   // The rebased commit is a new one: the coverage carried to it marks it too.
   const carried = truestReviewOf(store, requireTask(store, task.id));
   if (carried.coveredBy === "waiver") {
-    markReviewed(store, actor, context.projectDir, rebased, "waiver", carried.waivers.at(-1)?.reason ?? "");
+    markReviewed(store, actor, dir, rebased, "waiver", carried.waivers.at(-1)?.reason ?? "");
   } else if (carried.coveredBy === "review") {
-    markReviewed(store, actor, context.projectDir, rebased, "pass");
+    markReviewed(store, actor, dir, rebased, "pass");
   }
   return { commit: rebased, onto: tip };
 }
@@ -457,8 +460,10 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   const given = validateInput<{ id: string; title: string; body?: string }>("task_pr", taskPrSchema, input);
   requireRole(actor, "task_pr", ["planner"]);
   let task = requireInReview(store, given.id, "its pull request does not open");
-  const baseBranch = readSettings(store).base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first");
+  const repo = repoOfRow(store, context.projectDir, task);
+  const dir = repo.dir;
+  const baseBranch = repo.baseBranch;
+  if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
   if (!worktreeReady({ ...task, state: OPEN }) || task.branch === null) {
     throw new HandlerError("refused", `task ${task.id}'s worktree ${task.worktree ?? "(none)"} is missing, so tmb cannot bring it onto the base branch`);
   }
@@ -476,7 +481,7 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
       `the pull request of task ${task.id} opens only after the reviewer passes it at ${task.commitSha}, or the Human waives the review: ${why}. Start the reviewer with the ${taskReviewLine(task.id)} line in its prompt, or ask the Human to run \`tmb task waive ${task.id} --reason <text>\`.`,
     );
   }
-  if (!runGit(context.projectDir, ["remote", "get-url", ORIGIN]).ok) {
+  if (!runGit(dir, ["remote", "get-url", ORIGIN]).ok) {
     throw new HandlerError("refused", `the repository has no remote named ${ORIGIN}, so task ${task.id} has nowhere to push and no pull request to open`);
   }
 
@@ -487,27 +492,27 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   if (coveredBy === null) throw new HandlerError("refused", `task ${task.id} at ${commit} is no longer covered by a pass or a waiver; review it again`);
 
   // git's pre-push hook judges this push like any other, so the record must already cover the commit.
-  const push = pushFeature(context.projectDir, task.branch!, actor);
+  const push = pushFeature(dir, task.branch!, actor);
   store.updateTask(actor, task.id, { pushResult: push.result, pushDetail: push.detail });
   if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of task ${task.id} needs its branch on origin, and the push did not happen: ${push.detail}`);
   // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
-  trySendPendingMarks(store, actor, context.projectDir);
+  trySendPendingMarks(store, actor, dir);
   const how =
     coveredBy === "review"
       ? `Reviewed by the tmb reviewer: pass at ${review.to}${onto === null ? "" : `, carried to ${commit} by a rebase onto ${onto} that kept the patch`}.`
       : `Review waived by the Human at ${review.to}: ${review.waivers.filter((waiver) => waiver.commit === review.to).at(-1)?.reason ?? ""}`;
   const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
-  let opened = openPullRequest(context.projectDir, ["--base", baseBranch, "--head", task.branch!, "--title", given.title, "--body", body]);
+  let opened = openPullRequest(dir, ["--base", baseBranch, "--head", task.branch!, "--title", given.title, "--body", body]);
   if (!opened.ok) {
     // An earlier task_pr may have opened it before failing: that pull request is this task's.
-    const existing = existingPullRequest(context.projectDir, task.branch!);
+    const existing = existingPullRequest(dir, task.branch!);
     if (existing !== null) opened = { ok: true, url: existing };
   }
   if (!opened.ok) throw new HandlerError("refused", `${task.branch} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateTask(actor, task.id, { state: CLOSED, prUrl: opened.url });
 
   // The branch stays, on origin and here, for the pull request; only the worktree goes.
-  const cleanup = removeTaskCheckout(context.projectDir, task.worktree!, null);
-  const markRequired = markRequiredOn(context.projectDir, baseBranch);
+  const cleanup = removeTaskCheckout(dir, task.worktree!, null);
+  const markRequired = markRequiredOn(dir, baseBranch);
   return { task: task.id, url: opened.url, base: baseBranch, branch: task.branch!, commit, coveredBy, rebasedOnto: onto, push: push.detail, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, markRequired };
 }

@@ -1,5 +1,6 @@
 // The record commands of the command line: the Human's way into the record. Each command
 // calls the same operation an agent's tool call does, acting as the Human.
+import { repoOfRow, workingRepos, workspaceRepos } from "../repos.ts";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
   type FeatureBrief,
@@ -51,7 +52,9 @@ ${JSON_NOTE}`,
 ${JSON_NOTE}`,
   history: `  tmb history <id>          Show every recorded change to an issue or note
 ${JSON_NOTE}`,
-  feature: `  tmb feature start <name>  Cut a feature branch from the base branch and record it
+  feature: `  tmb feature start <name> [--repo <name>]
+                            Cut a feature branch from the base branch and record it; in a
+                            workspace of several repos, --repo names the repo it is cut in
   tmb feature list          List the feature branches with their base, state and tasks
   tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
   tmb feature waive <name> --reason <text>
@@ -60,8 +63,8 @@ ${JSON_NOTE}`,
                             Open the feature branch's pull request into the base branch, once
                             the reviewer passed its tip or the Human waived the review
 ${JSON_NOTE}`,
-  task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] --intent <text> --file <path>...
-                 --criterion <text>... [--check <command>]...
+  task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] [--repo <name>] --intent <text>
+                 --file <path>... --criterion <text>... [--check <command>]...
                             Start a task: cut its branch and worktree from the feature
                             branch and record its spec
   tmb task list [--state open|in_review|closed|all]
@@ -248,6 +251,7 @@ function briefLines(brief: TaskBrief): string[] {
   return [
     `Task ${brief.id}  ${brief.state}  on issue ${brief.issueId}`,
     `Kind: ${brief.kind ?? "(not recorded)"}`,
+    ...(brief.repo ? [`Repo: ${brief.repo}`] : []),
     `Feature branch: ${brief.feature ?? "(none)"}`,
     `Branch: ${brief.branch ?? "(none)"}`,
     `Worktree: ${brief.worktree ?? "(none)"}`,
@@ -272,7 +276,8 @@ function briefLines(brief: TaskBrief): string[] {
 function taskLine(task: TaskSummary, withState: boolean): string {
   const state = withState ? `  ${task.state.padEnd(6)}` : "";
   const commit = task.commitSha ? `\n  closed at: ${task.commitSha}` : "";
-  return `${task.id}${state}  ${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
+  const repo = task.repo ? `${task.repo}  ` : "";
+  return `${task.id}${state}  ${repo}${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
 }
 
 /** The open list keeps its plain form; a list that may mix states shows each task's state. */
@@ -296,7 +301,8 @@ function formatClose({ brief, checks, fold, push, cleanupProblems, cleanedUp, ne
 
 function featureLine(feature: FeatureSummary): string {
   const tasks = feature.tasks.length === 0 ? "no tasks" : `tasks: ${feature.tasks.join(", ")}`;
-  return `${feature.name}  ${feature.state.padEnd(6)}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
+  const repo = feature.repo ? ` in ${feature.repo}` : "";
+  return `${feature.name}  ${feature.state.padEnd(6)}${repo}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
 }
 
 function featureBriefLines(brief: FeatureBrief): string[] {
@@ -324,9 +330,11 @@ function featureRequest(args: string[]): Request {
   const [action, ...rest] = args;
   switch (action) {
     case "start": {
-      const { values, positionals } = parse(rest, {});
-      const format = (feature: FeatureSummary) => `Started feature branch ${feature.name} from ${feature.baseBranch} at ${feature.baseCommit}.`;
-      return { operation: "feature_start", input: { name: only(positionals, "feature branch name") }, json: values.json === true, format };
+      const { values, positionals } = parse(rest, { repo: { type: "string" } });
+      const format = (feature: FeatureSummary) =>
+        `Started feature branch ${feature.name}${feature.repo ? ` in ${feature.repo}` : ""} from ${feature.baseBranch} at ${feature.baseCommit}.`;
+      const input = { name: only(positionals, "feature branch name"), ...(values.repo === undefined ? {} : { repo: values.repo }) };
+      return { operation: "feature_start", input, json: values.json === true, format };
     }
     case "list": {
       const { values, positionals } = parse(rest, {});
@@ -372,11 +380,13 @@ function taskRequest(args: string[]): Request {
         file: { type: "string", multiple: true },
         criterion: { type: "string", multiple: true },
         check: { type: "string", multiple: true },
+        repo: { type: "string" },
       });
       const input = {
         issue_id: only(positionals, "issue id"),
         kind: values.kind,
         feature: values.feature,
+        repo: values.repo,
         intent: values.intent,
         files: values.file ?? [],
         criteria: values.criterion ?? [],
@@ -650,15 +660,19 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
   }
   try {
     const settings = readSettings(opened.store);
-    output.out(json ? JSON.stringify(settings, null, 2) : settingLines(settings).join("\n"));
+    // A single-repo project has no repos, and prints its settings as it always has.
+    const { repos, ...rest } = settings;
+    const printed = repos === null ? rest : settings;
+    output.out(json ? JSON.stringify(printed, null, 2) : settingLines(settings).join("\n"));
     return 0;
   } finally {
     opened.store.close();
   }
 }
 
-export const INDEX_USAGE = `  tmb index [--rebuild]     Index the base branch into the code graph now; reads keep it
-                            current on their own. --rebuild reparses every file`;
+export const INDEX_USAGE = `  tmb index [--rebuild]     Index the base branch into the code graph now, or in a workspace
+                            each repo's; reads keep it current on their own. --rebuild
+                            reparses every file`;
 
 /** Indexes the project's base branch, as `tmb index` does; resolves to the exit code. */
 export async function runIndexCommand(args: string[], projectDir: string, output: Output): Promise<number> {
@@ -681,13 +695,32 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     );
     return 1;
   }
+  const line = (stats: Awaited<ReturnType<typeof indexProject>>) =>
+    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}.`;
   try {
+    const repos = workspaceRepos(opened.store);
+    if (repos !== null) {
+      // Each repo is indexed on its own; one that cannot be indexed yet says why, and the run goes on.
+      const all: unknown[] = [];
+      let failed = false;
+      for (const name of workingRepos(repos)) {
+        try {
+          const stats = await indexProject(projectDir, opened.store, { rebuild, repo: repoOfRow(opened.store, projectDir, { repo: name }) });
+          all.push(stats);
+          if (!json) output.out(line(stats));
+        } catch (error) {
+          if (!(error instanceof HandlerError)) throw error;
+          failed = true;
+          all.push({ repo: name, error: error.message });
+          if (!json) output.err(`tmb index: ${name}: ${error.message}`);
+        }
+      }
+      if (json) output.out(JSON.stringify(all, null, 2));
+      else if (all.length === 0) output.out("This workspace has no repo tmb works in; `tmb init` finds its repos.");
+      return failed ? 1 : 0;
+    }
     const stats = await indexProject(projectDir, opened.store, { rebuild });
-    output.out(
-      json
-        ? JSON.stringify(stats, null, 2)
-        : `Indexed ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}.`,
-    );
+    output.out(json ? JSON.stringify(stats, null, 2) : line(stats));
     return 0;
   } catch (error) {
     if (!(error instanceof HandlerError)) throw error;

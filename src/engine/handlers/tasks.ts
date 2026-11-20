@@ -8,12 +8,13 @@ import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
+import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
 import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
-import { baseBranchTip, featureForTask, featureTip } from "./features.ts";
+import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
 import { type PushOutcome, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
@@ -43,6 +44,8 @@ export type TaskBrief = {
   worktree: string | null;
   /** The feature branch the task was cut from and folds into; null for a task started before feature branches. */
   feature: string | null;
+  /** The repo the task was cut in, by its name in the workspace; null in a single-repo project. */
+  repo: string | null;
   kind: string | null;
   baseCommit: string | null;
   /** The commit the task folded into its feature branch at close; null while it is open. */
@@ -52,7 +55,7 @@ export type TaskBrief = {
   /** How the feature branch's backup push went at close; null while it is open. */
   push: PushOutcome | null;
   spec: TaskSpec;
-  /** Every check that runs at close, the project's first, then the task's own. */
+  /** Every check that runs at close, its repo's first (the project's in a single-repo project), then the task's own. */
   checks: string[];
   /** The line a worker's start prompt carries so the gate lets it start. */
   startLine: string;
@@ -66,6 +69,8 @@ export type TaskSummary = {
   state: string;
   title: string;
   feature: string | null;
+  /** The repo the task was cut in; null in a single-repo project. */
+  repo: string | null;
   kind: string | null;
   branch: string | null;
   worktree: string | null;
@@ -190,9 +195,10 @@ export type SharedFile = { task: string; title: string; file: string; theirs: st
  * own branch, git merges changes to different lines, and a clash on the same lines stops the
  * later merge, which reopens that task to settle it.
  */
-function sharedFiles(store: Store, files: readonly string[]): SharedFile[] {
+function sharedFiles(store: Store, files: readonly string[], repo: string | null): SharedFile[] {
   const shared: SharedFile[] = [];
-  for (const task of [...store.listTasks(OPEN), ...store.listTasks(IN_REVIEW)]) {
+  // Paths are relative to a repo, so only tasks in the same repo can share one.
+  for (const task of [...store.listTasks(OPEN), ...store.listTasks(IN_REVIEW)].filter((other) => other.repo === repo)) {
     for (const theirs of specOf(task).files) {
       const mine = files.find((file) => pathsOverlap(file, theirs));
       if (mine !== undefined) shared.push({ task: task.id, title: task.title, file: mine, theirs });
@@ -207,8 +213,9 @@ function requireOpenIssue(store: Store, issueId: string): void {
   if (issue.state !== OPEN) throw new HandlerError("refused", `issue ${issueId} is closed; reopen it before starting a task on it`);
 }
 
-function projectChecks(store: Store): string[] {
-  return readSettings(store).checks ?? [];
+/** The folder of the repo a task was cut in. */
+export function taskDir(store: Store, projectDir: string, task: Task): string {
+  return repoOfRow(store, projectDir, task).dir;
 }
 
 function featureName(store: Store, task: Task): string | null {
@@ -229,13 +236,14 @@ export function briefOf(store: Store, task: Task): TaskBrief {
     branch: task.branch,
     worktree: task.worktree,
     feature: featureName(store, task),
+    repo: task.repo,
     kind: task.kind,
     baseCommit: task.baseCommit,
     commitSha: task.commitSha,
     reviewMode: task.reviewMode,
     push: pushOf(task),
     spec,
-    checks: [...projectChecks(store), ...spec.checks],
+    checks: [...repoChecks(store, task.repo), ...spec.checks],
     startLine: taskStartLine(task.id),
     ...(task.reviewMode === TRUEST ? { review: truestReviewOf(store, task) } : {}),
   };
@@ -257,6 +265,12 @@ export const taskStartSchema: InputSchema = {
     feature: {
       type: "string",
       description: "The open feature branch to cut the task from and fold it into. Omit it when exactly one is open, and always in truest mode, which has no feature branches.",
+      pattern: NOT_BLANK,
+    },
+    repo: {
+      type: "string",
+      description:
+        "In a workspace of several repos, the repo the task works in, by its name in the workspace (settings_get lists them). In agile mode the task works in its feature branch's repo, so it may be omitted. Omit it in a project of one repo.",
       pattern: NOT_BLANK,
     },
     intent: { type: "string", description: "What the task is to change and why, in full.", pattern: NOT_BLANK },
@@ -310,6 +324,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
     issue_id: string;
     kind: TaskKind;
     feature?: string;
+    repo?: string;
     intent: string;
     files: string[];
     criteria: string[];
@@ -324,30 +339,44 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   };
   requireOpenIssue(store, request.issue_id);
   const settings = readSettings(store);
-  const baseBranch = settings.base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first");
   // The review mode decides how many tokens the project uses, so no task starts until the Human chose it.
-  if (settings.review_mode === null) throw new HandlerError("refused", NO_REVIEW_MODE);
   const truest = settings.review_mode === TRUEST;
   if (truest && request.feature !== undefined) {
+    const base = resolveRepo(store, context.projectDir, request.repo).baseBranch ?? "base branch";
     throw new HandlerError(
       "refused",
-      `the project is in truest mode, which has no feature branches: each task is cut from the base branch ${baseBranch} and reaches it through its own pull request. Start the task without feature.`,
+      `the project is in truest mode, which has no feature branches: each task is cut from the base branch ${base} and reaches it through its own pull request. Start the task without feature.`,
     );
   }
-  const feature = truest ? null : featureForTask(store, request.feature);
+  let feature: Feature | null = null;
+  let repo;
+  if (truest || settings.review_mode === null) {
+    repo = resolveRepo(store, context.projectDir, request.repo);
+  } else {
+    // The repo named, when it is registered, narrows which open feature branch is meant.
+    const named = request.repo === undefined ? undefined : resolveRepo(store, context.projectDir, request.repo).name ?? undefined;
+    feature = featureForTask(store, request.feature, named);
+    repo = repoOfRow(store, context.projectDir, feature);
+    if (named !== undefined && feature.repo !== named) {
+      throw new HandlerError("refused", `the feature branch ${feature.name} is in the repo ${feature.repo ?? "(the project folder)"}, not ${named}; a task works in its feature branch's repo`);
+    }
+  }
+  const baseBranch = repo.baseBranch;
+  if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
+  if (settings.review_mode === null) throw new HandlerError("refused", NO_REVIEW_MODE);
+  const dir = repo.dir;
 
   const id = newId();
   const branch = `${TASK_BRANCH_PREFIX}${shortTaskId(id)}`;
   const worktree = taskWorktreePath(context.projectDir, id);
-  const baseCommit = feature === null ? truestBase(context.projectDir, baseBranch, `task ${id}`) : featureTip(context.projectDir, feature);
-  addWorktree(context.projectDir, branch, worktree, baseCommit);
-  const mainSnapshot = snapshotMainFolder(context.projectDir, id);
+  const baseCommit = feature === null ? truestBase(dir, baseBranch, `task ${id}`) : featureTip(dir, feature);
+  addWorktree(dir, branch, worktree, baseCommit);
+  const mainSnapshot = snapshotMainFolder(dir, id);
   let shared: SharedFile[] = [];
   try {
     store.transaction(() => {
       requireOpenIssue(store, request.issue_id);
-      shared = sharedFiles(store, spec.files);
+      shared = sharedFiles(store, spec.files, repo.name);
       store.appendTask(actor, {
         id,
         issueId: request.issue_id,
@@ -360,13 +389,14 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
         featureId: feature?.id ?? null,
         kind: request.kind,
         mainSnapshot,
+        repo: repo.name,
       });
       // A task keeps the mode of its start, so a mode change cannot strand it halfway.
       store.updateTask(actor, id, { reviewMode: truest ? TRUEST : DEFAULT_REVIEW_MODE });
     });
   } catch (error) {
-    removeWorktree(context.projectDir, branch, worktree);
-    dropMainFolderSnapshot(context.projectDir, id);
+    removeWorktree(dir, branch, worktree);
+    dropMainFolderSnapshot(dir, id);
     throw error;
   }
   return { id, branch, worktree, brief: briefOf(store, requireTask(store, id)), sharedFiles: shared };
@@ -408,6 +438,7 @@ export function taskList(store: Store, _actor: Actor, input: unknown): TaskSumma
     state: task.state,
     title: task.title,
     feature: featureName(store, task),
+    repo: task.repo,
     kind: task.kind,
     branch: task.branch,
     worktree: task.worktree,
@@ -576,7 +607,9 @@ export function closeChecks(store: Store, task: Task): string[] {
   if (commands.length === 0) {
     throw new HandlerError(
       "refused",
-      "no checks are set, neither the project's nor the task's, and a task never closes unchecked; add the project's with `tmb onboard --check <command>`",
+      task.repo === null
+        ? "no checks are set, neither the project's nor the task's, and a task never closes unchecked; add the project's with `tmb onboard --check <command>`"
+        : `no checks are set, neither the repo ${task.repo}'s nor the task's, and a task never closes unchecked; add the repo's with \`tmb onboard --repo ${task.repo} --check <command>\``,
     );
   }
   return commands;
@@ -604,9 +637,10 @@ function finishFold(
     requireHeadAt(worktree, head);
     store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
   });
-  recordFindings(task, context.projectDir);
-  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(context.projectDir, worktree, task.branch);
-  const push = pushFeature(context.projectDir, featureName, actor);
+  const dir = taskDir(store, context.projectDir, task);
+  recordFindings(task, dir);
+  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
+  const push = pushFeature(dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -621,11 +655,12 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   if (task.reviewMode === TRUEST) return truestClose(store, actor, task, context);
 
+  const dir = taskDir(store, context.projectDir, task);
   const head = committedHead(task, store);
   const commands = closeChecks(store, task);
   const runs = [await checkCommit(store, actor, task, head, commands, context)];
   // Before the fold, which can move the main folder's branch, and on the task's own commit, before any rebase.
-  const findings = closeFindings(task, head, context.projectDir);
+  const findings = closeFindings(task, head, dir);
   // A task with no mode recorded was started before tasks kept one, when agile was the only mode.
   const reviewMode = task.reviewMode ?? DEFAULT_REVIEW_MODE;
 
@@ -637,13 +672,13 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
       requireHeadAt(worktree, head);
       store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
     });
-    recordFindings(task, context.projectDir);
+    recordFindings(task, dir);
     return closeResult(store, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
   }
 
   // Fold: fast-forward the feature branch to the task's commit, rebasing it and checking it again first when the feature moved.
   requireHeadAt(worktree, head);
-  const from = featureTip(context.projectDir, feature);
+  const from = featureTip(dir, feature);
   const rebased = !isAncestor(worktree, from, head);
   // A fold that adds no commit would record the feature's tip, another task's commit, as this task's.
   const alreadyOnFeature = () =>
@@ -673,7 +708,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
       requireHeadAt(worktree, folded);
       store.updateTask(actor, id, { state: CLOSED, commitSha: folded, reviewMode });
       // Last, so a refused move rolls the close back; undone below if the close cannot be written.
-      moved.undo = moveFeature(context.projectDir, feature.name, from, folded, `tmb: fold task ${id} into ${feature.name}`);
+      moved.undo = moveFeature(dir, feature.name, from, folded, `tmb: fold task ${id} into ${feature.name}`);
     });
   } catch (error) {
     moved.undo?.();
@@ -681,9 +716,9 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
     throw error;
   }
 
-  recordFindings(task, context.projectDir);
-  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(context.projectDir, worktree, task.branch);
-  const push = pushFeature(context.projectDir, feature.name, actor);
+  recordFindings(task, dir);
+  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
+  const push = pushFeature(dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }

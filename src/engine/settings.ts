@@ -2,7 +2,7 @@
 // entry, and a setting's current value is its newest entry.
 import type { Actor, Role, Store } from "./store/index.ts";
 
-export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks"] as const;
+export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "repos"] as const;
 export type SettingName = (typeof SETTING_NAMES)[number];
 
 export const REVIEW_MODES = ["agile", "truest"] as const;
@@ -18,7 +18,16 @@ export type HostRoles = Record<string, HostRole>;
 /** A host with no role in the record is the planner, as every host was before roles per host. */
 export const DEFAULT_HOST_ROLE: HostRole = "planner";
 
-export type SettingValues = { host: string; host_roles: HostRoles; base_branch: string; review_mode: ReviewMode; checks: string[] };
+/**
+ * One folder's policy in a workspace: for a repo, the branch its pull requests merge into and the
+ * checks its tasks run, or exempt, when tmb wires nothing in it; git false for a folder that is no
+ * repo, recorded and left alone (trustmybot/tmb#163).
+ */
+export type RepoPolicy = { base_branch?: string; checks?: string[]; exempt?: boolean; git?: false };
+/** Each folder of a workspace by its path from the workspace folder, with forward slashes. */
+export type RepoPolicies = Record<string, RepoPolicy>;
+
+export type SettingValues = { host: string; host_roles: HostRoles; base_branch: string; review_mode: ReviewMode; checks: string[]; repos: RepoPolicies };
 /** Each setting's current value, null while it has never been set. */
 export type Settings = { [N in SettingName]: SettingValues[N] | null };
 
@@ -58,6 +67,44 @@ function checkList(value: unknown): string[] {
   return value.map((check) => nonEmptyText("each check", check));
 }
 
+/** Checks a repo's name: a path inside the workspace, relative, with forward slashes. Throws SettingError. */
+export function validateRepoName(value: unknown): string {
+  const name = nonEmptyText("a repo's name", value).replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = name.split("/");
+  if (name.startsWith("/") || /^[A-Za-z]:/.test(name) || parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw new SettingError(`a repo is named by its path inside the workspace, such as tmb or apps/web, got ${JSON.stringify(value)}`);
+  }
+  return name;
+}
+
+function repoPolicies(value: unknown): RepoPolicies {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new SettingError(`repos must map each repo to its policy, got ${JSON.stringify(value)}`);
+  const repos: RepoPolicies = {};
+  for (const raw of Object.keys(value).sort()) {
+    const name = validateRepoName(raw);
+    const given = (value as Record<string, unknown>)[raw];
+    if (typeof given !== "object" || given === null || Array.isArray(given)) throw new SettingError(`the repo ${name}'s policy must be an object, got ${JSON.stringify(given)}`);
+    const fields = given as Record<string, unknown>;
+    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "exempt", "git"].includes(key));
+    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, exempt and git, not ${unknown.join(", ")}`);
+    if (fields.git !== undefined) {
+      // A folder that is no repo takes no policy: tmb records it and leaves it alone.
+      if (fields.git !== false) throw new SettingError(`git is given only as false, for a folder that is not a repo; got ${JSON.stringify(fields.git)} for ${name}`);
+      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks or exempt`);
+      repos[name] = { git: false };
+      continue;
+    }
+    const policy: RepoPolicy = {};
+    if (fields.exempt !== undefined && typeof fields.exempt !== "boolean") throw new SettingError(`the repo ${name}'s exempt must be true or false, got ${JSON.stringify(fields.exempt)}`);
+    if (fields.exempt === true) policy.exempt = true;
+    if (fields.base_branch !== undefined) policy.base_branch = nonEmptyText(`the repo ${name}'s base branch`, fields.base_branch);
+    if (fields.checks !== undefined) policy.checks = checkList(fields.checks);
+    if (policy.exempt !== true && policy.base_branch === undefined) throw new SettingError(`the repo ${name} needs a base_branch, or exempt: true`);
+    repos[name] = policy;
+  }
+  return repos;
+}
+
 /** Checks a value for a setting and returns it as it is stored: text trimmed. Throws SettingError. */
 export function validateSetting<N extends SettingName>(name: N, value: unknown): SettingValues[N] {
   switch (name) {
@@ -71,6 +118,8 @@ export function validateSetting<N extends SettingName>(name: N, value: unknown):
       return reviewMode(value) as SettingValues[N];
     case "checks":
       return checkList(value) as SettingValues[N];
+    case "repos":
+      return repoPolicies(value) as SettingValues[N];
   }
   throw new SettingError(`unknown setting ${JSON.stringify(name)}; the settings are ${SETTING_NAMES.join(", ")}`);
 }
@@ -103,12 +152,26 @@ export function hostRole(store: Store, host: string): HostRole {
   return Object.hasOwn(roles, host) ? roles[host]! : DEFAULT_HOST_ROLE;
 }
 
-const LABELS: Record<SettingName, string> = { host: "host", host_roles: "host roles", base_branch: "base branch", review_mode: "review mode", checks: "checks" };
+const LABELS: Record<SettingName, string> = { host: "host", host_roles: "host roles", base_branch: "base branch", review_mode: "review mode", checks: "checks", repos: "repos" };
+
+/** One repo's policy in a line: its base branch and checks, or exempt. */
+export function repoPolicyLine(name: string, policy: RepoPolicy): string {
+  if (policy.git === false) return `${name} (not a repo)`;
+  if (policy.exempt === true) return `${name} (exempt)`;
+  const checks = policy.checks ?? [];
+  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}`;
+}
 
 /** One line per setting, as the command line shows them. */
 export function settingLines(settings: Settings): string[] {
-  return SETTING_NAMES.map((name) => {
+  // repos shows only in a workspace, where it is set; a single-repo project never has it.
+  return SETTING_NAMES.map((name): string | null => {
     const value = settings[name];
+    if (name === "repos") {
+      if (value === null) return null;
+      const entries = Object.entries(value as RepoPolicies);
+      return `${LABELS[name]}: ${entries.length === 0 ? "(none found)" : entries.map(([repo, policy]) => repoPolicyLine(repo, policy)).join("; ")}`;
+    }
     if (name === "host_roles" && value !== null) {
       const entries = Object.entries(value as HostRoles);
       return `${LABELS[name]}: ${entries.length === 0 ? "(none)" : entries.map(([host, role]) => `${host} ${role}`).join(", ")}`;
@@ -116,7 +179,7 @@ export function settingLines(settings: Settings): string[] {
     const shown =
       value === null ? "(not set)" : Array.isArray(value) ? (value.length === 0 ? "(none)" : value.map((check) => JSON.stringify(check)).join(", ")) : value;
     return `${LABELS[name]}: ${shown}`;
-  });
+  }).filter((line): line is string => line !== null);
 }
 
 // --- the review mode: the Human's choice -------------------------------------------------

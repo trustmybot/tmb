@@ -13,7 +13,9 @@ type TextSchema = { type: "string"; description: string; enum?: readonly string[
 export type FieldSchema =
   | TextSchema
   | { type: "integer"; description: string; minimum: number; maximum: number }
-  | { type: "array"; description: string; items: Omit<TextSchema, "description">; minItems?: number };
+  | { type: "array"; description: string; items: Omit<TextSchema, "description">; minItems?: number }
+  /** A map the operation checks itself; here only its shape, an object, is checked. */
+  | { type: "object"; description: string; additionalProperties: Record<string, unknown> };
 
 export type InputSchema = {
   type: "object";
@@ -31,6 +33,7 @@ function describeText(field: Omit<TextSchema, "description">): string {
 }
 
 function describeField(name: string, field: FieldSchema): string {
+  if (field.type === "object") return `${name} must be an object`;
   if (field.type === "integer") return `${name} must be an integer from ${field.minimum} to ${field.maximum}`;
   if (field.type === "array") {
     const least = field.minItems === undefined || field.minItems === 0 ? "" : ` of at least ${field.minItems}`;
@@ -43,6 +46,10 @@ function fieldValue(name: string, field: FieldSchema, value: unknown): unknown {
   const refuse = () => new HandlerError("invalid_input", `${describeField(name, field)}, got ${JSON.stringify(value)}`);
   if (field.type === "integer") {
     if (typeof value !== "number" || !Number.isInteger(value) || value < field.minimum || value > field.maximum) throw refuse();
+    return value;
+  }
+  if (field.type === "object") {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) throw refuse();
     return value;
   }
   if (field.type === "array") {
