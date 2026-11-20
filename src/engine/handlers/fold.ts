@@ -1,9 +1,12 @@
 // The git steps of a fold: bring a closing task onto its feature branch's tip, move the feature
 // branch to the task's commit without losing a concurrent fold, clean up the task's branch and
 // worktree, and push the feature branch to origin as a backup.
+import { existsSync, realpathSync } from "node:fs";
+import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
 import { pushActorEnv } from "../push-actor.ts";
-import type { Actor } from "../store/index.ts";
+import type { Actor, Task } from "../store/index.ts";
+import { TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 
 export const PUSH_RESULTS = ["pushed", "failed", "skipped"] as const;
@@ -99,14 +102,131 @@ export function moveFeature(projectDir: string, featureName: string, from: strin
   return () => void runGit(holder, ["reset", "--quiet", "--keep", from]);
 }
 
-/** Removes a closed task's worktree and branch; returns what could not be removed. */
-export function removeTaskCheckout(projectDir: string, worktree: string, branch: string): string[] {
+/** What cleaning up a closed task's checkout did: what it kept and why, and what it dropped. */
+export type CheckoutCleanup = {
+  /** What could not be removed and why, one line each; the task stays closed. */
+  problems: string[];
+  /** Files git ignores that went with a removed worktree, one line; empty when none did. */
+  dropped: string[];
+};
+
+const FILES_NAMED = 5;
+
+/** The files a worktree holds besides its commit, from `git status`, by what git makes of them. */
+type WorktreeFiles = { changed: string[]; untracked: string[]; ignored: string[] };
+
+function worktreeFiles(worktree: string): WorktreeFiles | null {
+  // Version 2 starts every line with its kind, so trimming the output loses nothing.
+  const status = runGit(worktree, ["status", "--porcelain=v2", "--ignored"]);
+  if (!status.ok) return null;
+  const files: WorktreeFiles = { changed: [], untracked: [], ignored: [] };
+  for (const line of status.stdout.split("\n")) {
+    if (line === "" || line.startsWith("#")) continue;
+    const fields = line.split(" ");
+    if (line.startsWith("? ")) files.untracked.push(line.slice(2));
+    else if (line.startsWith("! ")) files.ignored.push(line.slice(2));
+    else if (line.startsWith("1 ")) files.changed.push(fields.slice(8).join(" "));
+    else if (line.startsWith("2 ")) files.changed.push(fields.slice(9).join(" ").split("\t")[0]!);
+    else if (line.startsWith("u ")) files.changed.push(fields.slice(10).join(" "));
+  }
+  return files;
+}
+
+function named(files: string[]): string {
+  const more = files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : "";
+  return `${files.slice(0, FILES_NAMED).join(", ")}${more}`;
+}
+
+function realPath(file: string): string {
+  try {
+    return realpathSync(file);
+  } catch {
+    return path.resolve(file);
+  }
+}
+
+/** The worktrees git lists for the repository at `projectDir`, by real path, with whether the host locked each. */
+export function listedWorktrees(projectDir: string): Map<string, { locked: boolean }> {
+  const listed = new Map<string, { locked: boolean }>();
+  const result = runGit(projectDir, ["worktree", "list", "--porcelain"]);
+  if (!result.ok) return listed;
+  let current: string | null = null;
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      current = realPath(line.slice("worktree ".length));
+      listed.set(current, { locked: false });
+    } else if (current !== null && (line === "locked" || line.startsWith("locked "))) {
+      listed.get(current)!.locked = true;
+    }
+  }
+  return listed;
+}
+
+/** Why the worktree stays, or how to remove it: with `force` when files git ignores are left in it. */
+function keepOrRemove(projectDir: string, worktree: string, branch: string | null): { kept: string } | { force: boolean; ignored: string[] } {
+  if (realPath(worktree) === realPath(projectDir)) return { kept: `the worktree ${worktree} is the project's main folder, which tmb never removes` };
+  const listed = listedWorktrees(projectDir).get(realPath(worktree));
+  if (listed === undefined) return { force: false, ignored: [] };
+  const withBranch = branch === null ? "" : ` and the branch ${branch}`;
+  if (listed.locked) return { kept: `the worktree ${worktree}${withBranch} were kept: the host locked the worktree, so it may still be in use; tmb tries again at a session start with no task open` };
+  const files = worktreeFiles(worktree);
+  if (files === null) return { force: false, ignored: [] };
+  if (files.changed.length > 0) return { kept: `the worktree ${worktree}${withBranch} were kept: it has changes that are not committed: ${named(files.changed)}` };
+  if (files.untracked.length > 0) {
+    const command = `git worktree remove --force ${worktree}${branch === null ? "" : ` && git branch -D ${branch}`}`;
+    return {
+      kept: `the worktree ${worktree}${withBranch} were kept: it holds files git does not ignore, which may be work nobody committed: ${named(files.untracked)}. Commit or ignore them, or remove the worktree with: ${command}`,
+    };
+  }
+  return { force: files.ignored.length > 0, ignored: files.ignored };
+}
+
+/**
+ * Removes a closed task's worktree, then its branch unless `branch` is null (a truest task's branch
+ * stays for its pull request). Keeps both when the worktree has uncommitted changes, holds files git
+ * does not ignore, or its host locked it; drops files git ignores with the worktree and names them.
+ */
+export function removeTaskCheckout(projectDir: string, worktree: string, branch: string | null): CheckoutCleanup {
   const problems: string[] = [];
-  const removed = runGit(projectDir, ["worktree", "remove", worktree]);
-  if (!removed.ok) problems.push(`the worktree ${worktree} was not removed: ${gitFailure(removed)}`);
-  const deleted = runGit(projectDir, ["branch", "-D", branch]);
-  if (!deleted.ok) problems.push(`the branch ${branch} was not deleted: ${gitFailure(deleted)}`);
-  return problems;
+  const dropped: string[] = [];
+  const decision = keepOrRemove(projectDir, worktree, branch);
+  if ("kept" in decision) return { problems: [decision.kept], dropped };
+  if (existsSync(worktree) || listedWorktrees(projectDir).has(realPath(worktree))) {
+    const removed = runGit(projectDir, ["worktree", "remove", ...(decision.force ? ["--force"] : []), worktree]);
+    if (!removed.ok) {
+      const withBranch = branch === null ? "" : `; the branch ${branch} was kept with it`;
+      return { problems: [`the worktree ${worktree} was not removed: ${gitFailure(removed)}${withBranch}`], dropped };
+    }
+    if (decision.ignored.length > 0) dropped.push(`Removed the worktree ${worktree} with the files git ignores in it: ${named(decision.ignored)}`);
+  } else {
+    // The folder is gone already: forget it, so the branch is free to delete.
+    runGit(projectDir, ["worktree", "prune"]);
+  }
+  if (branch !== null && runGit(projectDir, ["rev-parse", "--verify", "--quiet", branchRef(branch)]).ok) {
+    const deleted = runGit(projectDir, ["branch", "-D", branch]);
+    if (!deleted.ok) problems.push(`the branch ${branch} was not deleted: ${gitFailure(deleted)}`);
+  }
+  return { problems, dropped };
+}
+
+/**
+ * Tries again to remove what closed tasks kept: each worktree git still lists, and each agile task's
+ * branch still here. Run at a session start with no task open; returns what it removed, one line each.
+ */
+export function retryKeptCheckouts(projectDir: string, tasks: readonly Task[]): string[] {
+  const listed = listedWorktrees(projectDir);
+  const refs = runGit(projectDir, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
+  const branches = new Set(refs.ok ? refs.stdout.split("\n") : []);
+  const removed: string[] = [];
+  for (const task of tasks) {
+    if (task.worktree === null) continue;
+    // A truest task's branch stays for its pull request; only its worktree goes.
+    const branch = task.reviewMode === TRUEST || task.branch === null || !branches.has(task.branch) ? null : task.branch;
+    if (!listed.has(realPath(task.worktree)) && branch === null) continue;
+    const cleanup = removeTaskCheckout(projectDir, task.worktree, branch);
+    if (cleanup.problems.length === 0) removed.push(`task ${task.id}: ${[task.worktree, branch].filter((part) => part !== null).join(" and ")}`);
+  }
+  return removed;
 }
 
 /**

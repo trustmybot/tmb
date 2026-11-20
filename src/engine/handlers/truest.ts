@@ -12,7 +12,7 @@ import type { Actor, Review, Store, Task } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip } from "./features.ts";
-import { isAncestor, pushFeature, rebaseOnto, undoRebase } from "./fold.ts";
+import { isAncestor, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
 import { existingPullRequest, type Finding, openPullRequest, type ReviewSummary, summaryOf, type Verdict } from "./reviews.ts";
@@ -351,6 +351,8 @@ export type TaskPrResult = {
   /** Whether the base branch's protection requires the mark; null when not known or origin is no GitHub repository. */
   markRequired: boolean | null;
   cleanupProblems: string[];
+  /** What the cleanup dropped with the task's worktree: files git ignores, one line. */
+  cleanedUp: string[];
 };
 
 /** The stable patch id of the change from `from` to `to`, which a rebase that only moves the change keeps. */
@@ -401,8 +403,7 @@ async function rebaseIfBaseMoved(
     // Nothing is left to bring: the task is done without a pull request, and its files are free again.
     undo();
     store.updateTask(actor, task.id, { state: CLOSED });
-    const removed = runGit(context.projectDir, ["worktree", "remove", worktree]);
-    const kept = removed.ok ? "" : ` Its worktree ${worktree} was not removed: ${gitFailure(removed)}.`;
+    const kept = removeTaskCheckout(context.projectDir, worktree, null).problems.map((problem) => ` Not cleaned up: ${problem}.`).join("");
     throw new HandlerError(
       "refused",
       `the base branch ${baseBranch} at ${tip} already holds the change of task ${task.id}, so its pull request would add nothing. The task is closed with no pull request; its branch ${task.branch} is kept.${kept}`,
@@ -506,8 +507,7 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   store.updateTask(actor, task.id, { state: CLOSED, prUrl: opened.url });
 
   // The branch stays, on origin and here, for the pull request; only the worktree goes.
-  const removed = runGit(context.projectDir, ["worktree", "remove", task.worktree!]);
-  const cleanupProblems = removed.ok ? [] : [`the worktree ${task.worktree} was not removed: ${gitFailure(removed)}`];
+  const cleanup = removeTaskCheckout(context.projectDir, task.worktree!, null);
   const markRequired = markRequiredOn(context.projectDir, baseBranch);
-  return { task: task.id, url: opened.url, base: baseBranch, branch: task.branch!, commit, coveredBy, rebasedOnto: onto, push: push.detail, cleanupProblems, markRequired };
+  return { task: task.id, url: opened.url, base: baseBranch, branch: task.branch!, commit, coveredBy, rebasedOnto: onto, push: push.detail, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, markRequired };
 }
