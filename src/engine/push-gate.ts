@@ -24,8 +24,6 @@ export type PushRef = { localRef: string; localSha: string; remoteRef: string; r
 const ZERO_SHA = /^0+$/;
 const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const SHOWN_COMMITS = 10;
-/** git cannot say who typed a push, so the gate's decision on one is recorded as the Human's. */
-const PUSHER: Actor = { kind: "human" };
 
 /** git's stdin lines `<local-ref> <local-sha> <remote-ref> <remote-sha>`, or null when one is not that shape. */
 export function parsePushRefs(stdin: string): PushRef[] | null {
@@ -113,9 +111,10 @@ function denied(remote: string, why: string): Decision {
 /**
  * Judges a push from git's pre-push hook: `remote` is the remote's name (or address) and `stdin`
  * the ref lines git passed. With no record it allows; a record it cannot read denies. With a
- * readable record the decision is recorded as a guard decision.
+ * readable record the decision is recorded as a guard decision made by `pusher`: the agent a push
+ * tmb ran names in its environment, or the Human, since git cannot say who typed a push.
  */
-export function judgePush(projectDir: string, remote: string, stdin: string): Decision {
+export function judgePush(projectDir: string, remote: string, stdin: string, pusher: Actor = { kind: "human" }): Decision {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     if (opened.error.failure === "missing") return { decision: "allow" };
@@ -135,7 +134,7 @@ export function judgePush(projectDir: string, remote: string, stdin: string): De
       const allowed = judge === judgeTruestRef ? "no ref of the push brings an unreviewed task commit, or any unreviewed commit onto the base branch" : `no ref of the push brings unreviewed commits onto ${base}`;
       decision = why === undefined ? { decision: "allow", reason: allowed } : denied(remote, why);
     }
-    store.appendGuardDecision(PUSHER, {
+    store.appendGuardDecision(pusher, {
       event: JSON.stringify({ type: "before-push", raisedBy: "git", remote, refs: refs ?? stdin }),
       decision: decision.decision,
       reason: decision.reason ?? "no rule denies it",

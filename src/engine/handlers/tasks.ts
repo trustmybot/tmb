@@ -604,7 +604,7 @@ function finishFold(
   });
   recordFindings(task, context.projectDir);
   const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
-  const push = pushFeature(context.projectDir, featureName);
+  const push = pushFeature(context.projectDir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems, ...findings });
 }
@@ -681,7 +681,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, context.projectDir);
   const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
-  const push = pushFeature(context.projectDir, feature.name);
+  const push = pushFeature(context.projectDir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems, ...findings });
 }
