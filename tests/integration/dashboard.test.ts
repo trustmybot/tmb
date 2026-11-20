@@ -176,7 +176,7 @@ describe("the API reads the code graph", () => {
     expect(top.functions).toBe(3);
     expect(top.children.find((c: any) => c.path === "src")).toMatchObject({ kind: "dir", functions: 3 });
     const src = await api("graph/tree?path=src");
-    expect(src.children).toEqual([{ kind: "file", path: "src/theme.ts", name: "theme.ts", lang: "typescript", lane: "product", functions: 3, notParsed: null }]);
+    expect(src.children).toEqual([{ kind: "file", path: "src/theme.ts", name: "theme.ts", lang: "typescript", lane: "product", functions: 3, notParsed: null, area: null }]);
   });
 
   test("a file's functions, each inside its container, and one function with its callers and callees", async () => {

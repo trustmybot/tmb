@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { openGraphDb } from "../src/engine/graph/db.ts";
+import { GRAPH_SCHEMA_VERSION, openGraphDb } from "../src/engine/graph/db.ts";
 import { indexProject, openView } from "../src/engine/graph/fresh.ts";
 import { ImportConfig, parseJsonc } from "../src/engine/graph/import-config.ts";
 import { lookupSymbol } from "../src/engine/graph/lookups.ts";
@@ -131,7 +131,7 @@ test("a graph made by the tmb before this count takes the new column and is rebu
   old.close();
   const view = await openView(project, store);
   try {
-    expect(view.db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
+    expect(view.db.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });
     expect(view.db.query("SELECT unresolved_imports FROM layers WHERE layer = 'base'").get()).toEqual({ unresolved_imports: 1 });
   } finally {
     view.db.close();
