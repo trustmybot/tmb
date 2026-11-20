@@ -1,11 +1,14 @@
 // The command line's help, typo tips and colour, run as the Human runs tmb: a separate process
 // whose output is piped, so it is not a terminal.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CLI } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-cli-help-")));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));

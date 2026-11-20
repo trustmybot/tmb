@@ -1,9 +1,12 @@
 // Unit: a docs task may change only the prose, data and image types on tmb's fixed list, and the
 // list in the reference is the one the engine uses (trustmybot/tmb#185).
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../src/engine/docs-files.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 describe("the docs task's file types", () => {
   test("allows prose, data and images, by last extension and without regard to case", () => {

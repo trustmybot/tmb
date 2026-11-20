@@ -1,9 +1,12 @@
 // The code graph driven as separate processes: the Human's `tmb index` and `tmb graph`
 // commands, and an agent's graph tools over stdio. The graph is current after a change lands
 // on the base branch, with no one running an index.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { PROJECT_MAP_HEADING } from "../../src/engine/session-start.ts";
 import { callJson, callRefused, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, connect, cleanup } = tmbProcesses("tmb-code-graph-");
 afterAll(cleanup);

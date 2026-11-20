@@ -76,6 +76,8 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 | On request, and before a level is called done | Agent run, Agent chain |
 | Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
 
+Every `bun test` file starts with `setDefaultTimeout(30_000)`. bun's default of 5 seconds fails tests that start tmb, git or a server whenever the machine is busy, and bun cannot raise it for the whole run: the call holds only in the file that makes it. A test that needs longer names its own timeout, and a test that hangs still fails. [tests/lint/test-timeout.test.ts](lint/test-timeout.test.ts) names any file that leaves the call out.
+
 No test fixes the OS, the model or the machine's setup. Each is a setting of the run, so the same test runs unchanged on another OS, with another model, or on a machine set up differently. A test that only passes with one of them names it and says why.
 
 ## Tests each level adds

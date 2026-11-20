@@ -3,15 +3,17 @@
 // it brings a commit no reviewed or waived feature branch tip holds, and the base branch is
 // never deleted; a feature branch's backup push goes through. Each push here is a real git push
 // to a bare origin, typed as the Human would.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
-import { BASE_BRANCH, callJson, tmbProcesses } from "./tmb-processes.ts";
+import { BASE_BRANCH, CLI, callJson, tmbProcesses } from "./tmb-processes.ts";
 
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
-const { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
+const { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
 afterAll(cleanup);
 
 /** A push typed by hand: git runs the pre-push hook; returns its exit status and what it said. */
@@ -219,5 +221,66 @@ describe("the push gate of a project below its repo's top", () => {
     const allowed = push(repo, "-q", "origin", BASE_BRANCH);
     expect(allowed.status).toBe(0);
     expect(allowed.stderr).toContain(`tmb found no project record in ${project}, so the push gate judged nothing`);
+  });
+});
+
+describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", () => {
+  // The line tmb adds calls the program by name, as a committed hook file must: a tmb on PATH runs this source.
+  const bin = path.join(scratch, "tmb-on-path");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(path.join(bin, "tmb"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(CLI)} "$@"\n`, { mode: 0o755 });
+  const withTmb = { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` };
+  const pushWith = (project: string, pathEnv: Record<string, string>, ...args: string[]) => {
+    const result = spawnSync("git", ["push", ...args], { cwd: project, env: pathEnv, encoding: "utf8", timeout: 60_000 });
+    return { status: result.status, stderr: result.stderr };
+  };
+  const FOREIGN = "#!/bin/sh\necho the other tool ran\n";
+
+  function setUpWithForeignHook(): string {
+    const project = mkdtempSync(path.join(scratch, "husky-"));
+    git(project, "init", "-q", "-b", BASE_BRANCH);
+    git(project, "config", "user.name", "t");
+    git(project, "config", "user.email", "t@example.com");
+    writeFileSync(path.join(project, "README.md"), "hello\n");
+    git(project, "add", ".");
+    git(project, "commit", "-q", "-m", "first");
+    const origin = `${project}-origin.git`;
+    git(scratch, "init", "-q", "--bare", origin);
+    git(project, "remote", "add", "origin", origin);
+    git(project, "push", "-q", "-u", "origin", BASE_BRANCH);
+    writeFileSync(hookFile(project), FOREIGN, { mode: 0o755 });
+    return project;
+  }
+
+  test("init, every session start and doctor say the gate is off; with the yes an unreviewed push is refused; remove takes the line out", () => {
+    const project = setUpWithForeignHook();
+    expect(tmb(["init"], project)).toContain(`The push gate is off in ${project}`);
+    // --yes is not the yes to change another tool's hook.
+    const onboarded = tmb(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "true", "--yes"], project);
+    expect(onboarded).toContain(`The push gate stays off in ${project}`);
+    expect(readFileSync(hookFile(project), "utf8")).toBe(FOREIGN);
+    for (let start = 0; start < 2; start++) expect(sessionStart(project)).toContain(`The push gate is off in ${project}`);
+    const doctor = run(["doctor"], project).stdout;
+    expect(doctor).toContain("the push gate is off where git's pre-push hook is another tool's");
+    expect(doctor).toContain("onboard --add-push-gate");
+
+    expect(tmb(["onboard", "--add-push-gate", "--yes"], project)).toContain("Added tmb's line to git's pre-push hook");
+    const text = readFileSync(hookFile(project), "utf8");
+    expect(text).toStartWith(FOREIGN);
+    // Safe to commit: no machine's path in it.
+    expect(text).toContain("'tmb' 'pre-push' '--project' '.'");
+    expect(text).not.toContain(scratch);
+    expect(sessionStart(project)).not.toContain("The push gate is off");
+
+    const unreviewed = commitFile(project, "hotfix.txt", "fix\n", "a hotfix straight on main");
+    const refused = pushWith(project, withTmb, "origin", BASE_BRANCH);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("tmb refused the push to origin");
+    expect(refused.stderr).toContain(unreviewed.slice(0, 7));
+    // Where tmb is not installed, the line does nothing and the other tool's hook goes on.
+    expect(pushWith(project, env, "-q", "origin", "HEAD:refs/heads/elsewhere").status).toBe(0);
+
+    expect(tmb(["remove"], project)).toContain("Took tmb's line out of git's pre-push hook");
+    expect(readFileSync(hookFile(project), "utf8")).toBe(FOREIGN);
   });
 });

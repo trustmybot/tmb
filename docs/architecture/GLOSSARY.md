@@ -31,6 +31,7 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 | Harness | tmb as a whole: the record, the code graph, and the workflow with the gate that enforces it, around the agents a host runs. It is not the program that runs the model; that is the host. |
 | Gate | What stops a step that the workflow does not allow. |
 | Concept | An agent-written note in the code graph, anchored to code. |
+| Area | A logical part of a project, such as login or billing: a named group of files in the code graph, written by the planner. "tests" is built in. |
 | The Human | The developer tmb works for. |
 
 ## Not carried over

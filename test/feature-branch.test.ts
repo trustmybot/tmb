@@ -1,7 +1,7 @@
 // Feature branches: feature_start cuts one from the base branch, and a task's close folds the
 // task into it, rebasing and checking again when it moved, then pushes it to origin as a
 // backup. Runs against real git repositories in a temporary folder.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,6 +20,9 @@ import { moveFeature, retryKeptCheckouts } from "../src/engine/handlers/fold.ts"
 import { sessionStartContext } from "../src/engine/session-start.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

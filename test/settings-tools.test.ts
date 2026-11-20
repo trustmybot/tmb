@@ -1,12 +1,15 @@
 // settings_get and settings_set: the planner reads the project's settings with what tmb detects,
 // and applies the ones it recommends; each change is an audit entry by the planner.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { HandlerError, settingsGet, settingsSet } from "../src/engine/handlers/index.ts";
 import { openProjectStore, readSettings } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "test" };
 const WORKER: Actor = { kind: "agent", role: "worker", host: "test" };

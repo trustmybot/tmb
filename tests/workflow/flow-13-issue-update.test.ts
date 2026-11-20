@@ -3,8 +3,11 @@
 // shows the new values and history shows each change with who made it. An update naming no field
 // is refused, and one that changes nothing records nothing. Scripted as tool calls through the
 // tool server, with no model.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const PLANNER = { kind: "agent", role: "planner", host: "test" };
 

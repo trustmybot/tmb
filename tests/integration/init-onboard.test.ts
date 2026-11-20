@@ -2,10 +2,13 @@
 // init prepares a fresh project without a question and leaves its settings empty, the first
 // session start tells the planner to apply the ones it recommends, onboard changes them as often
 // as asked, and remove takes back what init added.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readdirSync, readFileSync, statSync, writeFileSync, existsSync, mkdtempSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, CLI, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const NO_INPUT_LIMIT_MS = 20_000;
 const { scratch, env, git, run, tmb, sessionStart, connect, cleanup } = tmbProcesses("tmb-init-onboard-");

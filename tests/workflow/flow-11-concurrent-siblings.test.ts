@@ -3,10 +3,13 @@
 // covered by shared-files.test.ts). Closing the first folds it and leaves the second open with its worktree; closing
 // the second then rebases it onto the moved feature branch, runs the checks again on the rebased
 // commit and folds it. Scripted as tool calls through the tool server, with no model.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const FEATURE = "feat/siblings";
 
