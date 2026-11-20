@@ -84,7 +84,7 @@ describe("tmb init", () => {
   test("takes only the host and its role", () => {
     for (const flag of ["--yes", "--base"]) {
       const result = run(["init", flag, ...(flag === "--base" ? ["main"] : [])], newProject());
-      expect(result.status).toBe(1);
+      expect(result.status).toBe(2);
       expect(result.stderr).toContain(flag);
     }
   });
