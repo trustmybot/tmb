@@ -23,7 +23,7 @@ One step per platform. After it, two commands inside a project:
 
 Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 
-**A project follows the program's updates.** Decided by the Human on 2026-11-20 (trustmybot/tmb#128). A newer tmb that opens a project's database upgrades it by itself. The files init wrote follow at a session's start:
+**A project follows the program's updates.** Decided by the Human on 2026-11-20 (trustmybot/tmb#128). A newer tmb that opens a project's database upgrades it by itself. An older tmb refuses a record a newer one reshaped, and names the program that wrote it and the command that moves on, an update or the installer for a pinned build, never a version number (trustmybot/tmb#173). Such a project never holds this tmb's update back: no task there can run on it, and the update is what lets it read the record. The files init wrote follow at a session's start:
 
 - **When another version of the same program last wired the project, tmb redoes init's wiring**: each host the project is set up for, and git's push hook. That replaces only what tmb wrote, asks nothing and changes no setting. An older version refreshes as a newer one does, so the files match the program that runs.
 - **Never while a task is open.** tmb waits for a session start with none open, and says so.
