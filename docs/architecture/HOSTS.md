@@ -56,7 +56,7 @@ Why this way:
 - **It uses what the host already does well:** parallel subagents, a model and effort per role, isolation, and permission prompts shown to the Human.
 - **It works wherever the host runs.** Claude Code fires the same events in its command line and in its desktop app.
 
-Running several workers at once, each on its own task and worktree, is the host's parallel subagents plus the engine's rule that two open tasks never share a file.
+Running several workers at once, each on its own task and worktree, is the host's parallel subagents plus git: each task has its own branch, two open tasks may change the same file, and git settles it when their work is merged. A clash refuses the later task's close until it is resolved. The engine tells the planner which open tasks share a file, as information.
 
 ## What an adapter provides
 
