@@ -2,7 +2,7 @@ import { decide, handleEvent, MAIN_AGENT, projectRootOf, type TmbEvent, type Tmb
 import type { HookRun } from "../host-adapter.ts";
 import { isObject, type JsonObject } from "../common/json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
-import type { HookName } from "./settings.ts";
+import { type HookName, TASK_NAMING_TOOLS } from "./settings.ts";
 
 /** The subagent Claude Code starts when the call names no subagent_type. */
 const DEFAULT_SUBAGENT = "general-purpose";
@@ -50,9 +50,25 @@ function sessionStart(input: JsonObject, run: HookRun): string {
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 
+/**
+ * A worker naming its task with one of tmb's tools: inside a worker Claude Code gives the folder
+ * it works in as the input's cwd, which is the worktree Claude Code made for it. The engine adopts
+ * that worktree as the task's; the call itself always goes on.
+ */
+function workerInFolder(input: JsonObject, toolInput: JsonObject): string {
+  const folder = stringField(input, "cwd");
+  const task = stringField(toolInput, "id");
+  if (roleOf(input) !== "worker" || folder === undefined || task === undefined) return "";
+  decide({ ...eventOf(input, "worker-in-folder", folder), task: task.toUpperCase() });
+  return "";
+}
+
 /** A deny becomes Claude Code's deny; an allow says nothing, so Claude Code's own permission prompts still apply. */
 function preToolUse(input: JsonObject): string {
   const toolName = stringField(input, "tool_name");
+  if (toolName !== undefined && (TASK_NAMING_TOOLS as readonly string[]).includes(toolName)) {
+    return workerInFolder(input, isObject(input.tool_input) ? input.tool_input : {});
+  }
   const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
   if (!tool) return "";
   const toolInput = isObject(input.tool_input) ? input.tool_input : {};

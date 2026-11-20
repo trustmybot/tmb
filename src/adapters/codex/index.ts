@@ -25,8 +25,9 @@ export const adapter: HostAdapter = {
   id: HOST_ID,
   name: "Codex",
 
-  // Codex raises every tmb event; a subagent's start is denied from its spawn tool call.
-  limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: false, events: TMB_EVENT_TYPES },
+  // Codex raises every tmb event but a worker's folder: a Codex worker has no worktree of its host's
+  // making, so it works in the one tmb cut. A subagent's start is denied from its spawn tool call.
+  limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: false, events: TMB_EVENT_TYPES.filter((type) => type !== "worker-in-folder") },
 
   detect,
 

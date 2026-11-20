@@ -253,25 +253,20 @@ describe("the guards", () => {
     expect(command("gh pr view 3").decision).toBe("allow");
   });
 
-  test("tmb leaves the reviewer's writes to the host; a worker writes in the project only inside an open task's worktree", () => {
+  test("tmb leaves a worker's and a reviewer subagent's writes to the host, wherever they land", () => {
     createRecord();
     const worktree = mkdtempSync(path.join(project, "wt-"));
-    const closedTree = mkdtempSync(path.join(project, "wt-"));
     const opened = openProjectStore(project, { create: true });
     if (!opened.ok) throw opened.error;
     const issueId = opened.store.createIssue(PLANNER, { title: "goal" });
     opened.store.appendTask(PLANNER, { issueId, title: "task", spec: "{}", state: "open", worktree });
-    opened.store.appendTask(PLANNER, { issueId, title: "done", spec: "{}", state: "closed", worktree: closedTree });
     opened.store.close();
     const write = (role: string, action: string) => decide(event({ type: "before-file-write", role, action }));
 
     expect(write("reviewer", path.join(worktree, "a.ts")).decision).toBe("allow");
     expect(write("worker", path.join(worktree, "src", "new", "a.ts")).decision).toBe("allow");
-    expect(write("worker", path.join(project, "src", "a.ts")).reason).toContain("no open task's worktree");
-    expect(write("worker", "src/a.ts").decision).toBe("deny");
-    expect(write("worker", path.join(closedTree, "a.ts")).decision).toBe("deny");
-    expect(write("worker", path.join(worktree, "..", "escape.ts")).decision).toBe("deny");
-    expect(write("worker", path.join(tmpdir(), "outside-the-project.txt")).decision).toBe("allow");
+    expect(write("worker", path.join(project, "src", "a.ts")).decision).toBe("allow");
+    expect(write("worker", "src/a.ts").decision).toBe("allow");
     expect(write("planner", "src/a.ts").decision).toBe("allow");
   });
 });

@@ -217,3 +217,13 @@ The check of a docs task by file type at its close ([WORKFLOW.md](../docs/archit
 |---|---|---|
 | Unit | [test/linguist.test.ts](../test/linguist.test.ts) | Linguist's table marks programming languages (TypeScript, Shell, Dockerfile, Makefile) apart from prose, markup and data (Markdown, HTML, CSS, JSON, YAML, TOML, SQL); a file the table does not know, or a name with no extension it knows, is not refused; an extension of more than one type is refused only when every language left is programming. |
 | Workflow simulation | [tests/workflow/docs-task-check.test.ts](workflow/docs-task-check.test.ts) | A docs task whose change touches a source file cannot close, and the refusal names the file; once its change touches only docs, markup and data it closes; a code task is never checked this way. |
+
+## Checks at close and a worker's worktree
+
+What a close checks beyond the checks, and a worker started in a worktree its host made (trustmybot/tmb#98, Parts B and C).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/claude-code-role-files.test.ts](../test/claude-code-role-files.test.ts) | The worker's Claude Code agent file asks for worktree isolation; the reviewer's does not. |
+| Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | Claude Code raises a worker's folder when the worker names its task with task_brief or task_close; Codex, whose worker works in the worktree tmb cut, does not. |
+| Workflow simulation | [tests/workflow/close-checks.test.ts](workflow/close-checks.test.ts) | A commit outside the task's files closes, the close adds the files to the task and says so; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |

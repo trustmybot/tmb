@@ -140,7 +140,7 @@ describe("adapter setup and remove with roles", () => {
     expect(readFileSync(file, "utf8")).toBe("The Human's own.\n");
   });
 
-  test("setup with the engine's list writes the worker and the reviewer, the reviewer denied the file-editing tools", () => {
+  test("setup with the engine's list writes the worker in a worktree of its own and the reviewer denied the file-editing tools", () => {
     const helper = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
     adapter.setup(project, BINARY);
     expect(readdirSync(agentsDir(project)).sort()).toEqual(["helper.md", "reviewer.md", "worker.md"]);
@@ -154,6 +154,8 @@ describe("adapter setup and remove with roles", () => {
 
     expect(deniedIn(worker)).toEqual([]);
     expect(deniedIn(reviewer)).toEqual(["Edit", "Write", "NotebookEdit"]);
+    expect(worker).toMatch(/^isolation: "worktree"$/m);
+    expect(reviewer).not.toContain("isolation");
 
     expect(adapter.setup(project, BINARY).filter((line) => !/already|kept/.test(line))).toEqual([]);
     expect(readFileSync(roleFilePath(project, "worker"), "utf8")).toBe(worker);

@@ -19,8 +19,10 @@ import {
   type CheckRunOutcome,
   checkCommit,
   closeChecks,
+  closeFindings,
   closeResult,
   committedHead,
+  recordFindings,
   requireHeadAt,
   requireTask,
   type TaskCloseResult,
@@ -193,14 +195,16 @@ export async function truestClose(store: Store, actor: Actor, task: Task, contex
   const head = committedHead(task);
   const commands = closeChecks(store, task);
   const runs: CheckRunOutcome[] = [await checkCommit(store, actor, task, head, commands, context)];
+  const findings = closeFindings(task, head, context.projectDir);
   const baseCommit = movedBase(store, task, head, context.projectDir);
   store.transaction(() => {
     if (requireTask(store, task.id).state !== OPEN) throw new HandlerError("refused", `task ${task.id} was closed while its checks ran`);
     requireHeadAt(worktree, head);
     store.updateTask(actor, task.id, { state: IN_REVIEW, commitSha: head, ...(baseCommit === null ? {} : { baseCommit }) });
   });
+  recordFindings(store, actor, task, findings, context.projectDir);
   const next = `task ${task.id} is in review at ${head}: start the reviewer with the ${taskReviewLine(task.id)} line in its prompt; once it passes, open the pull request with task_pr`;
-  return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [] }), next };
+  return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [], ...findings }), next };
 }
 
 /**

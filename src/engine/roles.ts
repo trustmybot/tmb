@@ -15,6 +15,8 @@ export type SubagentRole = {
   /** The role's prompt. */
   prompt: string;
   capabilities: readonly Capability[];
+  /** The host starts the role in a worktree of its own, which tmb adopts as the task's. */
+  ownWorktree?: boolean;
   model?: string;
   effort?: string;
 };
@@ -27,6 +29,7 @@ export const SUBAGENT_ROLES: readonly SubagentRole[] = [
       "Carries out one task's spec in the task's own worktree, runs its checks and closes it. Start it only after task_start, with the task's task_id=<id> line at the head of its prompt.",
     prompt: workerPrompt,
     capabilities: ["read-files", "edit-files", "run-commands"],
+    ownWorktree: true,
   },
   {
     name: "reviewer",
