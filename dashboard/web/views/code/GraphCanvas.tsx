@@ -7,6 +7,17 @@ function token(name: string, fallback: string): string {
   return value || fallback;
 }
 
+/** The tints an area's box takes, in turn; the page's muted colors, so text on them stays readable. */
+const AREA_TINT_TOKENS: [string, string][] = [
+  ['--bgColor-success-muted', '#dafbe1'],
+  ['--bgColor-attention-muted', '#fff8c5'],
+  ['--bgColor-severe-muted', '#fff1e5'],
+  ['--bgColor-sponsors-muted', '#ffeff7'],
+  ['--bgColor-accent-muted', '#ddf4ff'],
+  ['--bgColor-done-muted', '#fbefff'],
+];
+export const AREA_TINTS = AREA_TINT_TOKENS.length;
+
 function graphStyle(): cytoscape.StylesheetJson {
   const fg = token('--fgColor-default', '#1f2328');
   const muted = token('--fgColor-muted', '#59636e');
@@ -47,6 +58,11 @@ function graphStyle(): cytoscape.StylesheetJson {
       selector: ':parent',
       style: { 'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -4, padding: '14px', 'background-opacity': 0.35 },
     },
+    {
+      selector: 'node[kind = "area"]',
+      style: { 'background-opacity': 0.6, 'border-style': 'dashed', 'border-color': border, 'font-weight': 'bold', color: muted, events: 'no' },
+    },
+    ...AREA_TINT_TOKENS.map(([name, fallback], i) => ({ selector: `node[kind = "area"][tint = ${i}]`, style: { 'background-color': token(name, fallback) } })),
     { selector: 'node:selected', style: { 'border-color': accent, 'border-width': 3 } },
     {
       selector: 'edge',

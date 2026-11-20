@@ -1,19 +1,26 @@
-// The code graph's own database file, beside the record. Everything in it but the concepts is
-// derived from git and can be rebuilt; the concepts are written by agents and kept.
+// The code graph's own database file, beside the record. Everything in it but the concepts and
+// the areas is derived from git and can be rebuilt; those are written by agents and kept.
 //
 // The graph is held in layers: `base` is the base branch's commit, and `task:<id>` is an
 // open task's commit laid on top, so a worker sees its change and its base together.
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 2;
+export const GRAPH_SCHEMA_VERSION = 4;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
+/** The area every project has: the test files. Its patterns add to and take from the built-in test rule. */
+export const TESTS_AREA = "tests";
+const TESTS_PURPOSE = "Test code: every file the test rule matches, by the common conventions of each language.";
+
 export const taskLayer = (taskId: string): string => `task:${taskId}`;
+/** One layer per feature branch that is neither merged nor closed, at the branch's tip (trustmybot/tmb#182). */
+export const featureLayer = (featureId: string): string => `feature:${featureId}`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS layers (
@@ -25,6 +32,7 @@ CREATE TABLE IF NOT EXISTS layers (
   symbols    INTEGER NOT NULL,
   edges      INTEGER NOT NULL,
   unresolved INTEGER NOT NULL,
+  unresolved_imports INTEGER NOT NULL DEFAULT 0,
   functions  INTEGER NOT NULL DEFAULT 0,
   not_parsed INTEGER NOT NULL DEFAULT 0
 );
@@ -119,6 +127,24 @@ CREATE TABLE IF NOT EXISTS concept_anchors (
   present        INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (concept_id, ordinal)
 );
+CREATE TABLE IF NOT EXISTS areas (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  purpose       TEXT NOT NULL,
+  parent_id     TEXT REFERENCES areas(id) ON DELETE SET NULL,
+  include       TEXT NOT NULL,
+  exclude       TEXT NOT NULL,
+  builtin       INTEGER NOT NULL DEFAULT 0,
+  status        TEXT NOT NULL CHECK (status IN ('ok', 'broken', 'review')),
+  status_reason TEXT,
+  file_count    INTEGER NOT NULL DEFAULT 0,
+  written_count INTEGER NOT NULL DEFAULT 0,
+  checked_sha   TEXT,
+  created_by    TEXT NOT NULL,
+  updated_by    TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS misses (
   id     INTEGER PRIMARY KEY,
   at     TEXT NOT NULL,
@@ -128,6 +154,9 @@ CREATE TABLE IF NOT EXISTS misses (
   actor  TEXT NOT NULL
 );
 `;
+
+/** Schema 3 counts the imports of the repo's own code that link no file (trustmybot/tmb#147). */
+const SCHEMA_2_TO_3 = ["ALTER TABLE layers ADD COLUMN unresolved_imports INTEGER NOT NULL DEFAULT 0"];
 
 const SCHEMA_1_TO_2 = [
   "ALTER TABLE layers ADD COLUMN functions INTEGER NOT NULL DEFAULT 0",
@@ -164,7 +193,9 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         // Schema 1 lacked each symbol's container and the counts of functions and of files not
         // parsed. Its layers were built by an older extractor, so the next read rebuilds them.
         if (version === 1) for (const statement of SCHEMA_1_TO_2) db.run(statement);
+        if (version === 1 || version === 2) for (const statement of SCHEMA_2_TO_3) db.run(statement);
         db.run(SCHEMA);
+        ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();
     }
@@ -173,6 +204,16 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
     db.close();
     throw error;
   }
+}
+
+/** Makes the built-in "tests" area when the graph has none yet: every graph has it from the start. */
+export function ensureTestsArea(db: Database): void {
+  if (db.query("SELECT 1 FROM areas WHERE name = ?").get(TESTS_AREA) !== null) return;
+  const now = new Date().toISOString();
+  db.run(
+    "INSERT INTO areas (id, name, purpose, parent_id, include, exclude, builtin, status, file_count, written_count, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, NULL, '[]', '[]', 1, 'ok', 0, 0, ?, ?, ?, ?)",
+    [newId(), TESTS_AREA, TESTS_PURPOSE, '"tmb"', '"tmb"', now, now],
+  );
 }
 
 /** Removes every row of one layer. */
@@ -196,6 +237,7 @@ export type LayerRow = {
   symbols: number;
   edges: number;
   unresolved: number;
+  unresolved_imports: number;
   functions: number;
   not_parsed: number;
 };

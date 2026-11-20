@@ -1,7 +1,10 @@
 // Every language the code graph reads (trustmybot/tmb#157). Adding one is a folder under
 // languages/ and one line here. Each is built into the compiled tmb; none is downloaded.
 import type { LanguageModule } from './contract.ts';
-import { bash, perl, python, sql } from './others/index.ts';
+import { bash } from './bash/index.ts';
+import { perl } from './perl/index.ts';
+import { python } from './python/index.ts';
+import { sql } from './sql/index.ts';
 import { javascript, tsx, typescript } from './typescript/index.ts';
 
 export const LANGUAGES: LanguageModule[] = [

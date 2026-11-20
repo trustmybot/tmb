@@ -5,15 +5,22 @@ import { query, useApi } from '../api.ts';
 import { FIELD } from '../shared/classes.ts';
 import { Loading } from '../shared/Loading.tsx';
 import { hrefWith, useHashParam } from '../shared/route.ts';
-import { GraphCanvas, labelSize } from './code/GraphCanvas.tsx';
+import { AREA_TINTS, GraphCanvas, labelSize } from './code/GraphCanvas.tsx';
 import { Subhead } from './RunsView.tsx';
 
 type Base = { commit: string; baseBranch: string };
 
 export type TreeChild =
-  | { kind: 'dir'; path: string; name: string; files: number; functions: number }
-  | { kind: 'file'; path: string; name: string; lang: string | null; lane: string; functions: number; notParsed: string | null };
-export type TreeData = Base & { path: string; functions: number; children: TreeChild[]; links: { from: string; to: string; calls: number; imports: number }[] };
+  | { kind: 'dir'; path: string; name: string; files: number; functions: number; area: string | null }
+  | { kind: 'file'; path: string; name: string; lang: string | null; lane: string; functions: number; notParsed: string | null; area: string | null };
+export type TreeArea = { name: string; purpose: string; parent: string | null; status: string };
+export type TreeData = Base & {
+  path: string;
+  functions: number;
+  children: TreeChild[];
+  links: { from: string; to: string; calls: number; imports: number }[];
+  areas: TreeArea[];
+};
 
 export type FileSymbol = {
   id: number;
@@ -33,6 +40,7 @@ export type FileData = Base & {
   lang: string | null;
   lane: string;
   notParsed: string | null;
+  areas: string[];
   functions: number;
   symbols: FileSymbol[];
   links: { from: number; to: number; count: number }[];
@@ -140,13 +148,19 @@ function Search({ repo }: { repo: string | null }) {
   );
 }
 
+/** An area's box on the canvas; its id cannot be a path, which never starts with a colon. */
+const areaNode = (name: string) => `:area:${name}`;
+
 function FolderLevel({ data }: { data: TreeData }) {
   const elements = useMemo<ElementDefinition[]>(
     () => [
+      // Each area is a tinted box around the children whose main area it is.
+      ...data.areas.map((a, i) => ({ data: { id: areaNode(a.name), kind: 'area', tint: i % AREA_TINTS, label: a.status === 'ok' ? a.name : `${a.name} (${a.status})` } })),
       ...data.children.map((c) => ({
         data: {
           id: c.path,
           kind: c.kind,
+          ...(c.area === null ? {} : { parent: areaNode(c.area) }),
           label: c.kind === 'dir' ? `${c.name}/\n${plural(c.functions, 'function')}` : `${c.name}\n${c.notParsed ? 'not parsed' : plural(c.functions, 'function')}`,
           notParsed: c.kind === 'file' && c.notParsed !== null,
         },
@@ -162,7 +176,20 @@ function FolderLevel({ data }: { data: TreeData }) {
       <p className="text-sm text-fg-muted">
         {plural(data.functions, 'function')} under this folder. Arrows are proven calls (solid) and imports (dashed) between its parts. Click a folder or a file to open it.
       </p>
-      <GraphCanvas label={`The parts of ${data.path}`} elements={elements} layout={COSE} onTap={(id) => open(kinds.get(id) === 'dir' ? { dir: id } : { file: id })} />
+      {data.areas.length > 0 && (
+        <p className="text-sm text-fg-muted" aria-label="Areas">
+          Boxes are the project's areas: {data.areas.map((a) => `${a.name} (${a.purpose})`).join('; ')}.
+        </p>
+      )}
+      <GraphCanvas
+        label={`The parts of ${data.path}`}
+        elements={elements}
+        layout={COSE}
+        onTap={(id) => {
+          const kind = kinds.get(id);
+          if (kind !== undefined) open(kind === 'dir' ? { dir: id } : { file: id });
+        }}
+      />
       <ul aria-label="Folder contents" className="divide-y divide-(--borderColor-muted) rounded-md border border-border-default text-sm">
         {data.children.map((c) => (
           <li key={c.path} className="flex items-center gap-2 px-3 py-1.5">
@@ -171,6 +198,11 @@ function FolderLevel({ data }: { data: TreeData }) {
               {c.name}
               {c.kind === 'dir' ? '/' : ''}
             </a>
+            {c.area !== null && (
+              <span className="rounded-full border border-border-default px-1.5 text-xs text-fg-muted" data-area={c.area}>
+                {c.area}
+              </span>
+            )}
             <span className="ml-auto text-fg-muted" data-functions={c.functions}>
               {c.kind === 'file' && c.notParsed ? <span className="text-fg-danger">not parsed: {c.notParsed}</span> : plural(c.functions, 'function')}
             </span>
@@ -305,7 +337,8 @@ function FileLevel({ data }: { data: FileData }) {
     <>
       <Breadcrumb path={data.path} last={undefined} />
       <p className="text-sm text-fg-muted">
-        {plural(data.functions, 'function')} in this file{data.lang ? ` (${data.lang})` : ''}. A function drawn inside another is defined inside it; a dashed one has no name of its own. Arrows are proven calls within the file.
+        {plural(data.functions, 'function')} in this file{data.lang ? ` (${data.lang})` : ''}
+        {data.areas.length > 0 ? `, in the area${data.areas.length > 1 ? 's' : ''} ${data.areas.join(', ')}` : ''}. A function drawn inside another is defined inside it; a dashed one has no name of its own. Arrows are proven calls within the file.
       </p>
       {data.notParsed !== null && <p className="text-sm text-fg-danger">This file was not parsed: {data.notParsed}.</p>}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">

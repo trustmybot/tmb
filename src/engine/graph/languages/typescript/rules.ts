@@ -4,7 +4,7 @@
 import type { Node } from 'web-tree-sitter';
 import { type Collector, type EdgeKind, type ExtractedSymbol, type FunctionParams, type ParamInfo, type SourceFile, type SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf } from '../kit.ts';
-import { extractSqlDdl, sqlRefs } from '../others/index.ts';
+import { extractSqlDdl, sqlRefs } from '../sql/index.ts';
 
 const STRING_PARTS = new Set(['string_fragment', 'escape_sequence']);
 

@@ -37,7 +37,7 @@ import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
 import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
-import { installPushGates } from "./engine/push-gate.ts";
+import { installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
 import { runGit } from "./engine/git.ts";
 import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
 import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName } from "./engine/settings.ts";
@@ -366,13 +366,21 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
     : `Warning: ${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
   if (warning) out(warning);
 
-  // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
-  for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
+  // One repo holds one tmb project for now: a second project in it would share the first one's push hook (trustmybot/tmb#178).
+  const other = inGitWorkTree(projectDir) ? otherProjectInRepo(projectDir, projectDir) : null;
+  if (other !== null) {
+    throw new Error(
+      `this repo already holds the tmb project in ${other}, whose push gate is the repo's pre-push hook; one repo holds one tmb project for now, so tmb init stops here. Work in ${other}, or run \`tmb remove\` there first`,
+    );
+  }
   // A folder that is not a git work tree and holds repos, or held them at an earlier init, is a workspace.
-  // One that holds none, and never did, gets git init: it is then a project of one repo.
+  // One that holds none, and never did, gets git init: it is then a project of one repo. git init runs
+  // before anything is written, so the host's registrations find a work tree and add their .gitignore lines.
   const scan = inGitWorkTree(projectDir) ? null : scanWorkspace(projectDir);
   const workspace = scan !== null && (stored.repos !== null || scan.repos.length > 0);
   if (scan !== null && !workspace) initGit(projectDir, out);
+  // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
+  for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   const repos = workspace && scan !== null ? registerRepos(projectDir, stored.repos, scan, out) : null;
   for (const line of installPushGates(projectDir, repos, options.tmbCommand)) out(line);
   tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);

@@ -5,12 +5,13 @@
 // to a bare origin, typed as the Human would.
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { BASE_BRANCH, callJson, tmbProcesses } from "./tmb-processes.ts";
 
-const { env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
+
+const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
 afterAll(cleanup);
 
 /** A push typed by hand: git runs the pre-push hook; returns its exit status and what it said. */
@@ -150,5 +151,73 @@ describe("the push gate", () => {
     expect(push(project, "-q", "--no-verify", "origin", BASE_BRANCH).status).toBe(0);
     expect(git(project, "ls-remote", "origin", `refs/heads/${BASE_BRANCH}`)).toStartWith(unreviewed);
     expect(pushDecisions(project)).toHaveLength(0);
+  });
+});
+
+/**
+ * A repo on a bare origin whose tmb project is the subfolder pkg, one package of a monorepo
+ * (trustmybot/tmb#178). The check passes only in pkg, where pkg-marker is.
+ */
+function setUpSubfolderProject(): { repo: string; project: string } {
+  const repo = mkdtempSync(path.join(scratch, "monorepo-"));
+  const project = path.join(repo, "pkg");
+  git(repo, "init", "-q", "-b", BASE_BRANCH);
+  git(repo, "config", "user.name", "t");
+  git(repo, "config", "user.email", "t@example.com");
+  mkdirSync(project);
+  writeFileSync(path.join(repo, "README.md"), "the monorepo\n");
+  writeFileSync(path.join(project, "pkg-marker"), "pkg\n");
+  git(repo, "add", ".");
+  git(repo, "commit", "-q", "-m", "first");
+  const origin = `${repo}-origin.git`;
+  git(scratch, "init", "-q", "--bare", origin);
+  git(repo, "remote", "add", "origin", origin);
+  git(repo, "push", "-q", "-u", "origin", BASE_BRANCH);
+  tmb(["init"], project);
+  human(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "test -f pkg-marker", "--yes"], project);
+  return { repo, project };
+}
+
+describe("the push gate of a project below its repo's top", () => {
+  test("the hook names the project, so an unreviewed push from the repo's top is refused", () => {
+    const { repo, project } = setUpSubfolderProject();
+    expect(readFileSync(hookFile(repo), "utf8")).toContain("'--project' 'pkg'");
+    const unreviewed = commitFile(repo, "pkg/hotfix.txt", "fix\n", "a hotfix straight on main");
+    const refused = push(repo, "origin", BASE_BRANCH);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("tmb refused the push to origin");
+    expect(refused.stderr).toContain(unreviewed.slice(0, 7));
+    expect(pushDecisions(project).map((decision) => decision.decision)).toEqual(["deny"]);
+  });
+
+  test("a task's checks run in the project folder, and its spec's paths are the project's", async () => {
+    const { project } = setUpSubfolderProject();
+    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const client = await connect(project, "claude-code");
+    try {
+      await callJson(client, "feature_start", { name: "feat/greet" });
+      const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add the greeting", files: ["src"], criteria: ["SC1: greet() exists"] });
+      commitFile(task.worktree, "pkg/src/greet.ts", "export const greet = () => 'hi';\n", "add greet");
+      commitFile(task.worktree, "README.md", "the monorepo, greeted\n", "touch the repo's top");
+      const closed = await callJson(client, "task_close", { id: task.id, role: "worker" });
+      expect(closed.outsideSpec).toEqual(["../README.md"]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("a hook with no record behind it says so, and a second project in the repo is refused at init", () => {
+    const { repo, project } = setUpSubfolderProject();
+    const second = path.join(repo, "other");
+    mkdirSync(second);
+    const refused = run(["init"], second);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(`this repo already holds the tmb project in ${project}`);
+
+    rmSync(path.join(project, ".tmb"), { recursive: true, force: true });
+    commitFile(repo, "pkg/hotfix.txt", "fix\n", "a hotfix");
+    const allowed = push(repo, "-q", "origin", BASE_BRANCH);
+    expect(allowed.status).toBe(0);
+    expect(allowed.stderr).toContain(`tmb found no project record in ${project}, so the push gate judged nothing`);
   });
 });

@@ -5,8 +5,8 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
 import { pushActorEnv } from "../push-actor.ts";
-import type { Actor, Task } from "../store/index.ts";
-import { DROPPED, TRUEST } from "./common.ts";
+import type { Actor, Store, Task } from "../store/index.ts";
+import { DROPPED, PR_OPEN, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 
 export const PUSH_RESULTS = ["pushed", "failed", "skipped"] as const;
@@ -256,6 +256,18 @@ export function branchHoldsWork(projectDir: string, task: Task): boolean {
   if (task.baseCommit === null) return true;
   const ahead = runGit(projectDir, ["rev-list", "--count", `${task.baseCommit}..${ref}`]);
   return !ahead.ok || ahead.stdout !== "0";
+}
+
+/**
+ * Pushes a feature branch to origin as a backup, after a fold or a base merge. A branch whose pull
+ * request is open is not pushed: on GitHub that push would put an unreviewed tip in the pull request,
+ * so feature_pr pushes it once the reviewer passed it or the Human waived it (trustmybot/tmb#168).
+ */
+export function backupPush(store: Store, projectDir: string, featureName: string, actor: Actor): PushOutcome {
+  if (store.findFeature(featureName)?.state === PR_OPEN) {
+    return { result: "skipped", detail: `the pull request of ${featureName} is open, so its new tip is pushed by feature_pr once it is reviewed or waived` };
+  }
+  return pushFeature(projectDir, featureName, actor);
 }
 
 /**

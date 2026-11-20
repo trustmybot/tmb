@@ -6,16 +6,17 @@ import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";
 import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
+import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../docs-files.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
-import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
+import { repoChecks, repoDirOf, repoOfRow, resolveRepo } from "../repos.ts";
 import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
-import { type PushOutcome, branchHoldsWork, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
+import { type PushOutcome, backupPush, branchHoldsWork, isAncestor, moveFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
 import { truestBase, truestClose, type TruestReview, truestReviewOf } from "./truest.ts";
@@ -523,34 +524,56 @@ export function committedHead(task: Task, store: Store): string {
   if (!runGit(worktree, ["merge-base", "--is-ancestor", base, head]).ok) {
     throw new HandlerError("refused", `HEAD ${head} does not build on the task's base commit ${base}; the work must be committed on top of it`);
   }
-  if (task.kind === "docs") refuseProgrammingFiles(task, base, head);
+  if (task.kind === "docs") refuseNonDocsFiles(task, base, head);
   return head;
 }
 
 /**
  * A docs task changes no code: refuses its close, naming each file, when its change from the base
- * commit touches a file Linguist marks as written in a programming language. A code task is never checked this way.
+ * commit touches a file whose type is not on the docs list (trustmybot/tmb#185). A type the list
+ * does not name counts as code. Linguist's name for the file, when it knows one, is shown beside it.
+ * A code task is never checked this way.
  */
-function refuseProgrammingFiles(task: Task, base: string, head: string): void {
+function refuseNonDocsFiles(task: Task, base: string, head: string): void {
   const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
-  const programming = touched.flatMap((file) => {
+  const refused = touched.flatMap((file) => {
+    if (isDocsFile(file)) return [];
     const match = languageOf(file);
-    return match?.programming ? [`${file} (${match.languages.join(" or ")})`] : [];
+    return [match === null ? file : `${file} (${match.languages.join(" or ")})`];
   });
-  if (programming.length === 0) return;
-  const shown = programming.slice(0, DIRTY_LINES_SHOWN).join("\n");
-  const more = programming.length > DIRTY_LINES_SHOWN ? `\n…and ${programming.length - DIRTY_LINES_SHOWN} more` : "";
+  if (refused.length === 0) return;
+  const shown = refused.slice(0, DIRTY_LINES_SHOWN).join("\n");
+  const more = refused.length > DIRTY_LINES_SHOWN ? `\n…and ${refused.length - DIRTY_LINES_SHOWN} more` : "";
   throw new HandlerError(
     "refused",
-    `task ${task.id} is a docs task, but its change touches files written in a programming language, so it stays open. Move that change to a code task:\n${shown}${more}`,
+    `task ${task.id} is a docs task, but its change touches files that are not prose, data or images, so it stays open. A docs task may change ${DOCS_EXTENSIONS.join(" ")} files and files named ${DOCS_FILENAMES.join(", ")}; move the rest to a code task:\n${shown}${more}`,
   );
 }
 
-/** The files the task's work changed from its base commit that none of its declared files covers. */
-function filesOutsideSpec(task: Task, base: string, head: string): string[] {
+/**
+ * Where the project folder sits below its repo's top, as git names it: "" at the top, else a
+ * relative path with forward slashes that ends in a slash. A project may be one package of a
+ * monorepo (trustmybot/tmb#178), and a task's worktree checks out the whole repo.
+ */
+export function projectPrefix(repoDir: string): string {
+  const prefix = runGit(repoDir, ["rev-parse", "--show-prefix"]);
+  return prefix.ok ? prefix.stdout.trim() : "";
+}
+
+/** The project folder inside a task's worktree: the worktree itself unless the project is below its repo's top. */
+export function projectInWorktree(task: Task, repoDir: string): string {
+  const prefix = projectPrefix(repoDir);
+  return prefix === "" ? task.worktree! : path.join(task.worktree!, ...prefix.split("/").filter((part) => part !== ""));
+}
+
+/** The files the task's work changed from its base commit that none of its declared files covers, relative to the project as the spec's are. */
+function filesOutsideSpec(task: Task, base: string, head: string, repoDir: string): string[] {
   const declared = specOf(task).files;
+  const prefix = projectPrefix(repoDir);
   const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
-  return touched.filter((file) => !declared.some((mine) => pathsOverlap(file, mine)));
+  // git names files from the repo's top; a file outside the project folder keeps its way out, with .., and no spec path covers it.
+  const ofProject = touched.map((file) => (prefix === "" ? file : path.posix.relative(prefix, file)));
+  return ofProject.filter((file) => file.startsWith("../") || !declared.some((mine) => pathsOverlap(file, mine)));
 }
 
 /**
@@ -560,7 +583,7 @@ function filesOutsideSpec(task: Task, base: string, head: string): string[] {
  * git when the work is merged (trustmybot/tmb#98).
  */
 export function closeFindings(task: Task, head: string, projectDir: string): CloseFindings {
-  const outsideSpec = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head);
+  const outsideSpec = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head, projectDir);
   const mainFolder = mainFolderReport(projectDir, task.mainSnapshot);
   const notes = [
     ...(outsideSpec.length === 0 ? [] : [`The commit changed files outside the task's declared files, for the planner or the reviewer to check: ${outsideSpec.join(", ")}.`]),
@@ -598,7 +621,8 @@ export async function checkCommit(
   const checkRunId = store.appendCheckRun(actor, { taskId: task.id, commitSha: commit });
   let results: CheckCommandResult[];
   try {
-    results = await runChecks(commands, task.worktree!, context.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
+    // The checks run in the project folder, which may be below the top of the worktree's repo.
+    results = await runChecks(commands, projectInWorktree(task, repoDirOf(context.projectDir, task.repo)), context.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
   } catch (error) {
     const reason = `the checks could not run: ${error instanceof Error ? error.message : String(error)}`;
     store.endCheckRun(actor, checkRunId, { result: "not_run", commands: commands.map((command) => ({ command, status: "not_run", reason })) });
@@ -675,7 +699,7 @@ function finishFold(
   const dir = taskDir(store, context.projectDir, task);
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, featureName, actor);
+  const push = backupPush(store, dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -753,7 +777,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, feature.name, actor);
+  const push = backupPush(store, dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }

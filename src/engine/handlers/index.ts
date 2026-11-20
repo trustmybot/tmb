@@ -183,7 +183,7 @@ export const OPERATIONS = {
   },
   graph_scope: {
     description:
-      "Draft a task's scope from the code graph: from an objective and any anchors (symbols or files), the files in scope with why each is there (search, anchor, caller, import), the tests that cover them, the concepts anchored there, and a draft list of files for task_start. For the planner, before task_start, instead of reading files.",
+      "Draft a task's scope from the code graph: from an objective and any anchors (symbols or files), the files in scope with why each is there (search, anchor, caller, import), the tests that cover them, the concepts anchored there, and a draft list of files for task_start. With no task_id or feature, it reads the repo's feature branch when exactly one is open, since the task is cut from there; the answer's freshness says which. For the planner, before task_start, instead of reading files.",
     inputSchema: graph.graphScopeSchema,
     run: graph.graphScope,
   },
@@ -197,6 +197,23 @@ export const OPERATIONS = {
     description: "List the concepts recorded in the code graph, or read one by name, with each one's anchors and whether its code still exists.",
     inputSchema: graph.graphConceptsSchema,
     run: graph.graphConcepts,
+  },
+  graph_area_upsert: {
+    description:
+      "Write an area of the project: a logical part such as login, billing or the dashboard, as path patterns of the files it holds and leaves out, with a one-line purpose. Every file and symbol card then names its areas, and graph_find and graph_scope can keep to an area or leave one out. A pattern that matches no file is refused. \"tests\" is built in. For the planner, at onboarding and when the project's parts change.",
+    inputSchema: graph.graphAreaUpsertSchema,
+    run: graph.graphAreaUpsert,
+  },
+  graph_area_remove: {
+    description: "Remove an area of the project that no longer fits, by name. \"tests\" is built in and stays. For the planner.",
+    inputSchema: graph.graphAreaRemoveSchema,
+    run: graph.graphAreaRemove,
+  },
+  graph_areas: {
+    description:
+      "List the project's areas, each with its patterns, how many files it holds and whether it still matches (a rebuild marks one whose files are gone as broken, and one whose size moved by more than a quarter for review), and the files in no area with their count.",
+    inputSchema: graph.graphAreasSchema,
+    run: graph.graphAreas,
   },
   graph_miss: {
     description:
