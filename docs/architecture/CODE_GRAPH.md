@@ -40,6 +40,19 @@ flowchart TD
     G --> H
 ```
 
+## Every function, and a page to see it
+
+Planned for v1.0.0. Decided by the Human on 2026-11-20: the code graph shows code as a graph, at function level, and no function is left out. The details below are proposed, for the Human's review, in each issue.
+
+Today the graph holds every named function at the top of a file and every class method, but few of the functions without a name. Measured on tmb's own repo on 2026-11-20, against the TypeScript compiler: 1,250 of 3,256 functions, 38%.
+
+- **Every function is a node, unnamed ones included** (trustmybot/tmb#140). TypeScript and JavaScript first. Each symbol gets a link to what contains it: a function, a class or the file. An unnamed function is named by where it is used.
+- **A coverage test holds it at 100%.** A second, independent parser lists every function, and the graph must match it one to one.
+- **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and is counted.
+- **Agents' answers do not change.** A lookup names the nearest named function, and unnamed functions stay out of search.
+- **The dashboard gets a code graph page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once.
+- **Python, bash and the other languages follow**, each with its own coverage test (trustmybot/tmb#141, v1.x).
+
 ## Honest limits
 
 Agents do not always use a graph when one is offered, and a symbol lookup can cost more than a plain text search for a simple question. So the graph is used where it earns its cost: scoping a task, and finding what a change may break. Plain search stays available for everything else, and every miss or wrong answer of the graph is recorded so its value can be measured.
