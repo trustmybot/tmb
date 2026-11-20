@@ -31,6 +31,7 @@ const TOOLS = [
   "task_start",
   "task_brief",
   "task_close",
+  "task_drop",
   "task_list",
   "task_review",
   "task_waive",
