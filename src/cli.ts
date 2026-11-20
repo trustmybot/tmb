@@ -3,7 +3,29 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import type { HookRun } from "./adapters/host-adapter.ts";
 import { adapterById, DEFAULT_HOST_ID, findPluginDb, HOST_ADAPTERS, migratePluginProject } from "./adapters/index.ts";
-import { CONFIG_USAGE, INDEX_USAGE, isRecordCommand, RECORD_USAGE, runConfigCommand, runIndexCommand, runRecordCommand } from "./engine/doors/command-line.ts";
+import {
+  CONFIG_USAGE,
+  INDEX_USAGE,
+  isRecordCommand,
+  type Output,
+  RECORD_ACTIONS,
+  RECORD_USAGE,
+  runConfigCommand,
+  runIndexCommand,
+  runRecordCommand,
+} from "./engine/doors/command-line.ts";
+import {
+  actionUsage,
+  asksHelp,
+  colourOn,
+  detailHelpText,
+  type HelpGroup,
+  OTHER_NAMES,
+  Paint,
+  shortHelpText,
+  unknownCommandText,
+  usageErrorText,
+} from "./engine/doors/help.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
@@ -13,41 +35,142 @@ import { runningProgram } from "./program.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 
-const USAGE = `Usage:
-  tmb --version             Print the version
-  tmb init [--host <id>] [--role planner|reviewer]
+/** Each command's detail, as `tmb help <command>` and `tmb <command> --help` show it. */
+const USAGE: Record<string, string> = {
+  ...RECORD_USAGE,
+  config: CONFIG_USAGE,
+  index: INDEX_USAGE,
+  init: `  tmb init [--host <id>] [--role planner|reviewer]
                             Prepare the project in the current directory: create its record,
                             wire one host in its role, add git's push hook and index the code
                             graph. Asks nothing and leaves the settings empty: the planner
                             applies the ones it recommends at its first session. Run it once
-                            per host to use two hosts on one record
-  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
+                            per host to use two hosts on one record`,
+  onboard: `  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
               [--check <command>]... [--yes]
                             Set the project's settings: a host's role, the base branch, the
                             review mode and the checks. Asks on a terminal, else keeps the
-                            stored values; run it again at any time
-  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
-                            push gate when none is named; the record is kept
-  tmb migrate [--from <plugin db>] [--repo <name>]
+                            stored values; run it again at any time`,
+  remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
+                            push gate when none is named; the record is kept`,
+  migrate: `  tmb migrate [--from <plugin db>] [--repo <name>] [--json]
                             Copy a tmb plugin project's records into this project's new
-                            record; the plugin's database is left untouched
-${CONFIG_USAGE}
-${RECORD_USAGE}
-${INDEX_USAGE}
-  tmb update [--check]      Look for a newer build on this program's channel now and apply it
+                            record; the plugin's database is left untouched`,
+  dashboard: `  tmb dashboard [--port <n>] [--project <dir>]
+                            Serve the record as a local web page, on port ${DEFAULT_PORT}
+                            unless named; 0 picks a free one`,
+  update: `  tmb update [--check]      Look for a newer build on this program's channel now and apply it
                             when no session of it is running and no task is open; with
                             --check, only report. tmb follows stable, tmb-rc rc and tmb-dev
-                            dev; tmb-<version> never updates
-  tmb dashboard [--port <n>] [--project <dir>]
-                            Serve the record as a local web page, on port ${DEFAULT_PORT}
-                            unless named; 0 picks a free one
-  tmb mcp --host <id> [--project <dir>]
-                            Serve the record's tools over stdio (the host runs this)
-  tmb hook <event> [--host <id>]
+                            dev; tmb-<version> never updates`,
+  help: `  tmb help [<command>] [--all]
+                            Show the commands, or one command's detail; with --all, also
+                            the commands only a host or git calls
+  tmb --version             Print the version`,
+  mcp: `  tmb mcp --host <id> [--project <dir>]
+                            Serve the record's tools over stdio (the host runs this)`,
+  hook: `  tmb hook <event> [--host <id>]
                             Answer a host event (the host runs this; reads JSON on stdin);
-                            with no host, the event is the first host's tmb wired
-  tmb pre-push <remote> [<url>]
-                            Judge a push (git's pre-push hook runs this; reads its ref lines on stdin)`;
+                            with no host, the event is the first host's tmb wired`,
+  "pre-push": `  tmb pre-push <remote> [<url>]
+                            Judge a push (git's pre-push hook runs this; reads its ref lines on stdin)`,
+};
+
+/** The short help's groups, most used first. */
+const GROUPS: HelpGroup[] = [
+  {
+    heading: "Project",
+    commands: [
+      { name: "init", summary: "Prepare this project for tmb" },
+      { name: "onboard", summary: "Set the project's settings" },
+      { name: "config", summary: "Print the project's settings" },
+      { name: "remove", summary: "Undo what init added" },
+      { name: "migrate", summary: "Copy a plugin project's records" },
+    ],
+  },
+  {
+    heading: "Work",
+    commands: [
+      { name: "issue", summary: "Create, list, show, close and reopen issues" },
+      { name: "note", summary: "Add a note or a decision to an issue" },
+      { name: "feature", summary: "Start and review feature branches" },
+      { name: "task", summary: "Start, close and review tasks" },
+      { name: "search", summary: "Search issues, notes and decisions" },
+      { name: "history", summary: "Show every change to an issue or note" },
+    ],
+  },
+  {
+    heading: "Code",
+    commands: [
+      { name: "graph", summary: "Find code by symbol, file or topic" },
+      { name: "index", summary: "Index the base branch now" },
+    ],
+  },
+  {
+    heading: "Program",
+    commands: [
+      { name: "dashboard", summary: "Open the dashboard" },
+      { name: "update", summary: "Look for a newer build" },
+      { name: "help", summary: "Show help for a command" },
+    ],
+  },
+];
+
+/** Commands only a host or git calls: left out of the short help and of the tips; `tmb help --all` lists them last. */
+const HIDDEN_GROUP: HelpGroup = {
+  heading: "Called by a host or git",
+  commands: [
+    { name: "mcp", summary: "Serve the record's tools to a host" },
+    { name: "hook", summary: "Answer a host event" },
+    { name: "pre-push", summary: "Judge a push for git's pre-push hook" },
+  ],
+};
+
+/** The commands a typo may be told of: every listed one, never a hidden one. */
+const LISTED = GROUPS.flatMap((group) => group.commands.map((command) => command.name));
+const KNOWN = new Set([...LISTED, ...HIDDEN_GROUP.commands.map((command) => command.name)]);
+const VERSION_WORDS = new Set(["--version", "-v", "version"]);
+
+const stdout = (text: string) => process.stdout.write(`${text}\n`);
+const stderr = (text: string) => process.stderr.write(`${text}\n`);
+const outPaint = () => new Paint(colourOn(process.stdout));
+const errPaint = () => new Paint(colourOn(process.stderr));
+const OUTPUT: Output = { out: stdout, err: stderr, colour: colourOn(process.stderr) };
+
+/** The short help, with the hidden commands last when `all`. */
+function shortHelp(paint: Paint, all: boolean): string {
+  return shortHelpText(all ? [...GROUPS, HIDDEN_GROUP] : GROUPS, paint);
+}
+
+/**
+ * Writes the help for `command`, or for one of its actions, on stdout; a name it does not know
+ * is answered as a typo on stderr with exit code 2.
+ */
+function writeCommandHelp(command: string, action: string | undefined): number {
+  if (!KNOWN.has(command)) {
+    process.stderr.write(unknownCommandText("tmb", command, LISTED, errPaint(), OTHER_NAMES));
+    return 2;
+  }
+  const actions = isRecordCommand(command) ? RECORD_ACTIONS[command] : undefined;
+  if (actions !== undefined && action !== undefined && !actions.includes(action)) {
+    process.stderr.write(unknownCommandText(`tmb ${command}`, action, actions, errPaint()));
+    return 2;
+  }
+  process.stdout.write(detailHelpText(actionUsage(USAGE[command]!, command, actions === undefined ? undefined : action), outPaint()));
+  return 0;
+}
+
+/** `tmb help [<command> [<action>]] [--all]`. */
+function runHelpCommand(args: string[]): number {
+  const all = args.includes("--all");
+  const [command, action] = args.filter((arg) => !arg.startsWith("-"));
+  if (command === undefined) {
+    if (asksHelp(args)) return writeCommandHelp("help", undefined);
+    process.stdout.write(shortHelp(outPaint(), all));
+    return 0;
+  }
+  return writeCommandHelp(command, action);
+}
 
 /** The command that runs this tmb: the executable, plus this file when run from source. */
 function tmbCommand(): string[] {
@@ -232,7 +355,8 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
     adapters: HOST_ADAPTERS,
     flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes },
     ask: terminal?.ask ?? null,
-    out: (line) => console.log(line),
+    out: (line) => process.stdout.write(`${line}\n`),
+    colour: colourOn(process.stdout),
   };
   try {
     await run(setupOptions);
@@ -303,24 +427,16 @@ function runMigrateCommand(args: string[]): number {
   return 0;
 }
 
-async function main(argv: string[]): Promise<number> {
-  const [command, ...rest] = argv;
-  if (isRecordCommand(command)) {
-    return runRecordCommand(command, rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
-  }
+async function dispatch(command: string, rest: string[]): Promise<number> {
+  if (isRecordCommand(command)) return runRecordCommand(command, rest, process.cwd(), OUTPUT);
   switch (command) {
-    case "--version":
-    case "-v":
-    case "version":
-      console.log(versionLine(updaterOptions(version, isCompiledEntry(Bun.main)).program!));
-      return 0;
     case "init":
     case "onboard":
       return runPrepareCommand(command, rest);
     case "config":
-      return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
+      return runConfigCommand(rest, process.cwd(), OUTPUT);
     case "index":
-      return runIndexCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });
+      return runIndexCommand(rest, process.cwd(), OUTPUT);
     case "remove":
       return runRemoveCommand(rest);
     case "pre-push":
@@ -335,21 +451,47 @@ async function main(argv: string[]): Promise<number> {
       return runToolServer(rest);
     case "hook":
       return runHook(rest);
-    case undefined:
-    case "--help":
-    case "-h":
-    case "help":
-      console.log(USAGE);
-      return command === undefined ? 1 : 0;
     default:
-      console.error(`tmb: unknown command '${command}'\n\n${USAGE}`);
-      return 1;
+      throw new Error(`no runner for ${command}`);
+  }
+}
+
+/** An error node:util's parseArgs throws for a flag or argument a command does not take. */
+function isParseArgsError(error: unknown): error is Error {
+  const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
+  return typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
+}
+
+async function main(argv: string[]): Promise<number> {
+  const [command, ...rest] = argv;
+  // A command is required: none given is the same usage error as an unknown one.
+  if (command === undefined) {
+    process.stderr.write(shortHelp(errPaint(), false));
+    return 2;
+  }
+  if (command === "--help" || command === "-h") return runHelpCommand(rest.filter((arg) => arg === "--all"));
+  if (command === "help") return runHelpCommand(rest);
+  if (VERSION_WORDS.has(command)) {
+    stdout(versionLine(updaterOptions(version, isCompiledEntry(Bun.main)).program!));
+    return 0;
+  }
+  if (!KNOWN.has(command)) {
+    process.stderr.write(unknownCommandText("tmb", command, LISTED, errPaint(), OTHER_NAMES));
+    return 2;
+  }
+  if (asksHelp(rest)) return writeCommandHelp(command, rest[0]?.startsWith("-") ? undefined : rest[0]);
+  try {
+    return await dispatch(command, rest);
+  } catch (error) {
+    if (!isParseArgsError(error)) throw error;
+    process.stderr.write(usageErrorText(`tmb ${command}`, error.message, errPaint()));
+    return 2;
   }
 }
 
 try {
   process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
-  console.error(`tmb: ${error instanceof Error ? error.message : String(error)}`);
+  process.stderr.write(`tmb: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 }

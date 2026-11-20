@@ -29,6 +29,8 @@ export function tmbProcesses(prefix: string) {
   };
   delete env.CLAUDE_PROJECT_DIR;
   delete env.TMB_UNATTENDED;
+  // Piped output stays plain, as the tests read it, even when the machine forces colour.
+  delete env.FORCE_COLOR;
 
   function git(cwd: string, ...args: string[]): string {
     const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, env, encoding: "utf8", timeout: 10_000 });

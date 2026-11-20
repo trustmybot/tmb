@@ -28,6 +28,7 @@ function fakeHost(id: string, installed: boolean): HostAdapter {
   return {
     id,
     name: `Host ${id.toUpperCase()}`,
+    command: `host-${id}`,
     limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
     detect: () => ({ installed }),
     setup(projectDir) {
@@ -63,6 +64,7 @@ type RunOptions = {
   supportedHostIds?: string[];
   program?: { name: string; version: string };
   tmbCommand?: string[];
+  colour?: boolean;
 };
 
 function optionsOf(options: RunOptions): SetupOptions {
@@ -76,6 +78,7 @@ function optionsOf(options: RunOptions): SetupOptions {
     flags: options.flags ?? {},
     ask: options.ask ?? null,
     out: (line) => output.push(line),
+    colour: options.colour,
   };
 }
 
@@ -172,14 +175,13 @@ describe("tmb init", () => {
     await init({ flags: { base: "main", reviewMode: "truest", checks: ["x"] } });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: null });
     expect(output).toContain("Settings in the record:");
-    expect(output).toContain("tmb is set up for Host A. Open it in this project to start as the planner.");
-    expect(output.at(-2)).toBe(
-      "The settings are still empty: base branch and checks. When you open Host A here, the planner applies the ones it recommends for this project and shows them; " +
-        "run tmb onboard to set them yourself instead, at any time.",
-    );
-    expect(output.at(-1)).toBe(
-      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. The planner asks you before the first task, or run tmb onboard; no task starts until it is set.",
-    );
+    expect(output.slice(-5)).toEqual([
+      "tmb is set up for Host A. Next:",
+      "  1. Run `host-a` in this folder.",
+      "  2. Send `@bro`.",
+      "The settings are still empty: base branch and checks; bro applies the ones it recommends. To set them yourself, run `tmb onboard`.",
+      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, bro asks you before the first task, or run `tmb onboard`; no task starts until it is set.",
+    ]);
   });
 
   test("on a terminal, asks one question, the review mode, with what each mode costs, and records that init chose it", async () => {
@@ -207,6 +209,23 @@ describe("tmb init", () => {
     expect(chosenVia()).toBeNull();
   });
 
+  test("names the channel's program in the onboard hint", async () => {
+    await init({ program: { name: "tmb-dev", version: "1.0.0-dev.1" } });
+    expect(output.at(-2)).toEndWith("To set them yourself, run `tmb-dev onboard`.");
+    expect(output.at(-1)).toContain("or run `tmb-dev onboard`;");
+  });
+
+  test("paints the commands to run when colour is on, and only then", async () => {
+    await init({ colour: true });
+    const painted = output.slice(-5).join("\n");
+    expect(painted).toContain("`\u001b[1m\u001b[36mhost-a\u001b[39m\u001b[22m`");
+    expect(painted).toContain("`\u001b[1m\u001b[36m@bro\u001b[39m\u001b[22m`");
+    expect(painted).toContain("`\u001b[1m\u001b[36mtmb onboard\u001b[39m\u001b[22m`");
+    output.length = 0;
+    await init({ colour: false });
+    expect(output.join("\n")).not.toContain("\u001b[");
+  });
+
   test("keeps what onboard stored, and a re-run changes nothing", async () => {
     await init();
     await onboard({ flags: { base: "trunk", reviewMode: "truest", checks: ["make check"], role: "reviewer" } });
@@ -217,16 +236,18 @@ describe("tmb init", () => {
     expect(settings()).toEqual({ host: "a", host_roles: { a: "reviewer" }, base_branch: "trunk", review_mode: "truest", checks: ["make check"] });
     expect(auditCount()).toBe(recorded);
     expect(output).toContain("No setting changed, so nothing was recorded.");
-    expect(output.at(-1)).toBe("Run tmb onboard to change the settings, at any time.");
+    expect(output.slice(-3)).toEqual(["tmb is set up for Host A. Next:", "  1. Run `host-a` in this folder; it starts as the reviewer.", "To change the settings, run `tmb onboard`."]);
   });
 
   test("sets the role --role names, and a reviewer host leaves the settings to the planner's", async () => {
     await init({ flags: { role: "reviewer" } });
     expect(settings().host_roles).toEqual({ a: "reviewer" });
     expect(output.at(-2)).toBe(
-      "The settings are still empty: base branch and checks. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.",
+      "The settings are still empty: base branch and checks; the planner's host applies the ones it recommends at its first session. To set them yourself, run `tmb onboard`.",
     );
-    expect(output.at(-1)).toBe(NO_REVIEW_MODE_LINE);
+    expect(output.at(-1)).toBe(
+      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, run `tmb onboard`; no task starts until it is set.",
+    );
   });
 
   test("refuses an unknown role before anything is written", async () => {

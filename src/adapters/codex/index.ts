@@ -24,6 +24,7 @@ const hooksNamed = (events: readonly string[]) => `the ${listed(events)} hook${e
 export const adapter: HostAdapter = {
   id: HOST_ID,
   name: "Codex",
+  command: "codex",
 
   // Codex raises every tmb event but a worker's folder: a Codex worker has no worktree of its host's
   // making, so it works in the one tmb cut. A subagent's start is denied from its spawn tool call.

@@ -91,7 +91,7 @@ try {
                 Remove-Item -Force -Path $dir -ErrorAction SilentlyContinue
             }
         }
-        Write-Host 'Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run tmb init again.'
+        Write-Host "Removed the old %LOCALAPPDATA%\tmb\bin\tmb.exe. In projects set up with it, run $name init again."
     }
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
