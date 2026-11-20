@@ -5,10 +5,13 @@
 import { Database } from "bun:sqlite";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import page from "../../../../dashboard/web/index.html";
+import { openView } from "../../graph/fresh.ts";
 import { HandlerError, OPERATIONS } from "../../handlers/index.ts";
 import { openProjectStore, projectDbPath } from "../../project.ts";
 import { type PullRequestReader, refreshPullRequestStates } from "../../pull-request-state.ts";
+import { workingRepos, workspaceRepos } from "../../repos.ts";
 import type { Actor, Store } from "../../store/index.ts";
+import * as graph from "./code-graph.ts";
 import * as q from "./queries.ts";
 
 export const DEFAULT_PORT = 7477;
@@ -76,6 +79,7 @@ export function startDashboard(options: { projectDir: string; port?: number; rea
   db.run("PRAGMA busy_timeout = 5000");
   const token = randomBytes(32).toString("hex");
   let allowedHosts: Set<string> = new Set();
+  let graphQueue: Promise<void> = Promise.resolve();
   const lastRead = new Map<string, number>();
 
   /** Moves features whose pull request merged or closed, as the Human; each one is read at most once a minute. */
@@ -112,6 +116,36 @@ export function startDashboard(options: { projectDir: string; port?: number; rea
         return body === null ? fail(404, "not_found", "no such record") : json(body);
       } catch (error) {
         return failure(error);
+      }
+    };
+  }
+
+  /**
+   * A read of the code graph at the base branch, brought forward first as every graph read is.
+   * The page never sees a task's own changes. In a workspace, `repo` names whose graph; the page
+   * shows the list of repos first, so it always names one when there are several.
+   */
+  function graphRead(handler: (db: Database, layer: string, req: Request & { params: Record<string, string> }) => unknown) {
+    return async (req: Request & { params: Record<string, string> }) => {
+      // One graph read at a time: two that both find the base moved on would both rebuild it.
+      const turn = graphQueue;
+      let done = () => {};
+      graphQueue = new Promise<void>((resolve) => (done = resolve));
+      await turn;
+      try {
+        checkHost(req);
+        const repo = new URL(req.url).searchParams.get("repo") || undefined;
+        const view = await openView(options.projectDir, store, { repo });
+        try {
+          const body = view.db.transaction(() => handler(view.db, view.layer, req)).deferred();
+          return body === null ? fail(404, "not_found", "no such path or function in the code graph") : json({ ...(body as Json), commit: view.freshness.commit, baseBranch: view.freshness.baseBranch });
+        } finally {
+          view.db.close();
+        }
+      } catch (error) {
+        return failure(error);
+      } finally {
+        done();
       }
     };
   }
@@ -156,6 +190,16 @@ export function startDashboard(options: { projectDir: string; port?: number; rea
     "/api/checks": read((req) => q.checkRuns(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/guard-decisions": read((req) => q.guardDecisions(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/audit": read((req) => q.audit(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
+    // The repos whose graphs the Code page can show: none in a project of one repo, which opens
+    // straight on its graph.
+    "/api/graph/repos": read(() => {
+      const repos = workspaceRepos(store);
+      return { repos: repos === null ? [] : workingRepos(repos) };
+    }),
+    "/api/graph/tree": graphRead((db, layer, req) => graph.tree(db, layer, new URL(req.url).searchParams.get("path") ?? ".")),
+    "/api/graph/file": graphRead((db, layer, req) => graph.file(db, layer, new URL(req.url).searchParams.get("path") ?? "")),
+    "/api/graph/function/:id": graphRead((db, layer, req) => (/^\d+$/.test(req.params.id!) ? graph.functionView(db, layer, Number(req.params.id)) : null)),
+    "/api/graph/search": graphRead((db, layer, req) => ({ hits: graph.search(db, layer, new URL(req.url).searchParams.get("q") ?? "") })),
     "/api/issues/:id/edit": {
       POST: write((id, body) => OPERATIONS.issue_update.run(store, HUMAN, { id, ...pick(body, ["title", "body", "milestone"]) }), { fresh: true }),
     },
