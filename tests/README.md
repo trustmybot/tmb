@@ -110,6 +110,7 @@ Each level has one test issue with this list. A later level keeps every earlier 
 | Layer | Test | What it proves |
 |---|---|---|
 | Unit | [test/feature-branch.test.ts](../test/feature-branch.test.ts) | feature_start, the fold on close, the refusal of a task whose work is already on the feature branch, the close of a task whose earlier fold stopped before it recorded the close, and the backup push. |
+| Unit | [test/feature-update.test.ts](../test/feature-update.test.ts) | feature_start cuts from origin's base, fetched first, unless the local base is ahead or origin is out of reach; feature_update merges the base into the feature branch without rewriting it, fast-forwards a branch with no commit of its own, refuses a conflict changing nothing and naming the files, and the brief says whether the tip holds the base and groups no base change under a task (trustmybot/tmb#169). |
 | Workflow simulation | [tests/workflow/feature-fold.test.ts](workflow/feature-fold.test.ts) | A code task and then a docs task fold into one feature branch in order. |
 | Workflow simulation | The ported plugin flows, below. | Each flow's steps, refusals and record, through the tool server. |
 | Agent chain | [tests/agent-chain/feature.ts](agent-chain/feature.ts) (`bun run test:chain:feature`) | Two sessions each ask for one more function; one feature branch collects both tasks, passes its tests and is backed up on origin. |
