@@ -322,6 +322,8 @@ describe("task_brief and task_list", () => {
         commitSha: null,
         files: ["src/a"],
         prUrl: null,
+        dropReason: null,
+        replaces: null,
         repo: null,
       },
     ]);

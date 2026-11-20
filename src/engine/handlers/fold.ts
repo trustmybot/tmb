@@ -6,7 +6,7 @@ import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
 import { pushActorEnv } from "../push-actor.ts";
 import type { Actor, Task } from "../store/index.ts";
-import { TRUEST } from "./common.ts";
+import { DROPPED, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 
 export const PUSH_RESULTS = ["pushed", "failed", "skipped"] as const;
@@ -220,13 +220,28 @@ export function retryKeptCheckouts(projectDir: string, tasks: readonly Task[]): 
   const removed: string[] = [];
   for (const task of tasks) {
     if (task.worktree === null) continue;
-    // A truest task's branch stays for its pull request; only its worktree goes.
-    const branch = task.reviewMode === TRUEST || task.branch === null || !branches.has(task.branch) ? null : task.branch;
+    // A truest task's branch stays for its pull request, and a dropped task's while it holds commits; only the worktree goes.
+    const keepBranch = task.state === DROPPED ? branchHoldsWork(projectDir, task) : task.reviewMode === TRUEST;
+    const branch = keepBranch || task.branch === null || !branches.has(task.branch) ? null : task.branch;
     if (!listed.has(realPath(task.worktree)) && branch === null) continue;
     const cleanup = removeTaskCheckout(projectDir, task.worktree, branch);
     if (cleanup.problems.length === 0) removed.push(`task ${task.id}: ${[task.worktree, branch].filter((part) => part !== null).join(" and ")}`);
   }
   return removed;
+}
+
+/**
+/**
+ * Whether a task's branch holds commits past the commit it was cut from: a dropped task's work,
+ * which tmb keeps on its branch. A branch whose base tmb cannot tell is kept too.
+ */
+export function branchHoldsWork(projectDir: string, task: Task): boolean {
+  if (task.branch === null) return false;
+  const ref = branchRef(task.branch);
+  if (!runGit(projectDir, ["rev-parse", "--verify", "--quiet", ref]).ok) return false;
+  if (task.baseCommit === null) return true;
+  const ahead = runGit(projectDir, ["rev-list", "--count", `${task.baseCommit}..${ref}`]);
+  return !ahead.ok || ahead.stdout !== "0";
 }
 
 /**

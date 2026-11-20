@@ -19,6 +19,7 @@ import {
   type TaskPrResult,
   type TaskStartResult,
   type TaskSummary,
+  type TaskDropResult,
   type TaskWaiveResult,
   type WaiveResult,
 } from "../handlers/index.ts";
@@ -64,15 +65,20 @@ ${JSON_NOTE}`,
                             the reviewer passed its tip or the Human waived the review
 ${JSON_NOTE}`,
   task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] [--repo <name>] --intent <text>
-                 --file <path>... --criterion <text>... [--check <command>]...
+                 --file <path>... --criterion <text>... [--check <command>]... [--replaces <id>]
                             Start a task: cut its branch and worktree from the feature
-                            branch and record its spec
-  tmb task list [--state open|in_review|closed|all]
-                            List the open tasks, or those in review, the closed ones or all
+                            branch and record its spec; --replaces names the dropped task
+                            it takes over from
+  tmb task list [--state open|in_review|closed|dropped|all]
+                            List the open tasks, or those in review, the closed ones, the
+                            dropped ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
   tmb task close <id>       Run the checks on the task's commit; when all pass, close it,
                             fold it into its feature branch and push that to origin
                             (in truest mode: put it in review at that commit)
+  tmb task drop <id> --reason <text>
+                            Drop a task whose approach is wrong or that nobody will finish;
+                            its worktree goes unless it holds uncommitted work
   tmb task waive <id> --reason <text>
                             Waive the review of a truest task at its commit (the Human only)
   tmb task pr <id> --title <text> [--body <text>]
@@ -96,7 +102,7 @@ ${JSON_NOTE}`,
 export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> = {
   issue: ["create", "list", "show", "close", "reopen"],
   feature: ["start", "list", "brief", "waive", "pr"],
-  task: ["start", "list", "brief", "close", "waive", "pr"],
+  task: ["start", "list", "brief", "close", "drop", "waive", "pr"],
   graph: ["map", "find", "symbol", "scope", "concepts"],
 };
 
@@ -259,6 +265,9 @@ function briefLines(brief: TaskBrief): string[] {
     ...(brief.reviewMode ? [`Review mode: ${brief.reviewMode}`] : []),
     ...(brief.push ? [`Push: ${brief.push.result}, ${brief.push.detail}`] : []),
     ...(brief.review ? truestReviewLines(brief) : []),
+    ...(brief.dropReason === null ? [] : [`Dropped: ${brief.dropReason}`]),
+    ...(brief.replaces === null ? [] : [`Replaces task: ${brief.replaces}`]),
+    ...(brief.replacedBy.length === 0 ? [] : [`Replaced by: ${brief.replacedBy.join(", ")}`]),
     "",
     brief.spec.intent.trimEnd(),
     "",
@@ -276,13 +285,15 @@ function briefLines(brief: TaskBrief): string[] {
 function taskLine(task: TaskSummary, withState: boolean): string {
   const state = withState ? `  ${task.state.padEnd(6)}` : "";
   const commit = task.commitSha ? `\n  closed at: ${task.commitSha}` : "";
+  const dropped = task.dropReason === null ? "" : `\n  dropped: ${task.dropReason}`;
+  const replaces = task.replaces === null ? "" : `\n  replaces: ${task.replaces}`;
   const repo = task.repo ? `${task.repo}  ` : "";
-  return `${task.id}${state}  ${repo}${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
+  return `${task.id}${state}  ${repo}${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}${dropped}${replaces}`;
 }
 
 /** The open list keeps its plain form; a list that may mix states shows each task's state. */
 function formatTasks(state: string | undefined) {
-  const which = state === undefined || state === "open" ? "open " : state === "closed" ? "closed " : "";
+  const which = state === undefined || state === "open" ? "open " : state === "closed" || state === "dropped" ? `${state} ` : "";
   return (tasks: TaskSummary[]) =>
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
@@ -381,6 +392,7 @@ function taskRequest(args: string[]): Request {
         criterion: { type: "string", multiple: true },
         check: { type: "string", multiple: true },
         repo: { type: "string" },
+        replaces: { type: "string" },
       });
       const input = {
         issue_id: only(positionals, "issue id"),
@@ -391,6 +403,7 @@ function taskRequest(args: string[]): Request {
         files: values.file ?? [],
         criteria: values.criterion ?? [],
         checks: values.check,
+        ...(values.replaces === undefined ? {} : { replaces: values.replaces }),
       };
       const format = (started: TaskStartResult) => {
         const shared = started.sharedFiles.map((s) => `  - ${s.file} with ${s.theirs} of open task ${s.task} (${s.title})`);
@@ -412,6 +425,18 @@ function taskRequest(args: string[]): Request {
     case "close": {
       const { values, positionals } = parse(rest, {});
       return { operation: "task_close", input: { id: only(positionals, "task id") }, json: values.json === true, format: formatClose };
+    }
+    case "drop": {
+      const { values, positionals } = parse(rest, { reason: { type: "string" } });
+      if (values.reason === undefined) throw new UsageError("task drop needs --reason <text>: why the task is dropped");
+      const format = (dropped: TaskDropResult) =>
+        [
+          `Dropped task ${dropped.brief.id}: ${dropped.brief.dropReason}`,
+          ...dropped.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+          ...dropped.cleanedUp,
+          ...(dropped.keptBranch === null ? [] : [`Kept: ${dropped.keptBranch}`]),
+        ].join("\n");
+      return { operation: "task_drop", input: { id: only(positionals, "task id"), reason: values.reason }, json: values.json === true, format };
     }
     case "waive": {
       const { values, positionals } = parse(rest, { reason: { type: "string" } });
