@@ -7,13 +7,13 @@
 // a task's push too: a push to any branch is refused while it brings a task's commit that no
 // reviewed or waived task commit holds. A commit of no task goes to a branch other than the
 // base branch freely, so the Human's own branches need no waiver.
-import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Decision } from "./decide.ts";
 import { runGit } from "./git.ts";
 import { coveredCommits } from "./handlers/reviews.ts";
 import { truestTaskCommits } from "./handlers/truest.ts";
-import { openProjectStore } from "./project.ts";
+import { openProjectStore, projectDbPath } from "./project.ts";
 import { TRUEST } from "./handlers/common.ts";
 import { repoDirOf, repoOf } from "./repos.ts";
 import { readSettings, type RepoPolicies } from "./settings.ts";
@@ -120,7 +120,9 @@ function denied(remote: string, why: string): Decision {
 export function judgePush(projectDir: string, remote: string, stdin: string, pushDir: string = projectDir, pusher: Actor = { kind: "human" }): Decision {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
-    if (opened.error.failure === "missing") return { decision: "allow" };
+    if (opened.error.failure === "missing") {
+      return { decision: "allow", reason: `${NO_RECORD} in ${projectDir}, so the push gate judged nothing; run \`tmb init\` there, or \`tmb remove\` to take the hook away` };
+    }
     return denied(remote, `tmb cannot read the project's record, so it allows nothing: ${opened.error.message}`);
   }
   const store = opened.store;
@@ -157,6 +159,66 @@ export function judgePush(projectDir: string, remote: string, stdin: string, pus
 
 const HOOK_MARK = "# tmb: the push gate.";
 
+/** How a push the gate could not judge, for want of a record, begins: the hook says it, never passes in silence. */
+export const NO_RECORD = "tmb found no project record";
+
+/**
+ * The command a hook runs: \`tmb pre-push --project <path>\`, the project's folder relative to the
+ * repo's top. The hook carries it, so it never searches: git runs the hook at the repo's top, which
+ * is not the project's folder when the project is one package of a monorepo (trustmybot/tmb#178).
+ * A relative path names no machine's folder, so a hook file kept in the repo can carry it too.
+ */
+function gateCommand(tmbCommand: readonly string[], dir: string, projectDir: string): string {
+  return [...tmbCommand, "pre-push", "--project", projectFromTop(dir, projectDir)].map(shellQuote).join(" ");
+}
+
+/**
+ * The repo's main folder for \`dir\`: a linked worktree, a task's among them, belongs to the repo
+ * its common git folder is in, so a relative project path names the same folder from either.
+ */
+export function repoTopOf(dir: string): string | null {
+  const common = runGit(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (common.ok && path.basename(common.stdout) === ".git") return path.dirname(common.stdout);
+  const top = runGit(dir, ["rev-parse", "--show-toplevel"]);
+  return top.ok ? top.stdout : null;
+}
+
+/** The project's folder from the top of the repo \`dir\` is in, with forward slashes; "." at the top. */
+function projectFromTop(dir: string, projectDir: string): string {
+  const top = repoTopOf(dir);
+  const relative = top === null ? "" : path.relative(real(top), real(projectDir));
+  return relative === "" ? "." : relative.split(path.sep).join("/");
+}
+
+/** The project folder a hook names, resolved from the top of the repo \`dir\` is in; null when it names none (one an older tmb wrote). */
+export function hookProject(text: string, dir: string): string | null {
+  const match = /'pre-push' '--project' '((?:[^']|'\\'')*)'/.exec(text);
+  if (match === null) return null;
+  const named = match[1]!.replace(/'\\''/g, "'");
+  const top = repoTopOf(dir);
+  return path.resolve(top ?? dir, named);
+}
+
+/**
+ * The other tmb project whose push gate is already in the repo of \`dir\`: one repo holds one tmb
+ * project for now, so init refuses a second one rather than turn the first one's gate off.
+ */
+export function otherProjectInRepo(dir: string, projectDir: string): string | null {
+  const file = hookPath(dir);
+  if (file === null || !existsSync(file) || !isOurs(file)) return null;
+  const other = hookProject(readFileSync(file, "utf8"), dir);
+  if (other === null || real(other) === real(projectDir)) return null;
+  return existsSync(projectDbPath(other)) ? other : null;
+}
+
+function real(dir: string): string {
+  try {
+    return realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+}
+
 function hookPath(projectDir: string): string | null {
   const resolved = runGit(projectDir, ["rev-parse", "--git-path", "hooks/pre-push"]);
   return resolved.ok ? path.resolve(projectDir, resolved.stdout) : null;
@@ -174,10 +236,12 @@ function isOurs(file: string): boolean {
  * Writes git's pre-push hook, which runs `tmb pre-push`. Leaves a pre-push hook that is not
  * tmb's alone and says how to add the gate to it. Returns what it did, one line each.
  */
-export function installPushGate(projectDir: string, tmbCommand: readonly string[]): string[] {
-  const file = hookPath(projectDir);
+export function installPushGate(dir: string, tmbCommand: readonly string[], projectDir: string = dir): string[] {
+  const file = hookPath(dir);
   if (file === null) return ["Not a git work tree, so git's pre-push hook was not written; the push gate is off here."];
-  const command = [...tmbCommand, "pre-push"].map(shellQuote).join(" ");
+  const command = gateCommand(tmbCommand, dir, projectDir);
+  const other = otherProjectInRepo(dir, projectDir);
+  if (other !== null) return [`git's pre-push hook ${file} is the push gate of the tmb project in ${other}, and one repo holds one tmb project for now, so it was left alone; the push gate is off for this project.`];
   if (existsSync(file) && !isOurs(file)) {
     return [`git's pre-push hook ${file} is not tmb's, so it was left alone; add this line to it to turn the push gate on: ${command} "$@"`];
   }
@@ -188,11 +252,13 @@ export function installPushGate(projectDir: string, tmbCommand: readonly string[
   return [`Wrote git's pre-push hook ${file}: every push from this project asks tmb first.`];
 }
 
-/** Deletes the pre-push hook init wrote; a hook that is not tmb's stays. Returns what it did. */
-export function removePushGate(projectDir: string): string[] {
-  const file = hookPath(projectDir);
+/** Deletes the pre-push hook init wrote; a hook that is not tmb's, or is another project's, stays. Returns what it did. */
+export function removePushGate(dir: string, projectDir: string = dir): string[] {
+  const file = hookPath(dir);
   if (file === null || !(statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) return [];
   if (!isOurs(file)) return [`git's pre-push hook ${file} is not tmb's, so it was left alone.`];
+  const owner = hookProject(readFileSync(file, "utf8"), dir);
+  if (owner !== null && real(owner) !== real(projectDir)) return [`git's pre-push hook ${file} is the push gate of the tmb project in ${owner}, so it was left alone.`];
   rmSync(file);
   return [`Removed git's pre-push hook ${file}.`];
 }
@@ -210,7 +276,7 @@ function gatedDirs(projectDir: string, repos: RepoPolicies | null, withExempt: b
 export function installPushGates(projectDir: string, repos: RepoPolicies | null, tmbCommand: readonly string[]): string[] {
   const dirs = gatedDirs(projectDir, repos, false);
   if (repos !== null && dirs.length === 0) return ["This workspace has no repo tmb works in, so no pre-push hook was written."];
-  return dirs.flatMap((dir) => installPushGate(dir, tmbCommand));
+  return dirs.flatMap((dir) => installPushGate(dir, tmbCommand, projectDir));
 }
 
 /**
@@ -227,7 +293,7 @@ export function removePushGates(projectDir: string): string[] {
       opened.store.close();
     }
   }
-  return gatedDirs(projectDir, repos, true).flatMap((dir) => removePushGate(dir));
+  return gatedDirs(projectDir, repos, true).flatMap((dir) => removePushGate(dir, projectDir));
 }
 
 /**
@@ -235,13 +301,13 @@ export function removePushGates(projectDir: string): string[] {
  * should run the push gate and does not run it with `tmbCommand`. Reads only.
  */
 export function pushGateGaps(projectDir: string, repos: RepoPolicies | null, tmbCommand: readonly string[]): string[] {
-  const command = [...tmbCommand, "pre-push"].map(shellQuote).join(" ");
   return gatedDirs(projectDir, repos, false).flatMap((dir) => {
+    const command = gateCommand(tmbCommand, dir, projectDir);
     const file = hookPath(dir);
     if (file === null) return [];
     if (!existsSync(file)) return [`git's pre-push hook is missing in ${dir}: the push gate is off there`];
     const text = readFileSync(file, "utf8");
     if (!isOurs(file)) return text.includes(`${command} "$@"`) ? [] : [`git's pre-push hook ${file} is not tmb's and does not run the push gate`];
-    return text.includes(`exec ${command} "$@"`) ? [] : [`git's pre-push hook ${file} runs another tmb than this one`];
+    return text.includes(`exec ${command} "$@"`) ? [] : [`git's pre-push hook ${file} runs another tmb than this one, or names another project folder than ${projectDir}`];
   });
 }
