@@ -23,6 +23,7 @@ import {
 } from "../handlers/index.ts";
 import type { Concept } from "../graph/concepts.ts";
 import { indexProject } from "../graph/fresh.ts";
+import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
 import type { Hit, MapResult, ScopeResult, SymbolCard } from "../graph/lookups.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
@@ -31,18 +32,26 @@ import type { Actor, Discussion, Issue, IssueSummary, SearchHit, StoredEvent } f
 export const RECORD_COMMANDS = ["issue", "note", "search", "history", "feature", "task", "graph"] as const;
 export type RecordCommand = (typeof RECORD_COMMANDS)[number];
 
-export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--milestone <name>]
+const JSON_NOTE = "  Add --json for JSON output.";
+
+/** Each record command's detail, as `tmb help <command>` shows it. */
+export const RECORD_USAGE: Record<RecordCommand, string> = {
+  issue: `  tmb issue create <title> [--body <text>] [--milestone <name>]
                             Record a new issue
   tmb issue list [--state open|closed]
                             List issues
   tmb issue show <id>       Show an issue with its notes and decisions
   tmb issue close <id>      Close an issue
   tmb issue reopen <id>     Reopen an issue
-  tmb note <issue-id> <text> [--decision]
+${JSON_NOTE}`,
+  note: `  tmb note <issue-id> <text> [--decision]
                             Add a note, or with --decision a decision, to an issue
-  tmb search <query>        Search issues, notes and decisions
-  tmb history <id>          Show every recorded change to an issue or note
-  tmb feature start <name>  Cut a feature branch from the base branch and record it
+${JSON_NOTE}`,
+  search: `  tmb search <query>        Search issues, notes and decisions
+${JSON_NOTE}`,
+  history: `  tmb history <id>          Show every recorded change to an issue or note
+${JSON_NOTE}`,
+  feature: `  tmb feature start <name>  Cut a feature branch from the base branch and record it
   tmb feature list          List the feature branches with their base, state and tasks
   tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
   tmb feature waive <name> --reason <text>
@@ -50,7 +59,8 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
   tmb feature pr <name> --title <text> [--body <text>]
                             Open the feature branch's pull request into the base branch, once
                             the reviewer passed its tip or the Human waived the review
-  tmb task start <issue-id> --kind code|docs [--feature <name>] --intent <text> --file <path>...
+${JSON_NOTE}`,
+  task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] --intent <text> --file <path>...
                  --criterion <text>... [--check <command>]...
                             Start a task: cut its branch and worktree from the feature
                             branch and record its spec
@@ -65,7 +75,8 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
   tmb task pr <id> --title <text> [--body <text>]
                             Open a truest task's pull request into the base branch, once
                             the reviewer passed it or the Human waived the review
-  tmb graph map [<dir>] [--depth <n>]
+${JSON_NOTE}`,
+  graph: `  tmb graph map [<dir>] [--depth <n>]
                             Show the project's directories and files with their summaries
   tmb graph find <words>    Find where a symbol, file or topic lives in the code
   tmb graph symbol <name> [--path <file>]
@@ -74,13 +85,40 @@ export const RECORD_USAGE = `  tmb issue create <title> [--body <text>] [--miles
                             Draft a task's files and tests from the code graph
   tmb graph concepts [<words>]
                             List the concepts recorded in the code graph
-  Add --task <id> to a graph lookup to read as that open task sees the code.
-  Add --json to any of these for JSON output.`;
+  Add --task <id> to a lookup to read as that open task sees the code.
+${JSON_NOTE}`,
+};
+
+/** The actions of the record commands that take one, in the order the help lists them. */
+export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> = {
+  issue: ["create", "list", "show", "close", "reopen"],
+  feature: ["start", "list", "brief", "waive", "pr"],
+  task: ["start", "list", "brief", "close", "waive", "pr"],
+  graph: ["map", "find", "symbol", "scope", "concepts"],
+};
 
 const HUMAN: Actor = { kind: "human" };
 
 export class UsageError extends Error {
   override name = "UsageError";
+}
+
+/** An action the command does not have, such as `tmb task clsoe`. */
+export class UnknownActionError extends UsageError {
+  override name = "UnknownActionError";
+  constructor(
+    readonly command: RecordCommand,
+    readonly action: string,
+  ) {
+    super(`unrecognized command '${action}'`);
+  }
+}
+
+/** The error for a missing or unknown action of `command`. */
+function actionError(command: RecordCommand, action: string | undefined): UsageError {
+  if (action !== undefined) return new UnknownActionError(command, action);
+  const actions = RECORD_ACTIONS[command]!;
+  return new UsageError(`${command} needs an action: ${actions.slice(0, -1).join(", ")} or ${actions.at(-1)}`);
 }
 
 export function isRecordCommand(command: string | undefined): command is RecordCommand {
@@ -175,7 +213,7 @@ function issueRequest(args: string[]): Request {
       };
     }
     default:
-      throw new UsageError(action === undefined ? "issue needs an action: create, list, show, close or reopen" : `unknown issue action '${action}'`);
+      throw actionError("issue", action);
   }
 }
 
@@ -318,7 +356,7 @@ function featureRequest(args: string[]): Request {
       return { operation: "feature_pr", input, json: values.json === true, format };
     }
     default:
-      throw new UsageError(action === undefined ? "feature needs an action: start, list, brief, waive or pr" : `unknown feature action '${action}'`);
+      throw actionError("feature", action);
   }
 }
 
@@ -387,7 +425,7 @@ function taskRequest(args: string[]): Request {
       return { operation: "task_pr", input, json: values.json === true, format };
     }
     default:
-      throw new UsageError(action === undefined ? "task needs an action: start, list, brief, close, waive or pr" : `unknown task action '${action}'`);
+      throw actionError("task", action);
   }
 }
 
@@ -500,7 +538,7 @@ function graphRequest(args: string[]): Request {
       };
     }
     default:
-      throw new UsageError(action === undefined ? "graph needs an action: map, find, symbol, scope or concepts" : `unknown graph action '${action}'`);
+      throw actionError("graph", action);
   }
 }
 
@@ -537,7 +575,19 @@ function toRequest(command: RecordCommand, args: string[]): Request {
   }
 }
 
-export type Output = { out: (text: string) => void; err: (text: string) => void };
+/** Where a command writes; `colour` says whether what goes to `err` may be coloured. */
+export type Output = { out: (text: string) => void; err: (text: string) => void; colour?: boolean };
+
+/** Writes a usage error of `tmb <command>`: the closest actions on a typo, else the error and where to read more. */
+function writeUsageError(command: string, error: UsageError, output: Output): void {
+  const paint = new Paint(output.colour === true);
+  const program = `tmb ${command}`;
+  const text =
+    error instanceof UnknownActionError
+      ? unknownCommandText(program, error.action, RECORD_ACTIONS[error.command] ?? [], paint)
+      : usageErrorText(program, error.message, paint);
+  output.err(text.trimEnd());
+}
 
 /** Runs one record command in the project as the Human; resolves to the exit code. */
 export async function runRecordCommand(command: RecordCommand, args: string[], projectDir: string, output: Output): Promise<number> {
@@ -546,7 +596,7 @@ export async function runRecordCommand(command: RecordCommand, args: string[], p
     request = toRequest(command, args);
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;
-    output.err(`tmb ${command}: ${error.message}\n\n${RECORD_USAGE}`);
+    writeUsageError(command, error, output);
     return 2;
   }
 
@@ -583,7 +633,7 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
     json = values.json === true;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;
-    output.err(`tmb config: ${error.message}\n\n${CONFIG_USAGE}`);
+    writeUsageError("config", error, output);
     return 2;
   }
 
@@ -619,7 +669,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     json = values.json === true;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;
-    output.err(`tmb index: ${error.message}\n\n${INDEX_USAGE}`);
+    writeUsageError("index", error, output);
     return 2;
   }
   const opened = openProjectStore(projectDir, { create: false });

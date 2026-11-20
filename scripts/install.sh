@@ -122,7 +122,7 @@ if [ -e "${legacy_dir}/tmb" ]; then
   rm -f "${legacy_dir}/tmb"
   rmdir "$legacy_dir" 2>/dev/null || true
   rmdir "${HOME}/.tmb" 2>/dev/null || true
-  echo "Removed the old ~/.tmb/bin/tmb. In projects set up with it, run tmb init again."
+  echo "Removed the old ~/.tmb/bin/tmb. In projects set up with it, run ${name} init again."
 fi
 
 login_shell="$(basename "${SHELL:-sh}")"

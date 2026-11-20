@@ -39,7 +39,7 @@ describe("the code graph from the command line", () => {
     expect(found.freshness.broughtForwardFrom).not.toBeNull();
 
     expect(run(["graph"], project).status).toBe(2);
-    expect(run(["graph", "fly"], project).stderr).toContain("unknown graph action 'fly'");
+    expect(run(["graph", "fly"], project).stderr).toContain("unrecognized command 'fly'");
     expect(run(["index", "extra"], project).status).toBe(2);
   });
 });
