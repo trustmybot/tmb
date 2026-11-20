@@ -139,6 +139,21 @@ The engine, not an agent, creates branches and worktrees, runs checks, folds a t
 
 **A code graph per repo.** Each repo has its own graph, `.tmb/graphs/<repo>.db`, built from its own base branch, with paths relative to that repo. The graph tools take `repo` as `feature_start` does. init and `tmb index` index each repo tmb works in, one line each; a repo that cannot be indexed yet says why, and the others go on.
 
-## Carried over from the plugin
+## When a task does not close
 
-The plugin's design for retry and escalation and pull request comment triage is carried over unchanged in intent. Each gets its section here when its level starts.
+What tmb does today when work goes wrong, and what is planned. The plugin had a rule for each case; tmb keeps the ones a checkpoint can hold (trustmybot/tmb#165).
+
+| Case | Today | Planned |
+|---|---|---|
+| A check fails at close | The close is refused and names the check. The task stays open, and the worker fixes it and closes again. | |
+| The reviewer fails a truest task | The task reopens in its worktree. A worker reworks it, and it closes again for a new review. | v1.x: after two fails in a row, no worker starts on the task until the planner has recorded the cause. |
+| The reviewer fails a feature branch | The planner starts fix tasks on the branch, and the new tip is reviewed again. | |
+| A check fails, or a reviewer comments, on an open pull request | In agile mode nothing: a feature branch whose pull request is open takes no task. | v1.0.0 (trustmybot/tmb#168): the branch takes fix tasks, and the reviewed new tip updates the same pull request. v1.x: the syncer brings the comments in, and the planner sorts them into tasks (trustmybot/tmb#70). |
+| The pull request is closed without a merge | The feature branch is recorded as closed, and takes no task. | v1.0.0 (trustmybot/tmb#152): it can take a second pull request. |
+| A fold or a rebase conflicts | The step is undone and names the files. The task stays open until the worker has settled it. | |
+| The base branch moved under a feature branch | Nothing. The clash shows on GitHub, after the review. | v1.0.0 (trustmybot/tmb#169): a feature branch starts from a fetched base, and the engine brings the base in before the review. |
+| The approach is wrong, or nobody will finish the task | Nothing. The task stays open. | v1.0.0 (trustmybot/tmb#170): the planner or the Human drops the task with a reason, and a new task can name the one it replaces. |
+| A run started and never ended | The record holds it. Nothing lists it. | v1.0.0 (trustmybot/tmb#160): `tmb doctor` lists it, and a session start names it. |
+
+- **Nothing here waits for a timer.** tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`, not by a watcher.
+- **A project with no remote.** Decided by the Human on 2026-11-20. Nothing is pushed and no pull request is opened. After the reviewer passes the feature branch, or the Human waives the review, tmb says the branch is ready and the Human merges it locally.
