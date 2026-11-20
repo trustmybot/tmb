@@ -231,6 +231,17 @@ What a close checks beyond the checks, and a worker started in a worktree its ho
 | Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | Claude Code raises a worker's folder when the worker names its task with task_brief or task_close; Codex, whose worker works in the worktree tmb cut, does not. |
 | Workflow simulation | [tests/workflow/close-checks.test.ts](workflow/close-checks.test.ts) | A commit outside the task's files closes, and the close names those files and leaves the spec as written; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |
 
+## Runs and feature branches after a pull request
+
+How a run ended and what it cost, and a feature branch once its pull request merged or closed (trustmybot/tmb#131, trustmybot/tmb#133, trustmybot/tmb#135).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/claude-code-usage.test.ts](../test/claude-code-usage.test.ts) | A Claude Code transcript gives tokens per model, each message counted once; an unreadable one gives no cost. |
+| Unit | [test/decide.test.ts](../test/decide.test.ts), [test/host-roles.test.ts](../test/host-roles.test.ts) | A run ends finished or stopped, and a review of a feature branch links its run to that branch. |
+| Unit | [test/pull-request-state.test.ts](../test/pull-request-state.test.ts) | A feature branch in pr_open moves to merged or closed from the pull request's state; a failed read leaves it; the planner's session start names the ones that ended. |
+| Integration | [tests/integration/dashboard-pull-requests.test.ts](integration/dashboard-pull-requests.test.ts) | The dashboard's reads move a feature branch, at most once a minute per branch. |
+
 ## Refresh after an update
 
 A project's host files after `tmb update` (trustmybot/tmb#128).
