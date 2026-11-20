@@ -1,7 +1,10 @@
 // Pushed updates: a program follows its own channel (program.ts), looks for a newer build
-// there when a session starts, keeps a verified copy next to it, and swaps it in only when
-// no tmb session is running and no task is open, so no session or task ever mixes versions.
+// there when a session starts, keeps a verified copy next to it, and swaps it in at once
+// (trustmybot/tmb#159). A running session keeps the build it started with: the replaced build
+// is kept under its version, and every tmb call in that session's project is handed over to it
+// until the session moves to the new build or ends.
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "./engine/project.ts";
@@ -71,17 +74,29 @@ export type UpdaterOptions = {
   enabled: boolean;
   /** The program this tmb is, named by its installed file; worked out from `target` when not given. */
   program?: Program;
+  /**
+   * True in a kept build an installed one handed a call over to: it serves a pinned project and
+   * never updates the installed file itself. `target` is then the installed file.
+   */
+  handedOver?: boolean;
 };
+
+/** Set on a call the installed tmb hands over to a kept build, so it is handed over only once. */
+export const HANDED_OVER_VARIABLE = "TMB_HANDED_OVER";
+/** The installed file, for a kept build serving a handed-over call. */
+export const INSTALLED_FILE_VARIABLE = "TMB_INSTALLED_FILE";
 
 /** The updater's settings from the environment, for the tmb that is running. */
 export function updaterOptions(version: string, compiled: boolean, env: NodeJS.ProcessEnv = process.env): UpdaterOptions {
   // TMB_UPDATE_FILE names the file to update in place of the running executable, for a run from source.
-  const target = env.TMB_UPDATE_FILE || (compiled ? process.execPath : null);
+  const handedOver = env[HANDED_OVER_VARIABLE] === "1" && Boolean(env[INSTALLED_FILE_VARIABLE]);
+  const target = env.TMB_UPDATE_FILE || (handedOver ? env[INSTALLED_FILE_VARIABLE]! : compiled ? process.execPath : null);
   const program = programOf(target, version);
   return {
     version,
     target,
     program,
+    handedOver,
     // Each program keeps its own machine-wide state, so one never swaps another's build in.
     stateDir: programStateDir(program.name, env),
     releasesUrl: (env.TMB_RELEASES_URL || DEFAULT_RELEASES_URL).replace(/\/+$/, ""),
@@ -89,6 +104,27 @@ export function updaterOptions(version: string, compiled: boolean, env: NodeJS.P
     enabled: env.TMB_NO_UPDATE !== "1",
   };
 }
+
+/**
+ * A running session, one per tool server process: its project, the build it runs, and how the
+ * Human knows it: the folder, the title they gave it, and when it started.
+ */
+export type Lease = {
+  pid: number;
+  project: string;
+  startedAt: string;
+  /** The build the session runs; a lease written before trustmybot/tmb#159 names none. */
+  version?: string;
+  /** The title the Human gave the session, when the host passes it. */
+  title?: string | null;
+  /** The processes above the tool server, nearest first, so a hook of the same session can find it. */
+  ancestors?: number[];
+  /** Why the session could not move to the installed build, when it tried and failed. */
+  moveError?: string | null;
+};
+
+/** A build kept for running sessions, by version. */
+export type KeptBuild = { version: string; file: string; bytes: number; used: boolean };
 
 /** A kept build. `from` is the version that kept it: a reinstall of another version drops it. */
 type Staged = { version: string; channel: Channel; from: string; file: string; sha256: string };
@@ -147,8 +183,13 @@ export class Updater {
     return this.file("sessions");
   }
 
-  /** False when this tmb cannot update itself: run from source, pinned to one version, or updates turned off. */
+  /** False when this tmb cannot update itself: run from source, pinned to one version, updates turned off, or a kept build serving a handed-over call. */
   get active(): boolean {
+    return this.options.enabled && this.options.target !== null && !this.pinned && this.options.handedOver !== true;
+  }
+
+  /** True when this tmb keeps sessions and builds: an install that updates itself, or a kept build serving a handed-over call. */
+  get tracksSessions(): boolean {
     return this.options.enabled && this.options.target !== null && !this.pinned;
   }
 
@@ -303,80 +344,121 @@ export class Updater {
     if (kept === null) throw new Error("another tmb is updating; trying again later");
   }
 
-  // --- sessions and projects ------------------------------------------------------------
+  // --- sessions, projects and kept builds ---------------------------------------------
 
-  /** Marks a session as running in `projectDir` until `endSession`, and remembers the project. */
-  startSession(projectDir: string, pid: number = process.pid): void {
-    writeJson(path.join(this.leaseDir, `${pid}.json`), { pid, project: projectDir, startedAt: new Date().toISOString() });
+  /** Marks a session as running in `projectDir` on build `version` (this tmb's unless given) until `endSession`, and remembers the project. */
+  startSession(projectDir: string, pid: number = process.pid, info: { version?: string; ancestors?: number[] } = {}): void {
+    const lease: Lease = { pid, project: projectDir, startedAt: new Date().toISOString(), version: info.version ?? this.options.version, title: null, ancestors: info.ancestors ?? [], moveError: null };
+    writeJson(path.join(this.leaseDir, `${pid}.json`), lease);
     // One file per project, so sessions starting together never lose one another's project.
     const name = createHash("sha256").update(projectDir).digest("hex").slice(0, 32);
     writeJson(path.join(this.file("projects"), `${name}.json`), { project: projectDir });
+  }
+
+  /** Changes a running session's lease: the build it moved to, its title, why a move failed. */
+  updateSession(pid: number, change: Partial<Omit<Lease, "pid" | "project" | "startedAt">>): void {
+    const file = path.join(this.leaseDir, `${pid}.json`);
+    const lease = readJson<Lease>(file);
+    if (lease) writeJson(file, { ...lease, ...change });
   }
 
   endSession(pid: number = process.pid): void {
     rmSync(path.join(this.leaseDir, `${pid}.json`), { force: true });
   }
 
-  /** Projects of the tmb sessions still running, other than the one of process `except`. Leases of ended processes are cleared. */
-  liveSessions(except: number = process.pid): string[] {
+  /** The tmb sessions still running, other than the one of process `except`. Leases of ended processes are cleared. */
+  leases(except: number = process.pid): Lease[] {
     if (!existsSync(this.leaseDir)) return [];
-    const live: string[] = [];
+    const live: Lease[] = [];
     for (const name of readdirSync(this.leaseDir)) {
-      const lease = readJson<{ pid: number; project: string }>(path.join(this.leaseDir, name));
+      const lease = readJson<Lease>(path.join(this.leaseDir, name));
       if (!lease || typeof lease.pid !== "number") continue;
       if (lease.pid === except) continue;
-      if (isRunning(lease.pid)) live.push(lease.project);
+      if (isRunning(lease.pid)) live.push(lease);
       else rmSync(path.join(this.leaseDir, name), { force: true });
     }
     return live;
   }
 
-  /**
-   * The open tasks that hold an update back, one per project tmb has served that has one: the
-   * oldest, by id and title. A project whose record is gone is forgotten, and one whose record a
-   * newer tmb reshaped is passed over; one whose record cannot be read at all holds it back with
-   * no task named.
-   */
-  openTasks(): { project: string; task: { id: string; title: string } | null }[] {
-    const dir = this.file("projects");
-    const busy: { project: string; task: { id: string; title: string } | null }[] = [];
-    for (const name of existsSync(dir) ? readdirSync(dir).filter((entry) => entry.endsWith(".json")) : []) {
-      const project = readJson<{ project: string }>(path.join(dir, name))?.project;
-      if (typeof project !== "string") continue;
-      const opened = openProjectStore(project, { create: false });
-      if (!opened.ok) {
-        // A record a newer tmb reshaped cannot have a task running on this tmb, which can do
-        // nothing there: it never holds back the update that lets this tmb read it (trustmybot/tmb#173).
-        if (opened.error.failure === "missing") rmSync(path.join(dir, name), { force: true });
-        else if (opened.error.failure === "unreadable") busy.push({ project, task: null });
-        continue;
-      }
-      try {
-        const oldest = opened.store.listTasks("open")[0];
-        if (oldest) busy.push({ project, task: { id: oldest.id, title: oldest.title } });
-      } finally {
-        opened.store.close();
-      }
-    }
-    return busy;
+  /** Projects of the tmb sessions still running, other than the one of process `except`. */
+  liveSessions(except: number = process.pid): string[] {
+    return this.leases(except).map((lease) => lease.project);
   }
 
   /**
-   * Swaps the kept build in for the installed file, only between sessions: when no other
-   * tmb session is running and no project holds an open task. The swap is a rename, so a
-   * process still running the old file keeps it until it ends.
+   * The build a running session pins `projectDir` to, when it is not this tmb's: every tmb call
+   * there runs that build until the session moves or ends. Null when nothing pins it.
+   */
+  pinOf(projectDir: string): string | null {
+    const project = path.resolve(projectDir);
+    const lease = this.leases().find((candidate) => path.resolve(candidate.project) === project && (candidate.version ?? this.options.version) !== this.options.version);
+    return lease?.version ?? null;
+  }
+
+  /** Where the build of `version` is kept while sessions run it, under the program's own name. */
+  keptFile(version: string): string {
+    return path.join(this.file("builds"), version, `${this.program.name}${IS_WINDOWS ? ".exe" : ""}`);
+  }
+
+  /** The builds kept for sessions, with their size and whether a running session uses one. */
+  keptBuilds(): KeptBuild[] {
+    const dir = this.file("builds");
+    const used = new Set(this.leases(-1).map((lease) => lease.version));
+    return readdirSafe(dir).flatMap((version) => {
+      const file = this.keptFile(version);
+      const stat = statSync(file, { throwIfNoEntry: false });
+      return stat ? [{ version, file, bytes: stat.size, used: used.has(version) }] : [];
+    });
+  }
+
+  /** True when `projectDir` has an open task; a record this tmb cannot open has none it can see. */
+  hasOpenTask(projectDir: string): boolean {
+    const opened = openProjectStore(projectDir, { create: false });
+    if (!opened.ok) return false;
+    try {
+      return opened.store.listTasks("open").length > 0;
+    } finally {
+      opened.store.close();
+    }
+  }
+
+  /**
+   * The sessions still on a build other than the installed `version`, each with why: a task is
+   * open, a move failed, or it moves at its next tool call.
+   */
+  waiting(version: string): { lease: Lease; reason: string }[] {
+    return this.leases(-1)
+      .filter((lease) => lease.version !== undefined && lease.version !== version)
+      .map((lease) => ({
+        lease,
+        reason: lease.moveError
+          ? `it could not move: ${lease.moveError}`
+          : this.hasOpenTask(lease.project)
+            ? "a task is open there; it moves once the task closes"
+            : "it moves at its next tool call",
+      }));
+  }
+
+  /** Copies the installed file aside as the build of `version`, for sessions still running it. */
+  private keepInstalled(version: string): void {
+    const kept = this.keptFile(version);
+    if (existsSync(kept)) return;
+    mkdirSync(path.dirname(kept), { recursive: true });
+    const part = `${kept}.${process.pid}.part`;
+    copyFileSync(this.options.target!, part);
+    if (!IS_WINDOWS) chmodSync(part, 0o755);
+    renameSync(part, kept);
+  }
+
+  /**
+   * Swaps the kept build in for the installed file at once, whatever is running. A session still
+   * running this build keeps it: the installed file is first copied aside under its version, and
+   * the swap is a rename, so a process still running the old file keeps it until it ends.
    */
   apply(except: number = process.pid): { outcome: "off" | "none" | "waiting" | "applied" | "failed"; version?: string; reason?: string } {
     if (!this.active) return { outcome: "off" };
     const staged = this.staged();
     if (!staged) return { outcome: "none" };
-    const sessions = this.liveSessions(except);
-    if (sessions.length > 0) return { outcome: "waiting", version: staged.version, reason: `a tmb session is running in ${sessions[0]}` };
-    const busy = this.openTasks()[0];
-    if (busy) {
-      const reason = busy.task ? `task ${busy.task.id} "${busy.task.title}" is open in ${busy.project}` : `a task may be open in ${busy.project}, whose record cannot be read`;
-      return { outcome: "waiting", version: staged.version, reason };
-    }
     const target = this.options.target!;
     const swapped = this.withLock(() => {
       // Copied next to the target first, under a name of this process's own, and checked there,
@@ -389,6 +471,8 @@ export class Updater {
           throw new Error("the kept build no longer matches its checksum; it is dropped and downloaded again");
         }
         if (!IS_WINDOWS) chmodSync(next, 0o755);
+        // A session still on this build keeps running it, from the kept copy.
+        if (this.leases(except).some((lease) => (lease.version ?? this.options.version) === this.options.version)) this.keepInstalled(this.options.version);
         const old = `${target}.old`;
         const movedAside = IS_WINDOWS && existsSync(target);
         if (movedAside) {
@@ -456,4 +540,22 @@ function isRunning(pid: number): boolean {
     // EPERM: the process exists but belongs to someone else.
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+/**
+ * The version of the tmb installed at `file`, as it reports it; null when it cannot say. Asked
+ * again only when the file changes.
+ */
+const installedVersions = new Map<string, { stamp: string; version: string | null }>();
+export function installedVersionOf(file: string): string | null {
+  const stat = statSync(file, { throwIfNoEntry: false });
+  if (!stat) return null;
+  const stamp = `${stat.mtimeMs}:${stat.size}:${stat.ino}`;
+  const known = installedVersions.get(file);
+  if (known && known.stamp === stamp) return known.version;
+  // Asked as a handed-over call, so the installed tmb answers for itself and hands nothing over.
+  const result = spawnSync(file, ["--version"], { encoding: "utf8", timeout: 30_000, env: { ...process.env, [HANDED_OVER_VARIABLE]: "1", [INSTALLED_FILE_VARIABLE]: file } });
+  const version = result.status === 0 ? (result.stdout.trim().split(/\s+/)[1] ?? null) : null;
+  installedVersions.set(file, { stamp, version });
+  return version;
 }

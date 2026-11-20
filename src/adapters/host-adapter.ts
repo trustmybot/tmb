@@ -58,4 +58,8 @@ export interface HostAdapter {
   pendingSteps?(projectDir: string): string[];
   /** Answers a host event: the host's stdin in, the host's stdout out (empty when there is nothing to say). Throws on bad input. */
   answerHook(event: string, stdinText: string, run: HookRun): string;
+  /** What the Human does in this host to restart tmb's tool server in a running session, in the host's own words. */
+  reconnectToolServer: string;
+  /** The title the Human gave the session, from a session start's input, when the host passes it; null otherwise. Never throws. */
+  sessionTitle?(stdinText: string): string | null;
 }

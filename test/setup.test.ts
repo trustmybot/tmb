@@ -29,6 +29,7 @@ function fakeHost(id: string, installed: boolean): HostAdapter {
     id,
     name: `Host ${id.toUpperCase()}`,
     command: `host-${id}`,
+    reconnectToolServer: "restart the host",
     limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
     detect: () => ({ installed }),
     setup(projectDir) {

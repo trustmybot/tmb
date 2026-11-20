@@ -37,7 +37,11 @@ The examples on this page say `tmb`; use the name of the program you installed. 
 
 Before the channels had their own names, every channel installed as `tmb`. Such a `tmb` keeps following the channel it was on, and the installer points it out when it installs the channel's new name.
 
-Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. A project whose record a newer tmb reshaped never holds the swap back: this program can do nothing there, so no task there runs on it. Until then it keeps running the version it has, and with no network it simply runs that version.
+Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. `tmb update`, or the end of any session, installs it at once; with no network tmb simply runs the version it has.
+
+A session that is running keeps the build it started with, and so does its project: while it runs, every tmb call there (its hooks, its tool server, git's push hook, a command you type) runs that build, the record keeps its shape and the host files are left as they are. The session moves to the new build by itself at its next tool call once no task is open in the project, and says so in one line; you do nothing, and the conversation is kept. If the move fails, the session keeps its build and says how to restart tmb's tool server (in Claude Code: `/mcp`, then Reconnect on tmb). `tmb update` names each session still on an old build by its folder, title and start time, and why. The replaced build is kept; tmb says how many old builds no session uses and their size, and never deletes one by itself.
+
+A project whose record a newer tmb reshaped never holds an update back: this program can do nothing there.
 
 | Command | Does |
 |---|---|

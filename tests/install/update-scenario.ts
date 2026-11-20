@@ -1,7 +1,8 @@
 // One install updating itself, the way a user's does: an older tmb is installed, a host
-// session starts its tool server and ends it, and the newer build on its channel is swapped
-// in only between sessions and never while a task is open. Shared by the Install test
-// against the real release repo and the integration test against a local one.
+// session starts its tool server, and the newer build on its channel is installed at once.
+// The running session's project stays on the old build while a task is open, then the
+// session moves to the new build at its next tool call (trustmybot/tmb#159). Shared by the
+// Install test against the real release repo and the integration test against a local one.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { spawnSync } from "node:child_process";
@@ -73,8 +74,8 @@ export async function cleanup(scenario: Scenario): Promise<void> {
   rmSync(scenario.scratch, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 }
 
-export function installedVersion(scenario: Scenario): string {
-  const result = spawnSync(scenario.installed, ["--version"], { env: scenario.env, encoding: "utf8", timeout: 30_000 });
+export function installedVersion(scenario: Scenario, cwd: string = scenario.scratch): string {
+  const result = spawnSync(scenario.installed, ["--version"], { cwd, env: scenario.env, encoding: "utf8", timeout: 30_000 });
   if (result.status !== 0) throw new Error(`tmb --version exited ${result.status}: ${result.stderr}`);
   return result.stdout.trim().split(/\s+/)[1] ?? "";
 }
@@ -106,7 +107,13 @@ async function waitFor(what: string, done: () => boolean, timeoutMs: number): Pr
   }
 }
 
-export type Session = { end: () => Promise<void>; pid: number; stderr: () => string };
+export type Session = {
+  end: () => Promise<void>;
+  pid: number;
+  stderr: () => string;
+  /** Calls a tool that only reads, and returns the text of its answer. */
+  call: () => Promise<string>;
+};
 
 /** A host session: the installed tmb's tool server, started and answering, until `end` stops it as the host does. */
 export async function startSession(scenario: Scenario): Promise<Session> {
@@ -127,6 +134,10 @@ export async function startSession(scenario: Scenario): Promise<Session> {
   const session: Session = {
     pid,
     stderr: () => stderr,
+    call: async () => {
+      const result = (await client.callTool({ name: "issue_list", arguments: {} })) as { content?: { type: string; text?: string }[] };
+      return (result.content ?? []).map((part) => part.text ?? "").join("\n");
+    },
     end: async () => {
       scenario.sessions.delete(session);
       await client.close();
@@ -176,40 +187,56 @@ export function openTask(scenario: Scenario): () => void {
 }
 
 /**
- * The whole story for one channel, from an older install to `expected`: an open task holds the
- * update back and its close releases it (trustmybot/tmb#61). Logs the steps it saw, in order,
- * and throws at the first one that is wrong.
+ * The whole story for one channel, from an older install to `expected`: the update installs at
+ * once while a session runs; the session's project stays on the old build while a task is open,
+ * and the session moves to the new build at its first tool call after the task closes. Logs the
+ * steps it saw, in order, and throws at the first one that is wrong. With `moves` false, a move
+ * to `expected` may fail (a release older than the move), and the session must say so.
  */
-export async function updatesItself(scenario: Scenario, expected: string, log: (line: string) => void = () => {}): Promise<void> {
+export async function updatesItself(scenario: Scenario, expected: string, log: (line: string) => void = () => {}, options: { moves?: boolean } = {}): Promise<void> {
+  const moves = options.moves ?? true;
   const before = installedVersion(scenario);
   if (before === expected) throw new Error(`the installed tmb is already ${expected}; the scenario needs an older one`);
   log(`installed ${before}`);
 
   const closeTask = openTask(scenario);
-  const first = await startSession(scenario);
-  await waitForStaged(scenario, first);
+  const session = await startSession(scenario);
+  await waitForStaged(scenario, session);
   log("a session start kept the newer build");
 
-  const during = await runUpdate(scenario);
-  if (installedVersion(scenario) !== before) throw new Error(`tmb update swapped the file while a session ran: ${during.output}`);
-  log(`while a session runs, tmb update waits: ${during.output}`);
+  const updated = await runUpdate(scenario);
+  if (updated.status !== 0) throw new Error(`tmb update failed: ${updated.output}`);
+  if (installedVersion(scenario) !== expected) throw new Error(`tmb update did not install ${expected} at once: ${updated.output}`);
+  if (!updated.output.includes(`stays on ${before}`) || !updated.output.includes("a task is open")) throw new Error(`tmb update did not name the session that stays on ${before}: ${updated.output}`);
+  log(`while a session runs, tmb update installs at once and names the session: ${updated.output}`);
 
-  await first.end();
-  if (installedVersion(scenario) !== before) throw new Error("the update applied at a session's end while a task was open");
-  log("at the session's end with a task open, the install keeps its version");
+  const pinned = installedVersion(scenario, scenario.project);
+  if (pinned !== before) throw new Error(`in the running session's project, tmb runs ${pinned}, expected ${before}`);
+  log(`in the session's project, tmb still runs ${before}`);
 
-  const held = await runUpdate(scenario);
-  if (installedVersion(scenario) !== before) throw new Error(`tmb update swapped the file while a task was open: ${held.output}`);
-  if (held.status !== 0 || !held.output.includes('"A task in the middle" is open in')) throw new Error(`tmb update did not name the open task that holds the update: ${held.output}`);
-  log(`with no session running and a task open, tmb update waits and names the task: ${held.output}`);
+  const held = await session.call();
+  if (held.includes("moved this session")) throw new Error(`the session moved while a task was open: ${held}`);
+  log("with a task open, the session's tool call is answered by the old build");
 
   closeTask();
-  const second = await startSession(scenario);
-  if (installedVersion(scenario) !== before) throw new Error("the update applied while a session ran");
-  await second.end();
-  const after = installedVersion(scenario);
-  if (after !== expected) throw new Error(`after the session ended with no task open, tmb is ${after}, expected ${expected}`);
-  log(`after the next session ended with no task open, tmb is ${after}`);
+  const next = await session.call();
+  if (moves) {
+    if (!next.includes(`moved this session from ${before} to ${expected}`)) throw new Error(`the session did not move to ${expected} once the task closed: ${next}; it printed: ${session.stderr().trim()}`);
+    const after = installedVersion(scenario, scenario.project);
+    if (after !== expected) throw new Error(`after the move, tmb in the project runs ${after}, expected ${expected}`);
+    log(`once the task closed, the next tool call moved the session to ${expected}`);
+  } else if (next.includes("moved this session")) {
+    log(`once the task closed, the next tool call moved the session to ${expected}`);
+  } else if (next.includes(`stays on ${before}`)) {
+    log(`the session could not move to ${expected}, and said so`);
+  } else {
+    throw new Error(`once the task closed, the session neither moved nor said why: ${next}`);
+  }
+
+  await session.end();
+  const kept = path.join(scenario.stateDir, "builds", before);
+  if (!existsSync(kept)) throw new Error(`the build ${before} the session ran was not kept`);
+  log(`after the session ended, ${before} is still kept until the Human removes it`);
 
   const again = await runUpdate(scenario);
   if (again.status !== 0 || !again.output.includes("newest")) throw new Error(`tmb update after the swap: ${again.output}`);
