@@ -19,11 +19,12 @@ export type HostRoles = Record<string, HostRole>;
 export const DEFAULT_HOST_ROLE: HostRole = "planner";
 
 /**
- * One repo's policy in a workspace of several repos: the branch its pull requests merge into
- * and the checks its tasks run, or exempt, when tmb wires nothing in it (trustmybot/tmb#163).
+ * One folder's policy in a workspace: for a repo, the branch its pull requests merge into and the
+ * checks its tasks run, or exempt, when tmb wires nothing in it; git false for a folder that is no
+ * repo, recorded and left alone (trustmybot/tmb#163).
  */
-export type RepoPolicy = { base_branch?: string; checks?: string[]; exempt?: boolean };
-/** Each repo of a workspace by its path from the workspace folder, with forward slashes. */
+export type RepoPolicy = { base_branch?: string; checks?: string[]; exempt?: boolean; git?: false };
+/** Each folder of a workspace by its path from the workspace folder, with forward slashes. */
 export type RepoPolicies = Record<string, RepoPolicy>;
 
 export type SettingValues = { host: string; host_roles: HostRoles; base_branch: string; review_mode: ReviewMode; checks: string[]; repos: RepoPolicies };
@@ -84,8 +85,15 @@ function repoPolicies(value: unknown): RepoPolicies {
     const given = (value as Record<string, unknown>)[raw];
     if (typeof given !== "object" || given === null || Array.isArray(given)) throw new SettingError(`the repo ${name}'s policy must be an object, got ${JSON.stringify(given)}`);
     const fields = given as Record<string, unknown>;
-    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "exempt"].includes(key));
-    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks and exempt, not ${unknown.join(", ")}`);
+    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "exempt", "git"].includes(key));
+    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, exempt and git, not ${unknown.join(", ")}`);
+    if (fields.git !== undefined) {
+      // A folder that is no repo takes no policy: tmb records it and leaves it alone.
+      if (fields.git !== false) throw new SettingError(`git is given only as false, for a folder that is not a repo; got ${JSON.stringify(fields.git)} for ${name}`);
+      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks or exempt`);
+      repos[name] = { git: false };
+      continue;
+    }
     const policy: RepoPolicy = {};
     if (fields.exempt !== undefined && typeof fields.exempt !== "boolean") throw new SettingError(`the repo ${name}'s exempt must be true or false, got ${JSON.stringify(fields.exempt)}`);
     if (fields.exempt === true) policy.exempt = true;
@@ -148,6 +156,7 @@ const LABELS: Record<SettingName, string> = { host: "host", host_roles: "host ro
 
 /** One repo's policy in a line: its base branch and checks, or exempt. */
 export function repoPolicyLine(name: string, policy: RepoPolicy): string {
+  if (policy.git === false) return `${name} (not a repo)`;
   if (policy.exempt === true) return `${name} (exempt)`;
   const checks = policy.checks ?? [];
   return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}`;

@@ -38,7 +38,8 @@ import { HandlerError } from "./engine/handlers/errors.ts";
 import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
 import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
 import { installPushGates } from "./engine/push-gate.ts";
-import { inGitWorkTree, type Repo, repoDirOf, scanRepos } from "./engine/repos.ts";
+import { runGit } from "./engine/git.ts";
+import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
 import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName } from "./engine/settings.ts";
 import type { Actor } from "./engine/store/index.ts";
 import { version as packageVersion } from "./version.ts";
@@ -281,7 +282,7 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void, r
 }
 
 function workingRepoNames(repos: RepoPolicies): string[] {
-  return Object.keys(repos).filter((name) => repos[name]!.exempt !== true);
+  return workingRepos(repos);
 }
 
 function repoOfPolicy(projectDir: string, name: string, policy: RepoPolicy): Repo {
@@ -293,14 +294,14 @@ function repoOfPolicy(projectDir: string, name: string, policy: RepoPolicy): Rep
  * its own git points at; a repo already registered keeps its policy, and one that is gone is
  * dropped. Says each change and the evidence for each new base branch. Stores and returns them.
  */
-function registerRepos(projectDir: string, stored: RepoPolicies | null, out: (line: string) => void): RepoPolicies {
+function registerRepos(projectDir: string, stored: RepoPolicies | null, scan: Scan, out: (line: string) => void): RepoPolicies {
   const before = stored ?? {};
-  const found = scanRepos(projectDir);
+  const found = scan.repos;
   const repos: RepoPolicies = {};
   out(`This folder is not a git work tree, so it is a workspace: its repos share one record.`);
   for (const name of found) {
     const kept = before[name];
-    if (kept !== undefined) {
+    if (kept !== undefined && kept.git !== false) {
       repos[name] = kept;
       out(`  ${repoPolicyLine(name, kept)}`);
       continue;
@@ -311,12 +312,29 @@ function registerRepos(projectDir: string, stored: RepoPolicies | null, out: (li
     repos[name] = { base_branch: base, checks: detectChecks(repoDirOf(projectDir, name)) };
     out(`  Added repo ${name}: base branch ${base}, from ${detected?.from ?? "the fallback"}.`);
   }
+  // A folder that is no repo is recorded and left alone: no hook, no task, no graph.
+  for (const name of scan.folders) {
+    repos[name] = { git: false };
+    out(before[name]?.git === false ? `  ${repoPolicyLine(name, repos[name]!)}` : `  Recorded folder ${name}: it is not a repo, so tmb does no work in it.`);
+  }
   for (const name of Object.keys(before)) {
-    if (!found.includes(name)) out(`  Dropped repo ${name}: it is no longer a repo in this folder.`);
+    if (repos[name] !== undefined) continue;
+    out(before[name]!.git === false ? `  Dropped folder ${name}: it is no longer in this folder.` : `  Dropped repo ${name}: it is no longer a repo in this folder.`);
   }
   if (found.length === 0) out("  No repo found: tmb looks for git repos up to two folders down. Clone one here and run tmb init again.");
   storeAnswers(projectDir, { repos }, "init");
   return repos;
+}
+
+/**
+ * Makes a folder that holds no repo into one, so the project is a single repo. Only called when the
+ * folder is in no git work tree, holds no repo below it and the record registers none: init never
+ * runs git init over repos it found.
+ */
+function initGit(projectDir: string, out: (line: string) => void): void {
+  const result = runGit(projectDir, ["init", "--quiet"]);
+  if (!result.ok) throw new SetupError(`this folder holds no git repo, and git init failed in it: ${result.stderr || result.stdout}`);
+  out("This folder held no git repo, so tmb ran git init in it: it is a project of one repo.");
 }
 
 /** What init did, for the lines that close the run. */
@@ -347,8 +365,11 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
   // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   // A folder that is not a git work tree and holds repos, or held them at an earlier init, is a workspace.
-  const workspace = !inGitWorkTree(projectDir) && (stored.repos !== null || scanRepos(projectDir).length > 0);
-  const repos = workspace ? registerRepos(projectDir, stored.repos, out) : null;
+  // One that holds none, and never did, gets git init: it is then a project of one repo.
+  const scan = inGitWorkTree(projectDir) ? null : scanWorkspace(projectDir);
+  const workspace = scan !== null && (stored.repos !== null || scan.repos.length > 0);
+  if (scan !== null && !workspace) initGit(projectDir, out);
+  const repos = workspace && scan !== null ? registerRepos(projectDir, stored.repos, scan, out) : null;
   for (const line of installPushGates(projectDir, repos, options.tmbCommand)) out(line);
   tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);
 
@@ -429,6 +450,7 @@ async function onboardWorkspace(
   if (flags.repo !== undefined) {
     const repo = validateRepoName(flags.repo);
     if (before[repo] === undefined) throw new SetupError(`no repo ${JSON.stringify(flags.repo)} in this workspace; its repos are ${Object.keys(before).join(", ") || "none"}, and tmb init finds new ones`);
+    if (before[repo]!.git === false) throw new SetupError(`the folder ${repo} is not a repo, so it takes no policy; once it is a repo, tmb init records it as one`);
     targets = [repo];
   } else if (answered.base_branch !== undefined || answered.checks !== undefined || flags.exempt === true) {
     if (working.length !== 1) throw new SetupError(`this workspace has ${working.length} repos tmb works in (${working.join(", ") || "none"}); name the one --base, --check or --exempt sets with --repo`);

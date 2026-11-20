@@ -103,11 +103,11 @@ On a terminal it asks for the review mode before those lines, unless one is stor
 - The review mode has no default. Without a terminal it is set only by `--review-mode`, also when `--yes` is given; otherwise it stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
 
-### A workspace of several repos
+### One repo or a workspace of several
 
-When the folder you run `tmb init` in is not a git work tree but holds git repos, tmb sets it up as a workspace: its repos share one record in that folder ([Several repos in one workspace](../architecture/WORKFLOW.md#several-repos-in-one-workspace)). init then also:
+When the folder you run `tmb init` in is a git work tree, or inside one, the project is one repo, the folder itself, named `.`. When it is in no git work tree and holds no git repo below it, init runs `git init` in it first and says so. When it is not a git work tree but holds git repos, tmb sets it up as a workspace: its repos share one record in that folder ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)). init then also:
 
-- Finds the repos up to two folders down and stores them in the `repos` setting, each with the base branch its own git points at and the checks found in it. It prints a line for each repo it added, with where its base branch came from, and for each one it dropped because it is gone. A repo's policy set before is kept.
+- Finds the repos up to two folders down and stores them in the `repos` setting, each with the base branch its own git points at and the checks found in it. It records each top-level folder that is not a repo as `{"git": false}`, and leaves it alone. It prints a line for each repo or folder it added, with where a base branch came from, and for each one it dropped because it is gone. A repo's policy set before is kept.
 - Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each.
 - Indexes each repo's code graph from its own base branch.
 

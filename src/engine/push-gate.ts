@@ -202,7 +202,8 @@ export function removePushGate(projectDir: string): string[] {
 function gatedDirs(projectDir: string, repos: RepoPolicies | null, withExempt: boolean): string[] {
   if (repos === null) return [projectDir];
   return Object.keys(repos)
-    .filter((name) => withExempt || repos[name]!.exempt !== true)
+    // A folder that is no repo has no git to hook.
+    .filter((name) => repos[name]!.git !== false && (withExempt || repos[name]!.exempt !== true))
     .map((name) => repoDirOf(projectDir, name));
 }
 
