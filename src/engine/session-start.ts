@@ -270,15 +270,15 @@ function feedbackSection(feedback: FeedbackEnv): string {
 }
 
 /**
- * With no task open, tries again to remove the worktrees and branches closed tasks kept
- * (trustmybot/tmb#132), so one goes once its files are gone or ignored. Never throws.
+ * With no task open, tries again to remove the worktrees and branches closed and dropped tasks
+ * kept (trustmybot/tmb#132, trustmybot/tmb#170), so one goes once its files are gone or ignored. Never throws.
  */
 function tidyClosedTasks(store: Store, projectDir: string): void {
   try {
     if (store.listTasks("open").length > 0 || store.listTasks("in_review").length > 0) return;
     // Each repo's git holds its own tasks' worktrees and branches.
     const byRepo = new Map<string | null, Task[]>();
-    for (const task of store.listTasks("closed")) byRepo.set(task.repo, [...(byRepo.get(task.repo) ?? []), task]);
+    for (const task of [...store.listTasks("closed"), ...store.listTasks("dropped")]) byRepo.set(task.repo, [...(byRepo.get(task.repo) ?? []), task]);
     for (const [repo, tasks] of byRepo) retryKeptCheckouts(repoDirOf(projectDir, repo), tasks);
   } catch {
     // A session start never fails over a cleanup; the next one tries again.
