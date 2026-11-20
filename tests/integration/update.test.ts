@@ -41,7 +41,8 @@ function releaseFile(version: string, name: string): Response {
 }
 
 beforeAll(() => {
-  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-update-builds-")));
+  // .native expands Windows 8.3 short names (RUNNER~1), so expected paths match the long form tmb prints.
+  scratch = realpathSync.native(mkdtempSync(path.join(tmpdir(), "tmb-update-builds-")));
   for (const { old, next } of Object.values(CHANNELS)) {
     for (const version of [old, next]) {
       const file = path.join(scratch, version, process.platform === "win32" ? "tmb.exe" : "tmb");
@@ -198,7 +199,7 @@ const EXE = process.platform === "win32" ? ".exe" : "";
 
 /** Several tmb programs installed side by side in one throwaway home, each from a build. */
 function sideBySide(programs: Record<string, string>, extraEnv: Record<string, string> = {}) {
-  const root = realpathSync(mkdtempSync(path.join(scratch, "side-by-side-")));
+  const root = realpathSync.native(mkdtempSync(path.join(scratch, "side-by-side-")));
   const bin = path.join(root, "home", ".local", "bin");
   mkdirSync(bin, { recursive: true });
   const files: Record<string, string> = {};
