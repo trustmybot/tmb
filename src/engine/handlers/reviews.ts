@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
-import { OPEN, type OperationContext, requireRole } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureDir, featureTip, knownBase } from "./features.ts";
 import { isAncestor, pushFeature } from "./fold.ts";
@@ -386,7 +386,11 @@ export function existingPullRequest(projectDir: string, branch: string): string 
 export function featurePr(store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult {
   const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
   requireRole(actor, "feature_pr", ["planner"]);
-  const feature = requireOpenFeature(store, given.feature, "its pull request does not open again");
+  // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
+  const feature = requireFeature(store, given.feature);
+  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
+    throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}, so its pull request does not open again`);
+  }
   const brief = featureBriefOf(store, context.projectDir, feature);
   if (brief.coveredBy === null) {
     const newest = brief.reviews.at(-1);
@@ -412,7 +416,12 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
       ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
       : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
   const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
-  const opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
+  let opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
+  if (!opened.ok) {
+    // A pull request already open from the branch (an earlier feature_pr, or one the Human reopened) is the branch's: record it, open no second one.
+    const existing = existingPullRequest(dir, feature.name);
+    if (existing !== null) opened = { ok: true, url: existing };
+  }
   if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
   const markRequired = markRequiredOn(dir, feature.baseBranch);

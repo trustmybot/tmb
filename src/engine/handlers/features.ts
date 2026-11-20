@@ -5,7 +5,7 @@ import { refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { branchRef, isAncestor, moveFeature, type PushOutcome, pushFeature } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -88,9 +88,10 @@ export function featureTip(projectDir: string, feature: Feature): string {
 }
 
 /**
- * The open feature branch a task starts on: the one named, or with none named the only one
- * open (in `repo` when the task names one). Refuses none open, several open, and a name the
- * record does not hold open.
+ * The feature branch a task starts on: the one named, or with none named the only one open (in
+ * `repo` when the task names one). A branch named whose pull request closed without a merge takes
+ * the task too: the task start moves it back to open (trustmybot/tmb#152). Refuses none open,
+ * several open, and a name the record does not hold open or closed.
  */
 export function featureForTask(store: Store, name: string | undefined, repo?: string): Feature {
   const open = store.listFeatures(OPEN).filter((feature) => name !== undefined || repo === undefined || feature.repo === repo);
@@ -100,7 +101,9 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
     if (!feature) {
       throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? HOW_TO_START : `the open ones are ${names}`}`);
     }
-    if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one`);
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
+      throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one, or on one whose pull request closed without a merge`);
+    }
     return feature;
   }
   if (open.length === 1) return open[0]!;

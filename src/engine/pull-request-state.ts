@@ -4,11 +4,11 @@
 // fails the caller: with no network the feature stays pr_open. The change is kept in the record
 // like any other change of state. tmb never deletes the local branch of a merged feature.
 import { spawnSync } from "node:child_process";
+import { CLOSED_UNMERGED, MERGED } from "./handlers/common.ts";
 import { PR_OPEN } from "./handlers/reviews.ts";
 import type { Actor, Feature, Store } from "./store/index.ts";
 
-export const MERGED = "merged";
-export const CLOSED_UNMERGED = "closed";
+export { CLOSED_UNMERGED, MERGED };
 
 const GH_TIMEOUT_MS = 15_000;
 
@@ -47,7 +47,11 @@ export function refreshPullRequestStates(
       const next = state === "MERGED" ? MERGED : state === "CLOSED" ? CLOSED_UNMERGED : null;
       if (next === null) continue;
       store.updateFeature(actor, feature.id, { state: next });
-      moved.push(`${feature.name}: its pull request ${feature.prUrl} ${next === MERGED ? "merged" : "was closed without a merge"}, so the feature branch is ${next}`);
+      moved.push(
+        next === MERGED
+          ? `${feature.name}: its pull request ${feature.prUrl} merged, so the feature branch is ${next}`
+          : `${feature.name}: its pull request ${feature.prUrl} was closed without a merge, so the feature branch is ${next}. Start a task on it to rework it, or open a new pull request with feature_pr.`,
+      );
     }
   } catch {
     // A read or a write that fails leaves the feature as it was; the next read tries again.
