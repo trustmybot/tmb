@@ -174,4 +174,4 @@ What tmb does today when work goes wrong, and what is planned. The plugin had a 
 
 - **Nothing here waits for a timer.** tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor` (trustmybot/tmb#160), not by a watcher.
 - **A project with no remote.** Planned for v1.0.0 (trustmybot/tmb#183), decided by the Human on 2026-11-20: nothing is pushed and no pull request is opened. After the reviewer passes the feature branch, or the Human waives the review, tmb says the branch is ready and the Human merges it locally. Today the pull request step refuses for want of a remote, and the feature branch, or a truest task, stays where it is.
-- **Found on 2026-11-20, not yet fixed.** A task that was open when the pull request opened can still fold into the branch, unreviewed (trustmybot/tmb#181). A repo that already has a pre-push hook of its own has no push gate, and tmb says so once, at init (trustmybot/tmb#184).
+- **Found on 2026-11-20, not yet fixed.** A repo that already has a pre-push hook of its own has no push gate, and tmb says so once, at init (trustmybot/tmb#184).
