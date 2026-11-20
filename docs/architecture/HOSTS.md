@@ -133,10 +133,14 @@ flowchart LR
 | Host | Status | Tools | Roles | Events that can deny |
 |---|---|---|---|---|
 | Claude Code, command line and desktop app | First | Tool server from the project's settings | Agent files in the project | Yes, from the project's settings, inside subagents too |
-| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from its config | Agent files in the project | Yes, after the Human trusts them |
+| Codex | Built at level 9. Not supported and not tested before v2. | Tool server from the project's config | Agent files in the project | Yes, for commands, file writes, tmb's tools and a subagent's start, after the Human trusts the project and its hooks |
 | Others | Planned | | | |
 
 The same three building blocks exist in both hosts checked so far, which is what makes one adapter shape enough.
+
+Setup never trusts a project or its hooks on the Human's behalf: it says what the Human must trust, and the adapter reports when that has not happened yet. Checked against Codex's docs on 2026-11-19; nothing was run.
+
+Codex does not say which agent makes a tool call. A call is judged under the role its host was set up with, so a Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a worker's write from the planner's, and that rule falls back to the close and the push. Proposed, for the Human's review, and to be confirmed on a real Codex.
 
 When a host cannot deny an action, the engine's own layers still hold: checks at close, and git's pre-push hook ([WORKFLOW.md](WORKFLOW.md#the-gate)).
 
@@ -148,7 +152,9 @@ tmb starts no agent, runs no model and manages no parallel sessions. Hosts do th
 
 - **One vendor, several models.** The host already runs a different model per subagent. The adapter writes each role's model into the host's role definitions.
 - **Several vendors.** Built at level 9, and not supported or tested before v2. Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
-- **Local models.** They arrive through a host that supports them.
+  - **A role per host.** Setup records the role each host takes in the project, the planner by default. Session start briefs a host in its role: a host set up as the reviewer is told which feature branches wait for a review. Two hosts may both be planners, as two sessions of one host already are. Proposed, for the Human's review.
+  - **A reviewer that is a host's main agent.** Its run opens at that host's session start and ends with the verdict it records.
+- **Local models.** They arrive through a host that supports them. The adapter writes a role's model as given, and the model's provider is the host's own setup.
 
 Every record names the role and the host that made it, so a review is known to come from a different agent than the one that wrote the change.
 
