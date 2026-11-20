@@ -23,9 +23,9 @@ try {
   fail(`git init failed in ${project}`);
 }
 tmb.shown(["init"], `tmb init failed in ${project}`);
-tmb.shown(["onboard", "--yes"], `tmb onboard failed in ${project}`);
+tmb.shown(["onboard", "--yes", "--review-mode", "agile"], `tmb onboard failed in ${project}`);
 
-// With no terminal, onboard takes each default: the host, the project's branch and agile.
+// With no terminal, onboard takes each default, the host and the project's branch, and the review mode it was given.
 const settings = tmb.text(["config"], `tmb config failed after onboard in ${project}`);
 for (const line of [/^host: \S/m, /^base branch: \S/m, /^review mode: agile$/m]) {
   if (!line.test(settings)) fail(`tmb config after onboard has no line matching '${line.source}'; it showed:\n${settings}`);

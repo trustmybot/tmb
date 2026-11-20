@@ -136,6 +136,7 @@ beforeEach(() => {
   if (!opened.ok) throw opened.error;
   store = opened.store;
   writeSetting(store, HUMAN, "base_branch", "main");
+  writeSetting(store, HUMAN, "review_mode", "agile");
   writeSetting(store, HUMAN, "checks", ["true"]);
 });
 

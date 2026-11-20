@@ -70,12 +70,12 @@ describe("tmb init, then tmb onboard", () => {
   test("onboard --yes in a fresh git project stores the base branch, agile and the detected checks, and tmb config shows them", () => {
     const project = newBunProject();
     expect(tmb(["init"], project)).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
-    expect(tmb(["onboard", "--yes"], project)).toContain("Recorded 3 changes in the record's audit trail.");
+    expect(tmb(["onboard", "--yes", "--review-mode", "agile"], project)).toContain("Recorded 3 changes in the record's audit trail.");
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"] });
     expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\n');
   });
 
-  test("onboard with no terminal and no flags never waits for input: takes the defaults and prints them", async () => {
+  test("onboard with no terminal and no flags never waits for input: takes the defaults, leaves the review mode to the Human and prints them", async () => {
     const project = newBunProject();
     tmb(["init"], project);
     // stdin stays open and empty: an onboard that waited for an answer would never exit.
@@ -87,7 +87,8 @@ describe("tmb init, then tmb onboard", () => {
     expect(status).toBe(0);
     expect(stdout).toContain("There is no terminal to ask on, so each question takes its default");
     expect(stdout).toContain("  base branch: trunk\n");
-    expect(stdout).toContain("  review mode: agile\n");
+    expect(stdout).toContain("  review mode: (not set)\n");
+    expect(stdout).toContain("No review mode is chosen, so no task starts yet");
     expect(stdout).toContain('  checks: "bun run lint", "bun run test"\n');
     expect(config(project).base_branch).toBe("trunk");
   });

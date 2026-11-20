@@ -1,9 +1,10 @@
 // The project's settings through the record's tools: the planner reads them, applies the ones
 // it recommends when a session starts with them empty, and changes one when the Human asks.
+// The review mode is the exception: the planner sets it only to the Human's answer.
 // The Human sets them with `tmb onboard`; both write the same audit entries.
 import { detectBaseBranch } from "../base-branch.ts";
 import { detectChecks } from "../check-detection.ts";
-import { AVAILABLE_REVIEW_MODES, readSettings, type Settings, SettingError, writeSetting } from "../settings.ts";
+import { AVAILABLE_REVIEW_MODES, chooseReviewMode, readSettings, type Settings, SettingError, writeSetting } from "../settings.ts";
 import type { Actor, Store } from "../store/index.ts";
 import { type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
@@ -43,7 +44,11 @@ export const settingsSetSchema: InputSchema = {
   type: "object",
   properties: {
     base_branch: { type: "string", description: "The branch pull requests merge into.", pattern: NOT_BLANK },
-    review_mode: { type: "string", description: "agile: one review per feature branch. truest: a review of every task before its push.", enum: AVAILABLE_REVIEW_MODES },
+    review_mode: {
+      type: "string",
+      description: "Only the mode the Human chose when you asked them; never one you picked. agile: one review per feature branch. truest: a review of every task before its push.",
+      enum: AVAILABLE_REVIEW_MODES,
+    },
     checks: {
       type: "array",
       description: "The shell commands that must pass before a task closes, replacing the list; an empty list means none.",
@@ -61,10 +66,21 @@ export function settingsSet(store: Store, actor: Actor, input: unknown, context:
   const values = validateInput<Partial<Record<ProjectSetting, unknown>>>("settings_set", settingsSetSchema, input);
   const named = PROJECT_SETTINGS.filter((name) => values[name] !== undefined);
   if (named.length === 0) throw new HandlerError("invalid_input", `settings_set needs at least one of ${PROJECT_SETTINGS.join(", ")}`);
+  // With no one to ask, no one chose: the planner never picks the review mode for the Human.
+  if (context.unattended === true && named.includes("review_mode") && values.review_mode !== readSettings(store).review_mode) {
+    throw new HandlerError(
+      "refused",
+      "the review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --review-mode <mode> --yes` without a question)",
+    );
+  }
   const changed: ProjectSetting[] = [];
   try {
     store.transaction(() => {
-      for (const name of named) if (writeSetting(store, actor, name, values[name])) changed.push(name);
+      for (const name of named) {
+        // The review mode is the Human's choice, which the planner passes on; the record says it came through the planner.
+        const wrote = name === "review_mode" ? chooseReviewMode(store, actor, values[name], "planner") : writeSetting(store, actor, name, values[name]);
+        if (wrote) changed.push(name);
+      }
     });
   } catch (error) {
     if (error instanceof SettingError) throw new HandlerError("invalid_input", error.message);

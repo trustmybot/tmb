@@ -42,6 +42,8 @@ export class ToolSession {
   constructor(
     readonly projectDir: string,
     readonly host: string,
+    /** True when no one can answer in the run this server serves. */
+    readonly unattended = false,
   ) {
     if (host.trim() === "") throw new Error("the tool server needs a host id");
   }
@@ -67,7 +69,7 @@ export class ToolSession {
     try {
       const store = this.openStore();
       const actor: Actor = { kind: "agent", role: (role as Role | undefined) ?? hostRole(store, this.host), host: this.host };
-      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir });
+      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir, unattended: this.unattended });
       return textResult(JSON.stringify(result));
     } catch (error) {
       return textResult(error instanceof HandlerError ? error.message : describe(error), true);
@@ -81,8 +83,8 @@ export class ToolSession {
 }
 
 /** Serves the tools on stdin and stdout until stdin closes. */
-export async function serveTools(options: { projectDir: string; host: string; version: string }): Promise<void> {
-  const session = new ToolSession(options.projectDir, options.host);
+export async function serveTools(options: { projectDir: string; host: string; version: string; unattended?: boolean }): Promise<void> {
+  const session = new ToolSession(options.projectDir, options.host, options.unattended === true);
   const server = new Server({ name: SERVER_NAME, version: options.version }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listTools() }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => session.call(request.params.name, request.params.arguments));

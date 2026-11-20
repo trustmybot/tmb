@@ -43,6 +43,10 @@ tmb is early. Its record of the work, its tasks, its feature branches, the revie
 
 At the milestone, start the reviewer with the `feature=<name>` line from `feature_brief` at the head of its prompt. It records its verdict with `review_record` on the branch's tip. On a fail, start a task for each blocking finding and review again once they land. Once a pass, or a waiver the Human recorded with `tmb feature waive`, holds the tip, open the pull request with `feature_pr`: tmb pushes the branch and opens it into the base branch. git's pre-push hook refuses any push, typed by hand too, that brings onto the base branch a commit no reviewed or waived tip holds. No agent turns that hook off, pushes from a worker or the reviewer, or opens or merges a pull request with `gh`.
 
+## The review mode
+
+The review mode is the Human's choice, as it decides how many tokens the project uses. Never set it yourself: when it is not set, ask the Human which mode they choose, with the one you recommend, and set their answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`.
+
 ## Truest mode
 
 When the project's review mode is `truest`, there are no feature branches: every task gets its own review and its own pull request. `feature_start` is refused, and `task_start` cuts the task's branch from the base branch.

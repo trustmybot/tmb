@@ -78,7 +78,7 @@ export function tmbProcesses(prefix: string) {
       git(project, "push", "-q", "-u", "origin", BASE_BRANCH);
     }
     tmb(["init"], project);
-    tmb(["onboard", "--base", BASE_BRANCH, "--check", check, "--yes"], project);
+    tmb(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", check, "--yes"], project);
     return project;
   }
 
@@ -122,9 +122,11 @@ export function tmbProcesses(prefix: string) {
    * A connected client on the project's tool server, acting for the host `test` unless named. A
    * verdict needs the host whose hook started the reviewer, Claude Code here.
    */
-  async function connect(project: string, host = "test"): Promise<Client> {
+  /** Starts the tool server; `unattended` runs it as in a run no one can answer. */
+  async function connect(project: string, host = "test", options: { unattended?: boolean } = {}): Promise<Client> {
     const client = new Client({ name: "tmb-processes-test", version: "0.0.0" });
-    await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, "mcp", "--host", host, "--project", project], env, stderr: "pipe" }));
+    const serverEnv = options.unattended ? { ...env, TMB_UNATTENDED: "1" } : env;
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, "mcp", "--host", host, "--project", project], env: serverEnv, stderr: "pipe" }));
     return client;
   }
 
