@@ -492,7 +492,7 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   if (coveredBy === null) throw new HandlerError("refused", `task ${task.id} at ${commit} is no longer covered by a pass or a waiver; review it again`);
 
   // git's pre-push hook judges this push like any other, so the record must already cover the commit.
-  const push = pushFeature(dir, task.branch!);
+  const push = pushFeature(dir, task.branch!, actor);
   store.updateTask(actor, task.id, { pushResult: push.result, pushDetail: push.detail });
   if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of task ${task.id} needs its branch on origin, and the push did not happen: ${push.detail}`);
   // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.

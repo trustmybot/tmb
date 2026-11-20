@@ -5,6 +5,7 @@
 // until the session moves to the new build or ends.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { isProcessRunning, type KeptBuild, keptBuilds } from "./builds.ts";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "./engine/project.ts";
@@ -113,8 +114,8 @@ export type Lease = {
   pid: number;
   project: string;
   startedAt: string;
-  /** The build the session runs; a lease written before trustmybot/tmb#159 names none. */
-  version?: string;
+  /** The version of the build the session runs, as `tmb doctor` reads it (src/builds.ts); a lease written before trustmybot/tmb#159 names none. */
+  build?: string;
   /** The title the Human gave the session, when the host passes it. */
   title?: string | null;
   /** The processes above the tool server, nearest first, so a hook of the same session can find it. */
@@ -122,9 +123,6 @@ export type Lease = {
   /** Why the session could not move to the installed build, when it tried and failed. */
   moveError?: string | null;
 };
-
-/** A build kept for running sessions, by version. */
-export type KeptBuild = { version: string; file: string; bytes: number; used: boolean };
 
 /** A kept build. `from` is the version that kept it: a reinstall of another version drops it. */
 type Staged = { version: string; channel: Channel; from: string; file: string; sha256: string };
@@ -347,8 +345,8 @@ export class Updater {
   // --- sessions, projects and kept builds ---------------------------------------------
 
   /** Marks a session as running in `projectDir` on build `version` (this tmb's unless given) until `endSession`, and remembers the project. */
-  startSession(projectDir: string, pid: number = process.pid, info: { version?: string; ancestors?: number[] } = {}): void {
-    const lease: Lease = { pid, project: projectDir, startedAt: new Date().toISOString(), version: info.version ?? this.options.version, title: null, ancestors: info.ancestors ?? [], moveError: null };
+  startSession(projectDir: string, pid: number = process.pid, info: { build?: string; ancestors?: number[] } = {}): void {
+    const lease: Lease = { pid, project: projectDir, startedAt: new Date().toISOString(), build: info.build ?? this.options.version, title: null, ancestors: info.ancestors ?? [], moveError: null };
     writeJson(path.join(this.leaseDir, `${pid}.json`), lease);
     // One file per project, so sessions starting together never lose one another's project.
     const name = createHash("sha256").update(projectDir).digest("hex").slice(0, 32);
@@ -391,8 +389,8 @@ export class Updater {
    */
   pinOf(projectDir: string): string | null {
     const project = path.resolve(projectDir);
-    const lease = this.leases().find((candidate) => path.resolve(candidate.project) === project && (candidate.version ?? this.options.version) !== this.options.version);
-    return lease?.version ?? null;
+    const lease = this.leases().find((candidate) => path.resolve(candidate.project) === project && (candidate.build ?? this.options.version) !== this.options.version);
+    return lease?.build ?? null;
   }
 
   /** Where the build of `version` is kept while sessions run it, under the program's own name. */
@@ -400,15 +398,9 @@ export class Updater {
     return path.join(this.file("builds"), version, `${this.program.name}${IS_WINDOWS ? ".exe" : ""}`);
   }
 
-  /** The builds kept for sessions, with their size and whether a running session uses one. */
+  /** The builds kept on disk, with their size and the running sessions that use each (src/builds.ts). */
   keptBuilds(): KeptBuild[] {
-    const dir = this.file("builds");
-    const used = new Set(this.leases(-1).map((lease) => lease.version));
-    return readdirSafe(dir).flatMap((version) => {
-      const file = this.keptFile(version);
-      const stat = statSync(file, { throwIfNoEntry: false });
-      return stat ? [{ version, file, bytes: stat.size, used: used.has(version) }] : [];
-    });
+    return keptBuilds(this.options.stateDir, isRunning);
   }
 
   /** True when `projectDir` has an open task; a record this tmb cannot open has none it can see. */
@@ -428,7 +420,7 @@ export class Updater {
    */
   waiting(version: string): { lease: Lease; reason: string }[] {
     return this.leases(-1)
-      .filter((lease) => lease.version !== undefined && lease.version !== version)
+      .filter((lease) => lease.build !== undefined && lease.build !== version)
       .map((lease) => ({
         lease,
         reason: lease.moveError
@@ -472,7 +464,7 @@ export class Updater {
         }
         if (!IS_WINDOWS) chmodSync(next, 0o755);
         // A session still on this build keeps running it, from the kept copy.
-        if (this.leases(except).some((lease) => (lease.version ?? this.options.version) === this.options.version)) this.keepInstalled(this.options.version);
+        if (this.leases(except).some((lease) => (lease.build ?? this.options.version) === this.options.version)) this.keepInstalled(this.options.version);
         const old = `${target}.old`;
         const movedAside = IS_WINDOWS && existsSync(target);
         if (movedAside) {
@@ -532,15 +524,7 @@ function readdirSafe(dir: string): string[] {
   }
 }
 
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM: the process exists but belongs to someone else.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
+const isRunning = isProcessRunning;
 
 /**
  * The version of the tmb installed at `file`, as it reports it; null when it cannot say. Asked

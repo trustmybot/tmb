@@ -60,7 +60,7 @@ function deny(reason: string): string {
 function sessionStart(input: JsonObject, run: HookRun): string {
   const projectDir = projectRootOf(cwdOf(input));
   const refreshed = run.refresh?.(projectDir) ?? null;
-  const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed });
+  const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed, doctor: run.doctor });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 

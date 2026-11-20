@@ -25,8 +25,6 @@ export type PushRef = { localRef: string; localSha: string; remoteRef: string; r
 const ZERO_SHA = /^0+$/;
 const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const SHOWN_COMMITS = 10;
-/** git cannot say who typed a push, so the gate's decision on one is recorded as the Human's. */
-const PUSHER: Actor = { kind: "human" };
 
 /** git's stdin lines `<local-ref> <local-sha> <remote-ref> <remote-sha>`, or null when one is not that shape. */
 export function parsePushRefs(stdin: string): PushRef[] | null {
@@ -114,11 +112,12 @@ function denied(remote: string, why: string): Decision {
 /**
  * Judges a push from git's pre-push hook: `remote` is the remote's name (or address) and `stdin`
  * the ref lines git passed. With no record it allows; a record it cannot read denies. With a
- * readable record the decision is recorded as a guard decision. `pushDir` is the folder git runs
- * the hook in; in a workspace its repo's base branch is the one judged, and a repo the record does
- * not register, or registers as exempt, is not judged at all.
+ * readable record the decision is recorded as a guard decision made by `pusher`: the agent a push
+ * tmb ran names in its environment, or the Human, since git cannot say who typed a push. `pushDir`
+ * is the folder git runs the hook in; in a workspace its repo's base branch is the one judged, and
+ * a repo the record does not register, or registers as exempt, is not judged at all.
  */
-export function judgePush(projectDir: string, remote: string, stdin: string, pushDir: string = projectDir): Decision {
+export function judgePush(projectDir: string, remote: string, stdin: string, pushDir: string = projectDir, pusher: Actor = { kind: "human" }): Decision {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     if (opened.error.failure === "missing") return { decision: "allow" };
@@ -141,7 +140,7 @@ export function judgePush(projectDir: string, remote: string, stdin: string, pus
       const allowed = truest ? "no ref of the push brings an unreviewed task commit, or any unreviewed commit onto the base branch" : `no ref of the push brings unreviewed commits onto ${base}`;
       decision = why === undefined ? { decision: "allow", reason: allowed } : denied(remote, why);
     }
-    store.appendGuardDecision(PUSHER, {
+    store.appendGuardDecision(pusher, {
       event: JSON.stringify({ type: "before-push", raisedBy: "git", remote, ...(repo?.name ? { repo: repo.name } : {}), refs: refs ?? stdin }),
       decision: decision.decision,
       reason: decision.reason ?? "no rule denies it",
@@ -229,4 +228,20 @@ export function removePushGates(projectDir: string): string[] {
     }
   }
   return gatedDirs(projectDir, repos, true).flatMap((dir) => removePushGate(dir));
+}
+
+/**
+ * What `tmb doctor` finds wrong with git's pre-push hooks: one line each, for every folder that
+ * should run the push gate and does not run it with `tmbCommand`. Reads only.
+ */
+export function pushGateGaps(projectDir: string, repos: RepoPolicies | null, tmbCommand: readonly string[]): string[] {
+  const command = [...tmbCommand, "pre-push"].map(shellQuote).join(" ");
+  return gatedDirs(projectDir, repos, false).flatMap((dir) => {
+    const file = hookPath(dir);
+    if (file === null) return [];
+    if (!existsSync(file)) return [`git's pre-push hook is missing in ${dir}: the push gate is off there`];
+    const text = readFileSync(file, "utf8");
+    if (!isOurs(file)) return text.includes(`${command} "$@"`) ? [] : [`git's pre-push hook ${file} is not tmb's and does not run the push gate`];
+    return text.includes(`exec ${command} "$@"`) ? [] : [`git's pre-push hook ${file} runs another tmb than this one`];
+  });
 }

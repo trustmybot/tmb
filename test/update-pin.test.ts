@@ -46,10 +46,10 @@ describe("a running session pins its project (trustmybot/tmb#159)", () => {
     expect(installed.pinOf(project)).toBe("0.1.0-dev.1");
     expect(installed.pinOf(path.join(scratch, "b"))).toBeNull();
     // Once the session moves to the installed build, the project is free.
-    installed.updateSession(pid, { version: "0.1.0-dev.2" });
+    installed.updateSession(pid, { build: "0.1.0-dev.2" });
     expect(installed.pinOf(project)).toBeNull();
     // A session that ended without saying so pins nothing.
-    installed.updateSession(pid, { version: "0.1.0-dev.1" });
+    installed.updateSession(pid, { build: "0.1.0-dev.1" });
     const exited = new Promise((resolve) => alive!.once("exit", resolve));
     alive!.kill("SIGKILL");
     await exited;
@@ -63,15 +63,15 @@ describe("a running session pins its project (trustmybot/tmb#159)", () => {
     expect(path.basename(path.dirname(kept))).toBe("0.1.0-dev.1");
     mkdirSync(path.dirname(kept), { recursive: true });
     writeFileSync(kept, "old build");
-    expect(installed.keptBuilds()).toEqual([{ version: "0.1.0-dev.1", file: kept, bytes: 9, used: false }]);
-    installed.startSession(path.join(scratch, "a"), liveProcess(), { version: "0.1.0-dev.1" });
-    expect(installed.keptBuilds()[0]!.used).toBe(true);
+    expect(installed.keptBuilds().map(({ version, dir, bytes, usedBy }) => ({ version, dir, bytes, used: usedBy.length }))).toEqual([{ version: "0.1.0-dev.1", dir: path.dirname(kept), bytes: 9, used: 0 }]);
+    installed.startSession(path.join(scratch, "a"), liveProcess(), { build: "0.1.0-dev.1" });
+    expect(installed.keptBuilds()[0]!.usedBy.length).toBe(1);
   });
 
   test("tmb update names each session still on an old build, and why", () => {
     const installed = updater("0.1.0-dev.2");
     const pid = liveProcess();
-    installed.startSession(path.join(scratch, "a"), pid, { version: "0.1.0-dev.1" });
+    installed.startSession(path.join(scratch, "a"), pid, { build: "0.1.0-dev.1" });
     expect(installed.waiting("0.1.0-dev.2").map((entry) => entry.reason)).toEqual(["it moves at its next tool call"]);
     installed.updateSession(pid, { moveError: "no answer to initialize within 30s" });
     expect(installed.waiting("0.1.0-dev.2").map((entry) => entry.reason)).toEqual(["it could not move: no answer to initialize within 30s"]);
