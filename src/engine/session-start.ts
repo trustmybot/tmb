@@ -15,7 +15,7 @@ import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
 import { refreshPullRequestStates } from "./pull-request-state.ts";
 import { repoDirOf, workspaceRepos } from "./repos.ts";
-import { readSettings, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode } from "./settings.ts";
+import { readSettings, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type RepoPolicy, type ReviewMode } from "./settings.ts";
 import { type Actor, type Store, type Task, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
@@ -78,7 +78,7 @@ const shorten = (text: string): string => (text.length <= MAP_SUMMARY_MAX ? text
  */
 function projectMapSection(projectDir: string, store: Store): string {
   const repos = workspaceRepos(store);
-  if (repos !== null) return workspaceSection(projectDir, repos);
+  if (repos !== null) return workspaceSection(projectDir, repos, readSettings(store).review_mode);
   if (!existsSync(graphDbPath(projectDir))) return "";
   try {
     const db = openGraphDb(projectDir);
@@ -122,18 +122,25 @@ function indexedLine(projectDir: string, repo: string): string {
   }
 }
 
-/** In a workspace: its repos, each with its base branch and graph, and that work names its repo. */
-function workspaceSection(projectDir: string, repos: RepoPolicies): string {
+/** A repo's review mode in a few words: its own, else the workspace's (trustmybot/tmb#216). */
+function repoModeText(policy: RepoPolicy, workspaceMode: ReviewMode | null): string {
+  if (policy.review_mode !== undefined) return `${policy.review_mode} mode (its own)`;
+  return workspaceMode === null ? "no review mode chosen" : `${workspaceMode} mode (the workspace's)`;
+}
+
+/** In a workspace: its repos, each with its base branch, review mode and graph, and that work names its repo. */
+function workspaceSection(projectDir: string, repos: RepoPolicies, workspaceMode: ReviewMode | null): string {
   const names = Object.keys(repos);
   const lines = names.map((name) => {
     const policy = repos[name]!;
     if (policy.git === false) return `- ${oneLineText(name)}: not a repo, tmb does no work in it`;
     if (policy.exempt === true) return `- ${oneLineText(name)}: exempt, tmb does no work in it`;
-    return `- ${oneLineText(name)} on \`${oneLineText(policy.base_branch ?? "")}\`: ${indexedLine(projectDir, name)}`;
+    return `- ${oneLineText(name)} on \`${oneLineText(policy.base_branch ?? "")}\`, ${repoModeText(policy, workspaceMode)}: ${indexedLine(projectDir, name)}`;
   });
   return (
     `\n\n${PROJECT_MAP_HEADING}\n\nThis project is a workspace of ${names.length} repo${names.length === 1 ? "" : "s"} sharing one record. ` +
     "feature_start, task_start and the graph tools take repo, the repo's name below; with several repos they refuse a call that names none. " +
+    "Each repo follows its own review mode, below: a truest repo has no feature branches. " +
     `A task works in its feature branch's repo. ${UNTRUSTED_NOTE}\n\n${lines.length === 0 ? "- none found; `tmb init` finds them" : lines.join("\n")}`
   );
 }

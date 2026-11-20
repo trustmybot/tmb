@@ -15,7 +15,7 @@ import { tiedProgram } from "../engine/program-tie.ts";
 import { PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "../engine/project.ts";
 import { addToForeignHook, FOREIGN_GAP, foreignHooks, handCallLine, pushGateGaps } from "../engine/push-gate.ts";
 import { repoDirOf, workingRepos } from "../engine/repos.ts";
-import { readSettings, type Settings } from "../engine/settings.ts";
+import { readSettings, reviewModeOf, type Settings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, SHAPE_WRITER_KEY, Store, type Task } from "../engine/store/index.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
 
@@ -240,6 +240,14 @@ function programTieCheck(env: DoctorEnv, projectDir: string, store: Store): Find
 
 const SETTING_LABELS: Record<string, string> = { base_branch: "base branch", checks: "checks", review_mode: "review mode" };
 
+/** In a workspace whose repos follow different review modes, each repo's (trustmybot/tmb#216); else nothing. */
+function repoModes(settings: Settings): string {
+  if (settings.repos === null) return "";
+  const working = workingRepos(settings.repos);
+  const modes = working.map((repo) => `${repo} ${reviewModeOf(settings, repo)}`);
+  return new Set(working.map((repo) => reviewModeOf(settings, repo))).size > 1 ? `; review mode per repo: ${modes.join(", ")}` : "";
+}
+
 function settingsCheck(env: DoctorEnv, settings: Settings): Finding[] {
   const empty = emptySettings(settings);
   const onboard = { say: `\`${env.program.name} onboard\`` };
@@ -247,7 +255,7 @@ function settingsCheck(env: DoctorEnv, settings: Settings): Finding[] {
   const others = empty.filter((name) => name !== "review_mode");
   if (others.length > 0) findings.push(finding("settings", { status: "warn", summary: `not set yet: ${others.map((name) => SETTING_LABELS[name] ?? name).join(", ")}`, fix: onboard }));
   if (empty.includes("review_mode")) findings.push(finding("settings", { status: "warn", summary: "the review mode is not chosen, so no task starts", fix: onboard }));
-  if (findings.length === 0) findings.push(finding("settings", { status: "ok", summary: "every setting is set, the review mode included" }));
+  if (findings.length === 0) findings.push(finding("settings", { status: "ok", summary: `every setting is set, the review mode included${repoModes(settings)}` }));
   return findings;
 }
 

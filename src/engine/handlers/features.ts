@@ -3,7 +3,7 @@
 import { gitFailure, runGit } from "../git.ts";
 import { refreshLocalMerges, refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
-import { readSettings } from "../settings.ts";
+import { readSettings, reviewModeOf } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
 import { CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, PR_OPEN, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
@@ -163,10 +163,10 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
   const settings = readSettings(store);
   const baseBranch = repo.baseBranch;
   if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
-  if (settings.review_mode === TRUEST) {
+  if (reviewModeOf(settings, repo.name) === TRUEST) {
     throw new HandlerError(
       "refused",
-      `the project is in truest mode, which has no feature branches: each task is cut from the base branch ${baseBranch}, reviewed on its own and opened as its own pull request. Start the task with task_start.`,
+      `${repo.name === null ? "the project is" : `the repo ${repo.name} is`} in truest mode, which has no feature branches: each task is cut from the base branch ${baseBranch}, reviewed on its own and opened as its own pull request. Start the task with task_start.`,
     );
   }
   refuseRecorded(store, name);

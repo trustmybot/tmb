@@ -65,8 +65,9 @@ const USAGE: Record<string, string> = {
               [--check <command>]... [--repo <name> [--exempt]] [--add-push-gate] [--yes]
                             Set the project's settings: a host's role, the base branch, the
                             review mode and the checks. In a workspace of several repos, --repo
-                            names the repo --base and --check set, and --exempt makes tmb do no
-                            work in it. --add-push-gate adds tmb's one line to a pre-push hook
+                            names the repo --base, --check and --review-mode set (--review-mode
+                            workspace makes it follow the workspace's), and --exempt makes tmb do
+                            no work in it. --add-push-gate adds tmb's one line to a pre-push hook
                             that is another tool's. Asks on a terminal, else keeps the stored
                             values; run it again at any time`,
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the

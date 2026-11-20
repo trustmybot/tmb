@@ -76,6 +76,7 @@ export {
   type ReviewMode,
   type ReviewModeChooser,
   reviewModeChosenVia,
+  reviewModeOf,
   SETTING_NAMES,
   SettingError,
   type SettingName,
