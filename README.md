@@ -2,7 +2,7 @@
 
 tmb is a harness for coding agents: a standalone engine that adds a record, a code graph and an enforced workflow to the agent program you already use. Your agent program still runs the agents: it plans the work and starts the workers and the reviewer. tmb records every step and lets nothing be pushed until it has passed the gate.
 
-Status: early. Install it and set up a project with [docs/reference](docs/reference/README.md); the design lives in [docs/architecture](docs/architecture/README.md).
+Status: early. v1 supports one host, Claude Code; other hosts are not supported yet. Install it and set up a project with [docs/reference](docs/reference/README.md); the design lives in [docs/architecture](docs/architecture/README.md).
 
 ## Three pillars
 
@@ -28,11 +28,11 @@ The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the fi
 | Folder | Holds |
 |---|---|
 | [docs/architecture](docs/architecture/README.md) | The design: what the engine does and why. |
-| [docs/contributing](docs/contributing/README.md) | How work on this repo is done. |
+| [docs/contributing](docs/contributing/README.md) | How work on this repo is done. See also [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). |
 | [docs/reference](docs/reference/README.md) | Install, set up and remove tmb. |
 
 ## License
 
 [Functional Source License 1.1, Apache 2.0 future license](LICENSE.md) (FSL-1.1-ALv2). You may use, change and share tmb for any purpose, including inside a company, except to offer it to others as a competing commercial product or service. Each release becomes Apache 2.0 two years after it is published.
 
-tmb is source-available. It is not open source by the Open Source Initiative's definition until that two-year date.
+tmb is source available. It is not open source by the Open Source Initiative's definition until that two-year date.
