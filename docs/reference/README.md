@@ -223,7 +223,22 @@ Add `--json` to any of them for JSON output. A change you make here is recorded 
 
 A task closes only when its worktree has no uncommitted changes and has at least one commit past the point it was cut from. tmb then runs the project's checks, followed by the task's own, one after another in the worktree. Each check gets 10 minutes. Every run is recorded with its start, its end, each command's exit code and the end of its output. If a check fails, the task stays open, and tmb names the command and shows the end of its output. A task with no checks at all never closes.
 
-When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode `agile` and the commit it folded. tmb then removes the task's worktree and branch, and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
+When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode `agile` and the commit it folded. tmb then removes the task's worktree and branch, unless files are left in the worktree (see below), and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
+
+What tmb does with a closed task's worktree depends on what is left in it (trustmybot/tmb#132):
+
+| Left in the worktree | tmb |
+|---|---|
+| Nothing | Removes the worktree and the branch. |
+| Only files git ignores, such as build output | Removes both, and the close names the files it dropped. |
+| Untracked files git does not ignore | Keeps both. The close names the files and the command that removes the worktree. |
+| Changed or staged tracked files | Keeps both, and the close names the files. |
+| A lock set by the host | Keeps both, and the close says so. |
+
+- A file nobody ignored may be work that was not committed, so tmb never deletes it by itself.
+- tmb tries a kept worktree again when the planner's session starts with no task open or in review. It goes once its files are gone or ignored, or the lock is lifted.
+- The main folder is never removed.
+- In truest mode, where a task opens its own pull request, the worktree follows the same rules and the branch is kept for the pull request.
 
 ## Move a plugin project
 
