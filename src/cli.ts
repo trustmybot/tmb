@@ -355,7 +355,8 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
     adapters: HOST_ADAPTERS,
     flags: { host: given.host, role: given.role, base: given.base, reviewMode: given["review-mode"], checks: given.check, yes: given.yes },
     ask: terminal?.ask ?? null,
-    out: (line) => console.log(line),
+    out: (line) => process.stdout.write(`${line}\n`),
+    colour: colourOn(process.stdout),
   };
   try {
     await run(setupOptions);
