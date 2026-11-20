@@ -36,13 +36,27 @@ import { indexProject } from "./engine/graph/fresh.ts";
 import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
-import { installPushGate } from "./engine/push-gate.ts";
+import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
+import { installPushGates } from "./engine/push-gate.ts";
+import { inGitWorkTree, type Repo, repoDirOf, scanRepos } from "./engine/repos.ts";
+import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName } from "./engine/settings.ts";
 import type { Actor } from "./engine/store/index.ts";
 import { version as packageVersion } from "./version.ts";
 import { Paint } from "./engine/doors/help.ts";
 
 /** Answers given on the command line; each one is used without asking. */
-export type SetupFlags = { host?: string; role?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
+export type SetupFlags = {
+  host?: string;
+  role?: string;
+  base?: string;
+  reviewMode?: string;
+  checks?: string[];
+  yes?: boolean;
+  /** onboard in a workspace: the repo --base, --check and --exempt set. */
+  repo?: string;
+  /** onboard in a workspace: the repo --repo names is one tmb does no work in. */
+  exempt?: boolean;
+};
 
 /** Shows a prompt and reads one line; null once input has ended. */
 export type Ask = (prompt: string) => Promise<string | null>;
@@ -70,7 +84,7 @@ export class SetupError extends Error {
 }
 
 const HUMAN: Actor = { kind: "human" };
-const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null };
+const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, repos: null };
 const NOT_INITIALISED = "tmb is not set up in this project; run tmb init first";
 
 /** The flag answers, checked. */
@@ -241,24 +255,68 @@ function printSettings(projectDir: string, recorded: number, out: (line: string)
   out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's audit trail.`);
 }
 
-/** Indexes the base branch into the code graph; a project that cannot be indexed yet is told why, and the run goes on. */
-async function indexCodeGraph(projectDir: string, out: (line: string) => void): Promise<void> {
+/**
+ * Indexes the base branch into the code graph, or one workspace repo's; a project or repo that
+ * cannot be indexed yet is told why, and the run goes on.
+ */
+async function indexCodeGraph(projectDir: string, out: (line: string) => void, repo?: Repo): Promise<void> {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw new SetupError(`cannot index the code graph: ${opened.error.message}`);
+  const of = repo?.name ? ` of ${repo.name}` : "";
   try {
-    const stats = await indexProject(projectDir, opened.store, { rebuild: false });
-    out(`Indexed the code graph of ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
+    const stats = await indexProject(projectDir, opened.store, { rebuild: false, repo });
+    const what = repo?.name ? `of ${repo.name} from ${stats.baseBranch}` : `of ${stats.baseBranch}`;
+    out(`Indexed the code graph ${what} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
   } catch (error) {
     // The settings are stored by now, and every lookup indexes the graph itself, so a failed index never fails the run.
     const message = error instanceof Error ? error.message : String(error);
     out(
       error instanceof HandlerError
-        ? `The code graph is not indexed yet: ${message}. Lookups index it once the base branch has a commit.`
-        : `The code graph could not be indexed now (${message}); the first lookup indexes it.`,
+        ? `The code graph${of} is not indexed yet: ${message}. Lookups index it once the base branch has a commit.`
+        : `The code graph${of} could not be indexed now (${message}); the first lookup indexes it.`,
     );
   } finally {
     opened.store.close();
   }
+}
+
+function workingRepoNames(repos: RepoPolicies): string[] {
+  return Object.keys(repos).filter((name) => repos[name]!.exempt !== true);
+}
+
+function repoOfPolicy(projectDir: string, name: string, policy: RepoPolicy): Repo {
+  return { name, dir: repoDirOf(projectDir, name), baseBranch: policy.base_branch ?? null, checks: policy.checks ?? [] };
+}
+
+/**
+ * A workspace's repos, found again: each repo the scan finds is registered, with the base branch
+ * its own git points at; a repo already registered keeps its policy, and one that is gone is
+ * dropped. Says each change and the evidence for each new base branch. Stores and returns them.
+ */
+function registerRepos(projectDir: string, stored: RepoPolicies | null, out: (line: string) => void): RepoPolicies {
+  const before = stored ?? {};
+  const found = scanRepos(projectDir);
+  const repos: RepoPolicies = {};
+  out(`This folder is not a git work tree, so it is a workspace: its repos share one record.`);
+  for (const name of found) {
+    const kept = before[name];
+    if (kept !== undefined) {
+      repos[name] = kept;
+      out(`  ${repoPolicyLine(name, kept)}`);
+      continue;
+    }
+    const detected = detectBaseBranchWithEvidence(repoDirOf(projectDir, name));
+    // A scanned repo is a git work tree, so a base branch is always found; the fallback keeps the type honest.
+    const base = detected?.branch ?? "main";
+    repos[name] = { base_branch: base, checks: detectChecks(repoDirOf(projectDir, name)) };
+    out(`  Added repo ${name}: base branch ${base}, from ${detected?.from ?? "the fallback"}.`);
+  }
+  for (const name of Object.keys(before)) {
+    if (!found.includes(name)) out(`  Dropped repo ${name}: it is no longer a repo in this folder.`);
+  }
+  if (found.length === 0) out("  No repo found: tmb looks for git repos up to two folders down. Clone one here and run tmb init again.");
+  storeAnswers(projectDir, { repos }, "init");
+  return repos;
 }
 
 /** What init did, for the lines that close the run. */
@@ -286,22 +344,29 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
     : `Warning: ${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
   if (warning) out(warning);
 
-  // The wiring: the host's registrations, which create the record, then git's push hook.
+  // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
-  for (const line of installPushGate(projectDir, options.tmbCommand)) out(line);
+  // A folder that is not a git work tree and holds repos, or held them at an earlier init, is a workspace.
+  const workspace = !inGitWorkTree(projectDir) && (stored.repos !== null || scanRepos(projectDir).length > 0);
+  const repos = workspace ? registerRepos(projectDir, stored.repos, out) : null;
+  for (const line of installPushGates(projectDir, repos, options.tmbCommand)) out(line);
   tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);
 
   // The role is the host's main agent's: kept from an earlier init of this host unless --role names another.
   const role = answered.role ?? stored.host_roles?.[adapter.id] ?? DEFAULT_HOST_ROLE;
   const hostRoles = { ...(stored.host_roles ?? {}), [adapter.id]: role };
   const recorded = storeAnswers(projectDir, { host: adapter.id, host_roles: hostRoles }, "init");
-  // With no base branch set, the graph is built from the one tmb detects.
-  if ((stored.base_branch ?? detectBaseBranch(projectDir)) !== null) await indexCodeGraph(projectDir, out);
+  if (repos !== null) {
+    for (const name of workingRepoNames(repos)) await indexCodeGraph(projectDir, out, repoOfPolicy(projectDir, name, repos[name]!));
+  } else if ((stored.base_branch ?? detectBaseBranch(projectDir)) !== null) {
+    // With no base branch set, the graph is built from the one tmb detects.
+    await indexCodeGraph(projectDir, out);
+  }
   return { adapter, role, recorded, warning };
 }
 
 /** What onboard stored, for the lines that close the run. */
-type Onboarded = { recorded: number; base: string | null; role: HostRole; reviewMode: ReviewMode | null };
+type Onboarded = { recorded: number; base: string | null; role: HostRole; reviewMode: ReviewMode | null; repos?: RepoPolicies };
 
 /** Asks each question, offering the stored value, and stores the answers. Needs a project init has prepared. */
 async function onboardProject(options: SetupOptions): Promise<Onboarded> {
@@ -322,6 +387,9 @@ async function onboardProject(options: SetupOptions): Promise<Onboarded> {
     );
   }
 
+  if (stored.repos !== null) return onboardWorkspace(options, stored, stored.repos, hostId, name, answered, ask);
+  if (flags.repo !== undefined || flags.exempt === true) throw new SetupError("this project is one repo, so --repo and --exempt are not taken; --base and --check set its settings");
+
   const roleFallback = stored.host_roles?.[hostId] ?? DEFAULT_HOST_ROLE;
   const role =
     answered.role ??
@@ -339,6 +407,66 @@ async function onboardProject(options: SetupOptions): Promise<Onboarded> {
   // A new base branch has its own code graph; init indexed the old one.
   if (base !== null && base !== stored.base_branch) await indexCodeGraph(projectDir, out);
   return { recorded, base, role, reviewMode };
+}
+
+/**
+ * onboard in a workspace: the role and review mode as in a single-repo project, then each repo's
+ * base branch and checks. Flags set the repo --repo names, or the only repo tmb works in; on a
+ * terminal with no --repo, each repo tmb works in is asked in turn.
+ */
+async function onboardWorkspace(
+  options: SetupOptions,
+  stored: Settings,
+  before: RepoPolicies,
+  hostId: string,
+  name: string,
+  answered: Answered,
+  ask: Ask | null,
+): Promise<Onboarded> {
+  const { projectDir, flags, out } = options;
+  const working = workingRepoNames(before);
+  let targets: string[];
+  if (flags.repo !== undefined) {
+    const repo = validateRepoName(flags.repo);
+    if (before[repo] === undefined) throw new SetupError(`no repo ${JSON.stringify(flags.repo)} in this workspace; its repos are ${Object.keys(before).join(", ") || "none"}, and tmb init finds new ones`);
+    targets = [repo];
+  } else if (answered.base_branch !== undefined || answered.checks !== undefined || flags.exempt === true) {
+    if (working.length !== 1) throw new SetupError(`this workspace has ${working.length} repos tmb works in (${working.join(", ") || "none"}); name the one --base, --check or --exempt sets with --repo`);
+    targets = working;
+  } else {
+    targets = ask === null ? [] : working;
+  }
+
+  const roleFallback = stored.host_roles?.[hostId] ?? DEFAULT_HOST_ROLE;
+  const role =
+    answered.role ??
+    (ask ? await askValid(ask, `Role of ${name}'s main agent, one of: ${HOST_ROLES.join(", ")}`, roleFallback, validateHostRole, out) : roleFallback);
+  const reviewMode = answered.review_mode ?? (ask ? await askReviewMode(ask, stored.review_mode, out) : stored.review_mode);
+
+  const repos: RepoPolicies = { ...before };
+  for (const repo of targets) {
+    const dir = repoDirOf(projectDir, repo);
+    const policy = before[repo]!;
+    if (flags.exempt === true) {
+      repos[repo] = { ...policy, exempt: true };
+      continue;
+    }
+    const baseFallback = policy.base_branch ?? detectBaseBranch(dir) ?? "main";
+    const base = answered.base_branch ?? (ask ? await askText(ask, `Base branch of ${repo}, the branch its pull requests merge into`, baseFallback) : baseFallback);
+    const checksFallback = policy.checks ?? detectChecks(dir);
+    const checks = answered.checks ?? (ask ? await askChecks(ask, checksFallback, `${repo}'s ${policy.checks === undefined ? "detected" : "stored"} checks`, out) : checksFallback);
+    repos[repo] = { base_branch: base ?? baseFallback, checks };
+  }
+
+  const hostRoles = { ...(stored.host_roles ?? {}), [hostId]: role };
+  const recorded = storeAnswers(projectDir, { host_roles: hostRoles, review_mode: reviewMode ?? undefined, repos }, "onboard");
+  // A repo with a new base branch, or newly worked in, has its own code graph to index.
+  for (const repo of workingRepoNames(repos)) {
+    if (repos[repo]!.base_branch !== before[repo]?.base_branch || before[repo]?.exempt === true) {
+      await indexCodeGraph(projectDir, out, repoOfPolicy(projectDir, repo, repos[repo]!));
+    }
+  }
+  return { recorded, base: null, role, reviewMode, repos };
 }
 
 /** The refusal every task start meets until the review mode is chosen, said where the Human can act on it. */
@@ -427,9 +555,10 @@ export async function runOnboard(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
   const onboarded = await onboardProject(options);
   printSettings(projectDir, onboarded.recorded, out);
-  sayNoBase(onboarded.base, out);
+  if (onboarded.repos === undefined) sayNoBase(onboarded.base, out);
   sayNoReviewMode(onboarded.reviewMode, out);
-  sayMarkRule(projectDir, onboarded.base, out);
+  if (onboarded.repos === undefined) sayMarkRule(projectDir, onboarded.base, out);
+  else for (const name of workingRepoNames(onboarded.repos)) sayMarkRule(repoDirOf(projectDir, name), onboarded.repos[name]!.base_branch ?? null, out);
 }
 
 /** Whether the base branch's protection requires tmb's mark on GitHub, and how to turn it on; nothing when origin is no GitHub repository. */

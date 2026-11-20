@@ -125,6 +125,20 @@ A gate denies when it cannot read the record, and allows in a project tmb has ne
 
 The engine, not an agent, creates branches and worktrees, runs checks, folds a task into its feature branch, pushes and opens pull requests. Agents ask for these through the engine's tools, so every step is recorded and no agent needs to be trusted to follow a git procedure.
 
+## Several repos in one workspace
+
+(trustmybot/tmb#163) A workspace is a folder that is not a git work tree and holds several repos, such as a product's engine, its plugin and its Homebrew tap side by side. tmb runs from the workspace folder, and its repos share one record there. A folder that is itself a git work tree is a single-repo project, even when it holds nested repos, and works as before.
+
+**Which repos.** `tmb init` looks for repos up to two folders down: each folder whose `.git` is a folder. It does not look inside a repo it found, a dot-folder or `node_modules`. A `.git` file marks a linked worktree or a submodule, never a repo, so a task worktree is not taken for one. A repo is named by its path from the workspace, with forward slashes, such as `tmb` or `tools/tap`. The record keeps the set, so no later step scans or guesses. Running init again adds the repos that appeared and drops the ones that are gone, with a line for each.
+
+**Policy per repo.** The `repos` setting gives each repo its own policy: its base branch, its checks, or `exempt` for a repo tmb does no work in, such as fixtures that never ship. init takes each base branch from that repo's own git: origin's default branch, else its current branch, else `main`, and prints where each came from. A policy set before is kept. Each repo pushes to its own origin and opens pull requests on its own GitHub repo. Only the host, the host roles and the review mode are the workspace's. The project-wide base branch and checks are not read in a workspace.
+
+**The repo comes from the work, never from the folder a session runs in.** A feature or task records its repo. `feature_start` and `task_start` take `repo`; with one repo tmb works in it may be left out, and with several a call that names none is refused with the list. An agile task works in its feature branch's repo, and a `repo` that differs is refused. A truest task names its repo. Every later step on a feature or task runs in that repo: cutting from its base branch, the task worktree, the checks, the fold, the backup push, the main-folder snapshot and the pull request. Task worktrees stay under the workspace's `.tmb/worktrees/`, so a worker finds the shared record. Feature names are unique in the whole record. tmb's issues live in the record and name no repo.
+
+**The gate in each repo.** init writes git's pre-push hook into every repo that is not exempt, and `tmb remove` deletes each. The hook runs in the repo being pushed: the gate finds the record above it and the repo from git's top level, and judges the push against that repo's base branch. A push from a task worktree is judged as one from the repo it was cut from. A repo the record does not register, or registers as exempt, is not judged: the push is allowed, and the recorded reason says why.
+
+**A code graph per repo.** Each repo has its own graph, `.tmb/graphs/<repo>.db`, built from its own base branch, with paths relative to that repo. The graph tools take `repo` as `feature_start` does. init and `tmb index` index each repo tmb works in, one line each; a repo that cannot be indexed yet says why, and the others go on.
+
 ## Carried over from the plugin
 
-The plugin's design for retry and escalation, pull request comment triage and multi-repo workspaces is carried over unchanged in intent. Each gets its section here when its level starts.
+The plugin's design for retry and escalation and pull request comment triage is carried over unchanged in intent. Each gets its section here when its level starts.

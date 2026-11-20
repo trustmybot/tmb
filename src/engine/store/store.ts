@@ -70,6 +70,8 @@ export type NewTask = {
   kind?: string | null;
   /** The commit that holds the main folder as it was when the task started. */
   mainSnapshot?: string | null;
+  /** The repo the task was cut in, by its name in the workspace; null for the project folder itself. */
+  repo?: string | null;
 };
 export type Task = {
   id: string;
@@ -90,6 +92,8 @@ export type Task = {
   prUrl: string | null;
   /** The commit that holds the main folder as it was when the task started; null for a task started before tasks kept one. */
   mainSnapshot: string | null;
+  /** The repo the task was cut in, by its name in the workspace; null for the project folder itself. */
+  repo: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -106,7 +110,7 @@ export type TaskChanges = {
   /** The worktree a worker's host made and tmb adopted as the task's. */
   worktree?: string | null;
 };
-export type NewFeature = { name: string; baseBranch: string; baseCommit: string };
+export type NewFeature = { name: string; baseBranch: string; baseCommit: string; repo?: string | null };
 export type FeatureChanges = { state?: string; prUrl?: string | null };
 export type Feature = {
   id: string;
@@ -116,6 +120,8 @@ export type Feature = {
   state: string;
   /** The pull request the engine opened for it; null until then. */
   prUrl: string | null;
+  /** The repo the feature branch was cut in, by its name in the workspace; null for the project folder itself. */
+  repo: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -213,6 +219,7 @@ type TaskRow = {
   push_detail: string | null;
   pr_url?: string | null;
   main_snapshot?: string | null;
+  repo?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -224,6 +231,7 @@ type FeatureRow = {
   base_commit: string;
   state: string;
   pr_url: string | null;
+  repo?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -316,6 +324,7 @@ function toTask(row: TaskRow): Task {
     pushDetail: row.push_detail,
     prUrl: row.pr_url ?? null,
     mainSnapshot: row.main_snapshot ?? null,
+    repo: row.repo ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -330,6 +339,7 @@ function toFeature(row: FeatureRow): Feature {
     baseCommit: row.base_commit,
     state: row.state,
     prUrl: row.pr_url,
+    repo: row.repo ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -483,6 +493,7 @@ export class Store {
       feature_id: task.featureId ?? null,
       kind: task.kind ?? null,
       main_snapshot: task.mainSnapshot ?? null,
+      repo: task.repo ?? null,
     }, task.id);
   }
 
@@ -523,7 +534,7 @@ export class Store {
   // --- feature branches ---------------------------------------------------------------
 
   createFeature(actor: Actor, feature: NewFeature): string {
-    return this.create(actor, "feature", { name: feature.name, base_branch: feature.baseBranch, base_commit: feature.baseCommit });
+    return this.create(actor, "feature", { name: feature.name, base_branch: feature.baseBranch, base_commit: feature.baseCommit, repo: feature.repo ?? null });
   }
 
   updateFeature(actor: Actor, id: string, changes: FeatureChanges): void {
