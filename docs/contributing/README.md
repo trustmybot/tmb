@@ -20,7 +20,7 @@ The design in [docs/architecture](../architecture/README.md) is the ground truth
 
 ## Issues
 
-- **An issue is opened through a form.** The forms are in `.github/ISSUE_TEMPLATE`: bug report, feature request, improvement and research. A security problem is never an issue: see [SECURITY.md](../../SECURITY.md).
+- **An issue is opened through a form.** The forms are in `.github/ISSUE_TEMPLATE`: bug report, feature request, improvement and research. A security problem is never an issue: see `SECURITY.md` at the root.
 - **A form sets the type and marks the issue for triage.** It adds one `type/` label and `status/needs-triage`. Someone who cannot write to the repo cannot add labels, so the form does it.
 - **A maintainer finishes the labels.** Every issue carries one `type/`, one `priority/` and one `area/` label. The area a reporter picks in the form is a guess; the maintainer sets the label, then removes `status/needs-triage` and sets the milestone.
 - **A bug report names the version.** The form asks for what `tmb --version` prints, which names the channel too.
