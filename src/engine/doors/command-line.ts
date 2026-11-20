@@ -8,6 +8,8 @@ import {
   type GraphAnswer,
   HandlerError,
   type IssueDetail,
+  markLine,
+  markRequiredLine,
   type IssueUpdateResult,
   OPERATIONS,
   type OperationName,
@@ -16,8 +18,8 @@ import {
   type TaskPrResult,
   type TaskStartResult,
   type TaskSummary,
-  type TaskWaiver,
-  type Waiver,
+  type TaskWaiveResult,
+  type WaiveResult,
 } from "../handlers/index.ts";
 import type { Concept } from "../graph/concepts.ts";
 import { indexProject } from "../graph/fresh.ts";
@@ -301,14 +303,18 @@ function featureRequest(args: string[]): Request {
     case "waive": {
       const { values, positionals } = parse(rest, { reason: { type: "string" } });
       if (values.reason === undefined) throw new UsageError("feature waive needs --reason <text>: why the review is waived");
-      const format = (waiver: Waiver) => `Waived the review of ${waiver.feature} at ${waiver.commit}; its pull request may open now.`;
+      const format = (waiver: WaiveResult) =>
+        [`Waived the review of ${waiver.feature} at ${waiver.commit}; its pull request may open now.`, markLine(waiver.mark)].filter((line) => line !== null).join("\n");
       return { operation: "feature_waive", input: { feature: only(positionals, "feature branch name"), reason: values.reason }, json: values.json === true, format };
     }
     case "pr": {
       const { values, positionals } = parse(rest, { title: { type: "string" }, body: { type: "string" } });
       if (values.title === undefined) throw new UsageError("feature pr needs --title <text>");
       const input = { feature: only(positionals, "feature branch name"), title: values.title, ...(values.body === undefined ? {} : { body: values.body }) };
-      const format = (pr: FeaturePrResult) => `Opened the pull request of ${pr.feature} into ${pr.base} at ${pr.tip} (${pr.coveredBy}): ${pr.url}`;
+      const format = (pr: FeaturePrResult) =>
+        [`Opened the pull request of ${pr.feature} into ${pr.base} at ${pr.tip} (${pr.coveredBy}): ${pr.url}`, markRequiredLine(pr.base, pr.markRequired)]
+          .filter((line) => line !== null)
+          .join("\n");
       return { operation: "feature_pr", input, json: values.json === true, format };
     }
     default:
@@ -361,7 +367,8 @@ function taskRequest(args: string[]): Request {
     case "waive": {
       const { values, positionals } = parse(rest, { reason: { type: "string" } });
       if (values.reason === undefined) throw new UsageError("task waive needs --reason <text>: why the review is waived");
-      const format = (waiver: TaskWaiver) => `Waived the review of task ${waiver.task} at ${waiver.commit}; its pull request may open now.`;
+      const format = (waiver: TaskWaiveResult) =>
+        [`Waived the review of task ${waiver.task} at ${waiver.commit}; its pull request may open now.`, markLine(waiver.mark)].filter((line) => line !== null).join("\n");
       return { operation: "task_waive", input: { id: only(positionals, "task id"), reason: values.reason }, json: values.json === true, format };
     }
     case "pr": {
@@ -373,7 +380,10 @@ function taskRequest(args: string[]): Request {
           `Opened the pull request of task ${pr.task} (${pr.branch}) into ${pr.base} at ${pr.commit} (${pr.coveredBy}): ${pr.url}`,
           ...(pr.rebasedOnto === null ? [] : [`Rebased onto ${pr.base} at ${pr.rebasedOnto} first; the patch was unchanged, so the review carried over.`]),
           ...pr.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
-        ].join("\n");
+          markRequiredLine(pr.base, pr.markRequired),
+        ]
+          .filter((line) => line !== null)
+          .join("\n");
       return { operation: "task_pr", input, json: values.json === true, format };
     }
     default:

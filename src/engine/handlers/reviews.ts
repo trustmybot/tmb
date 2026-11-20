@@ -11,6 +11,7 @@ import { OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureTip } from "./features.ts";
 import { pushFeature } from "./fold.ts";
+import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
 import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
@@ -60,8 +61,19 @@ export type FeatureBrief = {
   reviewLine: string;
 };
 
-export type ReviewRecordResult = { review: ReviewSummary; feature: string; covered: boolean; next: string };
-export type FeaturePrResult = { feature: string; url: string; base: string; tip: string; coveredBy: "review" | "waiver"; push: string };
+export type ReviewRecordResult = { review: ReviewSummary; feature: string; covered: boolean; next: string; mark: MarkResult };
+/** A waiver as feature_waive records it, with what became of its mark on GitHub. */
+export type WaiveResult = Waiver & { mark: MarkResult };
+export type FeaturePrResult = {
+  feature: string;
+  url: string;
+  base: string;
+  tip: string;
+  coveredBy: "review" | "waiver";
+  push: string;
+  /** Whether the base branch's protection requires the mark; null when not known or origin is no GitHub repository. */
+  markRequired: boolean | null;
+};
 
 /** The line that names a feature branch to the reviewer. */
 export function reviewLine(name: string): string {
@@ -262,11 +274,12 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   const id = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip });
   const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
   if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, `verdict ${given.verdict} at ${tip}`);
+  const mark = markReviewed(store, actor, context.projectDir, tip, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
     ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
     : `the planner reworks each blocking finding as a task on ${feature.name}, then starts the reviewer again`;
-  return { review, feature: feature.name, covered, next };
+  return { review, feature: feature.name, covered, next, mark };
 }
 
 // --- feature_waive ------------------------------------------------------------------------
@@ -281,7 +294,7 @@ export const featureWaiveSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export function featureWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): Waiver {
+export function featureWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): WaiveResult {
   const given = validateInput<{ feature: string; reason: string }>("feature_waive", featureWaiveSchema, input);
   if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.role} cannot`);
   const feature = requireOpenFeature(store, given.feature, "there is no review to waive");
@@ -289,7 +302,8 @@ export function featureWaive(store: Store, actor: Actor, input: unknown, context
   const detail = { feature_id: feature.id, feature: feature.name, commit, reason: given.reason.trim() };
   const id = store.recordAudit(actor, { what: WAIVER, detail: JSON.stringify(detail) });
   const entry = store.listAuditAbout(WAIVER).find((each) => each.id === id)!;
-  return { id, feature: feature.name, commit, reason: detail.reason, at: entry.createdAt };
+  const mark = markReviewed(store, actor, context.projectDir, commit, "waiver", detail.reason);
+  return { id, feature: feature.name, commit, reason: detail.reason, at: entry.createdAt, mark };
 }
 
 // --- feature_pr ---------------------------------------------------------------------------
@@ -354,6 +368,8 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
 
   const push = pushFeature(context.projectDir, feature.name);
   if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
+  // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
+  trySendPendingMarks(store, actor, context.projectDir);
   const how =
     brief.coveredBy === "review"
       ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
@@ -362,6 +378,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   const opened = openPullRequest(context.projectDir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
   if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
-  return { feature: feature.name, url: opened.url, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail };
+  const markRequired = markRequiredOn(context.projectDir, feature.baseBranch);
+  return { feature: feature.name, url: opened.url, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
 }
 

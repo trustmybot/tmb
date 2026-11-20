@@ -129,8 +129,8 @@ describe("truest mode", () => {
     expect((await refusal(() => taskReview(store, REVIEWER, { id: task.id, commit: task.sha, verdict: "pass" }, context()))).message).toContain(
       "no reviewer run is open",
     );
-    expect((await refusal(() => taskWaive(store, PLANNER, { id: task.id, reason: "small" }))).message).toContain("only the Human waives");
-    expect(taskWaive(store, HUMAN, { id: task.id, reason: "small" })).toMatchObject({ task: task.id, commit: task.sha, reason: "small" });
+    expect((await refusal(() => taskWaive(store, PLANNER, { id: task.id, reason: "small" }, context()))).message).toContain("only the Human waives");
+    expect(taskWaive(store, HUMAN, { id: task.id, reason: "small" }, context())).toMatchObject({ task: task.id, commit: task.sha, reason: "small" });
     expect(taskBrief(store, PLANNER, { id: task.id }).review).toMatchObject({ covered: true, coveredBy: "waiver" });
     expect(truestCoveredCommits(store)).toEqual([task.sha]);
   });
@@ -151,6 +151,6 @@ describe("truest mode", () => {
     commit(agile.worktree, "b.txt", "b\n");
     await taskClose(store, WORKER, { id: agile.id }, context());
     expect(store.getTask(agile.id)?.state).toBe("closed");
-    expect((await refusal(() => taskWaive(store, HUMAN, { id: agile.id, reason: "x" }))).message).toContain("agile mode");
+    expect((await refusal(() => taskWaive(store, HUMAN, { id: agile.id, reason: "x" }, context()))).message).toContain("agile mode");
   });
 });
