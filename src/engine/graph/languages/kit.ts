@@ -2,6 +2,7 @@
 // clipping, the doc comment above a definition and a definition's signature.
 import { createHash } from 'node:crypto';
 import type { Node } from 'web-tree-sitter';
+import type { SourceFile } from './contract.ts';
 
 export const STOPWORDS = new Set(
   'a an the and or of to in on for with by is are was were be been when where what which who how why does do did it its this that these those from as at into per not no than then there their them our we you i set get'.split(
@@ -100,3 +101,9 @@ export function named(node: Node): Node[] {
 // stays a member call yet can match no `${type}.${method}` name.
 export const memberHint = (receiver: string): string =>
   receiver.length < 40 || /^[\w$]+$/.test(receiver) ? receiver : `${receiver.slice(0, 39)}…`;
+
+/** The syntax tree of a file whose language has a grammar; a parse that gave none is a bug. */
+export const syntaxTree = (file: SourceFile): Node => {
+  if (!file.root) throw new Error(`no syntax tree for ${file.relPath}`);
+  return file.root;
+};
