@@ -108,6 +108,8 @@ Code enforces the workflow; prompts only guide. Three layers, each owned by the 
 
 A gate denies when it cannot read the record, and allows in a project tmb has never been set up in.
 
+**Checkpoints, not steps.** Planned (trustmybot/tmb#98). Proposed, for the Human's review. tmb checks what is delivered, like CI, and stops asking before every write and command. Layer 2 shrinks to recording a session and an agent's start and stop. What it did is done by the host's own features: the reviewer has no edit tool, and a worker starts inside its worktree, which the host then keeps it in. At a task's close the engine also checks that the commit stays inside the task's files and that the main folder is as the task found it. A gate that was skipped is found by the sync with the remote and recorded as a finding.
+
 **Freeze.** Planned (trustmybot/tmb#64). The Human can stop all work in a project with one request to any session, and start it again the same way. A freeze is an entry in the record with its reason, so it holds for every session. While it holds, the gate denies what moves work forward: starting a task, starting a worker or the reviewer, a file write by an agent, closing a task and opening a pull request. Reads stay allowed, the planner is told at session start, and a push typed by hand is not affected.
 
 ## What the engine does itself
