@@ -1,18 +1,17 @@
 // The gate's answer to a host event. Every host raises the same tmb events, and every rule
 // is written against them here. A worker starts only on an open task with its worktree
 // ready, and once it names that task from a worktree its host made for it, tmb adopts that
-// worktree as the task's; a worker's and a reviewer's start and stop are recorded as a run. No
-// agent turns git's pre-push hook off or opens a pull request by hand, a worker and the reviewer
-// never push, and a reviewer host's main agent writes nothing. A record tmb cannot read denies,
-// so nothing runs unguarded in a project whose record is broken.
-import { toolCalls } from "./commands.ts";
+// worktree as the task's; a worker's and a reviewer's start and stop are recorded as a run. A
+// reviewer host's main agent writes nothing. tmb reads no shell command: git's pre-push hook
+// holds every push, whatever was typed. A record tmb cannot read denies, so nothing runs
+// unguarded in a project whose record is broken.
 import { adoptWorktree } from "./handlers/adopt.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
 import { hostRole } from "./settings.ts";
 import { type Actor, ROLES, type Role, type Store, type StoreOpenError } from "./store/index.ts";
 
-export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-command", "before-agent-start", "after-agent-stop", "worker-in-folder"] as const;
+export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop", "worker-in-folder"] as const;
 export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
 
 /**
@@ -37,8 +36,8 @@ export type TmbEvent = {
   role: string;
   task?: string;
   /**
-   * What is about to happen: the file path, the command, the start prompt of an agent starting, or
-   * the role of one stopping; for a worker naming its task, the folder it works in.
+   * What is about to happen: the file path, the start prompt of an agent starting, or the role of
+   * one stopping; for a worker naming its task, the folder it works in.
    */
   action: string;
 };
@@ -115,44 +114,8 @@ function runStop(store: Store, event: TmbEvent, role: Role): Decision {
   return { decision: "allow", reason: `${role} run ${open[0]!.id} ended` };
 }
 
-// --- commands -----------------------------------------------------------------------------
-
-const PUSH_GATE = "git's pre-push hook is the push gate";
-
 function deny(reason: string): Decision {
   return { decision: "deny", reason };
-}
-
-/** A command that turns git's hooks off, keeps a push from asking the gate, pushes from a subagent, or opens a pull request by hand. */
-function commandRule(event: TmbEvent): Decision | null {
-  const calls = toolCalls(event.action);
-  // Only a command that runs git can change where git looks for its hooks; a search or a note that names the setting can run.
-  if (calls.some((call) => call.tool === "git") && /core\.hookspath/i.test(event.action)) {
-    return deny(`This command names core.hooksPath, and ${PUSH_GATE}: no agent changes where git looks for its hooks. Run the command without it.`);
-  }
-  for (const call of calls) {
-    // An alias would run push (or push --no-verify) under a name the rules below do not read.
-    if (call.tool === "git" && (call.config.some((value) => /^alias\./i.test(value)) || (call.subcommand === "config" && call.args.some((arg) => /^alias\./i.test(arg))))) {
-      return deny("No agent defines a git alias: tmb reads each git command by its own name. Run the command it stands for instead.");
-    }
-    if (call.subcommand === null) {
-      return deny(`tmb cannot tell which ${call.tool} subcommand this runs, because it is not written as plain text. Write the subcommand out, such as \`${call.tool} ${call.tool === "git" ? "status" : "pr view"}\`.`);
-    }
-    if (call.tool === "git" && call.subcommand === "push") {
-      if (event.role === WORKER || event.role === REVIEWER) {
-        return deny(`A ${event.role} never pushes: tmb pushes a task's work itself, when the task closes (task_close) or, in truest mode, when its pull request opens (task_pr).`);
-      }
-      if (call.args.includes("--no-verify")) return deny(`git push --no-verify skips the pre-push hook, and ${PUSH_GATE}. Push without --no-verify.`);
-    }
-    if (call.tool === "gh" && (call.subcommand === "pr create" || call.subcommand === "pr merge")) {
-      return deny(
-        call.subcommand === "pr create"
-          ? "tmb opens a pull request itself once the reviewer passed the work or the Human waived the review: call feature_pr for a feature branch, or task_pr for a truest task, instead of gh pr create."
-          : "The Human merges pull requests; no agent runs gh pr merge.",
-      );
-    }
-  }
-  return null;
 }
 
 // --- file writes --------------------------------------------------------------------------
@@ -180,7 +143,6 @@ function rule(store: Store, event: TmbEvent, mainAgent: boolean): Decision {
   if (event.role === WORKER && event.type === "before-agent-start") return workerStart(store, event);
   if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
   if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);
-  if (event.type === "before-command") return commandRule(event) ?? { decision: "allow" };
   if (event.type === "before-file-write") return fileWriteRule(event, mainAgent) ?? { decision: "allow" };
   if (event.role === WORKER && event.type === "worker-in-folder") return workerInFolder(store, event);
   return { decision: "allow" };

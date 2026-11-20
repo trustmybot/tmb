@@ -98,7 +98,7 @@ export const OPERATIONS = {
   },
   task_start: {
     description:
-      "Start a task on an open issue once its spec is written: its kind (code for a worker, docs for you), the intent, the files it may touch, its success criteria and any checks of its own. tmb cuts the task's branch from the tip of its feature branch, the one named or else the only one open (in truest mode, from the base branch), adds its worktree and returns the brief, with the task_id=<id> line to put in the worker's start prompt. For the planner.",
+      "Start a task on an open issue once its spec is written: its kind (code for a worker, docs for you), the intent, the files it may touch, its success criteria and any checks of its own. tmb cuts the task's branch from the tip of its feature branch, the one named or else the only one open (in truest mode, from the base branch), adds its worktree and returns the brief, with the task_id=<id> line to put in the worker's start prompt, and the open tasks that share one of its files, as information: git merges changes to different lines, and a clash on the same lines reopens the later task. For the planner.",
     inputSchema: task.taskStartSchema,
     run: task.taskStart,
   },
@@ -134,7 +134,7 @@ export const OPERATIONS = {
   },
   task_list: {
     description:
-      "List the open tasks in the project's tmb record, or the closed ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task, since two open tasks never share a file.",
+      "List the open tasks in the project's tmb record, or the closed ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },

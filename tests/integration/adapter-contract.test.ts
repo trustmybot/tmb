@@ -126,7 +126,6 @@ for (const harness of HARNESSES) {
       const samples: Record<string, ContractEvent> = {
         "session-start": { type: "session-start" },
         "before-file-write": { type: "before-file-write", role: "planner", file: "notes.md" },
-        "before-command": { type: "before-command", role: "planner", command: "git status" },
         "before-agent-start": { type: "before-agent-start", role: "reviewer", prompt: "review" },
         "after-agent-stop": { type: "after-agent-stop", role: "reviewer" },
         "worker-in-folder": { type: "worker-in-folder", task: "01ARZ3NDEKTSV4RRFFQ69G5FAV", folder: project },
@@ -191,11 +190,11 @@ for (const harness of HARNESSES) {
     test("a guarded action is denied in the host's own terms, an allowed one goes through, and both are recorded under this host", () => {
       const project = newProject();
       setUp(project);
-      if (adapter.limits.events.includes("before-command")) {
-        const denied = raise(project, { type: "before-command", role: "planner", command: "git push --no-verify origin main" });
-        if (adapter.limits.canDenyToolCall) expect(denied.deny).toBeTruthy();
-        expect(raise(project, { type: "before-command", role: "planner", command: "git status" }).deny).toBeNull();
+      // tmb reads no shell command: a push that skips git's hook is neither refused nor recorded, from any role.
+      for (const role of ["planner", "worker", "reviewer"]) {
+        expect(raise(project, { type: "shell-command", role, command: "git push --no-verify origin main" }).deny).toBeNull();
       }
+      expect(withStore(project, (store) => store.listGuardDecisions())).toHaveLength(0);
       if (adapter.limits.events.includes("before-file-write")) {
         const write = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
         if (adapter.limits.namesAgentOnToolCall) {
@@ -251,9 +250,7 @@ for (const harness of HARNESSES) {
       const dbFile = projectDbPath(project);
       for (const suffix of ["-wal", "-shm"]) rmSync(dbFile + suffix, { force: true });
       writeFileSync(dbFile, "this is not a database, only text long enough to look like a header");
-      const event: ContractEvent = adapter.limits.events.includes("before-command")
-        ? { type: "before-command", role: "planner", command: "git status" }
-        : { type: "before-file-write", role: "planner", file: "README.md" };
+      const event: ContractEvent = { type: "before-file-write", role: "planner", file: "README.md" };
       if (adapter.limits.canDenyToolCall) expect(raise(project, event).deny).toContain("cannot read the project's record");
 
       const call = harness.hookCall(project, event)!;

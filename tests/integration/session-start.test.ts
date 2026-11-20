@@ -96,7 +96,7 @@ describe("tmb init and remove", () => {
     const hookCommand = (name: string) => `"${process.execPath}" "${CLI}" hook ${name}`;
     expect(afterInit.hooks.PreToolUse).toEqual([
       otherHook,
-      { matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task|mcp__tmb__task_brief|mcp__tmb__task_close", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
+      { matcher: "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|mcp__tmb__task_brief|mcp__tmb__task_close", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
     ]);
     expect(afterInit.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
     expect(afterInit.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);

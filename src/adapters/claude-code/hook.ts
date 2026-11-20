@@ -16,7 +16,6 @@ const TOOL_EVENTS: Record<string, { type: TmbEventType; actionField: string; rol
   Edit: { type: "before-file-write", actionField: "file_path" },
   MultiEdit: { type: "before-file-write", actionField: "file_path" },
   NotebookEdit: { type: "before-file-write", actionField: "notebook_path" },
-  Bash: { type: "before-command", actionField: "command" },
   Agent: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
   Task: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
 };

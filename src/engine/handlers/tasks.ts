@@ -179,19 +179,23 @@ export function pathsOverlap(a: string, b: string): boolean {
   return a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 }
 
-/** Refuses files that an open task already holds, naming that task and the paths. */
-function refuseOverlap(store: Store, files: readonly string[]): void {
+/** A file a starting task shares with another open task: information for the planner, never a refusal. */
+export type SharedFile = { task: string; title: string; file: string; theirs: string };
+
+/**
+ * The open tasks that hold one of these files. Two tasks may share a file: each works on its
+ * own branch, git merges changes to different lines, and a clash on the same lines stops the
+ * later merge, which reopens that task to settle it.
+ */
+function sharedFiles(store: Store, files: readonly string[]): SharedFile[] {
+  const shared: SharedFile[] = [];
   for (const task of [...store.listTasks(OPEN), ...store.listTasks(IN_REVIEW)]) {
     for (const theirs of specOf(task).files) {
       const mine = files.find((file) => pathsOverlap(file, theirs));
-      if (mine !== undefined) {
-        throw new HandlerError(
-          "refused",
-          `${mine} overlaps ${theirs} of open task ${task.id} (${task.title}); two open tasks never share a file. Close that task first, or start this one on other files.`,
-        );
-      }
+      if (mine !== undefined) shared.push({ task: task.id, title: task.title, file: mine, theirs });
     }
   }
+  return shared;
 }
 
 function requireOpenIssue(store: Store, issueId: string): void {
@@ -270,7 +274,8 @@ export const taskStartSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export type TaskStartResult = { id: string; branch: string; worktree: string; brief: TaskBrief };
+/** sharedFiles names the open tasks that already hold one of this task's files, as information. */
+export type TaskStartResult = { id: string; branch: string; worktree: string; brief: TaskBrief; sharedFiles: SharedFile[] };
 
 /** Cuts the task's branch from `baseCommit` into a new worktree; on failure removes what it made and says why. */
 function addWorktree(projectDir: string, branch: string, worktree: string, baseCommit: string): void {
@@ -326,7 +331,6 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
     );
   }
   const feature = truest ? null : featureForTask(store, request.feature);
-  refuseOverlap(store, spec.files);
 
   const id = newId();
   const branch = `${TASK_BRANCH_PREFIX}${shortTaskId(id)}`;
@@ -334,11 +338,11 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   const baseCommit = feature === null ? truestBase(context.projectDir, baseBranch, `task ${id}`) : featureTip(context.projectDir, feature);
   addWorktree(context.projectDir, branch, worktree, baseCommit);
   const mainSnapshot = snapshotMainFolder(context.projectDir, id);
+  let shared: SharedFile[] = [];
   try {
-    // Checked again inside the write, so two starts at once cannot both take the same files.
     store.transaction(() => {
       requireOpenIssue(store, request.issue_id);
-      refuseOverlap(store, spec.files);
+      shared = sharedFiles(store, spec.files);
       store.appendTask(actor, {
         id,
         issueId: request.issue_id,
@@ -360,7 +364,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
     dropMainFolderSnapshot(context.projectDir, id);
     throw error;
   }
-  return { id, branch, worktree, brief: briefOf(store, requireTask(store, id)) };
+  return { id, branch, worktree, brief: briefOf(store, requireTask(store, id)), sharedFiles: shared };
 }
 
 // --- task_brief ---------------------------------------------------------------------------
