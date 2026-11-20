@@ -1,18 +1,17 @@
 // The gate's answer to a host event. Every host raises the same tmb events, and every rule
 // is written against them here. A worker starts only on an open task with its worktree
-// ready; a worker's and a reviewer's start and stop are recorded as a run. A worker writes
-// only in an open task's worktree and the reviewer writes nothing. tmb reads no shell command:
-// git's pre-push hook holds every push, whatever was typed. A record tmb cannot read denies,
-// so nothing runs unguarded in a project whose record is broken.
-import { existsSync, realpathSync } from "node:fs";
-import path from "node:path";
-import { OPEN } from "./handlers/common.ts";
+// ready, and once it names that task from a worktree its host made for it, tmb adopts that
+// worktree as the task's; a worker's and a reviewer's start and stop are recorded as a run. A
+// reviewer host's main agent writes nothing. tmb reads no shell command: git's pre-push hook
+// holds every push, whatever was typed. A record tmb cannot read denies, so nothing runs
+// unguarded in a project whose record is broken.
+import { adoptWorktree } from "./handlers/adopt.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
 import { hostRole } from "./settings.ts";
 import { type Actor, ROLES, type Role, type Store, type StoreOpenError } from "./store/index.ts";
 
-export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop"] as const;
+export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop", "worker-in-folder"] as const;
 export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
 
 /**
@@ -36,7 +35,10 @@ export type TmbEvent = {
   /** The role of the agent starting or stopping; for any other event, MAIN_AGENT or the subagent the event came from. */
   role: string;
   task?: string;
-  /** What is about to happen: the file path, the start prompt of an agent starting, or the role of one stopping. */
+  /**
+   * What is about to happen: the file path, the start prompt of an agent starting, or the role of
+   * one stopping; for a worker naming its task, the folder it works in.
+   */
   action: string;
 };
 
@@ -118,44 +120,20 @@ function deny(reason: string): Decision {
 
 // --- file writes --------------------------------------------------------------------------
 
-/** The path with every link in its existing part resolved, so /tmp and /private/tmp compare equal. */
-function canonical(file: string): string {
-  let existing = path.resolve(file);
-  const rest: string[] = [];
-  while (!existsSync(existing) && path.dirname(existing) !== existing) {
-    rest.unshift(path.basename(existing));
-    existing = path.dirname(existing);
-  }
-  try {
-    return path.join(realpathSync(existing), ...rest);
-  } catch {
-    return path.resolve(file);
-  }
-}
-
-function inside(file: string, dir: string): boolean {
-  const relative = path.relative(dir, file);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 /**
- * A worker writes in the project only inside an open task's worktree. A reviewer subagent's
- * edit tools are taken away by its agent file, which the host enforces; a host whose main
- * agent is the reviewer has no such file, so tmb still refuses that agent's writes.
+ * A worker starts in its own worktree, where its host keeps its edits, and a reviewer subagent's
+ * edit tools are taken away by its agent file, which the host enforces. A host whose main agent
+ * is the reviewer has no such file, so tmb still refuses that agent's writes.
  */
-function fileWriteRule(store: Store, event: TmbEvent, mainAgent: boolean): Decision | null {
+function fileWriteRule(event: TmbEvent, mainAgent: boolean): Decision | null {
   if (event.role === REVIEWER && mainAgent) return deny("The reviewer judges a change and never edits one: report what you found in your verdict instead.");
-  if (event.role !== WORKER) return null;
-  const projectDir = canonical(event.projectDir);
-  const file = canonical(path.resolve(event.projectDir, event.action));
-  if (!inside(file, projectDir)) return null;
-  const worktrees = store
-    .listTasks(OPEN)
-    .map((task) => task.worktree)
-    .filter((worktree): worktree is string => worktree !== null)
-    .map(canonical);
-  if (worktrees.some((worktree) => inside(file, worktree))) return null;
-  return deny(`A worker writes only inside its task's worktree, and ${event.action} is in no open task's worktree. Read the worktree from task_brief and write there.`);
+  return null;
+}
+
+/** A worker named its task from a folder: tmb adopts the folder as the task's worktree when its host made it for the worker. Never denies. */
+function workerInFolder(store: Store, event: TmbEvent): Decision {
+  if (event.task === undefined) return { decision: "allow", reason: "the worker named no task, so no worktree was adopted" };
+  return { decision: "allow", reason: adoptWorktree(store, actorOf(event), event.projectDir, event.task, event.action).reason };
 }
 
 function rule(store: Store, event: TmbEvent, mainAgent: boolean): Decision {
@@ -165,7 +143,8 @@ function rule(store: Store, event: TmbEvent, mainAgent: boolean): Decision {
   if (event.role === WORKER && event.type === "before-agent-start") return workerStart(store, event);
   if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
   if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);
-  if (event.type === "before-file-write") return fileWriteRule(store, event, mainAgent) ?? { decision: "allow" };
+  if (event.type === "before-file-write") return fileWriteRule(event, mainAgent) ?? { decision: "allow" };
+  if (event.role === WORKER && event.type === "worker-in-folder") return workerInFolder(store, event);
   return { decision: "allow" };
 }
 

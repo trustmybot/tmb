@@ -244,13 +244,14 @@ function formatTasks(state: string | undefined) {
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
 
-function formatClose({ brief, checks, fold, push, cleanupProblems, next }: TaskCloseResult): string {
+function formatClose({ brief, checks, fold, push, cleanupProblems, next, notes }: TaskCloseResult): string {
   return [
     next === undefined ? `Closed task ${brief.id} at commit ${brief.commitSha}.` : `The checks passed at ${brief.commitSha}; ${next}.`,
     ...checks.map((check) => `  passed: ${check.command}`),
     ...(fold ? [`Folded into ${fold.feature}${fold.rebased ? `, rebased onto ${fold.from} and checked again` : ""}.`] : []),
     ...(push ? [`Push: ${push.result}, ${push.detail}`] : []),
     ...cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+    ...notes,
   ].join("\n");
 }
 

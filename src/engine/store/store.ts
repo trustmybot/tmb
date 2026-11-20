@@ -68,6 +68,8 @@ export type NewTask = {
   baseCommit?: string | null;
   featureId?: string | null;
   kind?: string | null;
+  /** The commit that holds the main folder as it was when the task started. */
+  mainSnapshot?: string | null;
 };
 export type Task = {
   id: string;
@@ -86,6 +88,8 @@ export type Task = {
   pushDetail: string | null;
   /** The pull request the engine opened for a truest task; null until then. */
   prUrl: string | null;
+  /** The commit that holds the main folder as it was when the task started; null for a task started before tasks kept one. */
+  mainSnapshot: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -99,6 +103,8 @@ export type TaskChanges = {
   prUrl?: string | null;
   /** A truest task rebased onto a moved base branch now leaves it at the new base. */
   baseCommit?: string | null;
+  /** The worktree a worker's host made and tmb adopted as the task's. */
+  worktree?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string };
 export type FeatureChanges = { state?: string; prUrl?: string | null };
@@ -206,6 +212,7 @@ type TaskRow = {
   push_result: string | null;
   push_detail: string | null;
   pr_url?: string | null;
+  main_snapshot?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -308,6 +315,7 @@ function toTask(row: TaskRow): Task {
     pushResult: row.push_result,
     pushDetail: row.push_detail,
     prUrl: row.pr_url ?? null,
+    mainSnapshot: row.main_snapshot ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -474,6 +482,7 @@ export class Store {
       base_commit: task.baseCommit ?? null,
       feature_id: task.featureId ?? null,
       kind: task.kind ?? null,
+      main_snapshot: task.mainSnapshot ?? null,
     }, task.id);
   }
 
@@ -486,6 +495,7 @@ export class Store {
       push_detail: changes.pushDetail,
       pr_url: changes.prUrl,
       base_commit: changes.baseCommit,
+      worktree: changes.worktree,
     });
   }
 

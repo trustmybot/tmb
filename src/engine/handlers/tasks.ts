@@ -11,10 +11,12 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip } from "./features.ts";
 import { type PushOutcome, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
+import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
 import { truestBase, truestClose, type TruestReview, truestReviewOf } from "./truest.ts";
 
 export { type OperationContext, TASK_BRANCH_PREFIX } from "./common.ts";
@@ -91,7 +93,16 @@ export type TaskCloseResult = {
   cleanupProblems: string[];
   /** In truest mode, what comes next: the task waits in review at its commit. */
   next?: string;
+  /** Files the task's commit touched outside its declared files, from git; the spec stays as the planner wrote it. */
+  outsideSpec: string[];
+  /** The main folder's uncommitted changes that differ from the task's start, each with how to put it back. */
+  mainFolder: MainFolderReport;
+  /** What the close says about the two above, one line each; empty when there is nothing to say. */
+  notes: string[];
 };
+
+/** What a close found beyond its checks; it reports both and refuses neither. */
+export type CloseFindings = Pick<TaskCloseResult, "outsideSpec" | "mainFolder" | "notes">;
 
 /** The line that names a task to the gate when a worker starts on it. */
 export function taskStartLine(id: string): string {
@@ -327,6 +338,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   const worktree = taskWorktreePath(context.projectDir, id);
   const baseCommit = feature === null ? truestBase(context.projectDir, baseBranch, `task ${id}`) : featureTip(context.projectDir, feature);
   addWorktree(context.projectDir, branch, worktree, baseCommit);
+  const mainSnapshot = snapshotMainFolder(context.projectDir, id);
   let shared: SharedFile[] = [];
   try {
     store.transaction(() => {
@@ -343,12 +355,14 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
         baseCommit,
         featureId: feature?.id ?? null,
         kind: request.kind,
+        mainSnapshot,
       });
       // A task keeps the mode of its start, so a mode change cannot strand it halfway.
       store.updateTask(actor, id, { reviewMode: truest ? TRUEST : DEFAULT_REVIEW_MODE });
     });
   } catch (error) {
     removeWorktree(context.projectDir, branch, worktree);
+    dropMainFolderSnapshot(context.projectDir, id);
     throw error;
   }
   return { id, branch, worktree, brief: briefOf(store, requireTask(store, id)), sharedFiles: shared };
@@ -415,7 +429,7 @@ function gitIn(worktree: string, args: readonly string[]): string {
 }
 
 /** The worktree's HEAD, once the tree is clean and HEAD is at least one commit past the base it was cut from. */
-export function committedHead(task: Task): string {
+export function committedHead(task: Task, store: Store): string {
   const worktree = task.worktree!;
   const changes = gitIn(worktree, ["status", "--porcelain"]);
   if (changes !== "") {
@@ -427,7 +441,15 @@ export function committedHead(task: Task): string {
   const head = gitIn(worktree, ["rev-parse", "HEAD"]);
   const base = task.baseCommit;
   if (base === null) throw new HandlerError("refused", `task ${task.id} records no base commit, so tmb cannot tell its new work; start it again with task_start`);
-  if (head === base) throw new HandlerError("refused", `the worktree has no commit past the base commit ${base}; commit the work, then close again`);
+  if (head === base) {
+    // A worker that committed in its host's folder before naming its task left its work there, unadopted.
+    const elsewhere = workElsewhere(store, task);
+    const where =
+      elsewhere.length === 0
+        ? "commit the work, then close again"
+        : `commits that build on it sit in ${elsewhere.join(", ")}, which tmb did not adopt as the task's worktree; bring them into ${worktree} (for example git cherry-pick ${base}..<that folder's HEAD>), then close again`;
+    throw new HandlerError("refused", `the task's worktree ${worktree} has no commit past the base commit ${base}; ${where}`);
+  }
   if (!runGit(worktree, ["merge-base", "--is-ancestor", base, head]).ok) {
     throw new HandlerError("refused", `HEAD ${head} does not build on the task's base commit ${base}; the work must be committed on top of it`);
   }
@@ -452,6 +474,34 @@ function refuseProgrammingFiles(task: Task, base: string, head: string): void {
     "refused",
     `task ${task.id} is a docs task, but its change touches files written in a programming language, so it stays open. Move that change to a code task:\n${shown}${more}`,
   );
+}
+
+/** The files the task's work changed from its base commit that none of its declared files covers. */
+function filesOutsideSpec(task: Task, base: string, head: string): string[] {
+  const declared = specOf(task).files;
+  const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
+  return touched.filter((file) => !declared.some((mine) => pathsOverlap(file, mine)));
+}
+
+/**
+ * What a close checks beyond the checks, on the task's own commit before any rebase: the files it
+ * touched outside its declared ones, and the main folder against the task's start. Neither refuses:
+ * a task often has good reason to touch one more file, and a clash with another task is found by
+ * git when the work is merged (trustmybot/tmb#98).
+ */
+export function closeFindings(task: Task, head: string, projectDir: string): CloseFindings {
+  const outsideSpec = task.baseCommit === null ? [] : filesOutsideSpec(task, task.baseCommit, head);
+  const mainFolder = mainFolderReport(projectDir, task.mainSnapshot);
+  const notes = [
+    ...(outsideSpec.length === 0 ? [] : [`The commit changed files outside the task's declared files, for the planner or the reviewer to check: ${outsideSpec.join(", ")}.`]),
+    ...mainFolderNotes(mainFolder),
+  ];
+  return { outsideSpec, mainFolder, notes };
+}
+
+/** Once the close is recorded: lets go of the main folder's copy. The spec stays as the planner wrote it. */
+export function recordFindings(task: Task, projectDir: string): void {
+  dropMainFolderSnapshot(projectDir, task.id);
 }
 
 /** `onWhat` names the commit the checks ran on when it is not the worktree's own. */
@@ -506,7 +556,12 @@ export function undoRebaseAndRethrow(error: unknown, worktree: string, rebased: 
   throw error;
 }
 
-export function closeResult(store: Store, id: string, runs: CheckRunOutcome[], rest: Pick<TaskCloseResult, "fold" | "push" | "cleanupProblems">): TaskCloseResult {
+export function closeResult(
+  store: Store,
+  id: string,
+  runs: CheckRunOutcome[],
+  rest: Pick<TaskCloseResult, "fold" | "push" | "cleanupProblems"> & CloseFindings,
+): TaskCloseResult {
   const last = runs[runs.length - 1]!;
   return { brief: briefOf(store, requireTask(store, id)), checkRunId: last.id, checks: last.results, checkRunIds: runs.map((run) => run.id), ...rest };
 }
@@ -535,6 +590,7 @@ function finishFold(
   reviewMode: string,
   featureName: string,
   runs: CheckRunOutcome[],
+  findings: CloseFindings,
   context: OperationContext,
 ): TaskCloseResult {
   const id = task.id;
@@ -544,10 +600,11 @@ function finishFold(
     requireHeadAt(worktree, head);
     store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
   });
+  recordFindings(task, context.projectDir);
   const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
   const push = pushFeature(context.projectDir, featureName);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems });
+  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems, ...findings });
 }
 
 export async function taskClose(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> {
@@ -560,9 +617,11 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   if (task.reviewMode === TRUEST) return truestClose(store, actor, task, context);
 
-  const head = committedHead(task);
+  const head = committedHead(task, store);
   const commands = closeChecks(store, task);
   const runs = [await checkCommit(store, actor, task, head, commands, context)];
+  // Before the fold, which can move the main folder's branch, and on the task's own commit, before any rebase.
+  const findings = closeFindings(task, head, context.projectDir);
   // A task with no mode recorded was started before tasks kept one, when agile was the only mode.
   const reviewMode = task.reviewMode ?? DEFAULT_REVIEW_MODE;
 
@@ -574,7 +633,8 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
       requireHeadAt(worktree, head);
       store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
     });
-    return closeResult(store, id, runs, { fold: null, push: null, cleanupProblems: [] });
+    recordFindings(task, context.projectDir);
+    return closeResult(store, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
   }
 
   // Fold: fast-forward the feature branch to the task's commit, rebasing it and checking it again first when the feature moved.
@@ -588,7 +648,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
     // The tip is this task's own commit when an earlier close moved the feature branch and stopped before
     // it recorded the task closed. Only another task recording the commit makes it not the task's own.
     if (store.listTasks().some((other) => other.id !== id && other.commitSha === head)) throw alreadyOnFeature();
-    return finishFold(store, actor, task, head, reviewMode, feature.name, runs, context);
+    return finishFold(store, actor, task, head, reviewMode, feature.name, runs, findings, context);
   }
   let folded = head;
   if (rebased) {
@@ -617,8 +677,9 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
     throw error;
   }
 
+  recordFindings(task, context.projectDir);
   const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
   const push = pushFeature(context.projectDir, feature.name);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems });
+  return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems, ...findings });
 }
