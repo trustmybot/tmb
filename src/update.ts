@@ -333,8 +333,9 @@ export class Updater {
 
   /**
    * The open tasks that hold an update back, one per project tmb has served that has one: the
-   * oldest, by id and title. A project whose record is gone is forgotten; one whose record this
-   * tmb cannot read, such as one a newer tmb made, holds it back with no task named.
+   * oldest, by id and title. A project whose record is gone is forgotten, and one whose record a
+   * newer tmb reshaped is passed over; one whose record cannot be read at all holds it back with
+   * no task named.
    */
   openTasks(): { project: string; task: { id: string; title: string } | null }[] {
     const dir = this.file("projects");
@@ -344,9 +345,10 @@ export class Updater {
       if (typeof project !== "string") continue;
       const opened = openProjectStore(project, { create: false });
       if (!opened.ok) {
-        // A record made by a newer tmb may still hold open tasks: keep the project and wait.
+        // A record a newer tmb reshaped cannot have a task running on this tmb, which can do
+        // nothing there: it never holds back the update that lets this tmb read it (trustmybot/tmb#173).
         if (opened.error.failure === "missing") rmSync(path.join(dir, name), { force: true });
-        else busy.push({ project, task: null });
+        else if (opened.error.failure === "unreadable") busy.push({ project, task: null });
         continue;
       }
       try {
@@ -372,7 +374,7 @@ export class Updater {
     if (sessions.length > 0) return { outcome: "waiting", version: staged.version, reason: `a tmb session is running in ${sessions[0]}` };
     const busy = this.openTasks()[0];
     if (busy) {
-      const reason = busy.task ? `task ${busy.task.id} "${busy.task.title}" is open in ${busy.project}` : `a task may be open in ${busy.project}, whose record this tmb cannot read`;
+      const reason = busy.task ? `task ${busy.task.id} "${busy.task.title}" is open in ${busy.project}` : `a task may be open in ${busy.project}, whose record cannot be read`;
       return { outcome: "waiting", version: staged.version, reason };
     }
     const target = this.options.target!;

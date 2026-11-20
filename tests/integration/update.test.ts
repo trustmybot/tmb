@@ -1,6 +1,7 @@
 // Each channel's install updates itself from a release repo laid out like trustmybot/tmb-releases,
 // served locally, and never in the middle of a session or a task.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -8,7 +9,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { programOf } from "../../src/program.ts";
 import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, updaterOptions } from "../../src/update.ts";
-import { buildTmb, cleanup, installedVersion, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
+import { buildTmb, cleanup, installedVersion, openTask, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
+import { projectDbPath } from "../../src/engine/project.ts";
+import { SCHEMA_VERSION } from "../../src/engine/store/index.ts";
 
 const CHANNELS = {
   dev: { old: "0.1.0-dev.1", next: "0.1.0-dev.2" },
@@ -154,6 +157,21 @@ describe("tmb update", () => {
     expect(updated).toMatchObject({ status: 0 });
     expect(updated.output).toContain(`Updated tmb from ${CHANNELS.stable.old} to ${CHANNELS.stable.next}`);
     expect(installedVersion(scenario)).toBe(CHANNELS.stable.next);
+  }, 60_000);
+
+  test("a record a newer tmb reshaped never holds the update back (trustmybot/tmb#173)", async () => {
+    const scenario = install(CHANNELS.dev.old, releaseEnv());
+    // A session served the project, then a newer tmb reshaped its record and left a task open there.
+    const updater = new Updater({ ...updaterOptions(CHANNELS.dev.old, false, scenario.env), target: scenario.installed });
+    updater.startSession(scenario.project, 1_000_000_000);
+    openTask(scenario);
+    const db = new Database(projectDbPath(scenario.project));
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+    db.close();
+    const updated = await runUpdate(scenario);
+    expect(updated).toMatchObject({ status: 0 });
+    expect(updated.output).toContain(`Updated tmb from ${CHANNELS.dev.old} to ${CHANNELS.dev.next}`);
+    expect(installedVersion(scenario)).toBe(CHANNELS.dev.next);
   }, 60_000);
 
   test("with no network, keeps the version it has", async () => {
