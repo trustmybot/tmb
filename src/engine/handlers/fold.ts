@@ -4,7 +4,8 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
-import type { Task } from "../store/index.ts";
+import { pushActorEnv } from "../push-actor.ts";
+import type { Actor, Task } from "../store/index.ts";
 import { DROPPED, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 
@@ -244,6 +245,7 @@ export function keptCheckouts(projectDir: string, tasks: readonly Task[]): { tas
 }
 
 /**
+/**
  * Whether a task's branch holds commits past the commit it was cut from: a dropped task's work,
  * which tmb keeps on its branch. A branch whose base tmb cannot tell is kept too.
  */
@@ -256,11 +258,14 @@ export function branchHoldsWork(projectDir: string, task: Task): boolean {
   return !ahead.ok || ahead.stdout !== "0";
 }
 
-/** Pushes a branch (a feature branch as a backup, or a truest task's branch) to origin, never forced; with no origin, skips. */
-export function pushFeature(projectDir: string, featureName: string): PushOutcome {
+/**
+ * Pushes a branch (a feature branch as a backup, or a truest task's branch) to origin, never forced; with no origin, skips.
+ * The push names `actor` to git's pre-push hook, so the push gate records it as theirs.
+ */
+export function pushFeature(projectDir: string, featureName: string, actor: Actor): PushOutcome {
   if (!runGit(projectDir, ["remote", "get-url", ORIGIN]).ok) return { result: "skipped", detail: `the repository has no remote named ${ORIGIN}` };
   const ref = branchRef(featureName);
   // No terminal prompt: a push that needs credentials fails and says so instead of waiting.
-  const pushed = runGit(projectDir, ["push", "--quiet", ORIGIN, `${ref}:${ref}`], { GIT_TERMINAL_PROMPT: "0" });
+  const pushed = runGit(projectDir, ["push", "--quiet", ORIGIN, `${ref}:${ref}`], { GIT_TERMINAL_PROMPT: "0", ...pushActorEnv(actor) });
   return pushed.ok ? { result: "pushed", detail: `pushed ${featureName} to ${ORIGIN}` } : { result: "failed", detail: gitFailure(pushed) };
 }

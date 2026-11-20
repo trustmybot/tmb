@@ -32,6 +32,7 @@ import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
 import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
+import { pushActorFrom } from "./engine/push-actor.ts";
 import { runGit } from "./engine/git.ts";
 import { repoOf, workspaceRepos } from "./engine/repos.ts";
 import type { Store } from "./engine/store/index.ts";
@@ -308,7 +309,7 @@ async function runPrePush(args: string[]): Promise<number> {
   if (remote === undefined) throw new Error("pre-push needs the remote's name, as git passes it");
   // A push from a task worktree runs the hook there; the record is in the project that holds it.
   // In a workspace, the folder git runs the hook in names the repo whose base branch is judged.
-  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text(), process.cwd());
+  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text(), process.cwd(), pushActorFrom(process.env));
   if (decision.decision === "deny") {
     console.error(decision.reason ?? `tmb refused the push to ${remote}`);
     return 1;
