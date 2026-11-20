@@ -28,11 +28,14 @@ import {
 } from "./engine/doors/help.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
 import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
-import { type FeedbackEnv, feedbackEnv, keepLastError } from "./engine/feedback/index.ts";
+import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGates } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
+import { spawnSync } from "node:child_process";
+import { isProcessRunning } from "./builds.ts";
+import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
 import { runningProgram } from "./program.ts";
 import { refreshProject } from "./refresh.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
@@ -44,6 +47,7 @@ const USAGE: Record<string, string> = {
   ...RECORD_USAGE,
   config: CONFIG_USAGE,
   index: INDEX_USAGE,
+  doctor: DOCTOR_USAGE,
   init: `  tmb init [--host <id>] [--role planner|reviewer]
                             Prepare the project in the current directory: create its record,
                             wire one host in its role, add git's push hook and index the code
@@ -118,6 +122,7 @@ const GROUPS: HelpGroup[] = [
     commands: [
       { name: "dashboard", summary: "Open the dashboard" },
       { name: "update", summary: "Look for a newer build" },
+      { name: "doctor", summary: "Check this machine and project, and clean up" },
       { name: "feedback", summary: "Report a bug in tmb itself" },
       { name: "help", summary: "Show help for a command" },
     ],
@@ -205,6 +210,62 @@ function hostFileRefresh(projectDir: string): string | null {
   return refreshProject({ projectDir, program: { name: runningProgram(version).name, version }, tmbCommand: tmbCommand(), adapters: HOST_ADAPTERS });
 }
 
+/** How long doctor waits for another tmb program's `--version`. */
+const VERSION_TIMEOUT_MS = 5_000;
+
+/** What `tmb doctor` works with, for this tmb in `cwd`. */
+function doctorEnvironment(cwd: string): DoctorEnv {
+  const compiled = isCompiledEntry(Bun.main);
+  const options = updaterOptions(version, compiled);
+  return {
+    program: options.program!,
+    version,
+    installed: compiled ? process.execPath : null,
+    stateDir: options.stateDir,
+    tmbCommand: tmbCommand(),
+    adapters: HOST_ADAPTERS,
+    cwd,
+    path: process.env.PATH ?? "",
+    platform: process.platform,
+    isRunning: isProcessRunning,
+    versionOf: (file) => {
+      const result = spawnSync(file, ["--version"], { encoding: "utf8", timeout: VERSION_TIMEOUT_MS });
+      return result.status === 0 ? result.stdout.trim().split("\n")[0] || null : null;
+    },
+    gh: () => {
+      if (Bun.which("gh") === null) return { installed: false, signedIn: false };
+      return { installed: true, signedIn: GH_FEEDBACK_GITHUB.signedIn() };
+    },
+    now: () => new Date(),
+  };
+}
+
+/** The planner's one line on what doctor finds, at a session start (trustmybot/tmb#160). Never throws. */
+function doctorLine(projectDir: string): string | null {
+  try {
+    return sessionStartLine(doctorEnvironment(projectDir));
+  } catch {
+    return null;
+  }
+}
+
+/** `tmb doctor`: `--fix` asks only when a person is at both ends. */
+async function runDoctor(args: string[]): Promise<number> {
+  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  const env = doctorEnvironment(process.cwd());
+  try {
+    return await runDoctorCommand(args, env, {
+      out: stdout,
+      err: stderr,
+      ask: terminal?.ask ?? null,
+      keepBug: (finding) =>
+        keepLastError(env.stateDir, { at: env.now().toISOString(), command: `doctor ${finding.check}`, message: finding.summary, stack: null }),
+    });
+  } finally {
+    terminal?.close();
+  }
+}
+
 /**
  * Whoever starts a run sets this to `1` when no one can answer in it. Only this door reads it;
  * the adapter and the engine get a plain flag.
@@ -226,7 +287,7 @@ async function runHook(args: string[]): Promise<number> {
     const adapter = adapterById(values.host ?? DEFAULT_HOST_ID);
     const stdinText = await Bun.stdin.text();
     // Only a session's start may tell the Human about the feedback program, or bring the project's host files to this tmb.
-    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: hostFileRefresh } : hookRun();
+    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: hostFileRefresh, doctor: doctorLine } : hookRun();
     const output = adapter.answerHook(event, stdinText, run);
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
     if (output !== "") process.stdout.write(output + "\n");
@@ -499,6 +560,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return runDashboard(rest);
     case "feedback":
       return runFeedback(rest);
+    case "doctor":
+      return runDoctor(rest);
     case "mcp":
       return runToolServer(rest);
     case "hook":

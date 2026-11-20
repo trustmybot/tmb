@@ -86,3 +86,15 @@ export function unregisterServer(projectDir: string): UnregisterResult {
   if (tmbCreatedIt) deleteFile(marker, projectDir);
   return result;
 }
+
+/** What `tmb doctor` finds wrong with tmb's block in .codex/config.toml, or null when it is the one init writes. Never writes. */
+export function serverGap(projectDir: string, tmbCommand: readonly string[]): string | null {
+  const file = configTomlPath(projectDir);
+  const shown = path.join(CODEX_DIR, "config.toml");
+  if (!existsSync(file)) return `${shown} does not register the tmb tool server`;
+  const text = readFileSync(file, "utf8");
+  const block = BLOCK.exec(text);
+  if (block === null) return `${shown} does not register the tmb tool server`;
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  return block[0].endsWith(serverBlock(tmbCommand, eol)) ? null : `${shown} registers the tmb tool server with another command than this tmb's`;
+}

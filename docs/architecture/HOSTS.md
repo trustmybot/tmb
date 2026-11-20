@@ -165,7 +165,7 @@ Every record names the role and the host that made it, so a review is known to c
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
 | Host events | The host, before an agent acts | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push is checked even when typed by hand. |
-| Command line | The Human | Init and onboard, indexing. Planned for v1.0.0 (trustmybot/tmb#160): `tmb doctor`, the health check. |
+| Command line | The Human | Init and onboard, indexing, and `tmb doctor`, the health check (trustmybot/tmb#160). |
 | Dashboard | The Human | A local web page over the record. |
 
 All of them call the same engine, so a rule cannot be skipped by choosing another way in.

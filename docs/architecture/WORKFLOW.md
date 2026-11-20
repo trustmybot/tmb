@@ -157,7 +157,7 @@ What tmb does today when work goes wrong, and what is planned. The plugin had a 
 | A fold or a rebase conflicts | The step is undone and names the files. The task stays open until the worker has settled it. | |
 | The base branch moved under a feature branch | Nothing. The clash shows on GitHub, after the review. | v1.0.0 (trustmybot/tmb#169): a feature branch starts from a fetched base, and the engine brings the base in before the review. |
 | The approach is wrong, or nobody will finish the task | Nothing. The task stays open. | v1.0.0 (trustmybot/tmb#170): the planner or the Human drops the task with a reason, and a new task can name the one it replaces. |
-| A run started and never ended | The record holds it. Nothing lists it. | v1.0.0 (trustmybot/tmb#160): `tmb doctor` lists it, and a session start names it. |
+| A run started and never ended | `tmb doctor` lists it, and the planner's session start names it in one line (trustmybot/tmb#160). The planner decides. | |
 
 - **Nothing here waits for a timer.** tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`, not by a watcher.
 - **A project with no remote.** Decided by the Human on 2026-11-20. Nothing is pushed and no pull request is opened. After the reviewer passes the feature branch, or the Human waives the review, tmb says the branch is ready and the Human merges it locally.

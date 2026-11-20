@@ -208,3 +208,25 @@ export function remove(projectDir: string): RemoveResult {
   writeJsonObject(file, settings);
   return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: false };
 }
+
+/** What `tmb doctor` finds wrong with tmb's hooks and tool server in the settings file: one line each, none when init would change nothing. Never writes. */
+export function settingsGaps(projectDir: string, tmbCommand: readonly string[]): string[] {
+  const file = settingsPath(projectDir);
+  const shown = SETTINGS_RELATIVE;
+  try {
+    const settings = readJsonObject(file);
+    const gaps: string[] = [];
+    const hooks = isObject(settings.hooks) ? settings.hooks : {};
+    const missing = TMB_HOOKS.filter((hook) => {
+      const groups = Array.isArray(hooks[hook.hookEvent]) ? (hooks[hook.hookEvent] as unknown[]) : [];
+      return !isWired(groups, hook, hookCommand(tmbCommand, hook.name));
+    }).map((hook) => hook.hookEvent);
+    if (missing.length > 0) gaps.push(`${shown} lacks tmb's current ${missing.join(", ")} hook${missing.length === 1 ? "" : "s"}`);
+    const stray = removeStrayHooks(structuredClone(settings));
+    if (stray.length > 0) gaps.push(`${shown} holds tmb hooks this version no longer wires under ${stray.join(", ")}`);
+    if (!enabledServers(settings, file).includes(SERVER_KEY)) gaps.push(`${shown} does not enable the tmb tool server`);
+    return gaps;
+  } catch (error) {
+    return [`${shown} cannot be read: ${error instanceof Error ? error.message : String(error)}`];
+  }
+}

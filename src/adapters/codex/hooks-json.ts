@@ -162,3 +162,28 @@ export function removeHooks(projectDir: string): RemoveResult {
   if (existsSync(originalHooksPath(projectDir))) deleteFile(originalHooksPath(projectDir), projectDir);
   return result;
 }
+
+/** What `tmb doctor` finds wrong with tmb's hooks in .codex/hooks.json: one line each, none when init would change nothing. Never writes. */
+export function hooksGaps(projectDir: string, tmbCommand: readonly string[]): string[] {
+  const file = hooksJsonPath(projectDir);
+  const shown = path.join(CODEX_DIR, "hooks.json");
+  try {
+    const hooks = hooksOf(readJsonObject(file), file);
+    const gaps: string[] = [];
+    const missing = TMB_HOOKS.filter((hook) => {
+      const groups = groupsOf(hooks, hook.hookEvent, file);
+      const ours = { hooks: [{ type: "command", command: hookCommand(tmbCommand, hook.name) }] };
+      return JSON.stringify(groups) !== JSON.stringify([...withoutTmb(groups), ours]);
+    }).map((hook) => hook.hookEvent);
+    if (missing.length > 0) gaps.push(`${shown} lacks tmb's current ${missing.join(", ")} hook${missing.length === 1 ? "" : "s"}`);
+    const stray = Object.keys(hooks).filter((event) => {
+      if (TMB_HOOKS.some((hook) => hook.hookEvent === event)) return false;
+      const groups = groupsOf(hooks, event, file);
+      return JSON.stringify(withoutTmb(groups)) !== JSON.stringify(groups);
+    });
+    if (stray.length > 0) gaps.push(`${shown} holds tmb hooks this version no longer wires under ${stray.join(", ")}`);
+    return gaps;
+  } catch (error) {
+    return [`${shown} cannot be read: ${error instanceof Error ? error.message : String(error)}`];
+  }
+}

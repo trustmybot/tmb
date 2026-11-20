@@ -230,3 +230,19 @@ export function removePushGates(projectDir: string): string[] {
   }
   return gatedDirs(projectDir, repos, true).flatMap((dir) => removePushGate(dir));
 }
+
+/**
+ * What `tmb doctor` finds wrong with git's pre-push hooks: one line each, for every folder that
+ * should run the push gate and does not run it with `tmbCommand`. Reads only.
+ */
+export function pushGateGaps(projectDir: string, repos: RepoPolicies | null, tmbCommand: readonly string[]): string[] {
+  const command = [...tmbCommand, "pre-push"].map(shellQuote).join(" ");
+  return gatedDirs(projectDir, repos, false).flatMap((dir) => {
+    const file = hookPath(dir);
+    if (file === null) return [];
+    if (!existsSync(file)) return [`git's pre-push hook is missing in ${dir}: the push gate is off there`];
+    const text = readFileSync(file, "utf8");
+    if (!isOurs(file)) return text.includes(`${command} "$@"`) ? [] : [`git's pre-push hook ${file} is not tmb's and does not run the push gate`];
+    return text.includes(`exec ${command} "$@"`) ? [] : [`git's pre-push hook ${file} runs another tmb than this one`];
+  });
+}
