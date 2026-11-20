@@ -1,10 +1,10 @@
 // The code graph's operations: the project map, where X lives, what depends on X, the scope of
-// a task, the concepts and the areas. Each read first brings the graph forward to the base branch, and
-// with a task_id lays that task's commit on top.
+// a task, the concepts and the areas. Each read first brings the graph forward to the base
+// branch; with a task_id it reads that task's commit, and with a feature that feature branch's tip.
 import { type Area, areaFilter, listAreas, removeArea, TESTS_AREA, UnknownAreaError, unplacedFiles, upsertArea } from "../graph/areas.ts";
 import { CONCEPT_KINDS, type Concept, type ConceptKind, getConcept, listConcepts, parseAnchor, upsertConcept } from "../graph/concepts.ts";
 import { openGraphDb } from "../graph/db.ts";
-import { type Freshness, type GraphView, openView } from "../graph/fresh.ts";
+import { type Freshness, type GraphView, openView, type ViewTarget } from "../graph/fresh.ts";
 import { FIND_MAX, find, type Hit, type PathFilter, lookupSymbol, type MapResult, projectMap, recordMiss, scope, type ScopeResult, type SymbolCard } from "../graph/lookups.ts";
 import { UNTRUSTED_NOTE } from "../graph/summary.ts";
 import type { Actor, Store } from "../store/index.ts";
@@ -18,8 +18,15 @@ export type GraphAnswer<T> = T & { freshness: Freshness; untrusted: string };
 
 const TASK_ID: FieldSchema = {
   type: "string",
-  description: "Read as this open task sees the code: its commit laid on top of the base branch. Leave out to read the base branch.",
+  description:
+    "Read as this task sees the code: an open task's commit, or, once its work is folded into a feature branch that is still open, that branch's tip. Leave out to read the base branch.",
   pattern: RECORD_ID,
+};
+
+const FEATURE: FieldSchema = {
+  type: "string",
+  description: "Read a feature branch at its tip, by its name as feature_list shows it: the work already folded into it included. Not with task_id.",
+  pattern: NOT_BLANK,
 };
 
 const REPO: FieldSchema = {
@@ -50,8 +57,6 @@ function filterFor(view: GraphView, area: string | undefined, skip: string[] | u
   }
 }
 
-/** Which graph a read is for: a task's (in its repo), or a repo's base branch. */
-type Target = { taskId?: string; repo?: string };
 
 type Miss = (lookup: string, query: string, detail?: string) => void;
 
@@ -64,7 +69,7 @@ async function withView<T>(
   store: Store,
   actor: Actor,
   context: OperationContext,
-  target: Target,
+  target: ViewTarget,
   read: (view: GraphView, miss: Miss) => T,
   writes = false,
 ): Promise<GraphAnswer<T>> {
@@ -89,6 +94,7 @@ export const graphMapSchema: InputSchema = {
     path: { type: "string", description: "The directory to start from, relative to the project; the whole project when left out." },
     depth: { type: "integer", description: "How many directory levels to show, the start included; 2 when left out.", minimum: 1, maximum: 20 },
     task_id: TASK_ID,
+    feature: FEATURE,
     repo: REPO,
   },
   required: [],
@@ -96,8 +102,8 @@ export const graphMapSchema: InputSchema = {
 };
 
 export async function graphMap(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<MapResult>> {
-  const { path, depth, task_id, repo } = validateInput<{ path?: string; depth?: number; task_id?: string; repo?: string }>("graph_map", graphMapSchema, input);
-  return withView(store, actor, context, { taskId: task_id, repo }, (view) => projectMap(view.db, view.layer, { path, depth }));
+  const { path, depth, task_id, feature, repo } = validateInput<{ path?: string; depth?: number; task_id?: string; feature?: string; repo?: string }>("graph_map", graphMapSchema, input);
+  return withView(store, actor, context, { taskId: task_id, feature, repo }, (view) => projectMap(view.db, view.layer, { path, depth }));
 }
 
 // --- graph_find ---------------------------------------------------------------------------
@@ -110,6 +116,7 @@ export const graphFindSchema: InputSchema = {
     area: AREA,
     skip_areas: SKIP_AREAS,
     task_id: TASK_ID,
+    feature: FEATURE,
     repo: REPO,
   },
   required: ["query"],
@@ -117,12 +124,16 @@ export const graphFindSchema: InputSchema = {
 };
 
 export async function graphFind(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ hits: Hit[] }>> {
-  const { query, k, area, skip_areas, task_id, repo } = validateInput<{ query: string; k?: number; area?: string; skip_areas?: string[]; task_id?: string; repo?: string }>(
-    "graph_find",
-    graphFindSchema,
-    input,
-  );
-  return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
+  const { query, k, area, skip_areas, task_id, feature, repo } = validateInput<{
+    query: string;
+    k?: number;
+    area?: string;
+    skip_areas?: string[];
+    task_id?: string;
+    feature?: string;
+    repo?: string;
+  }>("graph_find", graphFindSchema, input);
+  return withView(store, actor, context, { taskId: task_id, feature, repo }, (view, miss) => {
     const hits = find(view.db, view.layer, query, k, filterFor(view, area, skip_areas));
     if (hits.length === 0) miss("graph_find", query);
     return { hits };
@@ -137,6 +148,7 @@ export const graphSymbolSchema: InputSchema = {
     name: { type: "string", description: "A symbol's name or qualified name (Class.method), or a file's path for what depends on the file.", pattern: NOT_BLANK },
     path: { type: "string", description: "Only the symbol defined in this file, when several share the name." },
     task_id: TASK_ID,
+    feature: FEATURE,
     repo: REPO,
   },
   required: ["name"],
@@ -149,8 +161,8 @@ export async function graphSymbol(
   input: unknown,
   context: OperationContext,
 ): Promise<GraphAnswer<{ cards: SymbolCard[]; more: number }>> {
-  const { name, path, task_id, repo } = validateInput<{ name: string; path?: string; task_id?: string; repo?: string }>("graph_symbol", graphSymbolSchema, input);
-  return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
+  const { name, path, task_id, feature, repo } = validateInput<{ name: string; path?: string; task_id?: string; feature?: string; repo?: string }>("graph_symbol", graphSymbolSchema, input);
+  return withView(store, actor, context, { taskId: task_id, feature, repo }, (view, miss) => {
     const result = lookupSymbol(view.db, view.layer, name, path);
     if (result.cards.length === 0) miss("graph_symbol", path === undefined ? name : `${path}#${name}`);
     return result;
@@ -172,6 +184,7 @@ export const graphScopeSchema: InputSchema = {
     area: { ...AREA, description: "Keep the scope to this area and the areas nested in it; anchors you name stay in scope wherever they are." },
     skip_areas: { ...SKIP_AREAS, description: `Leave the files in these areas out of the scope, such as ["${TESTS_AREA}"]; anchors you name stay.` },
     task_id: TASK_ID,
+    feature: FEATURE,
     repo: REPO,
   },
   required: [],
@@ -186,14 +199,15 @@ export async function graphScope(store: Store, actor: Actor, input: unknown, con
     area,
     skip_areas,
     task_id,
+    feature,
     repo,
-  } = validateInput<{ objective?: string; anchors?: string[]; k?: number; area?: string; skip_areas?: string[]; task_id?: string; repo?: string }>(
+  } = validateInput<{ objective?: string; anchors?: string[]; k?: number; area?: string; skip_areas?: string[]; task_id?: string; feature?: string; repo?: string }>(
     "graph_scope",
     graphScopeSchema,
     input,
   );
   if (objective.trim() === "" && anchors.length === 0) throw new HandlerError("invalid_input", "graph_scope needs an objective or at least one anchor");
-  return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
+  return withView(store, actor, context, { taskId: task_id, feature, repo, defaultToFeature: true }, (view, miss) => {
     const result = scope(view.db, view.layer, { objective, anchors, k, filter: filterFor(view, area, skip_areas) });
     for (const anchor of result.unresolvedAnchors) miss("graph_scope", anchor, "anchor not found");
     if (result.files.length === 0 && result.tests.length === 0) miss("graph_scope", objective, "nothing in scope");

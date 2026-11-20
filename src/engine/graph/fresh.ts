@@ -1,13 +1,15 @@
-// Freshness: every read first brings a graph that is behind its base branch forward, and lays
-// an open task's commit on top when the read is for that task. Bringing it forward reparses
-// only the files whose content changed; anything else is a rebuild of that layer.
+// Freshness: every read first brings a graph that is behind its base branch forward. A read for
+// an open task answers from the task's commit, and a read for a feature branch from the branch's
+// tip, each in a layer of its own brought forward the same way (trustmybot/tmb#182). Bringing a
+// layer forward reparses only the files whose content changed; anything else is a rebuild of it.
 import type { Database } from "bun:sqlite";
 import { detectBaseBranch } from "../base-branch.ts";
+import { CLOSED, MERGED, OPEN } from "../handlers/common.ts";
 import { HandlerError } from "../handlers/errors.ts";
 import { type Repo, repoOfRow, resolveRepo } from "../repos.ts";
-import type { Store } from "../store/index.ts";
+import type { Feature, Store } from "../store/index.ts";
 import { buildLayer, type BuildStats, EXTRACTOR_VERSION } from "./build.ts";
-import { BASE_LAYER, dropLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
+import { BASE_LAYER, dropLayer, featureLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
 import { baseCommit, resolveCommit } from "./git-source.ts";
 
 /** What a read was answered from, and whether it had to bring the graph forward first. */
@@ -19,6 +21,8 @@ export type Freshness = {
   broughtForwardFrom: string | null;
   /** Set when the read is for a task: the task's commit, laid on top of the base. */
   task: { id: string; commit: string } | null;
+  /** Set when the read is for a feature branch: its name and the tip the read answered from. */
+  feature: { name: string; commit: string } | null;
 };
 
 export type GraphView = { db: Database; layer: string; freshness: Freshness };
@@ -57,13 +61,33 @@ async function bringForward(db: Database, projectDir: string, layer: string, com
 /** A task's work is laid on the graph while it is open, or in review in truest mode, where the reviewer reads it. */
 const LAYERED_STATES = new Set(["open", "in_review"]);
 
-/** Drops the layers of tasks that are no longer open or in review: their work is on a feature branch, in a pull request, or gone. */
-function dropClosedTaskLayers(db: Database, store: Store): void {
-  const layers = db.query("SELECT layer FROM layers WHERE layer LIKE 'task:%'").all() as { layer: string }[];
+/** A feature branch keeps its layer until it is merged or closed. */
+const ENDED_FEATURE_STATES = new Set([MERGED, CLOSED]);
+
+function featureIsLive(feature: Feature | null): boolean {
+  return feature !== null && !ENDED_FEATURE_STATES.has(feature.state);
+}
+
+/**
+ * Drops the layers of tasks that are no longer open or in review (their work is on a feature
+ * branch, in a pull request, or gone) and of feature branches that are merged or closed.
+ */
+function dropEndedLayers(db: Database, store: Store): void {
+  const layers = db.query("SELECT layer FROM layers WHERE layer LIKE 'task:%' OR layer LIKE 'feature:%'").all() as { layer: string }[];
   for (const { layer } of layers) {
-    const task = store.getTask(layer.slice("task:".length));
-    if (task === null || !LAYERED_STATES.has(task.state)) db.transaction(() => dropLayer(db, layer))();
+    const ended = layer.startsWith("task:")
+      ? !LAYERED_STATES.has(store.getTask(layer.slice("task:".length))?.state ?? "")
+      : !featureIsLive(store.getFeature(layer.slice("feature:".length)));
+    if (ended) db.transaction(() => dropLayer(db, layer))();
   }
+}
+
+/** The live feature branch a task's work was folded into, or null. */
+function foldedInto(store: Store, taskId: string): Feature | null {
+  const task = store.getTask(taskId);
+  if (task === null || LAYERED_STATES.has(task.state) || task.featureId === null) return null;
+  const feature = store.getFeature(task.featureId);
+  return feature !== null && featureIsLive(feature) ? feature : null;
 }
 
 function taskCommit(store: Store, taskId: string): string {
@@ -77,19 +101,63 @@ function taskCommit(store: Store, taskId: string): string {
   return commit;
 }
 
+/** The feature branch a read names, refused unless the record holds it neither merged nor closed. */
+function namedFeature(store: Store, name: string): Feature {
+  const feature = store.findFeature(name);
+  if (feature === null) throw new HandlerError("not_found", `no feature branch ${name} in the record; feature_list shows them`);
+  if (!featureIsLive(feature)) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; its graph is gone, so look it up without feature`);
+  return feature;
+}
+
+/** The only open feature branch in a repo, or null when there is none or more than one. */
+function onlyOpenFeature(store: Store, repo: Repo): Feature | null {
+  const open = store.listFeatures(OPEN).filter((feature) => feature.repo === repo.name);
+  return open.length === 1 ? open[0]! : null;
+}
+
+function featureTipCommit(repo: Repo, feature: Feature): string {
+  const tip = resolveCommit(repo.dir, `refs/heads/${feature.name}`);
+  if (tip === null) throw new HandlerError("refused", `the feature branch ${feature.name} has no commit in ${repo.dir}`);
+  return tip;
+}
+
+/** What a read is for: a task, a feature branch by name, or a repo's base branch. */
+export type ViewTarget = {
+  taskId?: string;
+  repo?: string;
+  feature?: string;
+  /** With no task or feature named, read the repo's only open feature branch if it has one: a task is scoped where it will be cut. */
+  defaultToFeature?: boolean;
+};
+
 /**
- * Opens the graph for a read: brought forward to the base branch's newest commit, and for a
- * task, with the task's commit laid on top. The caller closes `view.db`.
+ * Opens the graph for a read: brought forward to the base branch's newest commit; for an open
+ * task, its commit; for a feature branch, its tip. A task whose work is already folded into a
+ * feature branch that is still open reads that branch. The caller closes `view.db`.
  */
-export async function openView(projectDir: string, store: Store, options: { taskId?: string; repo?: string } = {}): Promise<GraphView> {
+export async function openView(projectDir: string, store: Store, options: ViewTarget = {}): Promise<GraphView> {
   const repo = viewRepo(store, projectDir, options);
   const baseBranch = baseBranchOf(repo);
   const commit = currentBaseCommit(repo.dir, baseBranch);
   const db = openGraphDb(projectDir, repo.name);
   try {
     const { from } = await bringForward(db, repo.dir, BASE_LAYER, commit);
-    dropClosedTaskLayers(db, store);
-    const freshness: Freshness = { baseBranch, commit, broughtForwardFrom: from, task: null };
+    dropEndedLayers(db, store);
+    const freshness: Freshness = { baseBranch, commit, broughtForwardFrom: from, task: null, feature: null };
+    const feature =
+      options.feature !== undefined
+        ? namedFeature(store, options.feature)
+        : options.taskId !== undefined
+          ? foldedInto(store, options.taskId)
+          : options.defaultToFeature === true
+            ? onlyOpenFeature(store, repo)
+            : null;
+    if (feature !== null) {
+      const tip = featureTipCommit(repo, feature);
+      const layer = featureLayer(feature.id);
+      await bringForward(db, repo.dir, layer, tip);
+      return { db, layer, freshness: { ...freshness, feature: { name: feature.name, commit: tip } } };
+    }
     if (options.taskId === undefined) return { db, layer: BASE_LAYER, freshness };
     const onTop = taskCommit(store, options.taskId);
     const layer = taskLayer(options.taskId);
@@ -101,8 +169,17 @@ export async function openView(projectDir: string, store: Store, options: { task
   }
 }
 
-/** The repo a read is for: a task's own, else the repo named, else the only one. */
-function viewRepo(store: Store, projectDir: string, options: { taskId?: string; repo?: string }): Repo {
+/** The repo a read is for: a task's own, else a named feature branch's, else the repo named, else the only one. */
+function viewRepo(store: Store, projectDir: string, options: ViewTarget): Repo {
+  if (options.taskId !== undefined && options.feature !== undefined) throw new HandlerError("invalid_input", "name a task_id or a feature, not both");
+  if (options.feature !== undefined) {
+    const feature = namedFeature(store, options.feature);
+    const repo = repoOfRow(store, projectDir, feature);
+    if (options.repo !== undefined && resolveRepo(store, projectDir, options.repo).name !== repo.name) {
+      throw new HandlerError("refused", `the feature branch ${feature.name} is in the repo ${repo.name ?? "(the project folder)"}, not ${options.repo}; leave repo out with feature`);
+    }
+    return repo;
+  }
   if (options.taskId === undefined) return resolveRepo(store, projectDir, options.repo);
   const task = store.getTask(options.taskId);
   if (task === null) throw new HandlerError("not_found", `no task ${options.taskId}`);
@@ -126,7 +203,7 @@ export async function indexProject(
   try {
     if (options.rebuild) db.run("DELETE FROM parsed");
     const stats = await buildLayer(db, repo.dir, commit, BASE_LAYER, { force: true });
-    dropClosedTaskLayers(db, store);
+    dropEndedLayers(db, store);
     return { ...stats, baseBranch, repo: repo.name };
   } finally {
     db.close();

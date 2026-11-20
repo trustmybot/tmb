@@ -19,6 +19,8 @@ export const TESTS_AREA = "tests";
 const TESTS_PURPOSE = "Test code: every file the test rule matches, by the common conventions of each language.";
 
 export const taskLayer = (taskId: string): string => `task:${taskId}`;
+/** One layer per feature branch that is neither merged nor closed, at the branch's tip (trustmybot/tmb#182). */
+export const featureLayer = (featureId: string): string => `feature:${featureId}`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS layers (
