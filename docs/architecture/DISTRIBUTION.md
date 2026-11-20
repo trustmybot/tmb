@@ -14,7 +14,7 @@ One step per platform. After it, two commands inside a project:
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | One, on a terminal: the review mode. Planned for v1.0.0 (trustmybot/tmb#162): none, and the planner asks for the review mode at onboarding |
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | On a terminal: the review mode, and on the stable channel, once per machine, whether to join the feedback program. Planned for v1.0.0 (trustmybot/tmb#162): none, and the planner asks for the review mode at onboarding |
 | `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
 **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them, all but the review mode. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied; the review mode stays unset.
@@ -33,7 +33,7 @@ Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#
 - **A refresh that fails never stops the session.** The line says what failed and names `tmb init`.
 - **Init takes out what a version no longer wires**, as remove would: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use.
 
-Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
+Removing tmb from a project (`tmb remove`) undoes what init added and leaves the Human's own settings alone. Two things stay: the lines init added to `.gitignore`, and the repo from `git init` in a folder that had none.
 
 tmb is one program for the whole machine. Only the database and the host wiring are per project.
 

@@ -50,11 +50,16 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Reads the schema version and whether the file holds any table, the first reads that fail on a non-database file. */
+/**
+ * Reads the schema version and whether the file holds any table, the first reads that fail on a
+ * non-database file. Both come from one statement, so one snapshot: read apart, another process
+ * creating the schema between them would show tables with no version, a file that is not tmb's.
+ */
 function readHeader(db: Database): { version: number; tables: number } {
-  const { user_version: version } = db.query("PRAGMA user_version").get() as { user_version: number };
-  const { tables } = db.query("SELECT count(*) AS tables FROM sqlite_master").get() as { tables: number };
-  return { version, tables };
+  return db.query("SELECT (SELECT user_version FROM pragma_user_version) AS version, (SELECT count(*) FROM sqlite_master) AS tables").get() as {
+    version: number;
+    tables: number;
+  };
 }
 
 function isBusy(error: unknown): boolean {

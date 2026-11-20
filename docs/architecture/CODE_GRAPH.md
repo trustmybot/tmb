@@ -23,19 +23,19 @@ The plugin called this the world model.
 - **Built from git, never from the working folder.** Each repo is indexed at the commit of its base branch, so every session and worktree reads the same graph. A task's own commit is laid on top, so a worker sees its change and its base together.
 - **It never guesses.** A reference is linked to a definition only on proof, such as a resolved import. What could not be resolved is reported as unresolved.
 - **It can always be rebuilt.** Everything except concepts is derived from git. A rebuild keeps the concepts and re-checks each against the new graph; one whose code is gone is marked broken, never dropped.
-- **It keeps itself fresh.** A read brings a graph that is behind its base branch forward before it answers. A full rebuild is the fallback.
+- **It keeps itself fresh.** A read brings a graph that is behind its base branch forward before it answers. `tmb index --rebuild` is the fallback, run by the Human: a read that fails does not rebuild by itself. Three limits, found on 2026-11-20: the base branch is the local one, so a merge on GitHub is not seen until it is fetched (trustmybot/tmb#169); in agile mode no lookup reads a feature branch, so work already folded into it is missing from a scope and from the reviewer's lookups (trustmybot/tmb#182); and folders named `build`, `dist` or `vendor` are left out without a count.
 - **Summaries are untrusted text.** They come from file contents, so they are shown to agents as data, never as instructions.
-- **It works offline.** Indexing needs no network. Search by meaning uses a small local model; when that model is absent, search by name still works.
+- **It works offline.** Indexing needs no network. Search is by name and by the words in a name. Search by meaning is left out for now.
 
 ## Indexing
 
 ```mermaid
 flowchart TD
-    A[tmb init, a new base branch from onboard, tmb index, or a merged change of structure] --> B[Read and parse each repo at its base commit]
+    A[tmb init, a new base branch from onboard, or tmb index] --> B[Read and parse each repo at its base commit]
     B --> C[Apply the whole graph in one step]
     C --> D[Re-check concepts]
-    E[A read or a task start] --> F{Graph behind the base branch?}
-    F -- yes --> G[Bring it forward; on failure, rebuild that repo]
+    E[A read] --> F{Graph behind the base branch?}
+    F -- yes --> G[Bring it forward]
     F -- no --> H[Answer from the current graph]
     G --> H
 ```

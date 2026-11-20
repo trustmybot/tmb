@@ -13,6 +13,8 @@ export const OPEN = "open";
 export const CLOSED = "closed";
 /** A truest task whose checks passed at its commit and that waits for the reviewer, or for its pull request once passed. */
 export const IN_REVIEW = "in_review";
+/** A task the planner or the Human ended without its work, with the reason (trustmybot/tmb#170). */
+export const DROPPED = "dropped";
 export const TRUEST = "truest";
 /** Task branches live under this prefix, so no feature branch may take it. */
 export const TASK_BRANCH_PREFIX = "tmb/";
