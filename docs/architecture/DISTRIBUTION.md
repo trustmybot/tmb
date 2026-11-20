@@ -53,14 +53,19 @@ Decided by the Human on 2026-11-19 (trustmybot/tmb#89):
 
 Release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo is public too, and its README offers the stable channel only, with a link to the release repo for rc and dev. On the release repo, stable is a normal release, rc is a prerelease, and dev is one rolling prerelease.
 
-An install follows one channel. Updates are pushed to each channel; tmb checks for one when it starts and applies it between sessions, never in the middle of a task. With no network it runs the version it has.
+An install follows one channel. Updates are pushed to each channel; tmb checks for one when it starts and installs it at once. A session that is running keeps the build it started with, so a task never meets a new build half way. With no network it runs the version it has.
 
 As built at level 8, as agreed on trustmybot/tmb#16 (pending the Human's review):
 
 - A build's version names its channel: `X.Y.Z-dev.N` is dev, `X.Y.Z-rc.N` is rc, `X.Y.Z` is stable. Every release carries a `VERSION` file and the checksums of its files.
 - dev is the rolling `dev` prerelease, published on every push to the base branch. rc and stable are published only when a `vX.Y.Z-rc.N` or `vX.Y.Z` tag is pushed: rc as a prerelease, stable as the release marked latest. rc's newest release is found through the public releases API.
-- When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no task is open in any project tmb has served. A task is one agent's run and is short, so an open task holds the swap back only briefly, and a half-done task never meets a new build. `tmb update` does the same on request.
-- Planned for v1.0.0 (trustmybot/tmb#159), decided by the Human on 2026-11-20: an update applies at once, whatever is running. A session that is running keeps the build it started with until it restarts, and tmb restarts its own tool server when the project has no open task. An old build is never deleted by itself: `tmb doctor` lists the builds no session uses and deletes them on the Human's yes (trustmybot/tmb#160).
+- When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. `tmb update` does the same on request.
+- **An update installs at once, whatever is running** (trustmybot/tmb#159, decided by the Human on 2026-11-20). It installs at a session's end or on `tmb update`.
+- **A running session keeps its build, and so does its project.** While the session runs, every tmb call in that project runs the build the session started with: the host's events, the tool server, git's push hook and a command the Human types. So the record keeps its shape and the host files stay as they are until the session moves.
+- **The session moves by itself.** tmb's tool server moves to the new build at the session's next tool call, once no task is open in the project, and says so in one line. The conversation is kept and the Human does nothing. When the move fails, the session keeps its build and tmb says how to reconnect the tool server in that host.
+- **`tmb update` names each session still on an old build**, with its folder, title and start time, and why it waits.
+- **An old build is never deleted by itself.** tmb says how many old builds no session uses and their size. `tmb doctor` lists them and deletes them on the Human's yes (trustmybot/tmb#160).
+- Not checked: whether each host reads tmb's tool list again after a move.
 
 Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2):
 
@@ -88,7 +93,7 @@ The installer scripts stay. Package managers are added beside them.
 - **A cask, not a formula.** A formula would not avoid the quarantine, and Homebrew does not allow a formula name with `@` before a letter, such as `tmb@dev`.
 - **Until the tap and the bucket exist.** The step skips, and the release still succeeds. Planned for v1.x (trustmybot/tmb#91): the Human creates the tap, the bucket and their token, and submits to winget.
 
-A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
+A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)). A plugin project of several repos goes into one workspace record: each plugin repo goes to the workspace repo of the same name, or to one the Human names, and tmb never guesses a repo (trustmybot/tmb#193).
 
 ## Feedback
 

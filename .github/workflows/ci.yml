@@ -1,11 +1,14 @@
 name: ci
 
-# Lint, unit and integration tests on every pull request and push to dev. Needs no secret.
+# Pull requests and pushes to dev run only the fast Linux `test` job. The heavy jobs run on
+# version tags (rc and stable), so CI never slows a lane down (trustmybot/tmb#164). Needs no
+# secret.
 
 on:
   pull_request:
   push:
     branches: [dev]
+    tags: ["v*.*.*"]
 
 permissions:
   contents: read
@@ -24,9 +27,10 @@ jobs:
       - run: bun tests/lint/links.ts
 
   # Each channel's install updating itself, against a local release repo, on the platforms
-  # the test job does not run on, so a platform's update path is caught on a pull request
-  # and not first in a dev release (trustmybot/tmb#57).
+  # the test job does not run on (trustmybot/tmb#57). Runs on version tags only, so a
+  # platform's update path is caught at the rc tag, not on a pull request (trustmybot/tmb#164).
   update-scenario:
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:

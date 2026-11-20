@@ -2,11 +2,11 @@ name: packaging probe
 
 # Proves one `bun build --compile` file runs SQLite FTS5, a tree-sitter TypeScript
 # parse from embedded WASM, and a stdio MCP tool call on every OS (trustmybot/tmb#2).
+# Runs on version tags (rc and stable) only, not on pull requests or dev (trustmybot/tmb#164).
 
 on:
-  pull_request:
   push:
-    branches: [dev]
+    tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:
