@@ -19,6 +19,8 @@ One step per platform. After it, two commands inside a project:
 
 **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied.
 
+**The review mode is the Human's choice.** Planned (trustmybot/tmb#114), decided by the Human on 2026-11-20. The review mode decides how many tokens a project uses, so the planner recommends one but does not apply it. No task starts until the Human has chosen: at the end of `tmb init` on a terminal, with `tmb onboard`, or when the planner asks at the first session. With nobody to ask, the task is refused and the refusal names `tmb onboard`. The other settings stay the planner's recommendation.
+
 Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 
 Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
