@@ -98,7 +98,7 @@ What each version delivers. Decided by the Human on 2026-11-19. Each version is 
 
 - v1 supports one host, Claude Code. Parts of level 9 may be built before v1 is released, but mixed agents are not supported and not tested in v1: no v1 release waits for, or runs, a test that needs a second host. In v1, tmb says that a host other than Claude Code is not supported yet.
 - v1 supports one way to install, tmb's own installer and updater. Install through a package manager is built, but not supported and not tested in v1 ([DISTRIBUTION.md](DISTRIBUTION.md#package-managers)).
-- The desktop program of v2 only watches. It reads the record, which already holds every session, agent start and stop, and gate decision, so tmb still starts no agent.
+- The desktop program of v2 only watches. It reads the record, which already holds every agent start and stop and every gate decision, and will hold every session (trustmybot/tmb#63), so tmb still starts no agent.
 - v1 is not everything the plugin ships. What it leaves out, and where each part went, is in [Reuse from the plugin](#reuse-from-the-plugin) and in the comparison with the plugin's design (trustmybot/tmb#165): the plugin's pull request comment triage and its issue sync are planned for v1.x, most of its rules for a task that fails are not built ([WORKFLOW.md](WORKFLOW.md#when-a-task-does-not-close)), and tmb works with GitHub only.
 - A pending feature of the plugin is not a version of its own. Each one is placed in a version above or left out.
 

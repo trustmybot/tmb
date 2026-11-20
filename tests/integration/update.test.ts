@@ -44,7 +44,8 @@ function releaseFile(version: string, name: string): Response {
 }
 
 beforeAll(() => {
-  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-update-builds-")));
+  // .native expands Windows 8.3 short names (RUNNER~1), so expected paths match the long form tmb prints.
+  scratch = realpathSync.native(mkdtempSync(path.join(tmpdir(), "tmb-update-builds-")));
   for (const { old, next } of Object.values(CHANNELS)) {
     for (const version of [old, next]) {
       const file = path.join(scratch, version, process.platform === "win32" ? "tmb.exe" : "tmb");
@@ -216,7 +217,7 @@ const EXE = process.platform === "win32" ? ".exe" : "";
 
 /** Several tmb programs installed side by side in one throwaway home, each from a build. */
 function sideBySide(programs: Record<string, string>, extraEnv: Record<string, string> = {}) {
-  const root = realpathSync(mkdtempSync(path.join(scratch, "side-by-side-")));
+  const root = realpathSync.native(mkdtempSync(path.join(scratch, "side-by-side-")));
   const bin = path.join(root, "home", ".local", "bin");
   mkdirSync(bin, { recursive: true });
   const files: Record<string, string> = {};
@@ -290,7 +291,9 @@ describe("programs side by side (trustmybot/tmb#89)", () => {
     const fakeHost = path.join(side.root, "fake-host");
     mkdirSync(fakeHost, { recursive: true });
     copyFileSync(side.files.tmb!, path.join(fakeHost, `claude${EXE}`));
-    side.env.PATH = `${fakeHost}${path.delimiter}${side.env.PATH ?? ""}`;
+    // Windows names the variable Path, and a plain copy of process.env keeps that case: read it through process.env and drop the copy.
+    for (const key of Object.keys(side.env)) if (key.toUpperCase() === "PATH") delete side.env[key];
+    side.env.PATH = `${fakeHost}${path.delimiter}${process.env.PATH ?? ""}`;
     const project = path.join(side.root, "project");
     mkdirSync(project, { recursive: true });
     expect(spawnSync("git", ["init", "-q"], { cwd: project }).status).toBe(0);

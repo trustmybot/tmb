@@ -239,7 +239,14 @@ ALTER TABLE features ADD COLUMN repo TEXT;
 ALTER TABLE tasks ADD COLUMN repo TEXT;
 `;
 
+// Version 9: a task can be dropped, with the reason, and a new task can name the dropped one it
+// replaces (trustmybot/tmb#170).
+const VERSION_9_SQL = `
+ALTER TABLE tasks ADD COLUMN drop_reason TEXT;
+ALTER TABLE tasks ADD COLUMN replaces TEXT REFERENCES tasks(id);
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;
