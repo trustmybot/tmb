@@ -122,8 +122,8 @@ describe("the push gate", () => {
     }
   });
 
-  test("the host guards: no agent skips the hook, and a worker or the reviewer never pushes", () => {
-    const project = setUpProject("true");
+  test("tmb reads no shell command: a push typed with --no-verify is not refused by tmb and reaches the remote", () => {
+    const project = setUpProject("true", undefined, { origin: true });
     const bash = (command: string, agentType?: string) => {
       const out = hook(project, "pre-tool-use", {
         hook_event_name: "PreToolUse",
@@ -133,11 +133,17 @@ describe("the push gate", () => {
       });
       return out === "" ? "allow" : (JSON.parse(out).hookSpecificOutput.permissionDecisionReason as string);
     };
-    expect(bash("git push --no-verify origin main")).toContain("pre-push hook");
-    expect(bash("git -c core.hooksPath=/dev/null push origin main")).toContain("core.hooksPath");
-    expect(bash("git push origin feat/x", "worker")).toContain("A worker never pushes");
-    expect(bash("git push origin feat/x", "reviewer")).toContain("A reviewer never pushes");
-    expect(bash("gh pr create --fill")).toContain("feature_pr");
-    expect(bash("git push origin feat/x")).toBe("allow");
+    for (const agentType of [undefined, "worker", "reviewer"]) {
+      expect(bash("git push --no-verify origin main", agentType)).toBe("allow");
+      expect(bash("git -c core.hooksPath=/dev/null push origin main", agentType)).toBe("allow");
+      expect(bash("gh pr create --fill", agentType)).toBe("allow");
+    }
+
+    // The flag skips git's pre-push hook, so the unreviewed commit reaches the base branch on the remote.
+    // Nothing stops it at that moment: a later sync is what finds it (trustmybot/tmb#98 Part E).
+    const unreviewed = commitFile(project, "hotfix.txt", "fix\n", "a hotfix with the hook skipped");
+    expect(push(project, "-q", "--no-verify", "origin", BASE_BRANCH).status).toBe(0);
+    expect(git(project, "ls-remote", "origin", `refs/heads/${BASE_BRANCH}`)).toStartWith(unreviewed);
+    expect(pushDecisions(project)).toHaveLength(0);
   });
 });

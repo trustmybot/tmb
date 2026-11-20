@@ -336,7 +336,11 @@ function taskRequest(args: string[]): Request {
         criteria: values.criterion ?? [],
         checks: values.check,
       };
-      const format = (started: TaskStartResult) => [`Started task ${started.id}.`, "", ...briefLines(started.brief)].join("\n");
+      const format = (started: TaskStartResult) => {
+        const shared = started.sharedFiles.map((s) => `  - ${s.file} with ${s.theirs} of open task ${s.task} (${s.title})`);
+        const note = shared.length === 0 ? [] : ["Shares files with other open tasks (git merges them; a clash reopens the later task):", ...shared, ""];
+        return [`Started task ${started.id}.`, "", ...note, ...briefLines(started.brief)].join("\n");
+      };
       return { operation: "task_start", input, json: values.json === true, format };
     }
     case "list": {

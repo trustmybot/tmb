@@ -40,7 +40,6 @@ export { type Decision, decide, MAIN_AGENT, UNNAMED_AGENT, TMB_EVENT_TYPES, type
 export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
 export { OPERATIONS } from "./handlers/index.ts";
 export { installPushGate, judgePush, parsePushRefs, type PushRef, removePushGate } from "./push-gate.ts";
-export { statements, toolCalls, type ToolCall } from "./commands.ts";
 export { AWAITING_REVIEW_HEADING, EMPTY_SETTINGS_HEADING, OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole, reviewerRole, UNATTENDED_INSTRUCTION } from "./session-start.ts";
 export { NO_VERDICT } from "./host-runs.ts";
 export { openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "./project.ts";

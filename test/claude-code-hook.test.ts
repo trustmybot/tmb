@@ -67,7 +67,6 @@ describe("hook pre-tool-use", () => {
       ["Edit", { file_path: "/p/b.ts", old_string: "a", new_string: "b" }, "before-file-write", "planner", "/p/b.ts"],
       ["MultiEdit", { file_path: "/p/c.ts", edits: [] }, "before-file-write", "planner", "/p/c.ts"],
       ["NotebookEdit", { notebook_path: "/p/d.ipynb", new_source: "" }, "before-file-write", "planner", "/p/d.ipynb"],
-      ["Bash", { command: "git push" }, "before-command", "planner", "git push"],
       ["Agent", { subagent_type: "Explore", prompt: "look around" }, "before-agent-start", "Explore", "look around"],
       ["Task", { subagent_type: "reviewer", prompt: "review it" }, "before-agent-start", "reviewer", "review it"],
       ["Agent", { prompt: "no type given" }, "before-agent-start", "general-purpose", "no type given"],
@@ -90,16 +89,26 @@ describe("hook pre-tool-use", () => {
 
   test("takes the role from agent_type inside a subagent, and records under it and the host", () => {
     createRecord();
-    expect(preToolUse("Bash", { command: "bun test" }, { agent_id: "a1", agent_type: "worker" })).toBe("");
+    expect(preToolUse("Write", { file_path: "/p/a.ts" }, { agent_id: "a1", agent_type: "reviewer" })).toBe("");
     const [recorded] = guardDecisions();
-    expect(recorded!.createdBy).toEqual({ kind: "agent", role: "worker", host: "claude-code" });
-    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-command", role: "worker", action: "bun test" });
+    expect(recorded!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
+    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-file-write", role: "reviewer", action: "/p/a.ts" });
   });
 
   test("answers nothing and records nothing for a tool it does not guard", () => {
     createRecord();
     expect(preToolUse("Read", { file_path: "/p/a.ts" })).toBe("");
     expect(preToolUse("Writer", { file_path: "/p/a.ts" })).toBe("");
+    expect(guardDecisions()).toHaveLength(0);
+  });
+
+  test("reads no shell command: a push that skips git's hook is not refused by tmb, whatever the role", () => {
+    createRecord();
+    for (const agent_type of [undefined, "worker", "reviewer"]) {
+      const extra = agent_type === undefined ? {} : { agent_id: "a1", agent_type };
+      expect(preToolUse("Bash", { command: "git push --no-verify origin dev" }, extra)).toBe("");
+      expect(preToolUse("Bash", { command: "gh pr create --title x --body y" }, extra)).toBe("");
+    }
     expect(guardDecisions()).toHaveLength(0);
   });
 
@@ -125,7 +134,7 @@ describe("hook pre-tool-use", () => {
     test("denies when the record cannot be read, finding it from the input's cwd or Claude Code's project dir", () => {
       breakRecord();
       const sub = subfolder();
-      expect(denies(preToolUse("Bash", { command: "echo hi" }, { cwd: sub }))).toBe(true);
+      expect(denies(preToolUse("Write", { file_path: "a.ts" }, { cwd: sub }))).toBe(true);
 
       process.env.CLAUDE_PROJECT_DIR = sub;
       expect(denies(preToolUse("Write", { file_path: path.join(sub, "a.ts") }, { cwd: tmpdir() }))).toBe(true);
@@ -136,7 +145,7 @@ describe("hook pre-tool-use", () => {
       const elsewhere = mkdtempSync(path.join(tmpdir(), "tmb-elsewhere-"));
       try {
         process.env.CLAUDE_PROJECT_DIR = project;
-        expect(denies(preToolUse("Bash", { command: "echo hi" }, { cwd: elsewhere }))).toBe(true);
+        expect(denies(preToolUse("Write", { file_path: "a.ts" }, { cwd: elsewhere }))).toBe(true);
       } finally {
         rmSync(elsewhere, { recursive: true, force: true });
       }
@@ -144,9 +153,9 @@ describe("hook pre-tool-use", () => {
 
     test("records the decision in the project's readable record", () => {
       createRecord();
-      expect(preToolUse("Bash", { command: "ls" }, { cwd: subfolder() })).toBe("");
+      expect(preToolUse("Write", { file_path: "a.ts" }, { cwd: subfolder() })).toBe("");
       expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
-        { type: "before-command", role: "planner", action: "ls" },
+        { type: "before-file-write", role: "planner", action: "a.ts" },
       ]);
     });
   });
