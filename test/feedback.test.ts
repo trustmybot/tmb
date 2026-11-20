@@ -146,34 +146,29 @@ describe("the setting", () => {
 });
 
 describe("the first run", () => {
-  test("on dev, init's end gives the notice once", async () => {
+  test("on dev, init's end gives the notice once", () => {
     const lines: string[] = [];
-    let asked = 0;
-    const ask = async () => {
-      asked++;
-      return "y";
-    };
-    await firstRunAtInit(fakeEnv(), ask, (line) => lines.push(line));
+    firstRunAtInit(fakeEnv(), (line) => lines.push(line));
     expect(lines.join("\n")).toContain("The feedback program is on for tmb-dev, on the dev channel.");
     expect(lines.join("\n")).toContain("tmb-dev feedback off");
-    expect(asked).toBe(0);
     expect(readFeedbackState(stateDir).firstRun?.how).toBe("notice");
     const again: string[] = [];
-    await firstRunAtInit(fakeEnv(), ask, (line) => again.push(line));
+    firstRunAtInit(fakeEnv(), (line) => again.push(line));
     expect(again).toEqual([]);
   });
 
-  test("on stable, init's end asks once; yes turns it on, no answer leaves it off", async () => {
-    await firstRunAtInit(fakeEnv({ program: STABLE, version: "1.0.0" }), async () => "yes", () => {});
-    expect(readFeedbackState(stateDir).setting).toBe("on");
-    rmSync(stateDir, { recursive: true, force: true });
-    await firstRunAtInit(fakeEnv({ program: STABLE, version: "1.0.0" }), async () => null, () => {});
-    expect(readFeedbackState(stateDir).setting).toBe("off");
+  // trustmybot/tmb#162: init asks nothing, so stable's question waits for the planner's first session.
+  test("on stable, init's end asks nothing and leaves the question to the planner", () => {
+    const lines: string[] = [];
+    firstRunAtInit(fakeEnv({ program: STABLE, version: "1.0.0" }), (line) => lines.push(line));
+    expect(lines).toEqual([]);
+    expect(readFeedbackState(stateDir).firstRun).toBeNull();
+    expect(readFeedbackState(stateDir).setting).toBeNull();
   });
 
   test("an off switch in the environment says nothing and marks nothing", async () => {
     const lines: string[] = [];
-    await firstRunAtInit(fakeEnv({ env: { DO_NOT_TRACK: "1" } }), async () => "y", (line) => lines.push(line));
+    firstRunAtInit(fakeEnv({ env: { DO_NOT_TRACK: "1" } }), (line) => lines.push(line));
     expect(lines).toEqual([]);
     expect(readFeedbackState(stateDir).firstRun).toBeNull();
     expect(firstRunSection(fakeEnv({ env: { TMB_NO_FEEDBACK: "1" } }))).toBe("");

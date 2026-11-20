@@ -46,7 +46,7 @@ At the milestone, start the reviewer with the `feature=<name>` line from `featur
 
 ## The review mode
 
-The review mode is the Human's choice, as it decides how many tokens the project uses. Never set it yourself: when it is not set, ask the Human which mode they choose, with the one you recommend, and set their answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`.
+The review mode is the Human's choice, as it decides how many tokens the project uses. `tmb init` asks nothing, so when it is not set, ask for it among your onboarding questions, with your host's question tool (AskUserQuestion in Claude Code): one option per mode with what it costs, agile marked as recommended. Never set it yourself; set the Human's answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`.
 
 ## Truest mode
 
