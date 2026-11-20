@@ -175,9 +175,13 @@ function inside(file: string, dir: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-/** The reviewer writes nothing; a worker writes in the project only inside an open task's worktree. */
-function fileWriteRule(store: Store, event: TmbEvent): Decision | null {
-  if (event.role === REVIEWER) return deny("The reviewer judges a change and never edits one: report what you found in your verdict instead.");
+/**
+ * A worker writes in the project only inside an open task's worktree. A reviewer subagent's
+ * edit tools are taken away by its agent file, which the host enforces; a host whose main
+ * agent is the reviewer has no such file, so tmb still refuses that agent's writes.
+ */
+function fileWriteRule(store: Store, event: TmbEvent, mainAgent: boolean): Decision | null {
+  if (event.role === REVIEWER && mainAgent) return deny("The reviewer judges a change and never edits one: report what you found in your verdict instead.");
   if (event.role !== WORKER) return null;
   const projectDir = canonical(event.projectDir);
   const file = canonical(path.resolve(event.projectDir, event.action));
@@ -191,7 +195,7 @@ function fileWriteRule(store: Store, event: TmbEvent): Decision | null {
   return deny(`A worker writes only inside its task's worktree, and ${event.action} is in no open task's worktree. Read the worktree from task_brief and write there.`);
 }
 
-function rule(store: Store, event: TmbEvent): Decision {
+function rule(store: Store, event: TmbEvent, mainAgent: boolean): Decision {
   if (event.role === UNNAMED_AGENT && event.type === "before-agent-start") {
     return { decision: "allow", reason: "finding: the host did not say which agent is starting, so tmb could not apply a role's rules to its start" };
   }
@@ -199,7 +203,7 @@ function rule(store: Store, event: TmbEvent): Decision {
   if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
   if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);
   if (event.type === "before-command") return commandRule(event) ?? { decision: "allow" };
-  if (event.type === "before-file-write") return fileWriteRule(store, event) ?? { decision: "allow" };
+  if (event.type === "before-file-write") return fileWriteRule(store, event, mainAgent) ?? { decision: "allow" };
   return { decision: "allow" };
 }
 
@@ -215,8 +219,9 @@ export function decide(event: TmbEvent): Decision {
   const store = opened.store;
   try {
     return store.transaction(() => {
-      if (event.role === MAIN_AGENT) event = { ...event, role: hostRole(store, event.host) };
-      const decision = rule(store, event);
+      const mainAgent = event.role === MAIN_AGENT;
+      if (mainAgent) event = { ...event, role: hostRole(store, event.host) };
+      const decision = rule(store, event, mainAgent);
       store.appendGuardDecision(actorOf(event), {
         event: recordedEvent(event),
         decision: decision.decision,
