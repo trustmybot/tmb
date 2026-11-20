@@ -234,6 +234,7 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
 | `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only. |
 | `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review |
+| `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules below for a closed task; its branch is kept while it holds commits, and tmb names it and the command that deletes it. `tmb task start --replaces <id>` starts the task that takes up a dropped task's work another way, and is refused for a task that is not dropped. `tmb task list --state dropped` lists the dropped tasks. |
 | `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only. |
 | `tmb task pr <id> --title <text> [--body <text>]` | Open a truest task's pull request into the base branch, once the reviewer passed it or you waived the review |
 | `tmb graph map\|find\|symbol\|scope\|concepts` | Look things up in the code graph: the project's files with their summaries, where a name lives, what calls it, a draft of a task's files, and the recorded concepts. `--task <id>` reads as that open task sees the code. |
