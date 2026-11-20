@@ -19,7 +19,7 @@ One step per platform. After it, two commands inside a project:
 
 **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied.
 
-`tmb setup`, init followed by onboard, still runs and says it is going away. It is removed in a later release, once init and onboard have shipped (trustmybot/tmb#89).
+Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 
 Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
 

@@ -1,5 +1,5 @@
-// `tmb setup` and `tmb config` as separate processes, the way the Human runs them: the
-// host is found on PATH, the answers land in the record, and no run waits for input.
+// `tmb init`, `tmb onboard` and `tmb config` as separate processes, the way the Human runs them:
+// init finds the host on PATH, onboard's answers land in the record, and no run waits for input.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ let scratch: string;
 let env: Record<string, string>;
 
 beforeAll(() => {
-  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-setup-")));
+  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-settings-")));
   // Keep the machine's git configuration out of the project under test.
   env = {
     ...(process.env as Record<string, string>),
@@ -66,20 +66,20 @@ function auditCount(project: string): number {
   }
 }
 
-describe("tmb setup", () => {
-  test("--yes in a fresh git project stores the host, base branch, agile and the detected checks, and tmb config shows them", () => {
+describe("tmb init, then tmb onboard", () => {
+  test("onboard --yes in a fresh git project stores the base branch, agile and the detected checks, and tmb config shows them", () => {
     const project = newBunProject();
-    const stdout = tmb(["setup", "--yes"], project);
-    expect(stdout).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
-    expect(stdout).toContain("Recorded 5 changes in the record's audit trail.");
+    expect(tmb(["init"], project)).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
+    expect(tmb(["onboard", "--yes"], project)).toContain("Recorded 3 changes in the record's audit trail.");
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"] });
     expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\n');
   });
 
-  test("with no terminal and no flags, never waits for input: takes the defaults and prints them", async () => {
+  test("onboard with no terminal and no flags never waits for input: takes the defaults and prints them", async () => {
     const project = newBunProject();
-    // stdin stays open and empty: a setup that waited for an answer would never exit.
-    const child = Bun.spawn([process.execPath, CLI, "setup"], { cwd: project, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    tmb(["init"], project);
+    // stdin stays open and empty: an onboard that waited for an answer would never exit.
+    const child = Bun.spawn([process.execPath, CLI, "onboard"], { cwd: project, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     const timer = setTimeout(() => child.kill(), NO_INPUT_LIMIT_MS);
     const status = await child.exited;
     clearTimeout(timer);
@@ -94,7 +94,8 @@ describe("tmb setup", () => {
 
   test("flags override the defaults, and a re-run with the same answers changes no file and records nothing", () => {
     const project = newBunProject();
-    const flags = ["setup", "--host", "claude-code", "--base", "release", "--review-mode", "agile", "--check", "make lint", "--check", "make test"];
+    tmb(["init", "--host", "claude-code"], project);
+    const flags = ["onboard", "--host", "claude-code", "--base", "release", "--review-mode", "agile", "--check", "make lint", "--check", "make test"];
     tmb(flags, project);
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
     const recorded = auditCount(project);
@@ -102,25 +103,26 @@ describe("tmb setup", () => {
     const files = [".mcp.json", ".claude/settings.local.json", ".gitignore"].map((file) => path.join(project, file));
     const before = files.map((file) => readFileSync(file, "utf8"));
     expect(tmb(flags, project)).toContain("No setting changed, so nothing was recorded.");
-    // The stored answers are the defaults now, so a plain re-run gives the same answers too.
-    tmb(["setup"], project);
+    // The stored answers are the defaults now, so a plain re-run of both gives the same answers too.
+    tmb(["init"], project);
+    tmb(["onboard"], project);
     expect(auditCount(project)).toBe(recorded);
     expect(files.map((file) => readFileSync(file, "utf8"))).toEqual(before);
   });
 
-  test("refuses a review mode that does not exist, and writes nothing", () => {
+  test("onboard refuses a review mode that does not exist, and writes nothing", () => {
     const project = newBunProject();
-    const result = run(["setup", "--review-mode", "strict"], project);
+    const result = run(["onboard", "--review-mode", "strict"], project);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('review mode must be agile or truest, got "strict"');
     expect(readdirSync(project).sort()).toEqual([".git", "bun.lock", "package.json"]);
   });
 
-  test("with no host installed, exits non-zero naming the supported hosts and writes nothing", () => {
+  test("init with no host installed exits non-zero naming the supported hosts and writes nothing", () => {
     const project = newBunProject();
     const emptyPath = path.join(scratch, "empty-path");
     mkdirSync(emptyPath, { recursive: true });
-    const result = run(["setup", "--yes"], project, { PATH: emptyPath });
+    const result = run(["init"], project, { PATH: emptyPath });
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code) and Codex (codex).");
     expect(readdirSync(project).sort()).toEqual([".git", "bun.lock", "package.json"]);

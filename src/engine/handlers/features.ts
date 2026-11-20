@@ -110,7 +110,7 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
   requireBranchName(context.projectDir, name);
   const settings = readSettings(store);
   const baseBranch = settings.base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set, so tmb init has not run here; run `tmb init` in the project first");
+  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first");
   if (settings.review_mode === TRUEST) {
     throw new HandlerError(
       "refused",

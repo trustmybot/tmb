@@ -1,6 +1,6 @@
-// The tests every host adapter must pass, run once per host through the real doors: tmb setup
-// and remove as processes, the hooks setup wired run by a shell as the host runs them, and the
-// tool server setup registered. A new adapter adds a harness to HARNESSES and passes all of it.
+// The tests every host adapter must pass, run once per host through the real doors: tmb init,
+// tmb onboard and tmb remove as processes, the hooks init wired run by a shell as the host runs
+// them, and the tool server init registered. A new adapter adds a harness to HARNESSES and passes all of it.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -94,7 +94,7 @@ function withStore<T>(project: string, read: (store: Store) => T): T {
 for (const harness of HARNESSES) {
   const { adapter } = harness;
 
-  /** Runs the hook setup wired for the event through a shell, as the host does; the host's reading of its answer. */
+  /** Runs the hook init wired for the event through a shell, as the host does; the host's reading of its answer. */
   function raise(project: string, event: ContractEvent) {
     const call = harness.hookCall(project, event);
     if (!call) throw new Error(`${adapter.name} raises no ${event.type} event`);
@@ -105,7 +105,8 @@ for (const harness of HARNESSES) {
   }
 
   function setUp(project: string, role = "planner"): string {
-    return tmb(["setup", "--host", adapter.id, "--role", role, "--base", "main", "--check", "true", "--yes"], project);
+    const init = tmb(["init", "--host", adapter.id, "--role", role], project);
+    return init + tmb(["onboard", "--host", adapter.id, "--base", "main", "--check", "true", "--yes"], project);
   }
 
   describe(`${adapter.name} (${adapter.id}): the adapter contract`, () => {
@@ -135,7 +136,7 @@ for (const harness of HARNESSES) {
       }
     });
 
-    test("setup writes the record, a second setup changes nothing, and remove gives back the Human's files and keeps the record", () => {
+    test("init writes the record, a second init changes nothing, and remove gives back the Human's files and keeps the record", () => {
       const project = newProject();
       harness.seedHumanFiles(project);
       const gitignore = path.join(project, ".gitignore");
@@ -152,7 +153,7 @@ for (const harness of HARNESSES) {
 
       tmb(["remove", "--host", adapter.id], project);
       const afterRemove = snapshot(project);
-      // The lines setup added to .gitignore stay with the record they hide.
+      // The lines init added to .gitignore stay with the record they hide.
       expect(Buffer.from(afterRemove[".gitignore"]!, "base64").toString()).toStartWith("node_modules/\n");
       delete afterRemove[".gitignore"];
       delete before[".gitignore"];

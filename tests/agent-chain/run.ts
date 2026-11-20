@@ -22,9 +22,10 @@ const tmb = new Tmb(tmbBin, project);
 try {
   git(project, "init", "-q");
 } catch {
-  fail(`tmb setup failed in ${project}`);
+  fail(`git init failed in ${project}`);
 }
-tmb.shown(["setup"], `tmb setup failed in ${project}`);
+tmb.shown(["init"], `tmb init failed in ${project}`);
+tmb.shown(["onboard", "--yes"], `tmb onboard failed in ${project}`);
 
 // Each session is a new claude with tmb's tools allowed.
 const recordLog = path.join(logs, "record.log");

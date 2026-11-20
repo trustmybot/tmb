@@ -6,11 +6,13 @@ import { ignoreInGit } from "../common/git.ts";
 import { deleteFile, isObject, writeJsonObject } from "../common/json-file.ts";
 import { CODEX_DIR, configTomlPath, createdMarkerPath, HOST_ID, SERVER_KEY } from "./paths.ts";
 
-const BEGIN = "# >>> tmb: written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
+const BEGIN = "# >>> tmb: written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
+// The first line builds before tmb init wrote, so their block is still found and replaced or removed.
+const EARLIER_BEGIN = "# >>> tmb: written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
 const END = "# <<< tmb";
-// The block and the newline setup put before it: a blank line after a file that ends with one.
-// An editor or git may turn the file's line endings into CRLF after setup, so either is read.
-const BLOCK = new RegExp(String.raw`\r?\n${escape(BEGIN)}\r?\n[\s\S]*?\r?\n${escape(END)}\r?\n`);
+// The block and the newline init put before it: a blank line after a file that ends with one.
+// An editor or git may turn the file's line endings into CRLF after init, so either is read.
+const BLOCK = new RegExp(String.raw`\r?\n(?:${escape(BEGIN)}|${escape(EARLIER_BEGIN)})\r?\n[\s\S]*?\r?\n${escape(END)}\r?\n`);
 
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -44,7 +46,7 @@ export function registerServer(projectDir: string, tmbCommand: readonly string[]
   const created = !existsSync(file);
   const before = created ? "" : readFileSync(file, "utf8");
   const humans = before.replace(BLOCK, "");
-  if (hasServer(parse(humans, file))) throw new Error(`${file} already has an [mcp_servers.${SERVER_KEY}] tmb did not write; remove it, then run setup again`);
+  if (hasServer(parse(humans, file))) throw new Error(`${file} already has an [mcp_servers.${SERVER_KEY}] tmb did not write; remove it, then run tmb init again`);
   // One newline before the block: a blank line after a file that ends with one, a line break after one that does not.
   const eol = humans.includes("\r\n") ? "\r\n" : "\n";
   const text = `${humans}${eol}${serverBlock(tmbCommand, eol)}`;

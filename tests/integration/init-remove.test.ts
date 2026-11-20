@@ -1,6 +1,6 @@
-// `tmb setup` then `tmb remove` as separate processes: setup writes the three registrations
+// `tmb init` then `tmb remove` as separate processes: init writes the three registrations
 // (the tool server, the role files, the event hooks) and the record; remove takes back only
-// what setup added and leaves every file the Human wrote as it was.
+// what init added and leaves every file the Human wrote as it was.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +23,7 @@ let scratch: string;
 let env: Record<string, string>;
 
 beforeAll(() => {
-  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-setup-remove-")));
+  scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-init-remove-")));
   // Keep the machine's git configuration out of the project under test.
   env = {
     ...(process.env as Record<string, string>),
@@ -51,9 +51,9 @@ function newGitProject(): string {
   return project;
 }
 
-/** Runs `tmb setup --yes`, which writes the engine's subagent roles among the rest. */
+/** Runs `tmb init`, which writes the engine's subagent roles among the rest. */
 function setUp(project: string): void {
-  const out = tmb(["setup", "--yes"], project);
+  const out = tmb(["init"], project);
   for (const name of ROLE_NAMES) expect(out).toContain(`Wrote the ${name} role to ${path.relative(project, roleFilePath(project, name))}.`);
 }
 
@@ -84,7 +84,7 @@ function noTmbHookLeft(project: string): void {
   expect(hookCommands(readJson(file)).filter((command) => isTmbHookCommand(command))).toEqual([]);
 }
 
-describe("tmb setup on a fresh project", () => {
+describe("tmb init on a fresh project", () => {
   test("writes the tool server registration, the role registration, the three event hooks and the database", () => {
     const project = newGitProject();
     setUp(project);
@@ -99,7 +99,7 @@ describe("tmb setup on a fresh project", () => {
     expect(readdirSync(path.join(project, ".claude", "agents")).sort()).toEqual(["reviewer.md", "worker.md"]);
     for (const role of SUBAGENT_ROLES) expect(readFileSync(roleFilePath(project, role.name), "utf8")).toContain(role.prompt.trim());
 
-    const again = tmb(["setup", "--yes"], project);
+    const again = tmb(["init"], project);
     for (const name of ROLE_NAMES) expect(again).toContain(`${path.relative(project, roleFilePath(project, name))} already holds the ${name} role; nothing to change.`);
 
     expect(projectDbPath(project)).toBe(path.join(project, ".tmb", "trajectory.db"));
@@ -141,12 +141,12 @@ describe("tmb remove", () => {
     expect(readFileSync(path.join(project, MINE_AGENT)).equals(agentBytes)).toBe(true);
     expect(readdirSync(path.join(project, ".claude", "agents"))).toEqual(["mine.md"]);
     noTmbHookLeft(project);
-    // The record is the Human's data: remove keeps it, and keeps the lines setup added to .gitignore.
+    // The record is the Human's data: remove keeps it, and keeps the lines init added to .gitignore.
     expect(existsSync(projectDbPath(project))).toBe(true);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toStartWith(humanGitignore);
   });
 
-  test("after setup on a fresh project, deletes the .mcp.json setup created and leaves no tmb hook", () => {
+  test("after init on a fresh project, deletes the .mcp.json init created and leaves no tmb hook", () => {
     const project = newGitProject();
     setUp(project);
     expect(existsSync(path.join(project, MCP_JSON))).toBe(true);

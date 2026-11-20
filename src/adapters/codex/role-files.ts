@@ -6,7 +6,9 @@ import type { SubagentRole } from "../../engine/index.ts";
 import { deleteFile } from "../common/json-file.ts";
 import { agentsDir } from "./paths.ts";
 
-const MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
+const MARKER = "# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
+// The marker builds before tmb init wrote, so their files are still recognised and replaced or removed.
+const EARLIER_MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
 const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
 
 export function roleFilePath(projectDir: string, roleName: string): string {
@@ -14,7 +16,8 @@ export function roleFilePath(projectDir: string, roleName: string): string {
 }
 
 function isTmbRoleFile(file: string): boolean {
-  return readFileSync(file, "utf8").replace(/\r\n/g, "\n").startsWith(`${MARKER}\n`);
+  const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+  return [MARKER, EARLIER_MARKER].some((marker) => text.startsWith(`${marker}\n`));
 }
 
 /**
