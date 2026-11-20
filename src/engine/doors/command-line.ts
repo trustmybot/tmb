@@ -735,7 +735,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     return 1;
   }
   const line = (stats: Awaited<ReturnType<typeof indexProject>>) =>
-    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`;
+    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved), ${stats.unresolvedImports} ${stats.unresolvedImports === 1 ? "import" : "imports"} of the repo's own code not linked to a file; parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`;
   try {
     const repos = workspaceRepos(opened.store);
     if (repos !== null) {
