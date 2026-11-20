@@ -25,11 +25,11 @@ Removing tmb from a project (`tmb remove`) undoes exactly what init added and le
 
 tmb is one program for the whole machine. Only the database and the host wiring are per project.
 
-Planned (trustmybot/tmb#89), decided by the Human on 2026-11-19:
+Decided by the Human on 2026-11-19 (trustmybot/tmb#89):
 
 - **Channels live side by side.** Each channel installs under its own name, updates only itself, and keeps its own machine-wide state. A project is run by the program that initialised it.
 - **An older tmb refuses a newer database.** It stops and says which version wrote it. That is the only refusal: a project can be moved to another channel, in either direction, whenever that channel's program can read the database.
-- **tmb's own installer and updater come first.** Install through a package manager is later (trustmybot/tmb#91).
+- **tmb's own installer and updater come first.** Install through a package manager is built, but not supported and not tested before v1.x ([Package managers](#package-managers)).
 
 ## Channels and updates
 
@@ -61,7 +61,9 @@ Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2)
 
 ## Package managers
 
-The installer scripts stay. Package managers are added beside them (trustmybot/tmb#89, Part 3).
+Built. Not supported and not tested before v1.x (trustmybot/tmb#91): the Human decided on 2026-11-19 that tmb's own installer and updater come first. In v1 the installer scripts are the only supported way to install, and no v1 release waits for, or runs, a test of a package-manager install.
+
+The installer scripts stay. Package managers are added beside them.
 
 | Where | Route | Channels |
 |---|---|---|
@@ -71,7 +73,7 @@ The installer scripts stay. Package managers are added beside them (trustmybot/t
 
 - **Who updates.** tmb keeps its own updater on every route. The cask says so with `auto_updates`, and the winget package refuses winget's own upgrade, so the package manager leaves upgrades to tmb.
 - **How a manifest is filled.** Every manifest is a template in the source repo. When a release is published, the release workflow fills in its version and the checksums from its `SHA256SUMS`, and pushes the cask to the tap and the Scoop manifest to the bucket. A release that is no longer the newest on its channel leaves them as they are. The winget manifests are kept with the workflow run, for a submission to winget's list.
-- **Until the tap and the bucket exist.** The step skips, and the release still succeeds. Planned: the Human creates the tap, the bucket and their token, and submits to winget.
+- **Until the tap and the bucket exist.** The step skips, and the release still succeeds. Planned for v1.x (trustmybot/tmb#91): the Human creates the tap, the bucket and their token, and submits to winget.
 
 A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
 

@@ -169,13 +169,13 @@ trustmybot/tmb#89, Part 2: `tmb`, `tmb-rc`, `tmb-dev` and `tmb-<version>` on one
 
 ## Package manager tests
 
-Part 3 of trustmybot/tmb#89.
+Built for trustmybot/tmb#89, Part 3. Install through a package manager is not supported and not tested before v1.x (trustmybot/tmb#91): no v1 release waits for these tests.
 
 | Layer | Test | What it proves |
 |---|---|---|
 | Unit | [test/package-managers.test.ts](../test/package-managers.test.ts) | From a release's `SHA256SUMS`, each channel gets a Homebrew cask, a Scoop manifest and three winget manifests under its own program name, with every platform's file and checksum, no placeholder left, and updates left to tmb. A missing checksum or a version that is not a release's is refused. Only the newest build on a channel counts as current. Publishing skips when the token or the repo is missing, pushes one commit, pushes nothing when the manifests are already there, and keeps the other channels' manifests. |
 
-Not automated yet: a tap install and a bucket install start. They wait for the tap and the bucket to exist.
+Not automated yet: a tap install and a bucket install start. They wait for the tap and the bucket to exist (trustmybot/tmb#91, v1.x).
 
 ## Level 9 tests
 
