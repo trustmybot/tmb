@@ -1,0 +1,47 @@
+name: Research
+description: A question to look into before anything is built
+labels: ["type/research", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Plain words are enough. You do not need to know how tmb works inside. Only the first question is required.
+  - type: textarea
+    id: question
+    attributes:
+      label: What do we want to find out?
+      description: The question, and what its answer would help decide.
+      placeholder: |
+        Does a second reviewer catch more bugs than one reviewer at higher effort?
+        The answer decides whether tmb should offer a second review.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: How could we find out?
+      description: Optional. A paper, some data or an experiment you have in mind. Leave it empty if you do not know.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: |
+        Optional. Your best guess; a maintainer corrects it, so a wrong guess is fine.
+        - Workflow: tasks, reviews, branches, or something you did was blocked.
+        - Record: what tmb remembers about the work, and its tools.
+        - Code graph: what tmb knows about your code, and its search.
+        - Roles: the planner, a worker or the reviewer did the wrong thing.
+        - Host setup: what tmb adds to your agent program, such as Claude Code.
+        - Dashboard: the dashboard page.
+        - Install and update: installing, updating or starting tmb.
+      options:
+        - Workflow
+        - Record
+        - Code graph
+        - Roles
+        - Host setup
+        - Dashboard
+        - Install and update
+    validations:
+      required: false

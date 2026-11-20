@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/trustmybot/tmb/security/advisories/new
+    about: Privately, never in an issue. Only the maintainers can see the report.

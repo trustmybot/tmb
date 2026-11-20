@@ -81,6 +81,15 @@ The installer scripts stay. Package managers are added beside them.
 
 A plugin project's records are carried over by `tmb migrate`, a one-way copy from the plugin's database that leaves it unchanged (trustmybot/tmb#17, [reference](../reference/README.md#move-a-plugin-project)).
 
+## Feedback
+
+Planned for v1.0.0 (trustmybot/tmb#122). Decided by the Human on 2026-11-20.
+
+- **The planner drafts a bug report when tmb itself breaks, and the Human says yes to each one.** Nothing is sent by itself, on any channel. The feedback program is on by default on dev and rc and asked about on stable, at the first run.
+- **A report is an issue on the source repo, from the user's own GitHub account.**
+- **A report follows the repo's bug form.** tmb reads the form as it stands on the default branch and fills in its fields, so the version, the labels and the questions are always the current ones ([contributing](../contributing/README.md#issues)).
+- **A report holds no source code, prompts or environment variables.**
+
 ## Offline
 
 The engine, the record, the code graph and the dashboard need no network. Whether the agents themselves run offline depends on the host and its models.

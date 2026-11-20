@@ -1,0 +1,118 @@
+name: Bug report
+description: tmb did something wrong. You do not need to know how tmb works inside.
+labels: ["type/bug", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Only the first four questions and one checkbox at the end are required; skip anything else you cannot answer. If you use tmb, `tmb feedback` fills this form in for you.
+  - type: input
+    id: summary
+    attributes:
+      label: What went wrong
+      description: "One sentence, in your own words. Example: tmb refused a normal git push."
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you were trying to do, what you expected, and what happened. Plain words are enough.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: tmb version
+      description: "What `tmb --version` prints. It names the channel too. Example: 1.0.0-rc.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How much this stops you from working.
+      options:
+        - Blocks all work with tmb
+        - Blocks one task, has a workaround
+        - Annoying or cosmetic
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: Optional. Copy the message you saw, exactly as it appeared.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Optional. Your operating system, and your agent program with its version (for Claude Code, `claude --version`). A report from `tmb feedback` has this filled in already.
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often
+      description: Optional. How often it happens when you try the same thing again. Tried it once? Pick Once.
+      options:
+        - Every time
+        - Sometimes
+        - Once
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: |
+        Optional. Your best guess; a maintainer corrects it, so a wrong guess is fine.
+        - Workflow: tasks, reviews, branches, or something you did was blocked.
+        - Record: what tmb remembers about the work, and its tools.
+        - Code graph: what tmb knows about your code, and its search.
+        - Roles: the planner, a worker or the reviewer did the wrong thing.
+        - Host setup: what tmb adds to your agent program, such as Claude Code.
+        - Dashboard: the dashboard page.
+        - Install and update: installing, updating or starting tmb.
+      options:
+        - Workflow
+        - Record
+        - Code graph
+        - Roles
+        - Host setup
+        - Dashboard
+        - Install and update
+    validations:
+      required: false
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Optional. What you typed or clicked, in order, as far as you remember. If you do not know how to make it happen again, say so and describe the last thing you did.
+      placeholder: |
+        1. I asked: "add a login page".
+        2. The agent worked for a while, then stopped with a message that starts with "tmb refused".
+        3. I asked again and got the same message.
+    validations:
+      required: false
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Optional. What let you keep working, if anything did.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I read this report and it contains no secrets, private code or personal paths.
+          required: true
+        - label: I searched existing issues for this error.
+          required: false
+        - label: It still happens on the newest version of my channel.
+          required: false
