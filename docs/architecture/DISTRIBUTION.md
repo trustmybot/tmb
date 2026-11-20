@@ -23,6 +23,8 @@ One step per platform. After it, two commands inside a project:
 
 Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 
+**A project follows the program's updates.** A newer tmb that opens a project's database upgrades it by itself. Planned for v1.0.0 (trustmybot/tmb#128), decided by the Human on 2026-11-20: when a session starts in a project that another version of the same program wired, tmb redoes init's wiring by itself, never in the middle of a task, and the record keeps the change. Until that is built, the files init wrote stay as they were until `tmb init` is run again.
+
 Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
 
 tmb is one program for the whole machine. Only the database and the host wiring are per project.
