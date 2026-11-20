@@ -44,11 +44,12 @@ The host starts the workers and the reviewer as its own subagents. tmb does not 
 | Step | Who |
 |---|---|
 | Decide that a task needs a worker | Planner |
-| Prepare the worktree and the brief | Engine |
-| Start the worker as a subagent | Host |
+| Prepare the task's branch, a worktree and the brief | Engine |
+| Start the worker as a subagent, in a folder of its own | Host |
 | Check that the start is allowed: the task exists, its worktree is ready, the role and effort match | Engine, asked by the adapter |
+| Make the worker's folder the task's worktree, when the worker first reads its brief | Engine |
 | Do the work, reading the brief and the code graph through tmb's tools | Worker |
-| Run the checks, record the result, close or refuse | Engine |
+| Run the checks, record the result, close or refuse, and report what changed outside the task | Engine |
 
 Why this way:
 
@@ -114,7 +115,8 @@ flowchart LR
 | tmb event | Raised when | Raised by |
 |---|---|---|
 | Session start | A host session opens in a tmb project | Host |
-| Before a file write | An agent is about to write a file | Host |
+| Before a file write | An agent is about to write a file. Used only for a host set up as the reviewer. | Host |
+| A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | Host |
 | Before an agent start | The host is about to start a subagent | Host |
 | After an agent stop | A subagent has ended | Host |
 | Before a task start | The engine is asked to start a task | Engine |
