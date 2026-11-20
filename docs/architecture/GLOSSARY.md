@@ -25,6 +25,7 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 | Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |
 | Agile mode | One review per feature branch. |
 | Truest mode | A review of every task before its push. |
+| In review | A truest task whose checks passed and whose review has not passed yet. |
 | Feature branch | A long-lived branch that collects a milestone's tasks. |
 | Issue, task, milestone | As in [WORKFLOW.md](WORKFLOW.md#units-of-work). |
 | Harness | tmb as a whole: the record, the code graph, and the workflow with the gate that enforces it, around the agents a host runs. It is not the program that runs the model; that is the host. |
