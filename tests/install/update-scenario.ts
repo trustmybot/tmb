@@ -129,8 +129,12 @@ export async function startSession(scenario: Scenario): Promise<Session> {
     stderr: () => stderr,
     end: async () => {
       scenario.sessions.delete(session);
-      await client.close();
+      // Closing stdin is the end of the session; the server then swaps a kept build in before it
+      // exits. client.close() alone kills a server still busy after 2 s, and on Windows a kill is
+      // immediate, so a slow swap (copying and checking the .exe) would be cut off: wait for it here.
+      (transport as unknown as { _process?: { stdin?: { end(): void } } })._process?.stdin?.end();
       await waitFor("the tool server to exit", () => !isRunning(pid), 30_000);
+      await client.close();
     },
   };
   scenario.sessions.add(session);
@@ -208,7 +212,7 @@ export async function updatesItself(scenario: Scenario, expected: string, log: (
   if (installedVersion(scenario) !== before) throw new Error("the update applied while a session ran");
   await second.end();
   const after = installedVersion(scenario);
-  if (after !== expected) throw new Error(`after the session ended with no task open, tmb is ${after}, expected ${expected}`);
+  if (after !== expected) throw new Error(`after the session ended with no task open, tmb is ${after}, expected ${expected}; the session printed: ${second.stderr().trim() || "nothing"}; a kept build is ${existsSync(path.join(scenario.stateDir, "staged.json")) ? "still there" : "gone"}`);
   log(`after the next session ended with no task open, tmb is ${after}`);
 
   const again = await runUpdate(scenario);

@@ -137,13 +137,18 @@ const SCHEMA_1_TO_2 = [
   "ALTER TABLE symbols ADD COLUMN named_id INTEGER",
 ];
 
-export function graphDbPath(projectDir: string): string {
-  return path.join(projectDir, PROJECT_DIR_NAME, GRAPH_FILE_NAME);
+/** In a workspace, each repo's graph lives in this folder of the shared record folder, by the repo's name. */
+export const REPO_GRAPHS_DIR = "graphs";
+
+/** The graph file of the project folder (repo null), or of one repo of a workspace. */
+export function graphDbPath(projectDir: string, repo: string | null = null): string {
+  if (repo === null) return path.join(projectDir, PROJECT_DIR_NAME, GRAPH_FILE_NAME);
+  return `${path.join(projectDir, PROJECT_DIR_NAME, REPO_GRAPHS_DIR, ...repo.split("/"))}.db`;
 }
 
-/** Opens the project's graph file, making it and its tables when missing. Refuses one a newer tmb made. */
-export function openGraphDb(projectDir: string): Database {
-  const file = graphDbPath(projectDir);
+/** Opens a graph file, the project's or a repo's, making it and its tables when missing. Refuses one a newer tmb made. */
+export function openGraphDb(projectDir: string, repo: string | null = null): Database {
+  const file = graphDbPath(projectDir, repo);
   mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file, { create: true, strict: true });
   try {

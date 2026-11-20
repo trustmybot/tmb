@@ -1,10 +1,12 @@
 // The record commands of the command line: the Human's way into the record. Each command
 // calls the same operation an agent's tool call does, acting as the Human.
+import { repoOfRow, workingRepos, workspaceRepos } from "../repos.ts";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
   type FeatureBrief,
   type FeaturePrResult,
   type FeatureSummary,
+  type FeatureUpdateResult,
   type GraphAnswer,
   HandlerError,
   type IssueDetail,
@@ -18,6 +20,7 @@ import {
   type TaskPrResult,
   type TaskStartResult,
   type TaskSummary,
+  type TaskDropResult,
   type TaskWaiveResult,
   type WaiveResult,
 } from "../handlers/index.ts";
@@ -51,7 +54,11 @@ ${JSON_NOTE}`,
 ${JSON_NOTE}`,
   history: `  tmb history <id>          Show every recorded change to an issue or note
 ${JSON_NOTE}`,
-  feature: `  tmb feature start <name>  Cut a feature branch from the base branch and record it
+  feature: `  tmb feature start <name> [--repo <name>]
+                            Cut a feature branch from the base branch and record it; in a
+                            workspace of several repos, --repo names the repo it is cut in
+  tmb feature update <name> Bring the base branch into the feature branch with a merge commit,
+                            fetched from origin first; a conflict changes nothing and names the files
   tmb feature list          List the feature branches with their base, state and tasks
   tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
   tmb feature waive <name> --reason <text>
@@ -60,16 +67,21 @@ ${JSON_NOTE}`,
                             Open the feature branch's pull request into the base branch, once
                             the reviewer passed its tip or the Human waived the review
 ${JSON_NOTE}`,
-  task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] --intent <text> --file <path>...
-                 --criterion <text>... [--check <command>]...
+  task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] [--repo <name>] --intent <text>
+                 --file <path>... --criterion <text>... [--check <command>]... [--replaces <id>]
                             Start a task: cut its branch and worktree from the feature
-                            branch and record its spec
-  tmb task list [--state open|in_review|closed|all]
-                            List the open tasks, or those in review, the closed ones or all
+                            branch and record its spec; --replaces names the dropped task
+                            it takes over from
+  tmb task list [--state open|in_review|closed|dropped|all]
+                            List the open tasks, or those in review, the closed ones, the
+                            dropped ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
   tmb task close <id>       Run the checks on the task's commit; when all pass, close it,
                             fold it into its feature branch and push that to origin
                             (in truest mode: put it in review at that commit)
+  tmb task drop <id> --reason <text>
+                            Drop a task whose approach is wrong or that nobody will finish;
+                            its worktree goes unless it holds uncommitted work
   tmb task waive <id> --reason <text>
                             Waive the review of a truest task at its commit (the Human only)
   tmb task pr <id> --title <text> [--body <text>]
@@ -92,8 +104,8 @@ ${JSON_NOTE}`,
 /** The actions of the record commands that take one, in the order the help lists them. */
 export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> = {
   issue: ["create", "list", "show", "close", "reopen"],
-  feature: ["start", "list", "brief", "waive", "pr"],
-  task: ["start", "list", "brief", "close", "waive", "pr"],
+  feature: ["start", "update", "list", "brief", "waive", "pr"],
+  task: ["start", "list", "brief", "close", "drop", "waive", "pr"],
   graph: ["map", "find", "symbol", "scope", "concepts"],
 };
 
@@ -248,6 +260,7 @@ function briefLines(brief: TaskBrief): string[] {
   return [
     `Task ${brief.id}  ${brief.state}  on issue ${brief.issueId}`,
     `Kind: ${brief.kind ?? "(not recorded)"}`,
+    ...(brief.repo ? [`Repo: ${brief.repo}`] : []),
     `Feature branch: ${brief.feature ?? "(none)"}`,
     `Branch: ${brief.branch ?? "(none)"}`,
     `Worktree: ${brief.worktree ?? "(none)"}`,
@@ -255,6 +268,9 @@ function briefLines(brief: TaskBrief): string[] {
     ...(brief.reviewMode ? [`Review mode: ${brief.reviewMode}`] : []),
     ...(brief.push ? [`Push: ${brief.push.result}, ${brief.push.detail}`] : []),
     ...(brief.review ? truestReviewLines(brief) : []),
+    ...(brief.dropReason === null ? [] : [`Dropped: ${brief.dropReason}`]),
+    ...(brief.replaces === null ? [] : [`Replaces task: ${brief.replaces}`]),
+    ...(brief.replacedBy.length === 0 ? [] : [`Replaced by: ${brief.replacedBy.join(", ")}`]),
     "",
     brief.spec.intent.trimEnd(),
     "",
@@ -272,12 +288,15 @@ function briefLines(brief: TaskBrief): string[] {
 function taskLine(task: TaskSummary, withState: boolean): string {
   const state = withState ? `  ${task.state.padEnd(6)}` : "";
   const commit = task.commitSha ? `\n  closed at: ${task.commitSha}` : "";
-  return `${task.id}${state}  ${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
+  const dropped = task.dropReason === null ? "" : `\n  dropped: ${task.dropReason}`;
+  const replaces = task.replaces === null ? "" : `\n  replaces: ${task.replaces}`;
+  const repo = task.repo ? `${task.repo}  ` : "";
+  return `${task.id}${state}  ${repo}${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}${dropped}${replaces}`;
 }
 
 /** The open list keeps its plain form; a list that may mix states shows each task's state. */
 function formatTasks(state: string | undefined) {
-  const which = state === undefined || state === "open" ? "open " : state === "closed" ? "closed " : "";
+  const which = state === undefined || state === "open" ? "open " : state === "closed" || state === "dropped" ? `${state} ` : "";
   return (tasks: TaskSummary[]) =>
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
@@ -296,7 +315,8 @@ function formatClose({ brief, checks, fold, push, cleanupProblems, cleanedUp, ne
 
 function featureLine(feature: FeatureSummary): string {
   const tasks = feature.tasks.length === 0 ? "no tasks" : `tasks: ${feature.tasks.join(", ")}`;
-  return `${feature.name}  ${feature.state.padEnd(6)}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
+  const repo = feature.repo ? ` in ${feature.repo}` : "";
+  return `${feature.name}  ${feature.state.padEnd(6)}${repo}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
 }
 
 function featureBriefLines(brief: FeatureBrief): string[] {
@@ -304,6 +324,7 @@ function featureBriefLines(brief: FeatureBrief): string[] {
   return [
     `Feature branch ${brief.name}  ${brief.state}  into ${brief.baseBranch}`,
     `Tip: ${brief.tip}  (review the diff from ${brief.mergeBase})`,
+    `Holds the base: ${brief.base === null ? "unknown: git cannot read the base branch" : brief.holdsBase ? `yes, ${brief.baseBranch} at ${brief.base}` : `no, ${brief.baseBranch} is at ${brief.base}; bring it in with feature_update before the review`}`,
     `Covered at the tip: ${cover}`,
     ...(brief.prUrl === null ? [] : [`Pull request: ${brief.prUrl}`]),
     "Task groups:",
@@ -324,9 +345,21 @@ function featureRequest(args: string[]): Request {
   const [action, ...rest] = args;
   switch (action) {
     case "start": {
+      const { values, positionals } = parse(rest, { repo: { type: "string" } });
+      const format = (feature: FeatureSummary) =>
+        `Started feature branch ${feature.name}${feature.repo ? ` in ${feature.repo}` : ""} from ${feature.baseBranch} at ${feature.baseCommit}.`;
+      const input = { name: only(positionals, "feature branch name"), ...(values.repo === undefined ? {} : { repo: values.repo }) };
+      return { operation: "feature_start", input, json: values.json === true, format };
+    }
+    case "update": {
       const { values, positionals } = parse(rest, {});
-      const format = (feature: FeatureSummary) => `Started feature branch ${feature.name} from ${feature.baseBranch} at ${feature.baseCommit}.`;
-      return { operation: "feature_start", input: { name: only(positionals, "feature branch name") }, json: values.json === true, format };
+      const format = (update: FeatureUpdateResult) => {
+        if (update.how === "none") return `${update.feature} already holds ${update.baseBranch} at ${update.base}; nothing changed.`;
+        const how = update.how === "merged" ? `merged into it at ${update.to}` : `fast-forwarded to it`;
+        const push = update.push === null ? "" : ` Backup push: ${update.push.result} (${update.push.detail}).`;
+        return `Brought ${update.baseBranch} at ${update.base} into ${update.feature}: ${how}.${push}`;
+      };
+      return { operation: "feature_update", input: { feature: only(positionals, "feature branch name") }, json: values.json === true, format };
     }
     case "list": {
       const { values, positionals } = parse(rest, {});
@@ -372,15 +405,19 @@ function taskRequest(args: string[]): Request {
         file: { type: "string", multiple: true },
         criterion: { type: "string", multiple: true },
         check: { type: "string", multiple: true },
+        repo: { type: "string" },
+        replaces: { type: "string" },
       });
       const input = {
         issue_id: only(positionals, "issue id"),
         kind: values.kind,
         feature: values.feature,
+        repo: values.repo,
         intent: values.intent,
         files: values.file ?? [],
         criteria: values.criterion ?? [],
         checks: values.check,
+        ...(values.replaces === undefined ? {} : { replaces: values.replaces }),
       };
       const format = (started: TaskStartResult) => {
         const shared = started.sharedFiles.map((s) => `  - ${s.file} with ${s.theirs} of open task ${s.task} (${s.title})`);
@@ -402,6 +439,18 @@ function taskRequest(args: string[]): Request {
     case "close": {
       const { values, positionals } = parse(rest, {});
       return { operation: "task_close", input: { id: only(positionals, "task id") }, json: values.json === true, format: formatClose };
+    }
+    case "drop": {
+      const { values, positionals } = parse(rest, { reason: { type: "string" } });
+      if (values.reason === undefined) throw new UsageError("task drop needs --reason <text>: why the task is dropped");
+      const format = (dropped: TaskDropResult) =>
+        [
+          `Dropped task ${dropped.brief.id}: ${dropped.brief.dropReason}`,
+          ...dropped.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+          ...dropped.cleanedUp,
+          ...(dropped.keptBranch === null ? [] : [`Kept: ${dropped.keptBranch}`]),
+        ].join("\n");
+      return { operation: "task_drop", input: { id: only(positionals, "task id"), reason: values.reason }, json: values.json === true, format };
     }
     case "waive": {
       const { values, positionals } = parse(rest, { reason: { type: "string" } });
@@ -650,15 +699,19 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
   }
   try {
     const settings = readSettings(opened.store);
-    output.out(json ? JSON.stringify(settings, null, 2) : settingLines(settings).join("\n"));
+    // A single-repo project has no repos, and prints its settings as it always has.
+    const { repos, ...rest } = settings;
+    const printed = repos === null ? rest : settings;
+    output.out(json ? JSON.stringify(printed, null, 2) : settingLines(settings).join("\n"));
     return 0;
   } finally {
     opened.store.close();
   }
 }
 
-export const INDEX_USAGE = `  tmb index [--rebuild]     Index the base branch into the code graph now; reads keep it
-                            current on their own. --rebuild reparses every file`;
+export const INDEX_USAGE = `  tmb index [--rebuild]     Index the base branch into the code graph now, or in a workspace
+                            each repo's; reads keep it current on their own. --rebuild
+                            reparses every file`;
 
 /** Indexes the project's base branch, as `tmb index` does; resolves to the exit code. */
 export async function runIndexCommand(args: string[], projectDir: string, output: Output): Promise<number> {
@@ -681,13 +734,32 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     );
     return 1;
   }
+  const line = (stats: Awaited<ReturnType<typeof indexProject>>) =>
+    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`;
   try {
+    const repos = workspaceRepos(opened.store);
+    if (repos !== null) {
+      // Each repo is indexed on its own; one that cannot be indexed yet says why, and the run goes on.
+      const all: unknown[] = [];
+      let failed = false;
+      for (const name of workingRepos(repos)) {
+        try {
+          const stats = await indexProject(projectDir, opened.store, { rebuild, repo: repoOfRow(opened.store, projectDir, { repo: name }) });
+          all.push(stats);
+          if (!json) output.out(line(stats));
+        } catch (error) {
+          if (!(error instanceof HandlerError)) throw error;
+          failed = true;
+          all.push({ repo: name, error: error.message });
+          if (!json) output.err(`tmb index: ${name}: ${error.message}`);
+        }
+      }
+      if (json) output.out(JSON.stringify(all, null, 2));
+      else if (all.length === 0) output.out("This workspace has no repo tmb works in; `tmb init` finds its repos.");
+      return failed ? 1 : 0;
+    }
     const stats = await indexProject(projectDir, opened.store, { rebuild });
-    output.out(
-      json
-        ? JSON.stringify(stats, null, 2)
-        : `Indexed ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`,
-    );
+    output.out(json ? JSON.stringify(stats, null, 2) : line(stats));
     return 0;
   } catch (error) {
     if (!(error instanceof HandlerError)) throw error;

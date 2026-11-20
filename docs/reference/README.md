@@ -73,12 +73,12 @@ On a terminal, init first asks one question: the review mode, with what each mod
 | Command | Does | Asks questions |
 |---|---|---|
 | `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | One, on a terminal: the review mode |
-| `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks. Run it again at any time. | Yes |
+| `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks; in a workspace, each repo's base branch and checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
 ### init
 
-`tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
+`tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With only Codex installed it sets Codex up and warns that Codex is not supported yet. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
 
 It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
 
@@ -102,6 +102,18 @@ On a terminal it asks for the review mode before those lines, unless one is stor
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
 - The review mode has no default. Without a terminal it is set only by `--review-mode`, also when `--yes` is given; otherwise it stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
+
+### One repo or a workspace of several
+
+When the folder you run `tmb init` in is a git work tree, or inside one, the project is one repo, the folder itself, named `.`. When it is in no git work tree and holds no git repo below it, init runs `git init` in it and says so. It does so after it has written its own files, so the first run adds no lines to `.gitignore`: run `tmb init` a second time, or `.tmb/` is not ignored (trustmybot/tmb#180). When it is not a git work tree but holds git repos, tmb sets it up as a workspace: its repos share one record in that folder ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)). init then also:
+
+- Finds the repos up to two folders down and stores them in the `repos` setting, each with the base branch its own git points at and the checks found in it. It records each top-level folder that is not a repo as `{"git": false}`, and leaves it alone. It prints a line for each repo or folder it added, with where a base branch came from, and for each one it dropped because it is gone. A repo's policy set before is kept.
+- Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each.
+- Indexes each repo's code graph from its own base branch.
+
+`tmb onboard --repo <name>` sets one repo: `--base <branch>` and `--check <command>` set its base branch and checks, and `--exempt` makes tmb do no work in it. With one repo tmb works in, `--repo` may be left out. On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. The planner sets the same with `settings_set` and `repos`; a repo it names keeps no part of its old policy, and repos it does not name keep theirs.
+
+In a workspace, `base_branch` and `checks` are not used: each repo has its own in `repos`, and `settings_set` refuses them. `tmb feature start <name> --repo <name>` and `tmb task start ... --repo <name>` name the repo; with several repos, one that names none is refused with the list.
 
 ### Onboarding by itself
 
@@ -127,15 +139,16 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
 
 - Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
-- Adds three hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
-  - A SessionStart hook runs `tmb hook session-start`, which starts each session with the planner role and the open work from the record.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file or starts a subagent. tmb does not read shell commands; git's pre-push hook checks every push.
+- Adds four hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
+  - A SessionStart hook runs `tmb hook session-start`, which starts each session with the role this host was set up with, the planner unless you chose the reviewer, and the open work from the record.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb does not read shell commands; git's pre-push hook checks every push.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
+  - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
-- In a git work tree, writes git's pre-push hook, so every push asks tmb first. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
-- Indexes the code graph of the base branch, once it has a commit.
+- In a git work tree, writes git's pre-push hook, so every push asks tmb first; in a workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
+- Indexes the code graph of the base branch, once it has a commit; in a workspace, each repo's from its own base branch.
 
 Running init or onboard again with the same answers changes no file and records nothing.
 
@@ -211,19 +224,28 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb note <issue-id> <text> [--decision]` | Add a note, or a decision with `--decision` |
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
-| `tmb config` | Show the project's settings: host, base branch, review mode and checks, one per line. In a project where `tmb init` has not run, it says so. |
-| `tmb feature start <name>` | Start a feature branch: tmb cuts it from the latest commit of the base branch, without checking it out anywhere, and records it. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project with no base branch set. |
+| `tmb config` | Show the project's settings: host, each host's role, base branch, review mode, checks and, in a workspace, the repos, one per line. In a project where `tmb init` has not run, it says so. |
+| `tmb feature start <name>` | Start a feature branch: tmb cuts it from the latest commit of the base branch, without checking it out anywhere, and records it. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project with no base branch set. In truest mode it is refused: a task there is cut from the base branch. In a workspace, `--repo <name>` names the repo. |
 | `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks |
-| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. It also refuses when no base branch is set, or when a file overlaps one held by another open task. |
-| `tmb task list [--state open\|closed\|all]` | List the open tasks, or the closed ones, each with the commit it closed at, or all |
+| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. It also refuses when no base branch is set or no review mode is chosen. When a file is also in another open task's spec, the task still starts and tmb names the tasks that share it. In truest mode the task is cut from the base branch and `--feature` is refused. In a workspace, `--repo <name>` names the repo. |
+| `tmb task list [--state open\|in_review\|closed\|all]` | List the open tasks, or those in review, or the closed ones, each with the commit it closed at, or all |
 | `tmb task brief <id>` | Show a task's kind, feature branch, spec, branch, worktree and the checks that run when it closes |
-| `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin` |
+| `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin`. In truest mode the task is not folded: it goes into review at that commit. |
+| `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
+| `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only. |
+| `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review |
+| `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules below for a closed task; its branch is kept while it holds commits, and tmb names it and the command that deletes it. `tmb task start --replaces <id>` starts the task that takes up a dropped task's work another way, and is refused for a task that is not dropped. `tmb task list --state dropped` lists the dropped tasks. |
+| `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only. |
+| `tmb task pr <id> --title <text> [--body <text>]` | Open a truest task's pull request into the base branch, once the reviewer passed it or you waived the review |
+| `tmb graph map\|find\|symbol\|scope\|concepts` | Look things up in the code graph: the project's files with their summaries, where a name lives, what calls it, a draft of a task's files, and the recorded concepts. `--task <id>` reads as that open task sees the code. |
+| `tmb index [--rebuild]` | Bring the code graph up to date, or build it again from nothing |
+| `tmb dashboard [--port <n>] [--project <dir>]` | Open the dashboard, a local web page over the record |
 
 Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
 
 A task closes only when its worktree has no uncommitted changes and has at least one commit past the point it was cut from. tmb then runs the project's checks, followed by the task's own, one after another in the worktree. Each check gets 10 minutes. Every run is recorded with its start, its end, each command's exit code and the end of its output. If a check fails, the task stays open, and tmb names the command and shows the end of its output. A task with no checks at all never closes.
 
-When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode `agile` and the commit it folded. tmb then removes the task's worktree and branch, unless files are left in the worktree (see below), and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
+When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode it was started in and the commit it folded. tmb then removes the task's worktree and branch, unless files are left in the worktree (see below), and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
 
 What tmb does with a closed task's worktree depends on what is left in it (trustmybot/tmb#132):
 
@@ -242,15 +264,16 @@ What tmb does with a closed task's worktree depends on what is left in it (trust
 
 ## Move a plugin project
 
-A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can bring its records over. In the project's folder:
+A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can bring its records over. In the project's folder, init first, then migrate:
 
 ```sh
+tmb init
 tmb migrate
 ```
 
-tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into this project's new record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
+tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into the new record `tmb init` made for this project, and names that record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
 
-The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. Run `tmb init` afterwards if you have not.
+The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. It also refuses before `tmb init` has made the project's record, and a record in a folder above a repo that the record does not serve, naming that record; it never creates a record itself.
 
 ## Remove
 
@@ -260,7 +283,7 @@ tmb remove
 
 It removes only what `tmb init` added:
 
-- The three hooks, keeping your own hooks and settings.
+- The four hooks, keeping your own hooks and settings.
 - The agent files tmb wrote in `.claude/agents/`, keeping any you wrote.
 - The tool server's entry and its enabled line.
 - `.mcp.json` itself, only if init created that file and nothing else is left in it.

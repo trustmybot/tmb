@@ -8,7 +8,7 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 |---|---|---|
 | Code graph | World model | The common name for an index of symbols and their links. |
 | Index (`tmb index`) | Scan | What building a code graph is usually called. |
-| Init (`tmb init`) | The first half of onboard | The word git, npm and cargo use for preparing a folder. It asks nothing. |
+| Init (`tmb init`) | The first half of onboard | The word git, npm and cargo use for preparing a folder. Planned: it asks nothing (trustmybot/tmb#162). |
 | Onboard (`tmb onboard`) | Onboard | Kept from the plugin, for tmb's settings only. The planner also onboards a project by itself at the first session with empty settings. |
 | Planner | bro, as a role | Says what the role does. bro stays as the planner's name in conversation. |
 | Worker | swe | Says what the role does, for any kind of task. |
@@ -35,4 +35,10 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 
 ## Not carried over
 
-Lane, roundtable, cheatcode, headless shim, sandbox setup, research switch.
+Lane, roundtable, headless shim, sandbox setup, research switch.
+
+## Coming back
+
+| Word | Meaning |
+|---|---|
+| Cheatcode | Planned for v2 (trustmybot/tmb#112), decided by the Human on 2026-11-20. In the plugin, a published skill, tool server or plugin that bro found, vetted and installed for one agent after the Human's yes. In tmb the name stays and the scope grows: a skill is given to a role once, for every host in that role. |
