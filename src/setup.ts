@@ -267,7 +267,7 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void, r
   try {
     const stats = await indexProject(projectDir, opened.store, { rebuild: false, repo });
     const what = repo?.name ? `of ${repo.name} from ${stats.baseBranch}` : `of ${stats.baseBranch}`;
-    out(`Indexed the code graph ${what} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
+    out(`Indexed the code graph ${what} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`);
   } catch (error) {
     // The settings are stored by now, and every lookup indexes the graph itself, so a failed index never fails the run.
     const message = error instanceof Error ? error.message : String(error);

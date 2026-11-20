@@ -3,7 +3,7 @@
 // per blob: a later commit reparses only the files it changed.
 import type { Database } from "bun:sqlite";
 import { basename, posix } from "node:path";
-import { type Extraction, extractFile, inSymbolScope, languageOf, needsParser, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { type Extraction, extractFile, inSymbolScope, languageOf, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
@@ -13,11 +13,27 @@ import { laneOf } from "./test-paths.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 1;
+export const EXTRACTOR_VERSION = 2;
 const MAX_PARSE_BYTES = 1_000_000;
 const MAX_ERROR_CHARS = 200;
 
-export type BuildStats = { layer: string; commit: string; files: number; parsed: number; reused: number; symbols: number; edges: number; unresolved: number };
+export type BuildStats = {
+  layer: string;
+  commit: string;
+  files: number;
+  parsed: number;
+  reused: number;
+  symbols: number;
+  edges: number;
+  unresolved: number;
+  /** Functions and methods, unnamed ones included. */
+  functions: number;
+  /** Files in a language tmb parses that could not be parsed; each is in the graph with its reason. */
+  notParsed: number;
+};
+
+/** The symbol kinds that are functions. */
+export const FUNCTION_KINDS: ReadonlySet<string> = new Set(["function", "method", "sh_function"]);
 
 type FilePlan = {
   entry: TreeEntry;
@@ -43,7 +59,7 @@ function cachedParse(db: Database, blob: string, lang: string): { extraction: Ex
 
 function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text: string): { extraction: Extraction | null; error: string | null } {
   try {
-    const { symbols, edges } = extractFile(needsParser(lang) ? parsers : null, entry.path, lang, text);
+    const { symbols, edges } = extractFile(parsers, entry.path, lang, text);
     return { extraction: { symbols, edges }, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -78,14 +94,19 @@ async function planCommit(
     if (wantsText) needText.push(entry.blob);
   }
   const texts = readBlobs(repoDir, needText);
-  const parsers = await loadParsers();
-  let parsed = 0;
-  const cache = db.prepare("INSERT OR REPLACE INTO parsed (blob, lang, extractor, extraction, error) VALUES (?, ?, ?, ?, ?)");
   for (const plan of plans) {
     const text = texts.get(plan.entry.blob) ?? null;
     if (plan.lang === null && text !== null && byExtension.get(plan.entry.path) === null) {
       plan.lang = languageOf(plan.entry.path, () => text.slice(0, 120));
     }
+  }
+  // Only the grammars of the files this commit parses anew are loaded (trustmybot/tmb#157).
+  const toParse = plans.filter((p) => p.lang !== null && p.extraction === null && p.error === null && p.entry.size <= MAX_PARSE_BYTES);
+  const parsers = await loadParsers(toParse.map((p) => p.lang as SourceLanguage));
+  let parsed = 0;
+  const cache = db.prepare("INSERT OR REPLACE INTO parsed (blob, lang, extractor, extraction, error) VALUES (?, ?, ?, ?, ?)");
+  for (const plan of plans) {
+    const text = texts.get(plan.entry.blob) ?? null;
     if (plan.lang !== null && plan.extraction === null && plan.error === null) {
       if (plan.entry.size > MAX_PARSE_BYTES) {
         plan.error = `larger than ${MAX_PARSE_BYTES} bytes; not parsed`;
@@ -133,7 +154,7 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
   type Pending = { file: string; symbolIndex: number; edge: Extraction["edges"][number] };
   const candidates: Candidate[] = [];
   const pending: Pending[] = [];
-  const symbolRows: { file: string; s: Extraction["symbols"][number] }[] = [];
+  const symbolRows: { file: string; s: Extraction["symbols"][number]; offset: number }[] = [];
   for (const plan of plans) {
     const file = plan.entry.path;
     const source = plan.summary === "" ? "none" : plan.extraction ? "header" : "heading";
@@ -142,24 +163,56 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
     if (!plan.extraction) continue;
     const offset = symbolRows.length;
     for (const s of plan.extraction.symbols) {
-      candidates.push({ id: symbolRows.length, path: file, kind: s.kind, qualified_name: s.qualified_name });
-      symbolRows.push({ file, s });
+      // An unnamed function is no reference's target: nothing names it.
+      if (s.unnamed !== 1) {
+        const parent = s.reach === "nested" && s.parent !== undefined ? plan.extraction.symbols[s.parent] : undefined;
+        candidates.push({
+          id: symbolRows.length,
+          path: file,
+          kind: s.kind,
+          qualified_name: s.qualified_name,
+          ...(s.reach ? { reach: s.reach } : {}),
+          ...(parent ? { within: [parent.start_line, parent.end_line] as [number, number] } : {}),
+        });
+      }
+      symbolRows.push({ file, s, offset });
     }
     for (const edge of plan.extraction.edges) pending.push({ file, symbolIndex: offset + edge.src, edge });
   }
 
   const insertSymbol = db.prepare(
-    "INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, start_line, end_line, exported) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, start_line, end_line, exported, parent_id, unnamed, named_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const insertSymbolFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, ?)");
-  const ids = symbolRows.map(({ file, s }) => {
+  // A symbol's container and owner come before it in its file's list, so their ids are known.
+  const ids: number[] = [];
+  let functions = 0;
+  for (const { file, s, offset } of symbolRows) {
+    const parentId = s.parent === undefined ? null : ids[offset + s.parent]!;
+    const namedId = s.unnamed === 1 && s.owner !== undefined ? ids[offset + s.owner]! : null;
     const id = Number(
-      insertSymbol.run(layer, file, s.kind, s.qualified_name, shortName(s.kind, s.qualified_name), s.signature, s.doc, s.start_line, s.end_line, s.exported)
-        .lastInsertRowid,
+      insertSymbol.run(
+        layer,
+        file,
+        s.kind,
+        s.qualified_name,
+        shortName(s.kind, s.qualified_name),
+        s.signature,
+        s.doc,
+        s.start_line,
+        s.end_line,
+        s.exported,
+        parentId,
+        s.unnamed === 1 ? 1 : 0,
+        namedId,
+      ).lastInsertRowid,
     );
-    insertSymbolFts.run(id, layer, symbolTerms(s.kind, s.qualified_name, file), s.doc);
-    return id;
-  });
+    // Unnamed functions stay out of search by name and by meaning.
+    if (s.unnamed !== 1) insertSymbolFts.run(id, layer, symbolTerms(s.kind, s.qualified_name, file), s.doc);
+    if (FUNCTION_KINDS.has(s.kind)) functions++;
+    ids.push(id);
+  }
+  const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
   const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })));
   const insertEdge = db.prepare("INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
@@ -169,8 +222,8 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
     insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint);
   }
-  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved };
-  db.run("INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved, functions, notParsed };
+  db.run("INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, functions, not_parsed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
     layer,
     commit,
     EXTRACTOR_VERSION,
@@ -179,6 +232,8 @@ function applyLayer(db: Database, layer: string, commit: string, plans: FilePlan
     stats.symbols,
     stats.edges,
     stats.unresolved,
+    stats.functions,
+    stats.notParsed,
   ]);
   return stats;
 }
@@ -194,7 +249,16 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
       // Another process may have applied this very commit while this one parsed: keep its layer.
       const current = layerRow(db, layer);
       if (options.force !== true && current !== null && current.commit_sha === commit && current.extractor === EXTRACTOR_VERSION) {
-        return { layer, commit, files: current.files, symbols: current.symbols, edges: current.edges, unresolved: current.unresolved };
+        return {
+          layer,
+          commit,
+          files: current.files,
+          symbols: current.symbols,
+          edges: current.edges,
+          unresolved: current.unresolved,
+          functions: current.functions,
+          notParsed: current.not_parsed,
+        };
       }
       const applied = applyLayer(db, layer, commit, plans, readmeByDir);
       if (layer === BASE_LAYER) recheckConcepts(db, commit);
