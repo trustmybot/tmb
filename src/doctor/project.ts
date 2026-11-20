@@ -13,7 +13,7 @@ import { keptCheckouts, removeTaskCheckout } from "../engine/handlers/fold.ts";
 import { emptySettings } from "../engine/handlers/settings.ts";
 import { tiedProgram } from "../engine/program-tie.ts";
 import { PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "../engine/project.ts";
-import { pushGateGaps } from "../engine/push-gate.ts";
+import { addToForeignHook, FOREIGN_GAP, foreignHooks, pushGateGaps } from "../engine/push-gate.ts";
 import { repoDirOf, workingRepos } from "../engine/repos.ts";
 import { readSettings, type Settings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, SHAPE_WRITER_KEY, Store, type Task } from "../engine/store/index.ts";
@@ -185,10 +185,27 @@ function hostFilesChecks(env: DoctorEnv, projectDir: string, state: { store: Sto
         : finding("host files", { status: "warn", summary: `${adapter.name}'s files differ from what this tmb wires`, details: gaps, fix: { say: `\`${init} --host ${id}\`` } }),
     );
   }
-  const gate = pushGateGaps(projectDir, settings.repos, command);
+  // A hook that is another tool's takes tmb's one line, with the Human's yes; any other gap is init's to mend (trustmybot/tmb#184).
+  const foreign = foreignHooks(projectDir, settings.repos);
+  const gate = pushGateGaps(projectDir, settings.repos, command).filter((gap) => !foreign.some((hook) => gap.startsWith(`${FOREIGN_GAP} ${hook.file} `)));
+  if (foreign.length > 0) {
+    const program = tiedProgram(state.store)?.program ?? env.program.name;
+    findings.push(
+      finding("host files", {
+        status: "warn",
+        summary: "the push gate is off where git's pre-push hook is another tool's",
+        details: foreign.map((hook) => `${hook.dir}: its hook ${hook.file} is not tmb's and does not run the push gate`),
+        fix: {
+          say: `\`${env.program.name} onboard --add-push-gate\`, which adds tmb's one line to each such hook`,
+          ask: `Add tmb's one line to ${foreign.map((hook) => hook.file).join(", ")}, so every push there asks tmb first?`,
+          apply: () => foreign.map((hook) => addToForeignHook(hook, program, projectDir)).join(" "),
+        },
+      }),
+    );
+  }
   findings.push(
     gate.length === 0
-      ? finding("host files", { status: "ok", summary: "git's pre-push hook runs the push gate" })
+      ? finding("host files", { status: "ok", summary: foreign.length === 0 ? "git's pre-push hook runs the push gate" : "every pre-push hook tmb wrote runs the push gate" })
       : finding("host files", { status: "warn", summary: "git's pre-push hook does not run the push gate everywhere it should", details: gate, fix: { say: `\`${init}\`` } }),
   );
   return findings;
