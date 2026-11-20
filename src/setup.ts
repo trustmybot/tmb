@@ -28,6 +28,7 @@ import {
 import { indexProject } from "./engine/graph/fresh.ts";
 import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
+import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
 import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
 import { version as packageVersion } from "./version.ts";
@@ -350,6 +351,23 @@ export async function runOnboard(options: SetupOptions): Promise<void> {
   const onboarded = await onboardProject(options);
   printSettings(projectDir, onboarded.recorded, out);
   sayNoBase(onboarded.base, out);
+  sayMarkRule(projectDir, onboarded.base, out);
+}
+
+/** Whether the base branch's protection requires tmb's mark on GitHub, and how to turn it on; nothing when origin is no GitHub repository. */
+function sayMarkRule(projectDir: string, base: string | null, out: (line: string) => void): void {
+  if (base === null) return;
+  const answer = requiredMarkOn(projectDir, base);
+  if (answer === null) return;
+  if ("unknown" in answer) {
+    out(`tmb could not tell whether branch protection on ${base} requires ${MARK_CONTEXT}: ${answer.unknown}`);
+    return;
+  }
+  if (answer.required) {
+    out(`Branch protection on ${base} requires ${MARK_CONTEXT}, the mark tmb sets on GitHub on each commit it reviewed.`);
+    return;
+  }
+  out(`${requireMarkHowTo(base)} GitHub offers this rule on a private repository only on its paid plans.`);
 }
 
 /** Asks on the process's terminal, one line per question. */
