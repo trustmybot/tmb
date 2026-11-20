@@ -277,7 +277,7 @@ export function featureUpdate(store: Store, actor: Actor, input: unknown, contex
     undo();
     throw error;
   }
-  return result(to, how, pushFeature(dir, feature.name));
+  return result(to, how, pushFeature(dir, feature.name, actor));
 }
 
 // --- feature_list -------------------------------------------------------------------------
