@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe("settings in the record", () => {
   test("start unset", () => {
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, repos: null });
   });
 
   test("each set is one audit entry by the actor, and the current value is the newest", () => {
@@ -33,7 +33,7 @@ describe("settings in the record", () => {
     expect(writeSetting(store, HUMAN, "checks", ["bun run lint", "bun test"])).toBe(true);
     expect(writeSetting(store, HUMAN, "base_branch", "develop")).toBe(true);
 
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"] });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], repos: null });
     const audit = store.listAudit();
     expect(audit).toHaveLength(3);
     expect(audit.every((entry) => entry.createdBy.kind === "human")).toBe(true);
@@ -95,14 +95,14 @@ describe("validation", () => {
 
 describe("settingLines", () => {
   test("shows one line per setting, quoting each check and naming what is unset", () => {
-    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."] })).toEqual([
+    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], repos: null })).toEqual([
       "host: host-a",
       "host roles: host-a planner, host-b reviewer",
       "base branch: main",
       "review mode: agile",
       'checks: "bun run lint", "go test ./..."',
     ]);
-    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [] })).toEqual([
+    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], repos: null })).toEqual([
       "host: (not set)",
       "host roles: (not set)",
       "base branch: (not set)",

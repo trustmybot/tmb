@@ -125,6 +125,39 @@ A gate denies when it cannot read the record, and allows in a project tmb has ne
 
 The engine, not an agent, creates branches and worktrees, runs checks, folds a task into its feature branch, pushes and opens pull requests. Agents ask for these through the engine's tools, so every step is recorded and no agent needs to be trusted to follow a git procedure.
 
-## Carried over from the plugin
+## One record, one or several repos
 
-The plugin's design for retry and escalation, pull request comment triage and multi-repo workspaces is carried over unchanged in intent. Each gets its section here when its level starts.
+(trustmybot/tmb#163) tmb supports a project of one repo and a workspace of several under one model: a project is a set of repos sharing one record, and every step finds the repo it works in by the same rules. A project folder that is a git work tree, or inside one, is a project of one repo: the folder itself, named `.`, whose policy is the `base_branch` and `checks` settings. It works as before, even when it holds nested repos. A project folder that is not a git work tree is a workspace, such as a product's engine, its plugin and its Homebrew tap side by side. tmb runs from the workspace folder, and its repos share one record there.
+
+**No repo yet.** When `tmb init` runs in a folder that is in no git work tree, holds no repo below it and whose record registers none, it runs `git init` there and says so: the project is then one repo. When it finds any repo below, it never runs `git init`; it wires the repos it found.
+
+**Which folders.** `tmb init` records every top-level folder of a workspace, git or not. A folder whose `.git` is a folder is a repo; tmb looks for repos up to two folders down. It does not look inside a repo it found, a dot-folder or `node_modules`. A `.git` file marks a linked worktree or a submodule, never a repo, so a task worktree is not taken for one and is not recorded. A top-level folder that is no repo and holds none, such as a folder of test material, is recorded as a folder that is not a repo. A repo or folder is named by its path from the workspace, with forward slashes, such as `tmb` or `tools/tap`. The record keeps the set, so no later step scans or guesses. Running init again adds what appeared and drops what is gone, with a line for each.
+
+**Managed and left alone.** Only the managed repos get the workflow: hooks, features and tasks, the code graph and the push gate. A folder that is not a repo, and an exempt repo, are listed in the record and left untouched.
+
+**Policy per repo.** The `repos` setting gives each repo its own policy: its base branch, its checks, or `exempt` for a repo tmb does no work in, such as fixtures that never ship. A folder that is not a repo is recorded as `{"git": false}` and takes no policy. init takes each base branch from that repo's own git: origin's default branch, else its current branch, else `main`, and prints where each came from. A policy set before is kept. Each repo pushes to its own origin and opens pull requests on its own GitHub repo. Only the host, the host roles and the review mode are the workspace's. The project-wide base branch and checks are not read in a workspace.
+
+**The repo comes from the work, never from the folder a session runs in.** A feature or task records its repo. `feature_start` and `task_start` take `repo`; with one repo tmb works in it may be left out, and with several a call that names none is refused with the list. An agile task works in its feature branch's repo, and a `repo` that differs is refused. A truest task names its repo. Every later step on a feature or task runs in that repo: cutting from its base branch, the task worktree, the checks, the fold, the backup push, the main-folder snapshot and the pull request. Task worktrees stay under the workspace's `.tmb/worktrees/`, so a worker finds the shared record. Feature names are unique in the whole record. tmb's issues live in the record and name no repo.
+
+**The gate in each repo.** init writes git's pre-push hook into every repo that is not exempt, and `tmb remove` deletes each. The hook runs in the repo being pushed: the gate finds the record above it and the repo from git's top level, and judges the push against that repo's base branch. A push from a task worktree is judged as one from the repo it was cut from. A repo the record does not register, or registers as exempt, is not judged: the push is allowed, and the recorded reason says why.
+
+**A code graph per repo.** Each repo has its own graph, `.tmb/graphs/<repo>.db`, built from its own base branch, with paths relative to that repo. The graph tools take `repo` as `feature_start` does. init and `tmb index` index each repo tmb works in, one line each; a repo that cannot be indexed yet says why, and the others go on.
+
+## When a task does not close
+
+What tmb does today when work goes wrong, and what is planned. The plugin had a rule for each case; tmb keeps the ones a checkpoint can hold (trustmybot/tmb#165).
+
+| Case | Today | Planned |
+|---|---|---|
+| A check fails at close | The close is refused and names the check. The task stays open, and the worker fixes it and closes again. | |
+| The reviewer fails a truest task | The task reopens in its worktree. A worker reworks it, and it closes again for a new review. | v1.x: after two fails in a row, no worker starts on the task until the planner has recorded the cause. |
+| The reviewer fails a feature branch | The planner starts fix tasks on the branch, and the new tip is reviewed again. | |
+| A check fails, or a reviewer comments, on an open pull request | In agile mode nothing: a feature branch whose pull request is open takes no task. | v1.0.0 (trustmybot/tmb#168): the branch takes fix tasks, and the reviewed new tip updates the same pull request. v1.x: the syncer brings the comments in, and the planner sorts them into tasks (trustmybot/tmb#70). |
+| The pull request is closed without a merge | The feature branch is recorded as closed, and takes no task. | v1.0.0 (trustmybot/tmb#152): it can take a second pull request. |
+| A fold or a rebase conflicts | The step is undone and names the files. The task stays open until the worker has settled it. | |
+| The base branch moved under a feature branch | Nothing. The clash shows on GitHub, after the review. | v1.0.0 (trustmybot/tmb#169): a feature branch starts from a fetched base, and the engine brings the base in before the review. |
+| The approach is wrong, or nobody will finish the task | Nothing. The task stays open. | v1.0.0 (trustmybot/tmb#170): the planner or the Human drops the task with a reason, and a new task can name the one it replaces. |
+| A run started and never ended | The record holds it. Nothing lists it. | v1.0.0 (trustmybot/tmb#160): `tmb doctor` lists it, and a session start names it. |
+
+- **Nothing here waits for a timer.** tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`, not by a watcher.
+- **A project with no remote.** Decided by the Human on 2026-11-20. Nothing is pushed and no pull request is opened. After the reviewer passes the feature branch, or the Human waives the review, tmb says the branch is ready and the Human merges it locally.

@@ -46,7 +46,7 @@ The host starts the workers and the reviewer as its own subagents. tmb does not 
 | Decide that a task needs a worker | Planner |
 | Prepare the task's branch, a worktree and the brief | Engine |
 | Start the worker as a subagent, in a folder of its own | Host |
-| Check that the start is allowed: the task exists, its worktree is ready, the role and effort match | Engine, asked by the adapter |
+| Check that the start is allowed: the task exists, its worktree is ready | Engine, asked by the adapter |
 | Make the worker's folder the task's worktree, when the worker first reads its brief | Engine |
 | Do the work, reading the brief and the code graph through tmb's tools | Worker |
 | Run the checks, record the result, close or refuse, and report what changed outside the task | Engine |
@@ -122,7 +122,6 @@ flowchart LR
 | Before a task start | The engine is asked to start a task | Engine |
 | Before a task close | The engine is asked to close a task | Engine |
 | Before a push | Commits are about to leave the machine | git |
-| After a branch moves | A merge, a fetch or a checkout moved a branch | git |
 
 - An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
 - A rule answers allow or deny, and a deny always says why and what would be allowed.
@@ -166,7 +165,7 @@ Every record names the role and the host that made it, so a review is known to c
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
 | Host events | The host, before an agent acts | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push is checked even when typed by hand. |
-| Command line | The Human | Init and onboard, indexing, health checks. |
+| Command line | The Human | Init and onboard, indexing. Planned for v1.0.0 (trustmybot/tmb#160): `tmb doctor`, the health check. |
 | Dashboard | The Human | A local web page over the record. |
 
 All of them call the same engine, so a rule cannot be skipped by choosing another way in.

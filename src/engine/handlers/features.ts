@@ -1,6 +1,7 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
 import { gitFailure, runGit } from "../git.ts";
+import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
 import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
@@ -14,6 +15,8 @@ export type FeatureSummary = {
   baseBranch: string;
   baseCommit: string;
   state: string;
+  /** The repo it was cut in, by its name in the workspace; null in a single-repo project. */
+  repo: string | null;
   /** The ids of the tasks started on it, oldest first. */
   tasks: string[];
 };
@@ -27,6 +30,7 @@ function summaryOf(store: Store, feature: Feature): FeatureSummary {
     baseBranch: feature.baseBranch,
     baseCommit: feature.baseCommit,
     state: feature.state,
+    repo: feature.repo,
     tasks: store.listFeatureTasks(feature.id).map((task) => task.id),
   };
 }
@@ -43,7 +47,12 @@ export function baseBranchTip(projectDir: string, baseBranch: string, cutting: s
   return resolved.stdout;
 }
 
-/** The commit the feature branch is at now; refuses when git no longer has it. */
+/** The folder of the repo a feature branch was cut in. */
+export function featureDir(store: Store, projectDir: string, feature: Feature): string {
+  return repoOfRow(store, projectDir, feature).dir;
+}
+
+/** The commit the feature branch is at now, in the repo at `projectDir`; refuses when git no longer has it. */
 export function featureTip(projectDir: string, feature: Feature): string {
   const resolved = runGit(projectDir, ["rev-parse", "--verify", "--quiet", `${branchRef(feature.name)}^{commit}`]);
   if (!resolved.ok) {
@@ -55,10 +64,11 @@ export function featureTip(projectDir: string, feature: Feature): string {
 
 /**
  * The open feature branch a task starts on: the one named, or with none named the only one
- * open. Refuses none open, several open, and a name the record does not hold open.
+ * open (in `repo` when the task names one). Refuses none open, several open, and a name the
+ * record does not hold open.
  */
-export function featureForTask(store: Store, name: string | undefined): Feature {
-  const open = store.listFeatures(OPEN);
+export function featureForTask(store: Store, name: string | undefined, repo?: string): Feature {
+  const open = store.listFeatures(OPEN).filter((feature) => name !== undefined || repo === undefined || feature.repo === repo);
   const names = open.map((feature) => feature.name).join(", ");
   if (name !== undefined) {
     const feature = store.findFeature(name);
@@ -83,6 +93,11 @@ export const featureStartSchema: InputSchema = {
       description: "The feature branch's name, a valid git branch name that no branch has yet, such as feat/dark-mode.",
       pattern: NOT_BLANK,
     },
+    repo: {
+      type: "string",
+      description: "In a workspace of several repos, the repo to cut it in, by its name in the workspace (settings_get lists them). Omit it in a project of one repo.",
+      pattern: NOT_BLANK,
+    },
   },
   required: ["name"],
   additionalProperties: false,
@@ -105,12 +120,14 @@ function refuseRecorded(store: Store, name: string): void {
 }
 
 export function featureStart(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureSummary {
-  const { name } = validateInput<{ name: string }>("feature_start", featureStartSchema, input);
+  const { name, repo: named } = validateInput<{ name: string; repo?: string }>("feature_start", featureStartSchema, input);
   requireRole(actor, "feature_start", ["planner"]);
-  requireBranchName(context.projectDir, name);
+  const repo = resolveRepo(store, context.projectDir, named);
+  const dir = repo.dir;
+  requireBranchName(dir, name);
   const settings = readSettings(store);
-  const baseBranch = settings.base_branch;
-  if (baseBranch === null) throw new HandlerError("refused", "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first");
+  const baseBranch = repo.baseBranch;
+  if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
   if (settings.review_mode === TRUEST) {
     throw new HandlerError(
       "refused",
@@ -119,25 +136,32 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
   }
   refuseRecorded(store, name);
   const ref = branchRef(name);
-  if (runGit(context.projectDir, ["rev-parse", "--verify", "--quiet", ref]).ok) {
+  if (runGit(dir, ["rev-parse", "--verify", "--quiet", ref]).ok) {
     throw new HandlerError("refused", `the branch ${name} already exists in git; pick another name`);
   }
-  const baseCommit = baseBranchTip(context.projectDir, baseBranch, `the feature branch ${name}`);
+  const baseCommit = baseBranchTip(dir, baseBranch, `the feature branch ${name}`);
 
   // The empty old value makes git refuse when the branch appeared since the check above.
-  const created = runGit(context.projectDir, ["update-ref", "-m", `tmb: feature_start ${name} at ${baseBranch}`, ref, baseCommit, ""]);
+  const created = runGit(dir, ["update-ref", "-m", `tmb: feature_start ${name} at ${baseBranch}`, ref, baseCommit, ""]);
   if (!created.ok) throw new HandlerError("refused", `git could not create the branch ${name}, so nothing was recorded: ${gitFailure(created)}`);
   let id: string;
   try {
     id = store.transaction(() => {
       refuseRecorded(store, name);
-      return store.createFeature(actor, { name, baseBranch, baseCommit });
+      return store.createFeature(actor, { name, baseBranch, baseCommit, repo: repo.name });
     });
   } catch (error) {
-    runGit(context.projectDir, ["update-ref", "-d", ref, baseCommit]);
+    runGit(dir, ["update-ref", "-d", ref, baseCommit]);
     throw error;
   }
   return summaryOf(store, store.getFeature(id)!);
+}
+
+/** The refusal when the repo work is cut in has no base branch. */
+export function noBaseBranch(repo: string | null): string {
+  return repo === null
+    ? "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first"
+    : `the repo ${repo} has no base branch set: the planner sets it in repos with settings_set, or the Human with \`tmb onboard --repo ${repo} --base <branch>\``;
 }
 
 // --- feature_list -------------------------------------------------------------------------

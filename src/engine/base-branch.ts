@@ -24,3 +24,14 @@ export function detectBaseBranch(projectDir: string): string | null {
   if (originHead?.startsWith(ORIGIN_PREFIX)) return originHead.slice(ORIGIN_PREFIX.length);
   return gitOutput(projectDir, ["symbolic-ref", "-q", "--short", "HEAD"]) ?? FALLBACK_BASE_BRANCH;
 }
+
+/** The base branch detectBaseBranch suggests, with where it came from; null outside a git work tree. */
+export function detectBaseBranchWithEvidence(projectDir: string): { branch: string; from: string } | null {
+  if (gitOutput(projectDir, ["rev-parse", "--is-inside-work-tree"]) !== "true") return null;
+  const originHead = gitOutput(projectDir, ["symbolic-ref", "-q", "refs/remotes/origin/HEAD"]);
+  if (originHead?.startsWith(ORIGIN_PREFIX)) return { branch: originHead.slice(ORIGIN_PREFIX.length), from: "origin's default branch" };
+  const current = gitOutput(projectDir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+  return current === null
+    ? { branch: FALLBACK_BASE_BRANCH, from: "the fallback, as origin names no default branch and HEAD is detached" }
+    : { branch: current, from: "the current branch, as origin names no default branch" };
+}

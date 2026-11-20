@@ -14,7 +14,7 @@ One step per platform. After it, two commands inside a project:
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | One, on a terminal: the review mode |
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | One, on a terminal: the review mode. Planned for v1.0.0 (trustmybot/tmb#162): none, and the planner asks for the review mode at onboarding |
 | `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
 **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them, all but the review mode. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied; the review mode stays unset.
@@ -51,9 +51,7 @@ Decided by the Human on 2026-11-19 (trustmybot/tmb#89):
 | rc | Release candidates. |
 | stable | Releases. |
 
-Release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo stays private for now. On that repo, stable is a normal release, rc is a prerelease, and dev is one rolling prerelease.
-
-A compiled file is not secret: its bundled code can be read. The public repo hides the source repo's docs, issues and history, not the code.
+Release files are published to one public repo, separate from the source repo, so install and updates are plain downloads that need no login. The source repo is public too, and its README offers the stable channel only, with a link to the release repo for rc and dev. On the release repo, stable is a normal release, rc is a prerelease, and dev is one rolling prerelease.
 
 An install follows one channel. Updates are pushed to each channel; tmb checks for one when it starts and applies it between sessions, never in the middle of a task. With no network it runs the version it has.
 
@@ -62,6 +60,7 @@ As built at level 8, as agreed on trustmybot/tmb#16 (pending the Human's review)
 - A build's version names its channel: `X.Y.Z-dev.N` is dev, `X.Y.Z-rc.N` is rc, `X.Y.Z` is stable. Every release carries a `VERSION` file and the checksums of its files.
 - dev is the rolling `dev` prerelease, published on every push to the base branch. rc and stable are published only when a `vX.Y.Z-rc.N` or `vX.Y.Z` tag is pushed: rc as a prerelease, stable as the release marked latest. rc's newest release is found through the public releases API.
 - When a session starts, tmb looks for a newer build on its channel at most once an hour, downloads it in the background, verifies it and keeps it. It swaps it in at a session's end, only when no other tmb session is running and no task is open in any project tmb has served. A task is one agent's run and is short, so an open task holds the swap back only briefly, and a half-done task never meets a new build. `tmb update` does the same on request.
+- Planned for v1.0.0 (trustmybot/tmb#159), decided by the Human on 2026-11-20: an update applies at once, whatever is running. A session that is running keeps the build it started with until it restarts, and tmb restarts its own tool server when the project has no open task. An old build is never deleted by itself: `tmb doctor` lists the builds no session uses and deletes them on the Human's yes (trustmybot/tmb#160).
 
 Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2):
 
@@ -99,7 +98,7 @@ Built for v1.0.0 (trustmybot/tmb#122). Decided by the Human on 2026-11-20. How t
 - **On by default on dev and rc, asked about on stable**, once, at the first run. The setting belongs to the person: it is kept with the machine-wide state of each channel's program.
 - **A report is an issue on the source repo, from the user's own GitHub account.** With GitHub's CLI signed in, tmb files it. Otherwise tmb opens the repo's bug form filled in, and the user submits it. A link is kept under 7,500 characters; a longer report is saved to a file to attach.
 - **A report follows the repo's bug form.** tmb reads the form as it stands on the default branch and sends only the fields that form has, so the version, the labels and the questions are always the current ones ([contributing](../contributing/README.md#issues)). With no network it uses a built-in copy, which the build takes from the repo's own form file, so the two cannot differ.
-- **Labels come from the form on both routes.** GitHub drops the labels of an issue filed through its API by someone who cannot write to the repo. So a report filed through the CLI carries one hidden line, `<!-- tmb-feedback form=bug.yml -->`, and a workflow on the repo reads that form's labels and adds them. Not yet run on GitHub: workflows are stopped while the repo is private.
+- **Labels come from the form on both routes.** GitHub drops the labels of an issue filed through its API by someone who cannot write to the repo. So a report filed through the CLI carries one hidden line, `<!-- tmb-feedback form=bug.yml -->`, and a workflow on the repo reads that form's labels and adds them. Not yet seen running on a real report.
 - **A report holds no source code, file contents, prompts, agent messages or environment variables.** Paths and values that look like secrets are cleaned before the Human sees it.
 - **The record keeps each report filed, with its link, and each form opened.** For an opened form it cannot know whether the user pressed submit.
 

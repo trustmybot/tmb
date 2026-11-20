@@ -12,9 +12,14 @@ const CLI = path.join(ROOT, "src", "cli.ts");
 const PLANNER_ROLE = readFileSync(path.join(ROOT, "roles", "planner.md"), "utf8");
 
 let scratch: string;
+// The folder the session-start hook runs in: an empty temp folder, never the checkout. A hook run in
+// the checkout walks up to any record above it, such as a workspace's, and would open and migrate it.
+let away: string;
 
 beforeAll(() => {
   scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-integration-")));
+  away = path.join(scratch, "away");
+  mkdirSync(away);
 });
 
 afterAll(() => {
@@ -45,8 +50,8 @@ function plannerSection(heading: string): string {
 
 describe("tmb hook session-start", () => {
   test("answers a SessionStart event with the planner role", () => {
-    const event = JSON.stringify({ session_id: "integration", hook_event_name: "SessionStart", source: "startup", cwd: ROOT });
-    const result = run(process.execPath, [CLI, "hook", "session-start"], ROOT, event);
+    const event = JSON.stringify({ session_id: "integration", hook_event_name: "SessionStart", source: "startup", cwd: away });
+    const result = run(process.execPath, [CLI, "hook", "session-start"], away, event);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
 
@@ -60,9 +65,9 @@ describe("tmb hook session-start", () => {
   });
 
   test("ends with the unattended instruction only when TMB_UNATTENDED is 1", () => {
-    const event = JSON.stringify({ session_id: "integration", hook_event_name: "SessionStart", source: "startup", cwd: ROOT });
+    const event = JSON.stringify({ session_id: "integration", hook_event_name: "SessionStart", source: "startup", cwd: away });
     const contextWith = (extraEnv: Record<string, string>) => {
-      const result = run(process.execPath, [CLI, "hook", "session-start"], ROOT, event, extraEnv);
+      const result = run(process.execPath, [CLI, "hook", "session-start"], away, event, extraEnv);
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
       return (JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
