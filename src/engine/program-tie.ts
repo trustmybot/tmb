@@ -19,12 +19,13 @@ export function tiedProgram(store: Store): ProgramTie | null {
 }
 
 /**
- * Ties the project to `tie`, recording it when the program or its command differs from the
- * tie in force. Returns the tie it replaced, or null when there was none.
+ * Ties the project to `tie`, recording it when the program, its version or its command differs
+ * from the tie in force, so the record names the version that last wired the project. Returns
+ * the tie it replaced, or null when there was none.
  */
 export function tieProgram(store: Store, actor: Actor, tie: ProgramTie): { changed: boolean; from: ProgramTie | null } {
   const from = tiedProgram(store);
-  const same = from !== null && from.program === tie.program && JSON.stringify(from.command) === JSON.stringify(tie.command);
+  const same = from !== null && from.program === tie.program && from.version === tie.version && JSON.stringify(from.command) === JSON.stringify(tie.command);
   if (same) return { changed: false, from };
   store.recordAudit(actor, { what: AUDIT_WHAT, detail: JSON.stringify(tie) });
   return { changed: true, from };

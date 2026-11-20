@@ -45,7 +45,9 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
 }
 
 function sessionStart(input: JsonObject, run: HookRun): string {
-  const answer = handleEvent({ type: "session-start", projectDir: projectDirOf(input), unattended: run.unattended, host: HOST_ID, feedback: run.feedback });
+  const projectDir = projectDirOf(input);
+  const refreshed = run.refresh?.(projectDir) ?? null;
+  const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
 }
 

@@ -19,6 +19,7 @@ export const OPEN_WORK_HEADING = "## Open work in the record";
 export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
 export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
+export const HOST_FILES_HEADING = "## tmb's files in this project";
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
 const PROJECT_MAP_DEPTH = 2;
@@ -199,16 +200,26 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
  * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
  * instruction for it. Nothing about the mode is stored in the project.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv): string {
+export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null): string {
   if (reviewsHere(projectDir, host)) {
-    const context = reviewerContext(projectDir, host!);
+    const context = withHostFiles(reviewerContext(projectDir, host!), refreshed, unattended);
     return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
   }
-  const context = plannerContext(projectDir, unattended);
+  const context = withHostFiles(plannerContext(projectDir, unattended), refreshed, unattended);
   if (unattended) return `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`;
   // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
   const told = feedback === undefined ? "" : feedbackSection(feedback);
   return told === "" ? context : `${context.trimEnd()}\n\n${told}\n`;
+}
+
+/**
+ * The one line on refreshing the project's host files after an update (trustmybot/tmb#128),
+ * which the role tells the Human, or names in its answer when no one can answer.
+ */
+function withHostFiles(context: string, refreshed: string | null, unattended: boolean): string {
+  if (refreshed === null) return context;
+  const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
+  return `${context.trimEnd()}\n\n${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tell}\n`;
 }
 
 /** The feedback program's first-run section; never throws, as a session start must not fail. */

@@ -45,7 +45,7 @@ function writeHumanAgent(name: string, text: string): string {
 
 describe("role files", () => {
   test("write each role as a Claude Code agent file with its frontmatter and prompt, marked as tmb's", () => {
-    expect(writeRoleFiles(project, [FIXTURE, PLAIN])).toEqual({ written: ["fixture-worker", "plain"], current: [], notOurs: [] });
+    expect(writeRoleFiles(project, [FIXTURE, PLAIN])).toEqual({ written: ["fixture-worker", "plain"], current: [], notOurs: [], removed: [] });
 
     const text = readFileSync(roleFilePath(project, "fixture-worker"), "utf8");
     expect(text).toBe(roleFileText(FIXTURE));
@@ -70,7 +70,7 @@ describe("role files", () => {
 
   test("a second write changes nothing, and a changed role rewrites tmb's own file", () => {
     writeRoleFiles(project, [FIXTURE]);
-    expect(writeRoleFiles(project, [FIXTURE])).toEqual({ written: [], current: ["fixture-worker"], notOurs: [] });
+    expect(writeRoleFiles(project, [FIXTURE])).toEqual({ written: [], current: ["fixture-worker"], notOurs: [], removed: [] });
 
     const changed = { ...FIXTURE, model: "opus" };
     expect(writeRoleFiles(project, [changed]).written).toEqual(["fixture-worker"]);
@@ -80,8 +80,18 @@ describe("role files", () => {
   test("never overwrite an agent file tmb did not write", () => {
     const human = "---\nname: fixture-worker\ndescription: mine\n---\n\nThe Human's own agent.\n";
     const file = writeHumanAgent("fixture-worker", human);
-    expect(writeRoleFiles(project, [FIXTURE])).toEqual({ written: [], current: [], notOurs: ["fixture-worker"] });
+    expect(writeRoleFiles(project, [FIXTURE])).toEqual({ written: [], current: [], notOurs: ["fixture-worker"], removed: [] });
     expect(readFileSync(file, "utf8")).toBe(human);
+  });
+
+  test("a role this version no longer has loses its file of tmb's, and a file of the Human's stays", () => {
+    const human = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
+    writeRoleFiles(project, [FIXTURE, PLAIN]);
+
+    expect(writeRoleFiles(project, [PLAIN])).toEqual({ written: [], current: ["plain"], notOurs: [], removed: [roleFilePath(project, "fixture-worker")] });
+    expect(existsSync(roleFilePath(project, "fixture-worker"))).toBe(false);
+    expect(existsSync(human)).toBe(true);
+    expect(writeRoleFiles(project, [PLAIN]).removed).toEqual([]);
   });
 
   test("remove deletes only tmb's files, and the folder once it is empty", () => {
@@ -103,7 +113,7 @@ describe("role files", () => {
     const earlier = roleFileText(PLAIN).replace("# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.", "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.");
     expect(earlier).not.toBe(roleFileText(PLAIN));
     writeFileSync(roleFilePath(project, "plain"), earlier);
-    expect(writeRoleFiles(project, [PLAIN])).toEqual({ written: ["plain"], current: [], notOurs: [] });
+    expect(writeRoleFiles(project, [PLAIN])).toEqual({ written: ["plain"], current: [], notOurs: [], removed: [] });
     expect(readFileSync(roleFilePath(project, "plain"), "utf8")).toBe(roleFileText(PLAIN));
     writeFileSync(roleFilePath(project, "plain"), earlier);
     removeRoleFiles(project);

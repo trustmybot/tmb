@@ -40,10 +40,10 @@ export function roleFileText(role: SubagentRole): string {
   return lines.join("\n");
 }
 
-export type RoleFilesResult = { written: string[]; current: string[]; notOurs: string[] };
+export type RoleFilesResult = { written: string[]; current: string[]; notOurs: string[]; removed: string[] };
 
 export function writeRoleFiles(projectDir: string, roles: readonly SubagentRole[]): RoleFilesResult {
-  const result: RoleFilesResult = { written: [], current: [], notOurs: [] };
+  const result: RoleFilesResult = { written: [], current: [], notOurs: [], removed: [] };
   for (const role of roles) {
     if (!ROLE_NAME.test(role.name)) throw new Error(`role name ${JSON.stringify(role.name)} must be lowercase letters, digits and hyphens`);
     const file = roleFilePath(projectDir, role.name);
@@ -62,18 +62,21 @@ export function writeRoleFiles(projectDir: string, roles: readonly SubagentRole[
     writeFileSync(file, text);
     result.written.push(role.name);
   }
+  // A role file of tmb's for a role this version no longer has goes, as tmb remove would take it.
+  const wanted = new Set(roles.map((role) => roleFilePath(projectDir, role.name)));
+  result.removed = removeRoleFiles(projectDir, (file) => !wanted.has(file));
   return result;
 }
 
-/** Deletes every agent file tmb marked as its own; returns their paths. */
-export function removeRoleFiles(projectDir: string): string[] {
+/** Deletes every agent file tmb marked as its own, or those of them `only` keeps; returns their paths. */
+export function removeRoleFiles(projectDir: string, only: (file: string) => boolean = () => true): string[] {
   const dir = agentsDir(projectDir);
   if (!existsSync(dir)) return [];
   const removed: string[] = [];
   const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of entries) {
     const file = path.join(dir, entry.name);
-    if (!entry.isFile() || !entry.name.endsWith(".toml") || !isTmbRoleFile(file)) continue;
+    if (!entry.isFile() || !entry.name.endsWith(".toml") || !only(file) || !isTmbRoleFile(file)) continue;
     deleteFile(file, projectDir);
     removed.push(file);
   }

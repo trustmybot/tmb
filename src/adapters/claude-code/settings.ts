@@ -29,7 +29,13 @@ export type HookName = TmbHook["name"];
 type HookCommand = { type?: unknown; command?: unknown } & JsonObject;
 type HookGroup = { matcher?: unknown; hooks?: unknown } & JsonObject;
 
-const HOOK_NAMES = TMB_HOOKS.map((hook) => hook.name).join("|");
+/**
+ * The hooks an earlier version wired and this one no longer does. tmb still knows them as its own,
+ * so init and remove take them out; a hook that moves to another event needs no entry here.
+ */
+export const RETIRED_HOOK_NAMES: readonly string[] = [];
+
+const HOOK_NAMES = [...TMB_HOOKS.map((hook) => hook.name), ...RETIRED_HOOK_NAMES].join("|");
 // The hook a compiled tmb writes: its quoted executable, named tmb, then the hook arguments.
 const BINARY_HOOK_COMMAND = new RegExp(String.raw`^"(?:[^"]*[\\/])?tmb(?:[^"\\/]*)"\s+hook\s+(${HOOK_NAMES})$`, "i");
 // The hook a source run writes: quoted Bun, then tmb's src/cli.ts, quoted or not, then the arguments.
@@ -129,20 +135,51 @@ function enabledServers(settings: JsonObject, file: string): unknown[] {
   return enabled;
 }
 
+/**
+ * Takes out each tmb hook wired under an event its kind no longer uses: a retired hook, or one an
+ * earlier version wired under another event. Returns the events it changed.
+ */
+function removeStrayHooks(settings: JsonObject): string[] {
+  const hooks = settings.hooks;
+  if (!isObject(hooks)) return [];
+  const changed: string[] = [];
+  for (const event of Object.keys(hooks)) {
+    const groups = hooks[event];
+    if (!Array.isArray(groups)) continue;
+    const stray = (hook: unknown) => {
+      const name = tmbHookName((hook as HookCommand | null)?.command);
+      return name !== null && !TMB_HOOKS.some((wired) => wired.name === name && wired.hookEvent === event);
+    };
+    if (!groups.some((group) => hooksOf(group).some(stray))) continue;
+    const kept = groups.flatMap((group) => {
+      const all = hooksOf(group);
+      if (!all.some(stray)) return [group];
+      const remaining = all.filter((hook) => !stray(hook));
+      return remaining.length > 0 ? [{ ...(group as JsonObject), hooks: remaining }] : [];
+    });
+    if (kept.length > 0) hooks[event] = kept;
+    else delete hooks[event];
+    changed.push(event);
+  }
+  if (Object.keys(hooks).length === 0) delete settings.hooks;
+  return changed;
+}
+
 /** `hooksAdded` and `hooksRemoved` name the Claude Code hook events tmb changed, in wiring order. */
-export type SetupResult = { settingsFile: string; hooksAdded: string[]; serverEnabled: boolean; gitignoreChanged: boolean };
+export type SetupResult = { settingsFile: string; hooksAdded: string[]; hooksRemoved: string[]; serverEnabled: boolean; gitignoreChanged: boolean };
 
 export function install(projectDir: string, tmbCommand: readonly string[]): SetupResult {
   const file = settingsPath(projectDir);
   const settings = readJsonObject(file);
   const enabled = enabledServers(settings, file);
 
+  const hooksRemoved = removeStrayHooks(settings);
   const hooksAdded = TMB_HOOKS.filter((hook) => addHook(settings, hook, hookCommand(tmbCommand, hook.name))).map((hook) => hook.hookEvent);
   const serverEnabled = !enabled.includes(SERVER_KEY);
   if (serverEnabled) settings[ENABLED_SERVERS_KEY] = [...enabled, SERVER_KEY];
-  if (hooksAdded.length > 0 || serverEnabled) writeJsonObject(file, settings);
+  if (hooksAdded.length > 0 || hooksRemoved.length > 0 || serverEnabled) writeJsonObject(file, settings);
 
-  return { settingsFile: file, hooksAdded, serverEnabled, gitignoreChanged: ignoreInGit(projectDir, GITIGNORE_ENTRY) };
+  return { settingsFile: file, hooksAdded, hooksRemoved, serverEnabled, gitignoreChanged: ignoreInGit(projectDir, GITIGNORE_ENTRY) };
 }
 
 export type RemoveResult = { settingsFile: string; hooksRemoved: string[]; serverDisabled: boolean; fileDeleted: boolean };
@@ -154,7 +191,8 @@ export function remove(projectDir: string): RemoveResult {
 
   const settings = readJsonObject(file);
   const enabled = enabledServers(settings, file);
-  const hooksRemoved = TMB_HOOKS.filter((hook) => removeHook(settings, hook)).map((hook) => hook.hookEvent);
+  const stray = removeStrayHooks(settings);
+  const hooksRemoved = [...new Set([...stray, ...TMB_HOOKS.filter((hook) => removeHook(settings, hook)).map((hook) => hook.hookEvent)])];
   const serverDisabled = enabled.includes(SERVER_KEY);
   if (serverDisabled) {
     const remaining = enabled.filter((name) => name !== SERVER_KEY);

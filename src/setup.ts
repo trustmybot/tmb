@@ -206,9 +206,11 @@ function tieToProgram(projectDir: string, program: { name: string; version: stri
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw new SetupError(`cannot tie the project to ${program.name}: ${opened.error.message}`);
   try {
-    const { changed, from } = tieProgram(opened.store, HUMAN, { program: program.name, version: program.version, command: [...command] });
+    const { from } = tieProgram(opened.store, HUMAN, { program: program.name, version: program.version, command: [...command] });
     if (from !== null && from.program !== program.name) out(`Moved this project from ${from.program} ${from.version} to ${program.name} ${program.version}.`);
-    if (changed || from === null) out(`This project runs ${program.name}: its hooks and tool server call ${command.join(" ")}.`);
+    // Another version of the same program, run the same way, is recorded (trustmybot/tmb#128) but not worth a line.
+    const rewired = from === null || from.program !== program.name || JSON.stringify(from.command) !== JSON.stringify([...command]);
+    if (rewired) out(`This project runs ${program.name}: its hooks and tool server call ${command.join(" ")}.`);
   } finally {
     opened.store.close();
   }
