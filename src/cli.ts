@@ -37,7 +37,7 @@ import { pushActorFrom } from "./engine/push-actor.ts";
 import { runGit } from "./engine/git.ts";
 import { repoOf, workspaceRepos } from "./engine/repos.ts";
 import type { Store } from "./engine/store/index.ts";
-import { judgePush, removePushGates } from "./engine/push-gate.ts";
+import { judgePush, NO_RECORD, removePushGates, repoTopOf } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { formatBytes, isProcessRunning } from "./builds.ts";
 import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
@@ -91,7 +91,7 @@ const USAGE: Record<string, string> = {
   hook: `  tmb hook <event> [--host <id>]
                             Answer a host event (the host runs this; reads JSON on stdin);
                             with no host, the event is the first host's tmb wired`,
-  "pre-push": `  tmb pre-push <remote> [<url>]
+  "pre-push": `  tmb pre-push [--project <path>] <remote> [<url>]
                             Judge a push (git's pre-push hook runs this; reads its ref lines on stdin)`,
 };
 
@@ -370,15 +370,28 @@ async function runHook(args: string[]): Promise<number> {
 
 /** git's pre-push hook: exit 1 refuses the push, and git shows what tmb wrote on stderr. */
 async function runPrePush(args: string[]): Promise<number> {
+  // The hook init writes names the project's folder: git runs it at the repo's top, which is not
+  // the project's folder when the project is below it (trustmybot/tmb#178). A hook an older tmb
+  // wrote names none, and the record is then the nearest one above the folder git runs it in.
+  let projectDir: string | null = null;
+  if (args[0] === "--project") {
+    projectDir = args[1] ?? null;
+    if (projectDir === null) throw new Error("pre-push --project needs the project's folder");
+    args = args.slice(2);
+  }
   const remote = args[0];
   if (remote === undefined) throw new Error("pre-push needs the remote's name, as git passes it");
   // A push from a task worktree runs the hook there; the record is in the project that holds it.
   // In a workspace, the folder git runs the hook in names the repo whose base branch is judged.
-  const decision = judgePush(projectRootOf(process.cwd()), remote, await Bun.stdin.text(), process.cwd(), pushActorFrom(process.env));
+  // The hook names the project from the repo's top; a task worktree's repo is the one it was cut from.
+  const named = projectDir === null ? null : path.resolve(repoTopOf(process.cwd()) ?? process.cwd(), projectDir);
+  const decision = judgePush(named ?? projectRootOf(process.cwd()), remote, await Bun.stdin.text(), process.cwd(), pushActorFrom(process.env));
   if (decision.decision === "deny") {
     console.error(decision.reason ?? `tmb refused the push to ${remote}`);
     return 1;
   }
+  // No record: the push goes, and the hook says why in one line rather than pass in silence.
+  if (decision.reason?.startsWith(NO_RECORD)) console.error(decision.reason);
   return 0;
 }
 
