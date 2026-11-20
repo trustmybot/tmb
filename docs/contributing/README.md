@@ -14,6 +14,15 @@ How work on this repo is done.
 - Pull requests are squash-merged.
 - Everything in the repo, its issues and its pull requests is written in English.
 
+## CI
+
+CI is split so that it never slows a lane down (trustmybot/tmb#164).
+
+- **Pull requests and pushes to `dev` run only the fast Linux `test` job:** typecheck, `bun test` and the link lint. It is the one required check. The one exception is `install-smoke`, which runs on a pull request that changes the install smoke test itself.
+- **Version tags (`vX.Y.Z-rc.N` and `vX.Y.Z`) run the heavy jobs:** `update-scenario` on macOS and Windows, `packaging-probe` on macOS, Linux and Windows, and the release build and install tests.
+- **`dev-release.yml` builds and publishes the dev channel after each merge to `dev`.** It runs after the merge and blocks no one.
+- **A macOS or Windows break shows up in the dev build or at the rc tag, not on the pull request.** That is the trade-off taken for speed. `packaging-probe` can also be run by hand from the Actions tab.
+
 ## Docs first
 
 The design in [docs/architecture](../architecture/README.md) is the ground truth. Code follows it. When code and docs disagree, the question goes to the Human before either is changed.

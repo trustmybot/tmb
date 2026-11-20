@@ -198,8 +198,8 @@ for (const harness of HARNESSES) {
       if (adapter.limits.events.includes("before-file-write")) {
         const write = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
         if (adapter.limits.namesAgentOnToolCall) {
-          // A reviewer subagent's edit tools are taken away by its agent file, which the host enforces.
-          expect(write.deny).toBeNull();
+          // The host names the reviewer on its tool call, so tmb denies the write by role (trustmybot/tmb#185).
+          expect(write.deny).toContain("never edits");
         } else {
           // The host names no agent, so a reviewer subagent's write is judged as the host's own role,
           // the planner's, and goes through; git's pre-push hook still judges every push of it.
