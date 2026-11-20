@@ -2,7 +2,8 @@
 [test]
 pathIgnorePatterns = ["tests/agent-run/fixtures/**"]
 # Every tmb the tests run keeps its machine-wide state in a scratch folder, not the person's.
-preload = ["./tests/lib/isolate-state.ts"]
+# Every test and hook gets 30 seconds, not bun's 5: tests that start processes run slow on a busy machine.
+preload = ["./tests/lib/isolate-state.ts", "./tests/lib/timeout.ts"]
 
 # The dashboard's pages are bundled when it serves them from source; their styles need Tailwind.
 [serve.static]
