@@ -234,6 +234,7 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
 | `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only. |
 | `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review |
+| `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules below for a closed task; its branch is kept while it holds commits, and tmb names it and the command that deletes it. `tmb task start --replaces <id>` starts the task that takes up a dropped task's work another way, and is refused for a task that is not dropped. `tmb task list --state dropped` lists the dropped tasks. |
 | `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only. |
 | `tmb task pr <id> --title <text> [--body <text>]` | Open a truest task's pull request into the base branch, once the reviewer passed it or you waived the review |
 | `tmb graph map\|find\|symbol\|scope\|concepts` | Look things up in the code graph: the project's files with their summaries, where a name lives, what calls it, a draft of a task's files, and the recorded concepts. `--task <id>` reads as that open task sees the code. |
@@ -263,15 +264,16 @@ What tmb does with a closed task's worktree depends on what is left in it (trust
 
 ## Move a plugin project
 
-A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can bring its records over. In the project's folder:
+A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can bring its records over. In the project's folder, init first, then migrate:
 
 ```sh
+tmb init
 tmb migrate
 ```
 
-tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into this project's new record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
+tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into the new record `tmb init` made for this project, and names that record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
 
-The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. Run `tmb init` afterwards if you have not.
+The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and a project whose record already holds issues or tasks, so it runs once. It also refuses before `tmb init` has made the project's record, and a record in a folder above a repo that the record does not serve, naming that record; it never creates a record itself.
 
 ## Remove
 

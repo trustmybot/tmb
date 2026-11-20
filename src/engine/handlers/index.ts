@@ -63,9 +63,15 @@ export const OPERATIONS = {
   },
   feature_start: {
     description:
-      "Start a feature branch for a milestone's work, before its first task: tmb cuts it from the base branch's latest commit, checking it out nowhere, and records it. Every task is cut from a feature branch and folds back into it when it closes. For the planner.",
+      "Start a feature branch for a milestone's work, before its first task: tmb cuts it from the base branch's latest commit, fetched from origin first unless the local base branch is ahead of it, checking it out nowhere, and records it. Every task is cut from a feature branch and folds back into it when it closes. For the planner.",
     inputSchema: feature.featureStartSchema,
     run: feature.featureStart,
+  },
+  feature_update: {
+    description:
+      "Bring the base branch into a feature branch: tmb fetches the base from origin (the local one when it is ahead or there is no origin), merges it into the branch with a merge commit, never a rebase, and pushes the branch as a backup. Call it before you start the reviewer on the branch, and earlier whenever the base moved. A conflict changes nothing and names the files: settle it in a task on the branch, or raise it to the Human. For the planner.",
+    inputSchema: feature.featureUpdateSchema,
+    run: feature.featureUpdate,
   },
   feature_list: {
     description:

@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/project.ts";
 import type { Store } from "../../src/engine/store/index.ts";
@@ -93,12 +93,15 @@ describe("a plugin project's records carry over", () => {
     project = path.join(plugin.workspace, "app");
     mkdirSync(project);
     t.git(project, "init", "-q", "-b", "main");
+    t.tmb(["init"], project);
     output = t.tmb(["migrate"], project);
   });
 
   test("tmb migrate finds the plugin database above the project and says what it copied and what it left behind", () => {
     expect(output).toContain(dbPath);
     expect(output).toContain("(repo app)");
+    // It names the record it wrote to: the one init made in the project.
+    expect(output).toContain(`into ${path.join(project, ".tmb", "trajectory.db")}`);
     expect(output).toContain("2 issues, 2 notes and decisions, 3 tasks, 2 reviews, 1 check runs, 2 agent runs");
     expect(output).toContain("Left behind, as tmb has no such kind: 1 analysis, 1 answer, 2 intent, 1 question.");
     // Left open, so it holds tmb's updates back (trustmybot/tmb#61).
@@ -181,7 +184,8 @@ describe("a plugin project's records carry over", () => {
       ]);
       expect(JSON.parse(runs[0]!.cost as string)).toMatchObject({ tokens_in: 1000, tokens_out: 200 });
 
-      const audit = db.query("SELECT what, detail FROM audit").all() as { what: string; detail: string }[];
+      // init's own entries come first; the migration adds exactly one.
+      const audit = (db.query("SELECT what, detail FROM audit").all() as { what: string; detail: string }[]).filter((entry) => entry.what.startsWith("migration"));
       expect(audit.map((entry) => entry.what)).toEqual(["migration.plugin"]);
       const detail = JSON.parse(audit[0]!.detail) as {
         repo: string;
@@ -223,6 +227,7 @@ describe("tmb migrate refuses", () => {
     const plugin = pluginWorkspace();
     const project = path.join(plugin.workspace, "elsewhere");
     mkdirSync(project);
+    t.tmb(["init"], project);
     const refused = t.run(["migrate"], project);
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain("several repos (app, other); name one with --repo");
@@ -237,6 +242,7 @@ describe("tmb migrate refuses", () => {
     const hash = sha256(plugin.dbPath);
     const project = path.join(plugin.workspace, "app");
     mkdirSync(project);
+    t.tmb(["init"], project);
     const refused = t.run(["migrate"], project);
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain("plugin schema version 75; the migration reads version 76");
@@ -246,6 +252,7 @@ describe("tmb migrate refuses", () => {
   test("a file that is not a plugin database", () => {
     const project = path.join(t.scratch, "plain");
     mkdirSync(project);
+    t.tmb(["init"], project);
     const file = path.join(t.scratch, "not-plugin.db");
     writeFileSync(file, "");
     new Database(file).close();
@@ -260,5 +267,36 @@ describe("tmb migrate refuses", () => {
     const refused = t.run(["migrate"], project);
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain("no plugin database");
+  });
+
+  // trustmybot/tmb#161: run before init, the records went into a new record in another folder.
+  test("before tmb init, naming tmb init, and creates no record anywhere", () => {
+    const plugin = pluginWorkspace();
+    const project = path.join(plugin.workspace, "app");
+    mkdirSync(project);
+    t.git(project, "init", "-q", "-b", "main");
+    const refused = t.run(["migrate"], project);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("run tmb init here first, then tmb migrate");
+    expect(existsSync(path.join(project, ".tmb"))).toBe(false);
+    expect(existsSync(path.join(plugin.workspace, ".tmb"))).toBe(false);
+  });
+
+  test("into a record in a folder above the repo that does not serve it, and names it", () => {
+    const plugin = pluginWorkspace();
+    // A single-repo project above, whose record the nearest-record rule would find.
+    const outer = plugin.workspace;
+    t.git(outer, "init", "-q", "-b", "main");
+    t.tmb(["init"], outer);
+    const project = path.join(outer, "app");
+    mkdirSync(project);
+    t.git(project, "init", "-q", "-b", "main");
+    const refused = t.run(["migrate"], project);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(`the nearest tmb record, ${path.join(outer, ".tmb", "trajectory.db")}, belongs to a folder above this repo`);
+    expect(t.tmbJson<unknown[]>(["issue", "list"], outer)).toEqual([]);
+    // Once init has made the repo's own record, the records go there.
+    t.tmb(["init"], project);
+    expect(t.tmb(["migrate"], project)).toContain(`into ${path.join(project, ".tmb", "trajectory.db")}`);
   });
 });
