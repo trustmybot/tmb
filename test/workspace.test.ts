@@ -55,6 +55,7 @@ const HOST: HostAdapter = {
   id: "a",
   name: "Host A",
   command: "host-a",
+  reconnectToolServer: "restart Host A",
   limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
   detect: () => ({ installed: true }),
   setup(projectDir) {

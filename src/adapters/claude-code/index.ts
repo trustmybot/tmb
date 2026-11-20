@@ -22,6 +22,17 @@ export const adapter: HostAdapter = {
   id: HOST_ID,
   name: "Claude Code",
   command: "claude",
+  reconnectToolServer: "run `/mcp`, then Reconnect on tmb",
+
+  sessionTitle(stdinText) {
+    // Claude Code passes `session_title` at a session start when the Human named the session (`--name` or `/rename`).
+    try {
+      const title = (JSON.parse(stdinText) as { session_title?: unknown }).session_title;
+      return typeof title === "string" && title.trim() !== "" ? title.trim() : null;
+    } catch {
+      return null;
+    }
+  },
 
   limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
 
