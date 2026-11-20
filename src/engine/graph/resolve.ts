@@ -4,6 +4,7 @@
 // proof, so such a reference stays unresolved rather than risk a wrong link.
 import { basename, posix } from "node:path";
 import type { EdgeKind, ExtractedEdge, SymbolKind } from "./extract.ts";
+import { fileCandidates, ImportConfig } from "./import-config.ts";
 import { isTestPath } from "./test-paths.ts";
 
 /**
@@ -31,10 +32,7 @@ export function shortName(kind: SymbolKind, qualifiedName: string): string {
 export function resolveImport(fromFile: string, spec: string | null, fileSet: ReadonlySet<string>): string | null {
   if (!spec || !spec.startsWith(".")) return null;
   const base = posix.normalize(posix.join(posix.dirname(fromFile), spec));
-  const stem = base.replace(/\.(m?js|ts)$/, "");
-  for (const c of [base, `${stem}.ts`, `${stem}.tsx`, `${stem}.js`, `${stem}.mjs`, `${stem}/index.ts`, `${stem}/index.js`]) {
-    if (fileSet.has(c)) return c;
-  }
+  for (const c of fileCandidates(base)) if (fileSet.has(c)) return c;
   return null;
 }
 
@@ -77,7 +75,14 @@ export class Resolver {
   private readonly importMap = new Map<string, Map<string, string>>();
   private readonly sourced = new Map<string, string[]>();
 
-  constructor(candidates: Iterable<Candidate>, pending: Iterable<{ from: string; edge: ExtractedEdge }>) {
+  /** Imports that name the repo's own code (a relative path, a `paths` alias, a package of the repo) and link no file. */
+  unresolvedImports = 0;
+
+  constructor(
+    candidates: Iterable<Candidate>,
+    pending: Iterable<{ from: string; edge: ExtractedEdge }>,
+    private readonly config: ImportConfig = new ImportConfig(new Map()),
+  ) {
     for (const c of candidates) {
       if (c.kind === "module") {
         this.modules.set(c.path, c.id);
@@ -89,7 +94,8 @@ export class Resolver {
     }
     for (const { from, edge } of pending) {
       if (edge.kind === "imports") {
-        const target = this.importTarget(from, edge);
+        const { file: target, local } = this.importTarget(from, edge);
+        if (target === null && local) this.unresolvedImports++;
         if (target) {
           const map = this.importMap.get(from) ?? new Map<string, string>();
           map.set(edge.dst_name, target);
@@ -110,14 +116,22 @@ export class Resolver {
     return cands.length === 1 ? cands[0] : undefined;
   }
 
-  /** The file an `imports` edge names; in Python, `from pkg import x` names pkg/x.py when pkg defines no x. */
-  private importTarget(from: string, edge: ExtractedEdge): string | null {
-    if (!from.endsWith(".py")) return resolveImport(from, edge.hint, this.fileSet);
+  /**
+   * The file an `imports` edge names, and whether it names the repo's own code; in Python,
+   * `from pkg import x` names pkg/x.py when pkg defines no x.
+   */
+  private importTarget(from: string, edge: ExtractedEdge): { file: string | null; local: boolean } {
+    if (!from.endsWith(".py")) {
+      if (!edge.hint) return { file: null, local: false };
+      if (edge.hint.startsWith(".")) return { file: resolveImport(from, edge.hint, this.fileSet), local: true };
+      return this.config.resolve(from, edge.hint, this.fileSet);
+    }
+    const local = edge.hint?.startsWith(".") === true;
     const module = resolvePythonImport(from, edge.hint, this.fileSet);
-    if (module && (this.byName.get(edge.dst_name) ?? []).some((c) => c.path === module)) return module;
-    if (!edge.hint || edge.hint === edge.dst_name) return module;
+    if (module && (this.byName.get(edge.dst_name) ?? []).some((c) => c.path === module)) return { file: module, local };
+    if (!edge.hint || edge.hint === edge.dst_name) return { file: module, local };
     const submodule = `${edge.hint}${edge.hint.endsWith(".") ? "" : "."}${edge.dst_name}`;
-    return resolvePythonImport(from, submodule, this.fileSet) ?? module;
+    return { file: resolvePythonImport(from, submodule, this.fileSet) ?? module, local };
   }
 
   /** The file that defines the class named `name` as `from` sees it: its own file, or the file it imports the name from. */
@@ -131,7 +145,7 @@ export class Resolver {
   resolve(from: string, edge: ExtractedEdge): Link | null {
     if (NAME_ONLY_EDGES.has(edge.kind)) return null;
     if (edge.kind === "imports") {
-      const target = this.importTarget(from, edge);
+      const target = this.importTarget(from, edge).file;
       if (!target) return null;
       const hit = (this.byName.get(edge.dst_name) ?? []).find((c) => c.path === target);
       return link(hit?.id ?? this.modules.get(target), "exact");

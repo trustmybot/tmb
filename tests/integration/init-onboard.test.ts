@@ -88,6 +88,17 @@ describe("tmb init", () => {
     for (const role of ["reviewer", "worker"]) expect(frontmatter(role)).not.toMatch(/^tools:/m);
   });
 
+  test("in a folder with no repo, runs git init first, so its own files are ignored on the first run (trustmybot/tmb#180)", () => {
+    const project = mkdtempSync(path.join(scratch, "bare-"));
+    writeFileSync(path.join(project, "notes.md"), "# notes\n");
+    expect(tmb(["init"], project)).toContain("so tmb ran git init in it");
+    const status = git(project, "status", "--porcelain", "--untracked-files=all");
+    expect(status).toContain("notes.md");
+    expect(status).not.toContain(".tmb/");
+    expect(status).not.toContain(".mcp.json");
+    expect(status).not.toContain("settings.local.json");
+  });
+
   test("takes only the host and its role", () => {
     for (const flag of ["--yes", "--base"]) {
       const result = run(["init", flag, ...(flag === "--base" ? ["main"] : [])], newProject());

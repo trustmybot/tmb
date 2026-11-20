@@ -366,13 +366,14 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
     : `Warning: ${adapter.name} is not supported yet in this release: tmb sets it up so you can try it, but nothing guarantees it works.`;
   if (warning) out(warning);
 
-  // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
-  for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   // A folder that is not a git work tree and holds repos, or held them at an earlier init, is a workspace.
-  // One that holds none, and never did, gets git init: it is then a project of one repo.
+  // One that holds none, and never did, gets git init: it is then a project of one repo. git init runs
+  // before anything is written, so the host's registrations find a work tree and add their .gitignore lines.
   const scan = inGitWorkTree(projectDir) ? null : scanWorkspace(projectDir);
   const workspace = scan !== null && (stored.repos !== null || scan.repos.length > 0);
   if (scan !== null && !workspace) initGit(projectDir, out);
+  // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
+  for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   const repos = workspace && scan !== null ? registerRepos(projectDir, stored.repos, scan, out) : null;
   for (const line of installPushGates(projectDir, repos, options.tmbCommand)) out(line);
   tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);

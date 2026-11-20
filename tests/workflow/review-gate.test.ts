@@ -91,7 +91,9 @@ describe("the review of a feature branch", () => {
       expect(ghCall).toContain(`Reviewed by the tmb reviewer: pass at ${reworkTip}.`);
       expect(git(project, "ls-remote", "origin", "refs/heads/feat/greet")).toStartWith(reworkTip);
       expect(await callJson(client, "feature_brief", { feature: "feat/greet" })).toMatchObject({ state: "pr_open", prUrl: pr.url });
-      expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Again" })).toContain("is pr_open");
+      // Again while it is open: the same pull request, and no second one (trustmybot/tmb#168).
+      expect(await callJson(client, "feature_pr", { feature: "feat/greet", title: "Again" })).toMatchObject({ url: pr.url, tip: reworkTip });
+      expect(readFileSync(ghLog, "utf8").split("\n").filter((line) => line.startsWith("pr create"))).toHaveLength(1);
 
       // 6. A second branch: the Human waives its review, and only the Human can.
       await callJson(client, "feature_start", { name: "feat/wave" });

@@ -103,7 +103,7 @@ function upgrade(db: Database, writer: ShapeWriter): void {
 
 /**
  * Opens the trajectory database at `dbPath`. With `create`, a missing file is made and
- * given the current schema; a database an older tmb made is upgraded. Refuses a missing file without `create`, a file that is not
+ * given the current schema; a database an older tmb made is upgraded. Refuses a missing file without `create`, an empty file without `create`, a file that is not
  * a readable tmb database, and a database made by a newer tmb, naming the tmb that wrote it.
  * `writer` signs a shape this open writes; the running tmb unless given.
  */
@@ -145,9 +145,10 @@ export function openStore(dbPath: string, options: { create: boolean; writer?: S
       db.close();
       return failed("unreadable", `${dbPath} is a SQLite database but not a tmb one: it has tables and no schema version`);
     }
+    // A record file that is there but holds nothing is a damaged record, not a missing one, so the gate denies (trustmybot/tmb#185).
     if (header.version === 0 && !options.create) {
       db.close();
-      return failed("missing", `${dbPath} is empty: no tmb database has been set up in it`);
+      return failed("unreadable", `${dbPath} is empty: the record file is there but holds no tmb database`);
     }
 
     useWal(db);

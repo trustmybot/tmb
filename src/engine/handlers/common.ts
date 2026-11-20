@@ -15,6 +15,8 @@ export const CLOSED = "closed";
 export const IN_REVIEW = "in_review";
 /** A task the planner or the Human ended without its work, with the reason (trustmybot/tmb#170). */
 export const DROPPED = "dropped";
+/** A feature branch whose pull request is open; it still takes fix tasks (trustmybot/tmb#168). */
+export const PR_OPEN = "pr_open";
 /** A feature branch whose pull request merged: final (trustmybot/tmb#131). */
 export const MERGED = "merged";
 /** A feature branch whose pull request closed without a merge; a task or a new pull request reopens it (trustmybot/tmb#152). */

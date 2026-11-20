@@ -411,7 +411,7 @@ describe("concepts", () => {
 });
 
 describe("a task's overlay", () => {
-  test("a task's commit is laid on top for its reads, and dropped once the task closes", async () => {
+  test("a task's commit is laid on top for its reads, and its layer is dropped once the task closes", async () => {
     const issueId = issueCreate(store, HUMAN, { title: "Taxes" }).id;
     featureStart(store, HUMAN, { name: "feat/tax" }, context());
     const task = taskStart(
@@ -430,8 +430,11 @@ describe("a task's overlay", () => {
 
     await taskClose(store, WORKER, { id: task.id }, context());
     expect(store.getTask(task.id)?.state).toBe("closed");
-    const error = await refusal(() => graphSymbol(store, WORKER, { name: "addTax", task_id: task.id }, context()));
-    expect(error.code).toBe("refused");
+    // Its work is folded into feat/tax, still open: the task's id now reads that branch.
+    const afterClose = await graphSymbol(store, WORKER, { name: "addTax", task_id: task.id }, context());
+    expect(afterClose.cards[0]?.symbol.path).toBe("src/pricing/tax.ts");
+    expect(afterClose.freshness.task).toBeNull();
+    expect(afterClose.freshness.feature).toEqual({ name: "feat/tax", commit: git(project, "rev-parse", "feat/tax") });
     await graphMap(store, WORKER, {}, context());
     const db = openGraphDb(project);
     try {
@@ -458,5 +461,73 @@ describe("misses", () => {
 
   test("a scope with neither an objective nor anchors is refused", async () => {
     expect((await refusal(() => graphScope(store, PLANNER, {}, context()))).code).toBe("invalid_input");
+  });
+});
+
+// trustmybot/tmb#182: in agile mode tasks are cut from the feature branch's tip, so the graph
+// reads that tip for the planner's scope and the reviewer's lookups.
+describe("a feature branch", () => {
+  async function foldedTax(): Promise<string> {
+    const issueId = issueCreate(store, HUMAN, { title: "Taxes" }).id;
+    featureStart(store, HUMAN, { name: "feat/tax" }, context());
+    const task = taskStart(
+      store,
+      PLANNER,
+      { issue_id: issueId, kind: "code", intent: "Add tax\n\nAdd a tax step.", files: ["src/pricing"], criteria: ["SC1: tax is added"], feature: "feat/tax" },
+      context(),
+    );
+    commit(task.worktree!, { "src/pricing/tax.ts": "export function addTax(total: number) { return total * 1.2; }\n" }, "tax");
+    await taskClose(store, WORKER, { id: task.id }, context());
+    expect(store.getTask(task.id)?.state).toBe("closed");
+    return store.findFeature("feat/tax")!.id;
+  }
+
+  const layers = (): string[] => {
+    const db = openGraphDb(project);
+    try {
+      return (db.query("SELECT layer FROM layers ORDER BY layer").all() as { layer: string }[]).map((row) => row.layer);
+    } finally {
+      db.close();
+    }
+  };
+
+  test("a lookup on the feature branch finds a folded task's function, and one on the base does not", async () => {
+    const featureId = await foldedTax();
+    const onFeature = await graphSymbol(store, PLANNER, { name: "addTax", feature: "feat/tax" }, context());
+    expect(onFeature.cards[0]?.symbol.path).toBe("src/pricing/tax.ts");
+    expect(onFeature.freshness.feature).toEqual({ name: "feat/tax", commit: git(project, "rev-parse", "feat/tax") });
+    const onBase = await graphSymbol(store, PLANNER, { name: "addTax" }, context());
+    expect(onBase.cards).toEqual([]);
+    expect(onBase.freshness.feature).toBeNull();
+    expect(layers()).toEqual(["base", `feature:${featureId}`]);
+  });
+
+  test("a scope reads the only open feature branch when it names none", async () => {
+    await foldedTax();
+    const scoped = await graphScope(store, PLANNER, { anchors: ["addTax"] }, context());
+    expect(scoped.unresolvedAnchors).toEqual([]);
+    expect(scoped.freshness.feature?.name).toBe("feat/tax");
+  });
+
+  test("the branch's layer follows its tip, and is dropped once it is merged", async () => {
+    const featureId = await foldedTax();
+    await graphMap(store, PLANNER, { feature: "feat/tax" }, context());
+    git(project, "checkout", "-q", "feat/tax");
+    commit(project, { "src/pricing/fees.ts": "export function addFee(total: number) { return total + 1; }\n" }, "fee");
+    git(project, "checkout", "-q", "main");
+    const moved = await graphFind(store, PLANNER, { query: "addFee", feature: "feat/tax" }, context());
+    expect(moved.hits.some((h) => h.path === "src/pricing/fees.ts")).toBe(true);
+
+    store.updateFeature(HUMAN, featureId, { state: "merged" });
+    const error = await refusal(() => graphMap(store, PLANNER, { feature: "feat/tax" }, context()));
+    expect(error.code).toBe("refused");
+    await graphMap(store, PLANNER, {}, context());
+    expect(layers()).toEqual(["base"]);
+  });
+
+  test("a feature branch the record does not hold, or one named with a task, is refused", async () => {
+    expect((await refusal(() => graphMap(store, PLANNER, { feature: "feat/none" }, context()))).code).toBe("not_found");
+    await foldedTax();
+    expect((await refusal(() => graphMap(store, PLANNER, { feature: "feat/tax", task_id: "T-1" }, context()))).code).toBe("invalid_input");
   });
 });

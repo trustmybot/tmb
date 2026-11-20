@@ -183,7 +183,7 @@ export const OPERATIONS = {
   },
   graph_scope: {
     description:
-      "Draft a task's scope from the code graph: from an objective and any anchors (symbols or files), the files in scope with why each is there (search, anchor, caller, import), the tests that cover them, the concepts anchored there, and a draft list of files for task_start. For the planner, before task_start, instead of reading files.",
+      "Draft a task's scope from the code graph: from an objective and any anchors (symbols or files), the files in scope with why each is there (search, anchor, caller, import), the tests that cover them, the concepts anchored there, and a draft list of files for task_start. With no task_id or feature, it reads the repo's feature branch when exactly one is open, since the task is cut from there; the answer's freshness says which. For the planner, before task_start, instead of reading files.",
     inputSchema: graph.graphScopeSchema,
     run: graph.graphScope,
   },

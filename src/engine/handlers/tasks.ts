@@ -6,6 +6,7 @@ import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";
 import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
+import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../docs-files.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
@@ -15,7 +16,7 @@ import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContex
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
-import { type PushOutcome, branchHoldsWork, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
+import { type PushOutcome, backupPush, branchHoldsWork, isAncestor, moveFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
 import { truestBase, truestClose, type TruestReview, truestReviewOf } from "./truest.ts";
@@ -523,26 +524,29 @@ export function committedHead(task: Task, store: Store): string {
   if (!runGit(worktree, ["merge-base", "--is-ancestor", base, head]).ok) {
     throw new HandlerError("refused", `HEAD ${head} does not build on the task's base commit ${base}; the work must be committed on top of it`);
   }
-  if (task.kind === "docs") refuseProgrammingFiles(task, base, head);
+  if (task.kind === "docs") refuseNonDocsFiles(task, base, head);
   return head;
 }
 
 /**
  * A docs task changes no code: refuses its close, naming each file, when its change from the base
- * commit touches a file Linguist marks as written in a programming language. A code task is never checked this way.
+ * commit touches a file whose type is not on the docs list (trustmybot/tmb#185). A type the list
+ * does not name counts as code. Linguist's name for the file, when it knows one, is shown beside it.
+ * A code task is never checked this way.
  */
-function refuseProgrammingFiles(task: Task, base: string, head: string): void {
+function refuseNonDocsFiles(task: Task, base: string, head: string): void {
   const touched = gitIn(task.worktree!, ["diff", "--name-only", "--no-renames", "-z", base, head]).split("\0").filter((file) => file !== "");
-  const programming = touched.flatMap((file) => {
+  const refused = touched.flatMap((file) => {
+    if (isDocsFile(file)) return [];
     const match = languageOf(file);
-    return match?.programming ? [`${file} (${match.languages.join(" or ")})`] : [];
+    return [match === null ? file : `${file} (${match.languages.join(" or ")})`];
   });
-  if (programming.length === 0) return;
-  const shown = programming.slice(0, DIRTY_LINES_SHOWN).join("\n");
-  const more = programming.length > DIRTY_LINES_SHOWN ? `\n…and ${programming.length - DIRTY_LINES_SHOWN} more` : "";
+  if (refused.length === 0) return;
+  const shown = refused.slice(0, DIRTY_LINES_SHOWN).join("\n");
+  const more = refused.length > DIRTY_LINES_SHOWN ? `\n…and ${refused.length - DIRTY_LINES_SHOWN} more` : "";
   throw new HandlerError(
     "refused",
-    `task ${task.id} is a docs task, but its change touches files written in a programming language, so it stays open. Move that change to a code task:\n${shown}${more}`,
+    `task ${task.id} is a docs task, but its change touches files that are not prose, data or images, so it stays open. A docs task may change ${DOCS_EXTENSIONS.join(" ")} files and files named ${DOCS_FILENAMES.join(", ")}; move the rest to a code task:\n${shown}${more}`,
   );
 }
 
@@ -675,7 +679,7 @@ function finishFold(
   const dir = taskDir(store, context.projectDir, task);
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, featureName, actor);
+  const push = backupPush(store, dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -753,7 +757,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, feature.name, actor);
+  const push = backupPush(store, dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }

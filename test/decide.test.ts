@@ -55,6 +55,15 @@ describe("decide", () => {
     expect(answer.reason).toContain("trajectory.db");
   });
 
+  test("denies when the record file is there but empty: a damaged record, not a missing one (#185)", () => {
+    mkdirSync(path.dirname(projectDbPath(project)), { recursive: true });
+    writeFileSync(projectDbPath(project), "");
+    const answer = decide(event());
+    expect(answer.decision).toBe("deny");
+    expect(answer.reason).toContain("cannot read the project's record");
+    expect(answer.reason).toContain("is empty");
+  });
+
   test("denies when a newer tmb made the record, saying so", () => {
     createRecord();
     const db = new Database(projectDbPath(project));
@@ -68,13 +77,13 @@ describe("decide", () => {
 
   test("with a readable record, allows and records each decision under the role and host", () => {
     createRecord();
-    expect(decide(event({ type: "before-file-write", role: "reviewer", task: "T1", action: "src/a.ts" }))).toEqual({ decision: "allow" });
+    expect(decide(event({ type: "before-file-write", role: "worker", task: "T1", action: "src/a.ts" }))).toEqual({ decision: "allow" });
     expect(decide(event({ type: "before-file-write", action: "src/b.ts" }))).toEqual({ decision: "allow" });
 
     const recorded = guardDecisions();
     expect(recorded).toHaveLength(2);
-    expect(recorded[0]).toMatchObject({ decision: "allow", reason: "no rule denies it", createdBy: { kind: "agent", role: "reviewer", host: "host-a" } });
-    expect(JSON.parse(recorded[0]!.event)).toEqual({ type: "before-file-write", role: "reviewer", task: "T1", action: "src/a.ts" });
+    expect(recorded[0]).toMatchObject({ decision: "allow", reason: "no rule denies it", createdBy: { kind: "agent", role: "worker", host: "host-a" } });
+    expect(JSON.parse(recorded[0]!.event)).toEqual({ type: "before-file-write", role: "worker", task: "T1", action: "src/a.ts" });
     expect(recorded[1]!.createdBy).toEqual({ kind: "agent", role: "planner", host: "host-a" });
     expect(JSON.parse(recorded[1]!.event)).toEqual({ type: "before-file-write", role: "planner", action: "src/b.ts" });
   });
@@ -219,7 +228,7 @@ describe("the worker gate", () => {
 describe("the guards", () => {
   const PLANNER = { kind: "agent", role: "planner", host: "host-a" } as const;
 
-  test("tmb leaves a worker's and a reviewer subagent's writes to the host, wherever they land", () => {
+  test("tmb leaves a worker's writes to the host, wherever they land, and denies every reviewer write by role (#185)", () => {
     createRecord();
     const worktree = mkdtempSync(path.join(project, "wt-"));
     const opened = openProjectStore(project, { create: true });
@@ -229,7 +238,9 @@ describe("the guards", () => {
     opened.store.close();
     const write = (role: string, action: string) => decide(event({ type: "before-file-write", role, action }));
 
-    expect(write("reviewer", path.join(worktree, "a.ts")).decision).toBe("allow");
+    const reviewer = write("reviewer", path.join(worktree, "a.ts"));
+    expect(reviewer).toMatchObject({ decision: "deny", reason: expect.stringContaining("The reviewer judges a change and never edits one") });
+    expect(write("reviewer", "src/a.ts").decision).toBe("deny");
     expect(write("worker", path.join(worktree, "src", "new", "a.ts")).decision).toBe("allow");
     expect(write("worker", path.join(project, "src", "a.ts")).decision).toBe("allow");
     expect(write("worker", "src/a.ts").decision).toBe("allow");
