@@ -1,13 +1,14 @@
 // The code graph's operations: the project map, where X lives, what depends on X, the scope of
-// a task, and the concepts. Each read first brings the graph forward to the base branch, and
+// a task, the concepts and the areas. Each read first brings the graph forward to the base branch, and
 // with a task_id lays that task's commit on top.
+import { type Area, areaFilter, listAreas, removeArea, TESTS_AREA, UnknownAreaError, unplacedFiles, upsertArea } from "../graph/areas.ts";
 import { CONCEPT_KINDS, type Concept, type ConceptKind, getConcept, listConcepts, parseAnchor, upsertConcept } from "../graph/concepts.ts";
 import { openGraphDb } from "../graph/db.ts";
 import { type Freshness, type GraphView, openView } from "../graph/fresh.ts";
-import { FIND_MAX, find, type Hit, lookupSymbol, type MapResult, projectMap, recordMiss, scope, type ScopeResult, type SymbolCard } from "../graph/lookups.ts";
+import { FIND_MAX, find, type Hit, type PathFilter, lookupSymbol, type MapResult, projectMap, recordMiss, scope, type ScopeResult, type SymbolCard } from "../graph/lookups.ts";
 import { UNTRUSTED_NOTE } from "../graph/summary.ts";
 import type { Actor, Store } from "../store/index.ts";
-import type { OperationContext } from "./common.ts";
+import { type OperationContext, requireRole } from "./common.ts";
 import { resolveRepo } from "../repos.ts";
 import { HandlerError } from "./errors.ts";
 import { type FieldSchema, type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
@@ -26,6 +27,28 @@ const REPO: FieldSchema = {
   description: "In a workspace of several repos, the repo whose graph to read, by its name in the workspace (settings_get lists them). With task_id, the task's repo. Omit it in a project of one repo.",
   pattern: NOT_BLANK,
 };
+
+const AREA: FieldSchema = {
+  type: "string",
+  description: "Only files and symbols in this area, or in an area nested in it (graph_areas lists them).",
+  pattern: NOT_BLANK,
+};
+
+const SKIP_AREAS: FieldSchema = {
+  type: "array",
+  description: `Leave out the files in these areas, such as ["${TESTS_AREA}"].`,
+  items: { type: "string", pattern: NOT_BLANK },
+};
+
+/** The filter the area fields ask for, or null; an area the graph does not have is refused with the names it has. */
+function filterFor(view: GraphView, area: string | undefined, skip: string[] | undefined): PathFilter | null {
+  try {
+    return areaFilter(view.db, view.layer, { area, skip });
+  } catch (error) {
+    if (error instanceof UnknownAreaError) throw new HandlerError("not_found", error.message);
+    throw error;
+  }
+}
 
 /** Which graph a read is for: a task's (in its repo), or a repo's base branch. */
 type Target = { taskId?: string; repo?: string };
@@ -84,6 +107,8 @@ export const graphFindSchema: InputSchema = {
   properties: {
     query: { type: "string", description: "A symbol's name, a path, or words that describe what you look for.", pattern: NOT_BLANK },
     k: { type: "integer", description: `How many hits to return; 10 when left out.`, minimum: 1, maximum: FIND_MAX },
+    area: AREA,
+    skip_areas: SKIP_AREAS,
     task_id: TASK_ID,
     repo: REPO,
   },
@@ -92,9 +117,13 @@ export const graphFindSchema: InputSchema = {
 };
 
 export async function graphFind(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ hits: Hit[] }>> {
-  const { query, k, task_id, repo } = validateInput<{ query: string; k?: number; task_id?: string; repo?: string }>("graph_find", graphFindSchema, input);
+  const { query, k, area, skip_areas, task_id, repo } = validateInput<{ query: string; k?: number; area?: string; skip_areas?: string[]; task_id?: string; repo?: string }>(
+    "graph_find",
+    graphFindSchema,
+    input,
+  );
   return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
-    const hits = find(view.db, view.layer, query, k);
+    const hits = find(view.db, view.layer, query, k, filterFor(view, area, skip_areas));
     if (hits.length === 0) miss("graph_find", query);
     return { hits };
   });
@@ -140,6 +169,8 @@ export const graphScopeSchema: InputSchema = {
       items: { type: "string", pattern: NOT_BLANK },
     },
     k: { type: "integer", description: "How many search hits to seed from; 8 when left out.", minimum: 1, maximum: FIND_MAX },
+    area: { ...AREA, description: "Keep the scope to this area and the areas nested in it; anchors you name stay in scope wherever they are." },
+    skip_areas: { ...SKIP_AREAS, description: `Leave the files in these areas out of the scope, such as ["${TESTS_AREA}"]; anchors you name stay.` },
     task_id: TASK_ID,
     repo: REPO,
   },
@@ -148,14 +179,22 @@ export const graphScopeSchema: InputSchema = {
 };
 
 export async function graphScope(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<ScopeResult>> {
-  const { objective = "", anchors = [], k, task_id, repo } = validateInput<{ objective?: string; anchors?: string[]; k?: number; task_id?: string; repo?: string }>(
+  const {
+    objective = "",
+    anchors = [],
+    k,
+    area,
+    skip_areas,
+    task_id,
+    repo,
+  } = validateInput<{ objective?: string; anchors?: string[]; k?: number; area?: string; skip_areas?: string[]; task_id?: string; repo?: string }>(
     "graph_scope",
     graphScopeSchema,
     input,
   );
   if (objective.trim() === "" && anchors.length === 0) throw new HandlerError("invalid_input", "graph_scope needs an objective or at least one anchor");
   return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
-    const result = scope(view.db, view.layer, { objective, anchors, k });
+    const result = scope(view.db, view.layer, { objective, anchors, k, filter: filterFor(view, area, skip_areas) });
     for (const anchor of result.unresolvedAnchors) miss("graph_scope", anchor, "anchor not found");
     if (result.files.length === 0 && result.tests.length === 0) miss("graph_scope", objective, "nothing in scope");
     return result;
@@ -218,6 +257,84 @@ export async function graphConcepts(store: Store, actor: Actor, input: unknown, 
     if (concept === null) throw new HandlerError("not_found", `no concept ${JSON.stringify(name)} in the code graph`);
     return { concepts: [concept] };
   });
+}
+
+// --- graph_area_upsert --------------------------------------------------------------------
+
+export const graphAreaUpsertSchema: InputSchema = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: `The area's name, such as login or billing; writing a name that exists replaces that area. "${TESTS_AREA}" is built in: its patterns add to and take from the test rule.`, pattern: NOT_BLANK },
+    purpose: { type: "string", description: "What this part of the project does, in one line.", pattern: NOT_BLANK },
+    include: {
+      type: "array",
+      description: "Path patterns of the files it holds: a folder (src/billing), or a glob where ** crosses folders and * stays in one (src/**/*.billing.ts). Each must match a file of the base branch.",
+      items: { type: "string", pattern: NOT_BLANK },
+    },
+    exclude: { type: "array", description: "Path patterns of files to leave out of it.", items: { type: "string", pattern: NOT_BLANK } },
+    parent: { type: "string", description: "The area it is part of; areas nest one level deep." },
+    repo: REPO,
+  },
+  required: ["name", "purpose", "include"],
+  additionalProperties: false,
+};
+
+export async function graphAreaUpsert(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ area: Area }>> {
+  requireRole(actor, "graph_area_upsert", ["planner"]);
+  const { name, purpose, include, exclude = [], parent, repo } = validateInput<{ name: string; purpose: string; include: string[]; exclude?: string[]; parent?: string; repo?: string }>(
+    "graph_area_upsert",
+    graphAreaUpsertSchema,
+    input,
+  );
+  return withView(store, actor, context, { repo }, (view) => {
+    const result = upsertArea(view.db, actor, { name: name.trim(), purpose, include, exclude, parent }, view.freshness.commit);
+    if ("reason" in result) throw new HandlerError("refused", result.reason);
+    return result;
+  }, true);
+}
+
+// --- graph_area_remove --------------------------------------------------------------------
+
+export const graphAreaRemoveSchema: InputSchema = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: `The area to remove, by name or id. "${TESTS_AREA}" is built in and stays.`, pattern: NOT_BLANK },
+    repo: REPO,
+  },
+  required: ["name"],
+  additionalProperties: false,
+};
+
+export async function graphAreaRemove(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ removed: string }>> {
+  requireRole(actor, "graph_area_remove", ["planner"]);
+  const { name, repo } = validateInput<{ name: string; repo?: string }>("graph_area_remove", graphAreaRemoveSchema, input);
+  return withView(store, actor, context, { repo }, (view) => {
+    const result = removeArea(view.db, name.trim());
+    if ("reason" in result) throw new HandlerError(result.reason.startsWith("no area") ? "not_found" : "refused", result.reason);
+    return result;
+  }, true);
+}
+
+// --- graph_areas --------------------------------------------------------------------------
+
+export const graphAreasSchema: InputSchema = {
+  type: "object",
+  properties: {
+    unplaced: { type: "integer", description: "How many of the files in no area to list; 50 when left out, 0 for the count alone.", minimum: 0, maximum: 1000 },
+    repo: REPO,
+  },
+  required: [],
+  additionalProperties: false,
+};
+
+export async function graphAreas(
+  store: Store,
+  actor: Actor,
+  input: unknown,
+  context: OperationContext,
+): Promise<GraphAnswer<{ areas: Area[]; unplaced: { count: number; files: string[] } }>> {
+  const { unplaced = 50, repo } = validateInput<{ unplaced?: number; repo?: string }>("graph_areas", graphAreasSchema, input);
+  return withView(store, actor, context, { repo }, (view) => ({ areas: listAreas(view.db), unplaced: unplacedFiles(view.db, view.layer, unplaced) }));
 }
 
 // --- graph_miss ---------------------------------------------------------------------------

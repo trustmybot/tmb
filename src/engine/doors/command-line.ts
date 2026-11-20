@@ -24,6 +24,7 @@ import {
   type TaskWaiveResult,
   type WaiveResult,
 } from "../handlers/index.ts";
+import type { Area } from "../graph/areas.ts";
 import type { Concept } from "../graph/concepts.ts";
 import { indexProject } from "../graph/fresh.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
@@ -90,13 +91,15 @@ ${JSON_NOTE}`,
 ${JSON_NOTE}`,
   graph: `  tmb graph map [<dir>] [--depth <n>]
                             Show the project's directories and files with their summaries
-  tmb graph find <words>    Find where a symbol, file or topic lives in the code
+  tmb graph find <words> [--area <name>] [--skip-area <name>]...
+                            Find where a symbol, file or topic lives in the code
   tmb graph symbol <name> [--path <file>]
                             Show a symbol's (or a file's) callers, importers, callees and tests
-  tmb graph scope <objective> [--anchor <symbol-or-path>]...
+  tmb graph scope <objective> [--anchor <symbol-or-path>]... [--area <name>] [--skip-area <name>]...
                             Draft a task's files and tests from the code graph
   tmb graph concepts [<words>]
                             List the concepts recorded in the code graph
+  tmb graph areas           List the project's areas and the files in none
   Add --task <id> to a lookup to read as that open task sees the code.
 ${JSON_NOTE}`,
 };
@@ -106,7 +109,7 @@ export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> =
   issue: ["create", "list", "show", "close", "reopen"],
   feature: ["start", "update", "list", "brief", "waive", "pr"],
   task: ["start", "list", "brief", "close", "drop", "waive", "pr"],
-  graph: ["map", "find", "symbol", "scope", "concepts"],
+  graph: ["map", "find", "symbol", "scope", "concepts", "areas"],
 };
 
 const HUMAN: Actor = { kind: "human" };
@@ -498,8 +501,11 @@ function formatMap(answer: GraphAnswer<MapResult>): string {
   return lines.join("\n");
 }
 
+const areasTag = (areas: string[] | undefined): string => (areas === undefined || areas.length === 0 ? "" : `  [${areas.join(", ")}]`);
+
 function hitLine(hit: Hit): string {
-  if (hit.kind === "symbol") return `${hit.symbolKind.padEnd(9)} ${hit.qualifiedName}  ${hit.path}:${hit.line ?? "?"}${hit.signature ? `\n  ${hit.signature}` : ""}`;
+  if (hit.kind === "symbol") return `${hit.symbolKind.padEnd(9)} ${hit.qualifiedName}  ${hit.path}:${hit.line ?? "?"}${areasTag(hit.areas)}${hit.signature ? `\n  ${hit.signature}` : ""}`;
+  if (hit.kind === "file") return `${hit.kind.padEnd(9)} ${hit.path}${areasTag(hit.areas)}${hit.summary ? `  ${hit.summary}` : ""}`;
   return `${hit.kind.padEnd(9)} ${hit.path}${hit.summary ? `  ${hit.summary}` : ""}`;
 }
 
@@ -515,6 +521,7 @@ function formatCard(card: SymbolCard): string {
   const s = card.symbol;
   const lines = [`${s.kind} ${s.qualifiedName}  ${s.path}:${s.startLine ?? "?"}-${s.endLine ?? "?"}`];
   if (s.signature && s.kind !== "module") lines.push(`  ${s.signature}`);
+  if (card.areas.length > 0) lines.push(`  areas: ${card.areas.join(", ")}`);
   lines.push(...refLines("called by", card.callers), ...refLines("imported by", card.importers));
   const calls = card.callees.filter((c) => c.edge !== "imports");
   if (calls.length > 0) lines.push("  calls:", ...calls.map((c) => `    ${c.name}  ${c.target ? `${c.target.path}` : "unresolved"}`));
@@ -532,7 +539,7 @@ function formatSymbol(answer: GraphAnswer<{ cards: SymbolCard[]; more: number }>
 
 function formatScope(answer: GraphAnswer<ScopeResult>): string {
   const lines = [freshnessLine(answer)];
-  const fileLine = (f: { path: string; via: string[] }) => `  ${f.path}  (${f.via.join(", ")})`;
+  const fileLine = (f: { path: string; via: string[]; areas: string[] }) => `  ${f.path}  (${f.via.join(", ")})${areasTag(f.areas)}`;
   lines.push(answer.files.length === 0 ? "No files in scope." : "Files:", ...answer.files.map(fileLine));
   if (answer.tests.length > 0) lines.push("Tests:", ...answer.tests.map(fileLine));
   if (answer.unresolvedAnchors.length > 0) lines.push(`Not found: ${answer.unresolvedAnchors.join(", ")}`);
@@ -547,6 +554,20 @@ function formatConcepts(answer: GraphAnswer<{ concepts: Concept[] }>): string {
     .join("\n");
 }
 
+function formatAreas(answer: GraphAnswer<{ areas: Area[]; unplaced: { count: number; files: string[] } }>): string {
+  const lines = answer.areas.map(
+    (a) =>
+      `${a.parent === null ? "" : `${a.parent} > `}${a.name}  ${a.files} files  ${a.status}${a.statusReason ? ` (${a.statusReason})` : ""}\n  ${a.purpose}` +
+      (a.include.length > 0 ? `\n  include: ${a.include.join(", ")}` : "") +
+      (a.exclude.length > 0 ? `\n  exclude: ${a.exclude.join(", ")}` : ""),
+  );
+  lines.push(answer.unplaced.count === 0 ? "Every file is in an area." : `${answer.unplaced.count} files in no area:`, ...answer.unplaced.files.map((f) => `  ${f}`));
+  if (answer.unplaced.count > answer.unplaced.files.length) lines.push(`  …and ${answer.unplaced.count - answer.unplaced.files.length} more`);
+  return lines.join("\n");
+}
+
+const AREA_OPTIONS = { area: { type: "string" }, "skip-area": { type: "string", multiple: true } } as const;
+
 function graphRequest(args: string[]): Request {
   const [action, ...rest] = args;
   switch (action) {
@@ -558,8 +579,13 @@ function graphRequest(args: string[]): Request {
       return { operation: "graph_map", input: { path: positionals[0], depth, task_id: values.task }, json: values.json === true, format: formatMap };
     }
     case "find": {
-      const { values, positionals } = parse(rest, { task: { type: "string" } });
-      return { operation: "graph_find", input: { query: words(positionals, "search words"), task_id: values.task }, json: values.json === true, format: formatFind };
+      const { values, positionals } = parse(rest, { task: { type: "string" }, ...AREA_OPTIONS });
+      return {
+        operation: "graph_find",
+        input: { query: words(positionals, "search words"), area: values.area, skip_areas: values["skip-area"], task_id: values.task },
+        json: values.json === true,
+        format: formatFind,
+      };
     }
     case "symbol": {
       const { values, positionals } = parse(rest, { path: { type: "string" }, task: { type: "string" } });
@@ -571,10 +597,10 @@ function graphRequest(args: string[]): Request {
       };
     }
     case "scope": {
-      const { values, positionals } = parse(rest, { anchor: { type: "string", multiple: true }, task: { type: "string" } });
+      const { values, positionals } = parse(rest, { anchor: { type: "string", multiple: true }, task: { type: "string" }, ...AREA_OPTIONS });
       return {
         operation: "graph_scope",
-        input: { objective: positionals.join(" "), anchors: values.anchor, task_id: values.task },
+        input: { objective: positionals.join(" "), anchors: values.anchor, area: values.area, skip_areas: values["skip-area"], task_id: values.task },
         json: values.json === true,
         format: formatScope,
       };
@@ -587,6 +613,11 @@ function graphRequest(args: string[]): Request {
         json: values.json === true,
         format: formatConcepts,
       };
+    }
+    case "areas": {
+      const { values, positionals } = parse(rest, {});
+      if (positionals.length > 0) throw new UsageError("graph areas takes no arguments");
+      return { operation: "graph_areas", input: {}, json: values.json === true, format: formatAreas };
     }
     default:
       throw actionError("graph", action);

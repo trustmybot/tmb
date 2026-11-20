@@ -198,6 +198,23 @@ export const OPERATIONS = {
     inputSchema: graph.graphConceptsSchema,
     run: graph.graphConcepts,
   },
+  graph_area_upsert: {
+    description:
+      "Write an area of the project: a logical part such as login, billing or the dashboard, as path patterns of the files it holds and leaves out, with a one-line purpose. Every file and symbol card then names its areas, and graph_find and graph_scope can keep to an area or leave one out. A pattern that matches no file is refused. \"tests\" is built in. For the planner, at onboarding and when the project's parts change.",
+    inputSchema: graph.graphAreaUpsertSchema,
+    run: graph.graphAreaUpsert,
+  },
+  graph_area_remove: {
+    description: "Remove an area of the project that no longer fits, by name. \"tests\" is built in and stays. For the planner.",
+    inputSchema: graph.graphAreaRemoveSchema,
+    run: graph.graphAreaRemove,
+  },
+  graph_areas: {
+    description:
+      "List the project's areas, each with its patterns, how many files it holds and whether it still matches (a rebuild marks one whose files are gone as broken, and one whose size moved by more than a quarter for review), and the files in no area with their count.",
+    inputSchema: graph.graphAreasSchema,
+    run: graph.graphAreas,
+  },
   graph_miss: {
     description:
       "Report a code graph lookup that answered wrong or missed something you then found another way, so the graph's value can be measured. Lookups that find nothing are recorded on their own.",
