@@ -255,7 +255,12 @@ CREATE INDEX idx_runs_feature ON runs(feature_id, id);
 ALTER TABLE reviews ADD COLUMN run_id TEXT REFERENCES runs(id);
 `;
 
+// Version 11: a feature branch can be dropped, with the reason, like a task (trustmybot/tmb#214).
+const VERSION_11_SQL = `
+ALTER TABLE features ADD COLUMN drop_reason TEXT;
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

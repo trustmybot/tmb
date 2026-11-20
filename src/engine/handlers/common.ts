@@ -31,6 +31,15 @@ export const READY = "ready";
 export function localMergeCommand(base: string, branch: string): string {
   return `git switch ${base} && git merge --no-ff ${branch}`;
 }
+/** A ready branch the Human will merge locally (trustmybot/tmb#183), with how to end it when tmb cannot see that merge (trustmybot/tmb#214). */
+export type LocalMerge = { dir: string; command: string; otherwise: string };
+/**
+ * What to do with a ready branch tmb does not record merged: tmb sees a merge, a squash or a
+ * rebase by hand, but not one after which the base changed the same lines again.
+ */
+export function endReadyLine(kind: "feature" | "task", name: string): string {
+  return `If its work reached the base branch another way and tmb still shows it ready, end it with: tmb ${kind} drop ${name} --reason "<where the work went>"`;
+}
 export const TRUEST = "truest";
 /** Task branches live under this prefix, so no feature branch may take it. */
 export const TASK_BRANCH_PREFIX = "tmb/";

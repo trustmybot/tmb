@@ -74,7 +74,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   feature: {
     table: "features",
     columns: ["name", "base_branch", "base_commit", "repo"],
-    updatable: ["state", "pr_url"],
+    updatable: ["state", "pr_url", "drop_reason"],
     initial: { state: "open" },
     hasUpdatedAt: true,
     searchable: false,

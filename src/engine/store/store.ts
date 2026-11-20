@@ -119,7 +119,7 @@ export type TaskChanges = {
   dropReason?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string; repo?: string | null };
-export type FeatureChanges = { state?: string; prUrl?: string | null };
+export type FeatureChanges = { state?: string; prUrl?: string | null; dropReason?: string | null };
 export type Feature = {
   id: string;
   name: string;
@@ -130,6 +130,8 @@ export type Feature = {
   prUrl: string | null;
   /** The repo the feature branch was cut in, by its name in the workspace; null for the project folder itself. */
   repo: string | null;
+  /** Why the feature branch was dropped; null unless it is. */
+  dropReason: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -252,6 +254,7 @@ type FeatureRow = {
   state: string;
   pr_url: string | null;
   repo?: string | null;
+  drop_reason?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -373,6 +376,7 @@ function toFeature(row: FeatureRow): Feature {
     state: row.state,
     prUrl: row.pr_url,
     repo: row.repo ?? null,
+    dropReason: row.drop_reason ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -580,6 +584,7 @@ export class Store {
     this.append(actor, "feature", id, "updated", {
       ...(changes.state === undefined ? {} : { state: changes.state }),
       ...(changes.prUrl === undefined ? {} : { pr_url: changes.prUrl }),
+      ...(changes.dropReason === undefined ? {} : { drop_reason: changes.dropReason }),
     });
   }
 

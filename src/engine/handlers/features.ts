@@ -5,7 +5,7 @@ import { refreshLocalMerges, refreshPullRequestStates } from "../pull-request-st
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, OPEN, type OperationContext, PR_OPEN, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, PR_OPEN, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { backupPush, branchRef, isAncestor, moveFeature, type PushOutcome } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -20,6 +20,8 @@ export type FeatureSummary = {
   repo: string | null;
   /** The ids of the tasks started on it, oldest first. */
   tasks: string[];
+  /** Why it was dropped; null unless it is. */
+  dropReason: string | null;
 };
 
 const HOW_TO_START = "start one with feature_start (`tmb feature start <name>` from the command line)";
@@ -33,6 +35,7 @@ function summaryOf(store: Store, feature: Feature): FeatureSummary {
     state: feature.state,
     repo: feature.repo,
     tasks: store.listFeatureTasks(feature.id).map((task) => task.id),
+    dropReason: feature.dropReason,
   };
 }
 
@@ -305,4 +308,66 @@ export function featureList(store: Store, actor: Actor, input: unknown, context?
   // A feature whose pull request merged or closed moves on first (trustmybot/tmb#131); a read that fails changes nothing.
   if (context !== undefined) refreshPullRequestStates(store, actor, context.projectDir);
   return store.listFeatures().map((feature) => summaryOf(store, feature));
+}
+
+// --- feature_drop -------------------------------------------------------------------------
+
+export const featureDropSchema: InputSchema = {
+  type: "object",
+  properties: {
+    feature: { type: "string", description: "The feature branch's name, as feature_list shows it.", pattern: NOT_BLANK },
+    reason: {
+      type: "string",
+      description: "Why the feature branch is dropped: nobody will merge it, or its work reached the base branch another way (say where).",
+      pattern: NOT_BLANK,
+    },
+  },
+  required: ["feature", "reason"],
+  additionalProperties: false,
+};
+
+export type FeatureDropResult = {
+  feature: FeatureSummary;
+  /** The branch, kept, with how to delete it; null when git no longer has it. */
+  keptBranch: string | null;
+};
+
+/**
+ * Ends a feature branch without a merge tmb saw, with the reason (trustmybot/tmb#214): one nobody
+ * will merge, or one whose work reached the base branch in a way tmb cannot tell. Open, closed and
+ * ready branches are dropped; one whose pull request is open is not, since GitHub could still merge
+ * it: the Human closes the pull request first. Refused while a task on it is open or in review. The
+ * branch itself is kept, so nothing committed is lost.
+ */
+export function featureDrop(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureDropResult {
+  const given = validateInput<{ feature: string; reason: string }>("feature_drop", featureDropSchema, input);
+  requireRole(actor, "feature_drop", ["planner"]);
+  // A pull request that merged or closed, or a local merge, is recorded first: a merged branch is not dropped.
+  refreshPullRequestStates(store, actor, context.projectDir);
+  store.transaction(() => {
+    const feature = store.findFeature(given.feature);
+    if (!feature) throw new HandlerError("not_found", `no feature branch ${given.feature} in the record; feature_list lists them`);
+    if (feature.state === PR_OPEN) {
+      throw new HandlerError(
+        "refused",
+        `the feature branch ${feature.name} has an open pull request${feature.prUrl === null ? "" : ` (${feature.prUrl})`}, which GitHub could still merge; close the pull request first, then drop the branch once tmb records it closed`,
+      );
+    }
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== READY) {
+      throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}; only an open one, a closed one or one ready for a local merge is dropped`);
+    }
+    const busy = store.listFeatureTasks(feature.id).filter((task) => task.state === OPEN || task.state === IN_REVIEW);
+    if (busy.length > 0) {
+      throw new HandlerError(
+        "refused",
+        `the feature branch ${feature.name} has tasks still open or in review (${busy.map((task) => `${task.id} ${task.state}`).join(", ")}); close or drop them first`,
+      );
+    }
+    store.updateFeature(actor, feature.id, { state: DROPPED, dropReason: given.reason.trim() });
+  });
+  const feature = store.findFeature(given.feature)!;
+  const dir = featureDir(store, context.projectDir, feature);
+  const exists = runGit(dir, ["rev-parse", "--verify", "--quiet", `${branchRef(feature.name)}^{commit}`]).ok;
+  const keptBranch = exists ? `the branch ${feature.name} was kept. Delete it once nothing there is needed: git branch -D ${feature.name}` : null;
+  return { feature: summaryOf(store, feature), keptBranch };
 }

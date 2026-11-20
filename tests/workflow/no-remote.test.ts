@@ -78,7 +78,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       const list = async () => (await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/greet");
       expect(await list()).toMatchObject({ state: "ready" });
       humanMerges(ready.localMerge);
-      expect(sessionStart(project)).toContain("feat/greet: the base branch main holds its tip");
+      expect(sessionStart(project)).toContain("feat/greet: the base branch main holds the work of its tip");
       expect(await list()).toMatchObject({ state: "merged" });
       expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet" })).toContain("is merged");
       expect(await callRefused(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/greet", intent: "More", files: ["src"], criteria: ["SC1: x"] })).toContain("is merged");
@@ -145,6 +145,95 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       expect(opened).toMatchObject({ url: PR, localMerge: null });
       expect(git(project, "ls-remote", "origin", later.branch)).toContain(opened.commit);
       expect((await callJson(client, "task_list", { state: "closed" })).find((t: { id: string }) => t.id === later.id)).toMatchObject({ prUrl: PR });
+    } finally {
+      await client.close();
+    }
+  }, 60_000);
+  test("a squash or a rebase merge by hand counts as merged too (trustmybot/tmb#214)", async () => {
+    const project = setUpProject("true");
+    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const client = await connect(project, "claude-code");
+    try {
+      await callJson(client, "feature_start", { name: "feat/squash" });
+      for (const [file, text] of [["src/a.ts", "export const a = 1;\n"], ["src/b.ts", "export const b = 2;\n"]] as const) {
+        const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/squash", intent: `Add ${file}`, files: ["src"], criteria: ["SC1: x"] });
+        commitFile(task.worktree, file, text, `add ${file}`);
+        await callJson(client, "task_close", { id: task.id, role: "worker" });
+      }
+      human(["feature", "waive", "feat/squash", "--reason", "The Human read it"], project);
+      expect(await callJson(client, "feature_pr", { feature: "feat/squash", title: "Squash" })).toMatchObject({ url: null });
+
+      // The Human squashes the branch into one commit on main: the tip is not on main, its work is.
+      const list = async () => (await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/squash");
+      expect(await list()).toMatchObject({ state: "ready" });
+      git(project, "merge", "--squash", "feat/squash");
+      git(project, "commit", "-q", "-m", "squash feat/squash");
+      expect(git(project, "branch", "--contains", git(project, "rev-parse", "feat/squash"))).not.toContain("main");
+      expect(await list()).toMatchObject({ state: "merged" });
+
+      // A ready branch whose work is only partly on main stays ready.
+      await callJson(client, "feature_start", { name: "feat/part" });
+      const part = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/part", intent: "Add c", files: ["src"], criteria: ["SC1: x"] });
+      commitFile(part.worktree, "src/c.ts", "export const c = 3;\n", "add c");
+      await callJson(client, "task_close", { id: part.id, role: "worker" });
+      human(["feature", "waive", "feat/part", "--reason", "The Human read it"], project);
+      await callJson(client, "feature_pr", { feature: "feat/part", title: "Part" });
+      commitFile(project, "src/c.ts", "export const c = 4;\n", "a different c on main");
+      expect((await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/part")).toMatchObject({ state: "ready" });
+    } finally {
+      await client.close();
+    }
+  }, 60_000);
+
+  test("the known limit: after a squash the base changed the same lines again, so the branch stays ready until it is dropped", async () => {
+    const project = setUpProject("true");
+    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const client = await connect(project, "claude-code");
+    try {
+      await callJson(client, "feature_start", { name: "feat/limit" });
+      const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/limit", intent: "Add greet", files: ["src"], criteria: ["SC1: x"] });
+      commitFile(task.worktree, "src/greet.ts", "export const greet = () => 'hi';\n", "add greet");
+      await callJson(client, "task_close", { id: task.id, role: "worker" });
+      human(["feature", "waive", "feat/limit", "--reason", "The Human read it"], project);
+      const ready = await callJson(client, "feature_pr", { feature: "feat/limit", title: "Limit" });
+      // The answer that names the ready branch says how to end it when tmb cannot see its merge.
+      expect(ready.localMerge.otherwise).toContain('tmb feature drop feat/limit --reason "<where the work went>"');
+      expect(tmb(["feature", "list"], project)).toContain("tmb feature drop feat/limit");
+
+      // The Human squashes it onto main, then main changes the same line again: tmb cannot tell.
+      git(project, "merge", "--squash", "feat/limit");
+      git(project, "commit", "-q", "-m", "squash feat/limit");
+      commitFile(project, "src/greet.ts", "export const greet = () => 'hello';\n", "greet differently");
+      const list = async () => (await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/limit");
+      expect(await list()).toMatchObject({ state: "ready" });
+
+      // The Human ends it with the reason saying where the work went; the branch is kept.
+      const dropped = tmb(["feature", "drop", "feat/limit", "--reason", "squashed onto main, then changed there"], project);
+      expect(dropped).toContain("Dropped feature branch feat/limit: squashed onto main, then changed there");
+      expect(dropped).toContain("git branch -D feat/limit");
+      expect(await list()).toMatchObject({ state: "dropped", dropReason: "squashed onto main, then changed there" });
+      expect(await callRefused(client, "feature_pr", { feature: "feat/limit", title: "Limit" })).toContain("is dropped");
+      expect(git(project, "rev-parse", "--verify", "feat/limit")).not.toBe("");
+    } finally {
+      await client.close();
+    }
+  }, 60_000);
+
+  test("a truest task cherry-picked onto the base branch by hand is closed", async () => {
+    const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": "one\ntwo\n" });
+    human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+    const issue = tmbJson(["issue", "create", "Fix the lines"], project);
+    const client = await connect(project, "claude-code");
+    try {
+      const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Fix line two", files: ["src"], criteria: ["SC1: it works"] });
+      commitFile(task.worktree, "src/lines.txt", "one\nTWO\n", "fix two");
+      await callJson(client, "task_close", { id: task.id, role: "worker" });
+      human(["task", "waive", task.id, "--reason", "The Human read it"], project);
+      const ready = await callJson(client, "task_pr", { id: task.id, title: "Fix" });
+      commitFile(project, "OTHER.md", "other\n", "someone else's change");
+      git(project, "cherry-pick", ready.commit);
+      expect(await callJson(client, "task_list", { state: "ready" })).toEqual([]);
+      expect(await callJson(client, "task_brief", { id: task.id })).toMatchObject({ state: "closed" });
     } finally {
       await client.close();
     }

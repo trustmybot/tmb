@@ -73,6 +73,12 @@ export const OPERATIONS = {
     inputSchema: feature.featureUpdateSchema,
     run: feature.featureUpdate,
   },
+  feature_drop: {
+    description:
+      "End a feature branch without a merge tmb saw, with the reason: one nobody will merge, or one whose work reached the base branch in a way tmb cannot tell (say where it went). An open, closed or ready branch is dropped; one whose pull request is open is refused, since GitHub could still merge it: the Human closes the pull request first. Refused while a task on it is open or in review. The branch is kept, and the answer says how to delete it. A dropped branch takes no task and opens no pull request. For the planner and the Human.",
+    inputSchema: feature.featureDropSchema,
+    run: feature.featureDrop,
+  },
   feature_list: {
     description:
       "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. A feature branch in pr_open whose pull request merged or closed moves to merged or closed first, read through the Human's GitHub command line; a ready one (a repo with no remote) moves to merged once the local base branch holds its tip. Use it before starting a task to see which feature branch it belongs on.",

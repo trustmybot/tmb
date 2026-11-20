@@ -116,7 +116,7 @@ describe("feature_start", () => {
     const main = git(project, "rev-parse", "main");
     const started = featureStart(store, PLANNER, { name: FEATURE }, context());
 
-    expect(started).toMatchObject({ name: FEATURE, baseBranch: "main", baseCommit: main, state: "open", tasks: [], repo: null });
+    expect(started).toMatchObject({ name: FEATURE, baseBranch: "main", baseCommit: main, state: "open", tasks: [], repo: null, dropReason: null });
     expect(tip()).toBe(main);
     expect(git(project, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     expect(git(project, "worktree", "list", "--porcelain")).not.toContain(`refs/heads/${FEATURE}`);
@@ -182,8 +182,8 @@ describe("feature_start", () => {
     const second = featureStart(store, HUMAN, { name: "feat/other" }, context());
     const task = startTask(["src"], { feature: FEATURE });
     expect(featureList(store, REVIEWER, {})).toEqual([
-      { id: first.id, name: FEATURE, baseBranch: "main", baseCommit: first.baseCommit, state: "open", tasks: [task.id], repo: null },
-      { id: second.id, name: "feat/other", baseBranch: "main", baseCommit: second.baseCommit, state: "open", tasks: [], repo: null },
+      { id: first.id, name: FEATURE, baseBranch: "main", baseCommit: first.baseCommit, state: "open", tasks: [task.id], repo: null, dropReason: null },
+      { id: second.id, name: "feat/other", baseBranch: "main", baseCommit: second.baseCommit, state: "open", tasks: [], repo: null, dropReason: null },
     ]);
     expect(refusal(() => featureList(store, HUMAN, { state: "open" })).code).toBe("invalid_input");
   });
