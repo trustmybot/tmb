@@ -32,6 +32,7 @@ import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handler
 import { installPushGate } from "./engine/push-gate.ts";
 import type { Actor } from "./engine/store/index.ts";
 import { version as packageVersion } from "./version.ts";
+import { Paint } from "./engine/doors/help.ts";
 
 /** Answers given on the command line; each one is used without asking. */
 export type SetupFlags = { host?: string; role?: string; base?: string; reviewMode?: string; checks?: string[]; yes?: boolean };
@@ -51,6 +52,8 @@ export type SetupOptions = {
   supportedHostIds?: readonly string[];
   /** The tmb program running setup, which the project is tied to; plain tmb at its package version unless given. */
   program?: { name: string; version: string };
+  /** Whether `out` may be coloured: the commands init's next steps name are then painted. Plain unless given. */
+  colour?: boolean;
 };
 
 export class SetupError extends Error {
@@ -313,14 +316,28 @@ function sayNoBase(base: string | null, out: (line: string) => void): void {
   if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb onboard --base <branch> to set one.");
 }
 
-/** The steps the Human must take before the host runs tmb, then the line saying tmb is ready. */
-function sayReady(projectDir: string, adapter: HostAdapter, role: HostRole, out: (line: string) => void): void {
+/**
+ * The steps the Human must take before the host runs tmb, then what to do next: start the host
+ * here and, for the planner, greet bro. `code` paints a command to run or text to send.
+ */
+function sayReady(projectDir: string, adapter: HostAdapter, role: HostRole, code: (text: string) => string, out: (line: string) => void): void {
   const steps = adapter.pendingSteps?.(projectDir) ?? [];
   if (steps.length > 0) {
     out(`Before ${adapter.name} runs tmb in this project, you need to:`);
     for (const step of steps) out(`  - ${step}`);
   }
-  out(`tmb is set up for ${adapter.name}. Open it in this project to start as the ${role}.`);
+  out(`tmb is set up for ${adapter.name}. Next:`);
+  if (role === "planner") {
+    out(`  1. Run ${code(adapter.command)} in this folder.`);
+    out(`  2. Send ${code("@bro")}.`);
+  } else {
+    out(`  1. Run ${code(adapter.command)} in this folder; it starts as the ${role}.`);
+  }
+}
+
+/** Who fills the empty settings when the Human does not: one place to change if a setting stops being the planner's to choose. */
+function howEmptySettingsFill(role: HostRole): string {
+  return role === "planner" ? "bro applies the ones it recommends" : "the planner's host applies the ones it recommends at its first session";
 }
 
 /** `tmb init`. Throws SetupError or SettingError, before writing anything when it can. */
@@ -328,18 +345,16 @@ export async function runInit(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
   const init = await initProject(options);
   printSettings(projectDir, init.recorded, out);
-  sayReady(projectDir, init.adapter, init.role, out);
+  const paint = new Paint(options.colour === true);
+  const code = (text: string) => `\`${paint.command(text)}\``;
+  sayReady(projectDir, init.adapter, init.role, code, out);
+  const onboard = code(`${options.program?.name ?? "tmb"} onboard`);
   const settings = storedSettings(projectDir) ?? NO_SETTINGS;
   const empty = emptySettings(settings).map((name) => name.replace("_", " "));
   if (empty.length === 0) {
-    out("Run tmb onboard to change the settings, at any time.");
-  } else if (init.role === "planner") {
-    out(
-      `The settings are still empty: ${listed(empty)}. When you open ${init.adapter.name} here, the planner applies the ones it recommends for this project and shows them; ` +
-        "run tmb onboard to set them yourself instead, at any time.",
-    );
+    out(`To change the settings, run ${onboard}.`);
   } else {
-    out(`The settings are still empty: ${listed(empty)}. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.`);
+    out(`The settings are still empty: ${listed(empty)}; ${howEmptySettingsFill(init.role)}. To set them yourself, run ${onboard}.`);
   }
   // Said again last, so it is not lost above init's other lines.
   if (init.warning) out(init.warning);

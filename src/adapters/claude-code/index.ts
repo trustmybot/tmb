@@ -20,6 +20,7 @@ function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): str
 export const adapter: HostAdapter = {
   id: HOST_ID,
   name: "Claude Code",
+  command: "claude",
 
   limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
 
