@@ -198,15 +198,16 @@ describe("task_start", () => {
     expectNothingWritten();
   });
 
-  test("refuses files that overlap an open task's, naming that task", () => {
+  test("two open tasks may share a file; the start names the open tasks it shares one with, as information", () => {
     const first = taskStart(store, PLANNER, spec({ files: ["src/a/one.ts"] }), context());
-    for (const files of [["src"], ["src/a/one.ts"], ["."]]) {
-      const error = refusal(() => taskStart(store, PLANNER, spec({ files }), context()));
-      expect(error.code).toBe("refused");
-      expect(error.message).toContain(first.id);
+    expect(first.sharedFiles).toEqual([]);
+    for (const [file, count] of [["src", 1], ["src/a/one.ts", 2], [".", 3]] as const) {
+      const started = taskStart(store, PLANNER, spec({ files: [file] }), context());
+      expect(started.sharedFiles).toHaveLength(count);
+      expect(started.sharedFiles[0]).toEqual({ task: first.id, title: first.brief.title, file, theirs: "src/a/one.ts" });
     }
-    expect(taskStart(store, PLANNER, spec({ files: ["src/a/one.tsx", "src/b"] }), context()).id).not.toBe(first.id);
-    expect(taskList(store, HUMAN, {})).toHaveLength(2);
+    expect(taskStart(store, PLANNER, spec({ files: ["src/a/one.tsx", "src/b"] }), context()).sharedFiles.map((shared) => shared.task)).not.toContain(first.id);
+    expect(taskList(store, HUMAN, {})).toHaveLength(5);
   });
 
   test("refuses the worker and the reviewer", () => {

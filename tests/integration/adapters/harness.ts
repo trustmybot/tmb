@@ -11,7 +11,8 @@ export type ContractEvent =
   | { type: "session-start" }
   | { type: "session-end" }
   | { type: "before-file-write"; role: string; file: string }
-  | { type: "before-command"; role: string; command: string }
+  /** A shell call by the agent. It is not a tmb event: tmb reads no shell command, and the suite checks it answers none. */
+  | { type: "shell-command"; role: string; command: string }
   | { type: "before-agent-start"; role: string; prompt: string }
   | { type: "after-agent-stop"; role: string };
 

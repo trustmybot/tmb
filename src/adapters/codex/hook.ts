@@ -33,17 +33,6 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
   return { type, projectDir: projectRootOf(cwdOf(input)), host: HOST_ID, role, action };
 }
 
-/** The command a shell call runs: a string, or an argv whose `sh -c` script is the command. */
-export function shellCommandOf(toolInput: JsonObject): string {
-  const command = toolInput.command ?? toolInput.cmd;
-  if (typeof command === "string") return command;
-  if (!Array.isArray(command) || !command.every((part) => typeof part === "string")) return "";
-  const argv = command as string[];
-  const script = argv.findIndex((part) => /^-[a-z]*c$/.test(part));
-  if (script > 0 && /(^|\/)(ba|z|da)?sh$/.test(argv[0]!) && argv[script + 1] !== undefined) return argv[script + 1]!;
-  return argv.join(" ");
-}
-
 const PATCH_FILE = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm;
 
 /** Every file an apply_patch call writes, adds, deletes or moves to, as given; or a file_path field. */
@@ -82,9 +71,9 @@ function preToolUse(input: JsonObject): string {
   const writes = (files: string[]) => files.map((file) => decide(eventOf(input, "before-file-write", path.resolve(cwdOf(input), file))));
   let decisions: Decision[];
   if (SHELL_TOOLS.has(toolName)) {
-    // Codex also runs apply_patch through the shell; each file the patch names is a write as well.
+    // tmb reads no shell command, but Codex also runs apply_patch through the shell: each file the patch names is a write.
     const { file_path: _file, path: _path, ...shellInput } = toolInput;
-    decisions = [decide(eventOf(input, "before-command", shellCommandOf(toolInput))), ...writes(patchFilesOf(shellInput))];
+    decisions = writes(patchFilesOf(shellInput));
   } else if (PATCH_TOOLS.has(toolName)) {
     const files = patchFilesOf(toolInput);
     decisions = files.length > 0 ? writes(files) : [decide(eventOf(input, "before-file-write", ""))];

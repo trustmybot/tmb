@@ -10,8 +10,8 @@ const SETTINGS_RELATIVE = path.join(".claude", "settings.local.json");
 const GITIGNORE_ENTRY = ".claude/settings.local.json";
 const ENABLED_SERVERS_KEY = "enabledMcpjsonServers";
 
-/** The tools whose calls raise a tmb event: file writes, shell commands and subagent starts. */
-export const GUARDED_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "Agent", "Task"] as const;
+/** The tools whose calls raise a tmb event: file writes and subagent starts. tmb reads no shell command. */
+export const GUARDED_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Task"] as const;
 
 /** Each Claude Code hook tmb wires: the hook event, its matcher, and the `tmb hook` name it runs. */
 export const TMB_HOOKS = [
