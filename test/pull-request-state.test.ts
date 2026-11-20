@@ -131,6 +131,8 @@ describe("through the Human's gh", () => {
     const context = handleEvent({ type: "session-start", projectDir: project, unattended: false, host: "host-a" }).context;
     expect(context).toContain(PULL_REQUESTS_ENDED_HEADING);
     expect(context).toContain("feat/b");
+    // A closed pull request says what the planner can do next (trustmybot/tmb#152).
+    expect(context).toContain("Start a task on it to rework it, or open a new pull request with feature_pr");
     expect(store.getFeature(id)!.state).toBe(CLOSED_UNMERGED);
     expect(store.history(id).at(-1)!.actor).toEqual(PLANNER);
     const again = handleEvent({ type: "session-start", projectDir: project, unattended: false, host: "host-a" }).context;
