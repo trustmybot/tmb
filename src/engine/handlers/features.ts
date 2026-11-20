@@ -1,6 +1,7 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
 import { gitFailure, runGit } from "../git.ts";
+import { refreshPullRequestStates } from "../pull-request-state.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
 import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
@@ -144,7 +145,9 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
 
 export const featureListSchema: InputSchema = { type: "object", properties: {}, required: [], additionalProperties: false };
 
-export function featureList(store: Store, _actor: Actor, input: unknown): FeatureSummary[] {
+export function featureList(store: Store, actor: Actor, input: unknown, context?: OperationContext): FeatureSummary[] {
   validateInput("feature_list", featureListSchema, input);
+  // A feature whose pull request merged or closed moves on first (trustmybot/tmb#131); a read that fails changes nothing.
+  if (context !== undefined) refreshPullRequestStates(store, actor, context.projectDir);
   return store.listFeatures().map((feature) => summaryOf(store, feature));
 }

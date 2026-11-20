@@ -50,8 +50,8 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   },
   run: {
     table: "runs",
-    columns: ["task_id", "role", "started_at", "ended_at", "outcome", "cost"],
-    updatable: ["ended_at", "outcome"],
+    columns: ["task_id", "role", "started_at", "ended_at", "outcome", "cost", "feature_id"],
+    updatable: ["ended_at", "outcome", "cost", "feature_id"],
     hasUpdatedAt: false,
     searchable: false,
   },
@@ -64,7 +64,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   },
   review: {
     table: "reviews",
-    columns: ["target_kind", "target", "verdict", "findings", "feature_id", "commit_sha"],
+    columns: ["target_kind", "target", "verdict", "findings", "feature_id", "commit_sha", "run_id"],
     updatable: [],
     hasUpdatedAt: false,
     searchable: false,

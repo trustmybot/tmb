@@ -138,7 +138,10 @@ describe("the API reads the record", () => {
 
   test("features, runs, checks, gate decisions and the audit log", async () => {
     expect((await api("features"))[0]).toMatchObject({ id: ids.featureId, name: SEED.featureName, task_count: 1, open_task_count: 1 });
-    expect((await api("runs")).map((r: any) => r.role).sort()).toEqual(["planner", "worker"]);
+    const runs = await api("runs");
+    expect(runs.map((r: any) => r.role).sort()).toEqual(["planner", "worker"]);
+    // A worker's run names its feature branch through its task (trustmybot/tmb#135).
+    expect(runs.find((r: any) => r.role === "worker")).toMatchObject({ feature_id: ids.featureId, feature_name: SEED.featureName });
     expect(await api("runs?limit=1")).toHaveLength(1);
     expect((await api("checks"))[0]).toMatchObject({ task_id: ids.taskId, result: "failed" });
     expect((await api("guard-decisions"))[0]).toMatchObject({ decision: "deny", reason: SEED.guardReason, author: "worker" });

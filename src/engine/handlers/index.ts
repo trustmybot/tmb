@@ -69,7 +69,7 @@ export const OPERATIONS = {
   },
   feature_list: {
     description:
-      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. Use it before starting a task to see which feature branch it belongs on.",
+      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. A feature branch in pr_open whose pull request merged or closed moves to merged or closed first, read through the Human's GitHub command line. Use it before starting a task to see which feature branch it belongs on.",
     inputSchema: feature.featureListSchema,
     run: feature.featureList,
   },

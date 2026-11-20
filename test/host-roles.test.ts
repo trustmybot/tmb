@@ -165,10 +165,27 @@ describe("a host set up as the reviewer", () => {
     expect(openRunsOf(REVIEWER_HOST)).toEqual([run!]);
     reviewRecord(store, REVIEWER, { feature: FEATURE, commit: tip, verdict: "pass" }, context());
     expect(openRunsOf(REVIEWER_HOST)).toHaveLength(0);
-    expect(outcomeOf(run!.id)).toBe(`verdict pass at ${tip}`);
+    expect(outcomeOf(run!.id)).toBe("finished");
+    // The review names the run that wrote it, and the run names the branch it reviewed (trustmybot/tmb#135).
+    expect(store.getRun(run!.id)!.featureId).toBe(store.findFeature(FEATURE)!.id);
+    expect(store.listRunReviews(run!.id).map((review) => review.verdict)).toEqual(["pass"]);
 
     featureBrief(store, REVIEWER, { feature: FEATURE }, context());
     expect(openRunsOf(REVIEWER_HOST)).toHaveLength(1);
+  });
+
+  test("a reviewer subagent's branch review links its run to the branch, and its stop ends it finished", async () => {
+    const tip = await featureWithWork();
+    const asSubagent: Actor = { kind: "agent", role: "reviewer", host: "host-a" };
+    decide({ type: "before-agent-start", projectDir: project, host: "host-a", role: "reviewer", action: "review the branch" });
+    const [run] = openRunsOf("host-a");
+    expect(run!.featureId).toBeNull();
+    reviewRecord(store, asSubagent, { feature: FEATURE, commit: tip, verdict: "pass" }, context());
+    const [review] = store.listRunReviews(run!.id);
+    expect(review).toMatchObject({ runId: run!.id, verdict: "pass" });
+    expect(store.getRun(run!.id)!.featureId).toBe(store.findFeature(FEATURE)!.id);
+    decide({ type: "after-agent-stop", projectDir: project, host: "host-a", role: "reviewer", action: "reviewer" });
+    expect(outcomeOf(run!.id)).toBe("finished");
   });
 
   test("a session start raised again on resume or compact opens no second run", () => {

@@ -23,6 +23,7 @@ export {
   type NewIssue,
   type NewReview,
   type Review,
+  type ModelUsage,
   type NewRun,
   type NewTask,
   type Run,

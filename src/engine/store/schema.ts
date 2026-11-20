@@ -232,7 +232,16 @@ const VERSION_7_SQL = `
 ALTER TABLE tasks ADD COLUMN main_snapshot TEXT;
 `;
 
+// Version 8: a run links to what it worked on, a task or, for a branch review, a feature branch,
+// and a review names the run that wrote it (trustmybot/tmb#135). A run's cost is filled when it
+// ends (trustmybot/tmb#133).
+const VERSION_8_SQL = `
+ALTER TABLE runs ADD COLUMN feature_id TEXT REFERENCES features(id);
+CREATE INDEX idx_runs_feature ON runs(feature_id, id);
+ALTER TABLE reviews ADD COLUMN run_id TEXT REFERENCES runs(id);
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

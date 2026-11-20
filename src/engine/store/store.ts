@@ -120,16 +120,22 @@ export type Feature = {
   createdAt: string;
   updatedAt: string;
 };
+/** Tokens one model used in a run, as the host reported them; never money (trustmybot/tmb#133). */
+export type ModelUsage = { model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
 export type Run = {
   id: string;
   taskId: string | null;
+  /** The feature branch a branch review's run reviewed; a worker's run reads its feature through its task. */
+  featureId: string | null;
   role: Role;
   startedAt: string;
   endedAt: string | null;
   outcome: string | null;
+  /** One entry per model, or null when the host gave none. */
+  cost: ModelUsage[] | null;
   createdBy: Actor;
 };
-export type RunEnd = { endedAt?: string; outcome?: string | null };
+export type RunEnd = { endedAt?: string; outcome?: string | null; cost?: ModelUsage[] | null };
 export type CheckRun = {
   id: string;
   taskId: string;
@@ -148,7 +154,8 @@ export type NewRun = {
   startedAt?: string;
   endedAt?: string | null;
   outcome?: string | null;
-  cost?: Record<string, unknown> | null;
+  cost?: ModelUsage[] | Record<string, unknown> | null;
+  featureId?: string | null;
 };
 export type NewCheckRun = {
   id?: string;
@@ -167,6 +174,8 @@ export type NewReview = {
   /** The feature branch a branch review judged, and the commit it judged it at. */
   featureId?: string | null;
   commitSha?: string | null;
+  /** The reviewer run that wrote it. */
+  runId?: string | null;
 };
 export type Review = {
   id: string;
@@ -176,6 +185,7 @@ export type Review = {
   findings: unknown[];
   featureId: string | null;
   commitSha: string | null;
+  runId: string | null;
   createdBy: Actor;
   createdAt: string;
 };
@@ -236,10 +246,21 @@ type ReviewRow = {
   findings: string;
   feature_id: string | null;
   commit_sha: string | null;
+  run_id: string | null;
   created_by: string;
   created_at: string;
 };
-type RunRow = { id: string; task_id: string | null; role: Role; started_at: string; ended_at: string | null; outcome: string | null; created_by: string };
+type RunRow = {
+  id: string;
+  task_id: string | null;
+  feature_id: string | null;
+  role: Role;
+  started_at: string;
+  ended_at: string | null;
+  outcome: string | null;
+  cost: string | null;
+  created_by: string;
+};
 type CheckRunRow = {
   id: string;
   task_id: string;
@@ -345,6 +366,7 @@ function toReview(row: ReviewRow): Review {
     findings: JSON.parse(row.findings) as unknown[],
     featureId: row.feature_id,
     commitSha: row.commit_sha,
+    runId: row.run_id,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
   };
@@ -354,10 +376,12 @@ function toRun(row: RunRow): Run {
   return {
     id: row.id,
     taskId: row.task_id,
+    featureId: row.feature_id,
     role: row.role,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     outcome: row.outcome,
+    cost: row.cost === null ? null : (JSON.parse(row.cost) as ModelUsage[]),
     createdBy: JSON.parse(row.created_by) as Actor,
   };
 }
@@ -527,7 +551,11 @@ export class Store {
   }
 
   updateFeature(actor: Actor, id: string, changes: FeatureChanges): void {
-    this.append(actor, "feature", id, "updated", { state: changes.state, pr_url: changes.prUrl });
+    // Only what changes: a key with no value would clear its column.
+    this.append(actor, "feature", id, "updated", {
+      ...(changes.state === undefined ? {} : { state: changes.state }),
+      ...(changes.prUrl === undefined ? {} : { pr_url: changes.prUrl }),
+    });
   }
 
   getFeature(id: string): Feature | null {
@@ -558,11 +586,32 @@ export class Store {
       ended_at: run.endedAt ?? null,
       outcome: run.outcome ?? null,
       cost: run.cost ?? null,
+      feature_id: run.featureId ?? null,
     }, run.id);
   }
 
   endRun(actor: Actor, id: string, end: RunEnd = {}): void {
-    this.append(actor, "run", id, "updated", { ended_at: end.endedAt ?? new Date().toISOString(), outcome: end.outcome ?? null });
+    this.append(actor, "run", id, "updated", {
+      ended_at: end.endedAt ?? new Date().toISOString(),
+      outcome: end.outcome ?? null,
+      ...(end.cost === undefined || end.cost === null ? {} : { cost: end.cost }),
+    });
+  }
+
+  /** Links a branch review's run to the feature branch it reviewed. */
+  setRunFeature(actor: Actor, id: string, featureId: string): void {
+    this.append(actor, "run", id, "updated", { feature_id: featureId });
+  }
+
+  getRun(id: string): Run | null {
+    const row = this.db.query("SELECT * FROM runs WHERE id = ?").get(id) as RunRow | null;
+    return row ? toRun(row) : null;
+  }
+
+  /** The reviews a run wrote, oldest first. */
+  listRunReviews(runId: string): Review[] {
+    const rows = this.db.query("SELECT * FROM reviews WHERE run_id = ? ORDER BY id").all(runId) as ReviewRow[];
+    return rows.map(toReview);
   }
 
   /** Runs of a role that have a start and no end, oldest first; only those of `taskId` when given. */
@@ -608,6 +657,7 @@ export class Store {
       findings: review.findings ?? [],
       feature_id: review.featureId ?? null,
       commit_sha: review.commitSha ?? null,
+      run_id: review.runId ?? null,
     }, review.id);
   }
 

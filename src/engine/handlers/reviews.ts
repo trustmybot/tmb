@@ -5,7 +5,7 @@
 // never reaches the base branch by a push either.
 import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
-import { endHostReviewerRun, ensureHostReviewerRun, isReviewerHost } from "../host-runs.ts";
+import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
 import { OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
@@ -249,7 +249,7 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   }
   requireRole(actor, "review_record", ["reviewer"]);
   // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
-  if (!store.openRuns("reviewer").some((run) => run.createdBy.kind === "agent" && run.createdBy.host === actor.host)) {
+  if (openRunsOf(store, actor.host).length === 0) {
     throw new HandlerError(
       "refused",
       "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
@@ -271,9 +271,15 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   }
 
   const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
-  const id = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip });
+  // The review names the run that wrote it, and that run its feature branch, since a branch review's start prompt may not name it (trustmybot/tmb#135).
+  const run = openRunsOf(store, actor.host)[0]!;
+  const id = store.transaction(() => {
+    const written = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip, runId: run.id });
+    if (run.featureId === null && run.taskId === null) store.setRunFeature(actor, run.id, feature.id);
+    return written;
+  });
   const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
-  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, `verdict ${given.verdict} at ${tip}`);
+  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, FINISHED);
   const mark = markReviewed(store, actor, context.projectDir, tip, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
