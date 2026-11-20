@@ -3,9 +3,8 @@
 // it did not write.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { type Capability, OPERATIONS, type SubagentRole } from "../../engine/index.ts";
+import { CAPABILITIES, type Capability, type SubagentRole } from "../../engine/index.ts";
 import { deleteFile } from "../common/json-file.ts";
-import { SERVER_KEY } from "./mcp-json.ts";
 
 const AGENTS_RELATIVE = path.join(".claude", "agents");
 // A YAML comment as the frontmatter's first line: Claude Code ignores it, and it tells tmb the file is its own.
@@ -14,21 +13,20 @@ const MARKER = "# Written by tmb init and deleted by tmb remove; tmb init replac
 const EARLIER_MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
 const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
 
-/** Claude Code's own tools for each capability; a role gets only the tools of the capabilities it has. */
+/**
+ * Claude Code's own tools for each capability. A role is denied the tools of the capabilities
+ * it lacks and keeps every other tool, so a project's own tools and any new tool of the host
+ * reach it. Claude Code enforces the denial itself.
+ */
 export const CAPABILITY_TOOLS: Record<Capability, readonly string[]> = {
   "read-files": ["Read", "Glob", "Grep"],
   "edit-files": ["Edit", "Write", "NotebookEdit"],
   "run-commands": ["Bash"],
 };
 
-/** Every tool of tmb's tool server, as Claude Code names a tool of a project server. */
-export function tmbToolNames(): string[] {
-  return Object.keys(OPERATIONS).map((name) => `mcp__${SERVER_KEY}__${name}`);
-}
-
-/** The agent file's tool list: the host tools of the role's capabilities, then tmb's tools. */
-export function roleTools(role: SubagentRole): string[] {
-  return [...new Set(role.capabilities.flatMap((capability) => CAPABILITY_TOOLS[capability])), ...tmbToolNames()];
+/** The agent file's deny list: the host tools of every capability the role lacks. */
+export function roleDeniedTools(role: SubagentRole): string[] {
+  return CAPABILITIES.filter((capability) => !role.capabilities.includes(capability)).flatMap((capability) => CAPABILITY_TOOLS[capability]);
 }
 
 export function agentsDir(projectDir: string): string {
@@ -46,7 +44,8 @@ function isTmbRoleFile(file: string): boolean {
 
 /**
  * The role as a Claude Code agent file. Values are JSON strings, which YAML reads as quoted
- * scalars; the tool list is one comma-separated string, the form Claude Code documents.
+ * scalars; the deny list is one comma-separated string, the form Claude Code documents, and
+ * a role that lacks no capability has none.
  */
 export function roleFileText(role: SubagentRole): string {
   const lines = [
@@ -54,8 +53,9 @@ export function roleFileText(role: SubagentRole): string {
     MARKER,
     `name: ${JSON.stringify(role.name)}`,
     `description: ${JSON.stringify(role.description)}`,
-    `tools: ${JSON.stringify(roleTools(role).join(", "))}`,
   ];
+  const denied = roleDeniedTools(role);
+  if (denied.length > 0) lines.push(`disallowedTools: ${JSON.stringify(denied.join(", "))}`);
   if (role.model) lines.push(`model: ${JSON.stringify(role.model)}`);
   if (role.effort) lines.push(`effort: ${JSON.stringify(role.effort)}`);
   lines.push("---", "", role.prompt.trimEnd(), "");
