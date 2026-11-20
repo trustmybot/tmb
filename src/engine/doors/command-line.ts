@@ -73,7 +73,7 @@ ${JSON_NOTE}`,
                             Start a task: cut its branch and worktree from the feature
                             branch and record its spec; --replaces names the dropped task
                             it takes over from
-  tmb task list [--state open|in_review|closed|dropped|all]
+  tmb task list [--state open|in_review|ready|closed|dropped|all]
                             List the open tasks, or those in review, the closed ones, the
                             dropped ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
@@ -388,7 +388,12 @@ function featureRequest(args: string[]): Request {
       if (values.title === undefined) throw new UsageError("feature pr needs --title <text>");
       const input = { feature: only(positionals, "feature branch name"), title: values.title, ...(values.body === undefined ? {} : { body: values.body }) };
       const format = (pr: FeaturePrResult) =>
-        [`Opened the pull request of ${pr.feature} into ${pr.base} at ${pr.tip} (${pr.coveredBy}): ${pr.url}`, markRequiredLine(pr.base, pr.markRequired)]
+        [
+          pr.localMerge === null
+            ? `Opened the pull request of ${pr.feature} into ${pr.base} at ${pr.tip} (${pr.coveredBy}): ${pr.url}`
+            : `${pr.feature} is ready at ${pr.tip} (${pr.coveredBy}). The repository has no remote, so nothing was pushed and no pull request opened. Merge it locally, in ${pr.localMerge.dir}:\n  ${pr.localMerge.command}`,
+          markRequiredLine(pr.base, pr.markRequired),
+        ]
           .filter((line) => line !== null)
           .join("\n");
       return { operation: "feature_pr", input, json: values.json === true, format };
@@ -469,7 +474,9 @@ function taskRequest(args: string[]): Request {
       const input = { id: only(positionals, "task id"), title: values.title, ...(values.body === undefined ? {} : { body: values.body }) };
       const format = (pr: TaskPrResult) =>
         [
-          `Opened the pull request of task ${pr.task} (${pr.branch}) into ${pr.base} at ${pr.commit} (${pr.coveredBy}): ${pr.url}`,
+          pr.localMerge === null
+            ? `Opened the pull request of task ${pr.task} (${pr.branch}) into ${pr.base} at ${pr.commit} (${pr.coveredBy}): ${pr.url}`
+            : `Task ${pr.task} (${pr.branch}) is ready at ${pr.commit} (${pr.coveredBy}). The repository has no remote, so nothing was pushed and no pull request opened. Merge it locally, in ${pr.localMerge.dir}:\n  ${pr.localMerge.command}`,
           ...(pr.rebasedOnto === null ? [] : [`Rebased onto ${pr.base} at ${pr.rebasedOnto} first; the patch was unchanged, so the review carried over.`]),
           ...pr.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
           ...pr.cleanedUp,

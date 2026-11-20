@@ -21,7 +21,7 @@ import { type Actor, type Store, type Task, clip } from "./store/index.ts";
 export const OPEN_WORK_HEADING = "## Open work in the record";
 export const AWAITING_REVIEW_HEADING = "## Feature branches waiting for your review";
 export const OPEN_WORK_MAX = 20;
-export const PULL_REQUESTS_ENDED_HEADING = "## Pull requests that ended since the last session";
+export const PULL_REQUESTS_ENDED_HEADING = "## Pull requests and local merges that ended since the last session";
 export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
 export const HOST_FILES_HEADING = "## tmb's files in this project";
 export const DOCTOR_HEADING = "## What tmb doctor finds";
@@ -200,7 +200,7 @@ export const UNATTENDED_INSTRUCTION =
 function awaitingReview(store: Store, projectDir: string): string {
   const lines: string[] = [];
   // A branch whose pull request is open takes fix tasks, and its new tip waits for a review too (trustmybot/tmb#168).
-  for (const feature of [...store.listFeatures("open"), ...store.listFeatures("pr_open")]) {
+  for (const feature of [...store.listFeatures("open"), ...store.listFeatures("pr_open"), ...store.listFeatures("ready")]) {
     const brief = featureBriefOf(store, projectDir, feature);
     if (brief.groups.length === 0 || brief.covered || brief.reviews.some((review) => review.commit === brief.tip)) continue;
     lines.push(`- ${reviewLine(feature.name)} at ${brief.tip.slice(0, 12)}: ${brief.groups.length} task${brief.groups.length === 1 ? "" : "s"} onto ${brief.baseBranch}`);

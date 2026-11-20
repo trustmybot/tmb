@@ -9,6 +9,7 @@ The plugin called this the world model.
 - **Directories and files.** Each with a short summary taken from its README or its header.
 - **Symbols.** Each file's definitions and the links between them: calls, imports, database reads and writes, and which tests cover what.
 - **Concepts.** Flows and rules written by agents, each anchored to the symbols that carry it out. They link a design page to its code.
+- **Areas.** The project's logical parts, such as login or billing, each a named group of files. See [Areas](#areas).
 
 ## What it answers
 
@@ -51,15 +52,30 @@ Built:
 - **A coverage test holds it at 100%.** A second, independent parser, the TypeScript compiler, lists every function, and the graph must match it one to one. On tmb's own repo on 2026-11-20: 3,340 of 3,340. Before, it was 1,250 of 3,256.
 - **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and indexing prints how many there are.
 - **Agents' answers do not change.** A lookup names the nearest named function, and unnamed functions stay out of search.
-- **Each language is a module of its own** (trustmybot/tmb#157). Every module answers the same questions for the engine, and one list names the modules, so adding a language touches nothing else. TypeScript, TSX and JavaScript share one module. A language's parser loads only when a file in that language is read. The plugin's own rules, for its tool registrations and settings reads, are not carried over.
+- **Each language is a module of its own** (trustmybot/tmb#157). Every module answers the same questions for the engine, and one list names the modules, so adding a language touches nothing else. TypeScript, TSX and JavaScript share one module; bash, Python, SQL and Perl each have their own. A language's parser loads only when a file in that language is read. The plugin's own rules, for its tool registrations and settings reads, are not carried over.
+- **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147). A TypeScript or JavaScript import that is not a relative path is resolved the way the TypeScript compiler does it: through the nearest project settings file above the importing file, read at the indexed commit. An import of a package that lives in the same repo links to that package's entry file. Two packages of the same name are not linked, because the graph never guesses.
+- **Misses are counted.** Each build counts the imports that name the repo's own code and link to no file, and indexing prints the count. A package installed from outside is not a miss.
 - **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a workspace of several repos the page opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
 
 Planned:
 
-- **Areas** (trustmybot/tmb#146, v1.0.0): the planner groups files into the project's logical parts, such as login or billing, and "tests" is an area from the start. Every file and function names its area, and the page draws each area as a box around its files.
-- **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147, v1.0.0), so the links are there to draw.
 - **Python, bash and the other languages get every function too**, each as its own module with its own coverage test (trustmybot/tmb#141, v1.x). Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after. Proposed, for the Human's review.
 - **A file's language comes from GitHub Linguist's list** (trustmybot/tmb#154, v1.x). Today each module names its own file extensions.
+
+## Areas
+
+Built (trustmybot/tmb#146). Asked for by the Human on 2026-11-20: the planner can say which logical part a piece of code belongs to, and tests are one area. The choices below are proposed, for the Human's review.
+
+- **An area is a named group of files**, with a one-line purpose. It is defined by path patterns to include and to leave out. A path rule cannot tell login from billing, so the planner names the areas and tmb stores and checks them. A function takes its file's area.
+- **Only the planner writes or removes an area.** It proposes the areas to the Human at onboarding. Every role can list them, and so can the Human from the command line.
+- **"tests" is there from the start**, and holds every file the built-in test rule matches. The planner changes that rule on the area itself, with patterns to add and to leave out. It cannot be removed.
+- **One level of nesting.** An area may have a parent.
+- **A file can be in several areas, and has one main area.** The order is always the same: a nested area before its parent, then the area whose pattern is the most exact, then the name that sorts first. "tests" comes last, so a test file inside billing has billing as its main area and is also in tests.
+- **Files in no area are listed, with their count**, so the planner sees what is not placed yet.
+- **A pattern that matches no file is refused**, with the reason.
+- **Areas are kept through a rebuild and re-checked**, as concepts are. One that matches no file is marked broken. One whose size moved by more than a quarter since it was written is marked for the planner to look at.
+- **Where an area shows.** Every file's and function's answer names its areas, main one first. Search and scoping can stay inside one area or leave areas out, such as tests; a filter matches any area a file is in, and the anchors a caller names stay in a scope regardless. On the dashboard's Code page the files of an area inside a folder are drawn in one tinted box.
+- What was checked: the usual standard for "who owns which paths" is a CODEOWNERS file, where the last matching pattern wins. Areas have no order between them, so the most exact pattern wins, as in URL routing. Not checked: how other code graph tools group code.
 
 ## Honest limits
 
