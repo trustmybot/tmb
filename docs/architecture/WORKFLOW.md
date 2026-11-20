@@ -70,6 +70,9 @@ flowchart TD
 - A task closes only when its checks pass on its commit. That holds in every mode.
 - The feature branch's pull request opens only after the reviewer passes the branch, or after a Human waiver that is recorded.
 - The Human can try the feature branch in a separate worktree while tasks continue.
+- **A feature branch ends as merged or closed** (trustmybot/tmb#131). Once its pull request is open, tmb reads that pull request's state through the Human's own GitHub CLI: merged makes the branch merged, closed without a merge makes it closed. tmb reads it when the planner's session starts, when the features are listed, and for the dashboard at most once a minute per branch. A read that fails changes nothing, so with no network the branch stays as it was. tmb never deletes the branch.
+- The planner's session start names each pull request that ended since the last session.
+- Not built: a second pull request on a closed feature branch. The gate still needs the branch open.
 
 ## Truest mode
 

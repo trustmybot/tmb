@@ -9,7 +9,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 | Issue | A goal, its state and its milestone. |
 | Discussion | Notes and decisions on an issue. The newest decision is the one in force. |
 | Task | A spec, its state, its branch and its commit. |
-| Run | One agent working on one task or one review, from start to end, with its cost. |
+| Run | One agent working on one task or one review, from start to end, with how it ended and its cost ([Runs](#runs)). |
 | Check run | The checks run on a commit and their result. |
 | Review | A reviewer's verdict on a commit or a feature branch, with its findings. |
 | Guard decision | Every allow and deny the gate gave, and why. |
@@ -24,6 +24,15 @@ The record of the work: what was asked, what was decided, what each agent did an
 - **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
 - **Every record names who made it.** The Human, or the role and host that acted. Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
 - **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering.
+
+## Runs
+
+Decided by bro, for the Human's review (trustmybot/tmb#133, trustmybot/tmb#135).
+
+- **A run ends as finished or stopped.** A worker's run is finished when its task left the open state during the run. A reviewer's run is finished when it recorded a review. Every other end is stopped, a reviewer that gave no verdict included.
+- **Cost is tokens, per model:** input, output, cache read and cache write. The host's adapter gives them. For Claude Code they come from the subagent's transcript, each message counted once. A run whose transcript cannot be read has no cost, and that is not an error.
+- **tmb records no price.** Prices change and a subscription has none per run.
+- **A run names its task or its feature branch.** A review of a whole feature branch has no task, so its run is linked to the branch it reviewed. A review names the run that wrote it.
 
 ## Where it lives
 
