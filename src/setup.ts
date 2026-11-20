@@ -333,7 +333,11 @@ function registerRepos(projectDir: string, stored: RepoPolicies | null, scan: Sc
  */
 function initGit(projectDir: string, out: (line: string) => void): void {
   const result = runGit(projectDir, ["init", "--quiet"]);
-  if (!result.ok) throw new SetupError(`this folder holds no git repo, and git init failed in it: ${result.stderr || result.stdout}`);
+  // Without git, init goes on as it always has: the project works, with the push gate off.
+  if (!result.ok) {
+    out(`This folder holds no git repo, and git init could not run in it (${result.stderr || result.stdout || "no output"}); tmb goes on without git.`);
+    return;
+  }
   out("This folder held no git repo, so tmb ran git init in it: it is a project of one repo.");
 }
 

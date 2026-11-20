@@ -340,6 +340,21 @@ describe("a project folder with no repo yet", () => {
     }
   });
 
+  test("init goes on without git when git init cannot run", async () => {
+    const empty = path.join(scratch, "no-git");
+    mkdirSync(empty);
+    output = [];
+    const pathBefore = process.env.PATH;
+    process.env.PATH = path.join(scratch, "nowhere");
+    try {
+      await runInit({ ...setupOptions(), projectDir: empty });
+    } finally {
+      process.env.PATH = pathBefore;
+    }
+    expect(output.some((line) => line.startsWith("This folder holds no git repo, and git init could not run in it"))).toBe(true);
+    expect(existsSync(path.join(empty, ".git"))).toBe(false);
+  });
+
   test("init never runs git init in a folder that holds a repo", () => {
     // The workspace's init above found repos a and b, so it wired them and left the folder as it was.
     expect(existsSync(path.join(workspace, ".git"))).toBe(false);
