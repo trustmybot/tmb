@@ -67,7 +67,7 @@ export type SetupOptions = {
   tmbCommand: readonly string[];
   adapters: readonly HostAdapter[];
   flags: SetupFlags;
-  /** Asks on the terminal; null when there is none, so every question takes its default. init asks only for the review mode. */
+  /** Asks on the terminal; null when there is none, so every question takes its default. init never asks, whatever is given. */
   ask: Ask | null;
   out: (line: string) => void;
   /** The ids of the hosts this release supports; init warns for any other. SUPPORTED_HOST_IDS unless given. */
@@ -76,7 +76,7 @@ export type SetupOptions = {
   program?: { name: string; version: string };
   /** Whether `out` may be coloured: the commands init's next steps name are then painted. Plain unless given. */
   colour?: boolean;
-  /** The feedback program's environment: init's end on a terminal tells or asks about it once. Nothing is said unless given. */
+  /** The feedback program's environment: init's end on a terminal gives its notice once; the question is the planner's. Nothing is said unless given. */
   feedback?: FeedbackEnv;
 };
 
@@ -505,13 +505,6 @@ function sayNoReviewMode(reviewMode: ReviewMode | null, out: (line: string) => v
 }
 
 /** init's one question: the review mode, asked on a terminal when none is chosen. Returns how many changes it recorded. */
-async function askReviewModeAtInit(options: SetupOptions): Promise<number> {
-  const { projectDir, ask, out } = options;
-  if (ask === null || (storedSettings(projectDir) ?? NO_SETTINGS).review_mode !== null) return 0;
-  const reviewMode = await askReviewMode(ask, null, out);
-  return reviewMode === null ? 0 : storeAnswers(projectDir, { review_mode: reviewMode }, "init");
-}
-
 function sayNoBase(base: string | null, out: (line: string) => void): void {
   if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb onboard --base <branch> to set one.");
 }
@@ -545,16 +538,19 @@ function howEmptySettingsFill(role: HostRole): string {
  * project uses (trustmybot/tmb#114). A planner host asks them before the first task.
  */
 function howReviewModeIsChosen(role: HostRole, onboard: string): string {
-  const who = role === "planner" ? `bro asks you before the first task, or run ${onboard}` : `run ${onboard}`;
+  const who = role === "planner" ? `bro asks you among its onboarding questions at the first session, or run ${onboard}` : `run ${onboard}`;
   return `No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, ${who}; no task starts until it is set.`;
 }
 
-/** `tmb init`. Throws SetupError or SettingError, before writing anything when it can. */
+/**
+ * `tmb init`. Asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162):
+ * the review mode is asked at onboarding. Throws SetupError or SettingError, before writing
+ * anything when it can.
+ */
 export async function runInit(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
   const init = await initProject(options);
-  const chosen = await askReviewModeAtInit(options);
-  printSettings(projectDir, init.recorded + chosen, out);
+  printSettings(projectDir, init.recorded, out);
   const paint = new Paint(options.colour === true);
   const code = (text: string) => `\`${paint.command(text)}\``;
   sayReady(projectDir, init.adapter, init.role, code, out);
@@ -570,8 +566,8 @@ export async function runInit(options: SetupOptions): Promise<void> {
     out(`The settings are still empty: ${listed(empty)}; ${howEmptySettingsFill(init.role)}. To set them yourself, run ${onboard}.`);
   }
   if (settings.review_mode === null) out(howReviewModeIsChosen(init.role, onboard));
-  // The feedback program's notice or question, once per program on this machine, only with someone to answer.
-  if (options.ask !== null && options.feedback !== undefined) await firstRunAtInit(options.feedback, options.ask, out);
+  // The feedback program's notice, once per program on this machine, only on a terminal; its question is the planner's.
+  if (options.feedback !== undefined) firstRunAtInit(options.feedback, out);
   // Said again last, so it is not lost above init's other lines.
   if (init.warning) out(init.warning);
 }

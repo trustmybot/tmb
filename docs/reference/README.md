@@ -68,11 +68,11 @@ tmb is set up for Claude Code. Next:
   2. Send `@bro`.
 ```
 
-On a terminal, init first asks one question: the review mode, with what each mode costs. It is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). At the first session the planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
+Init asks nothing. At the first session the planner asks you for the review mode among its onboarding questions, with what each mode costs; it is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). The planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | One, on a terminal: the review mode |
+| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | None |
 | `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks; in a workspace, each repo's base branch and checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
@@ -84,7 +84,7 @@ It then wires tmb into that host, as listed below, and stores the host and its r
 
 Run again, init replaces what an earlier tmb wrote and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
 
-On a terminal it asks for the review mode before those lines, unless one is stored. Without a terminal it asks nothing, never waits for input, and ends by saying that no review mode is chosen and that no task starts until it is.
+It asks nothing and never waits for input, on a terminal or not. With no review mode stored, it ends by saying that none is chosen, how to choose it, and that no task starts until it is.
 
 ### onboard
 
@@ -117,7 +117,7 @@ In a workspace, `base_branch` and `checks` are not used: each repo has its own i
 
 ### Onboarding by itself
 
-When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. Once all are set, the session start says nothing about them.
+When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. The review mode it never applies: it asks you for it among its onboarding questions, with the host's question tool (AskUserQuestion in Claude Code), showing each mode with what it costs and marking agile as recommended, and stores your answer. Once all are set, the session start says nothing about them.
 
 `settings_get` reads the settings and what tmb found; `settings_set` is the planner's alone.
 
@@ -125,9 +125,11 @@ When a session starts as the planner and the base branch, the review mode or the
 
 The review mode decides how many tokens a project uses, so tmb recommends one and never picks it. While none is set, tmb refuses to start a task and says how to choose. There are three ways:
 
-- answer the question at the end of `tmb init`, on a terminal;
-- run `tmb onboard`, or `tmb onboard --review-mode <mode> --yes` to set it without a question;
-- tell the planner when it asks before the first task. It stores your answer.
+- answer the planner's onboarding question at the first session. It stores your answer;
+- run `tmb onboard` on a terminal;
+- run `tmb onboard --review-mode <mode> --yes` to set it without a question.
+
+`tmb init` never asks for it.
 
 In an unattended run nobody can answer, so the task start is refused, the refusal names `tmb onboard`, and the planner cannot set or change the mode. Set it before the run. The record keeps which way the mode was chosen.
 
@@ -232,7 +234,7 @@ When tmb itself goes wrong, a bug report can reach tmb's maintainers as a public
 | `tmb feedback status` | Shows whether the program is on, and why. |
 
 - **On or off only decides whether the planner offers a report.** With the program on, the planner may draft one when tmb breaks, and shows it to you first. `tmb feedback` works either way.
-- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The first run is the end of `tmb init` on a terminal, else the planner's first session.
+- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The notice comes at the end of `tmb init` on a terminal, else at the planner's first session; the question on stable is always the planner's, as init asks nothing.
 - **The setting is yours, not the project's.** It is kept once per machine for each channel's program.
 - **How a report is sent.** With GitHub's CLI signed in, tmb files the issue after your yes and prints its link. Otherwise it opens the repo's bug form in your browser, filled in, and you press submit there; with no browser it prints the link. A report too long for a link is saved to a file, and the form asks you to attach it.
 - **Without a terminal** the draft is only saved to a file, and nothing is sent.

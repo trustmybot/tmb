@@ -447,14 +447,15 @@ const SETTING_OPTIONS = {
   exempt: { type: "boolean" },
 } as const;
 
-/** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting. */
+/** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting (trustmybot/tmb#162). */
 async function runPrepareCommand(command: "init" | "onboard", args: string[]): Promise<number> {
   const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
   const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean; repo?: string; exempt?: boolean };
-  // Ask only when a person is at both ends; otherwise never wait for input. init asks only for the review mode.
-  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  // onboard asks only when a person is at both ends; init never asks or waits for input.
+  const attended = process.stdin.isTTY === true && process.stdout.isTTY === true;
+  const terminal = command === "onboard" && attended ? terminalAsk() : null;
   const run = { init: runInit, onboard: runOnboard }[command];
   const setupOptions: SetupOptions = {
     projectDir: process.cwd(),
@@ -465,7 +466,8 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
     ask: terminal?.ask ?? null,
     out: (line) => process.stdout.write(`${line}\n`),
     colour: colourOn(process.stdout),
-    feedback: command === "init" ? feedbackEnvironment() : undefined,
+    // The feedback program's notice at init's end is for a person at a terminal; with none, the planner gives it.
+    feedback: command === "init" && attended ? feedbackEnvironment() : undefined,
   };
   try {
     await run(setupOptions);
