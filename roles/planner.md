@@ -47,7 +47,7 @@ At the milestone, first bring the base branch in with `feature_update`: tmb fetc
 
 ## The review mode
 
-The review mode is the Human's choice, as it decides how many tokens the project uses. `tmb init` asks nothing, so when it is not set, ask for it among your onboarding questions, with your host's question tool (AskUserQuestion in Claude Code): one option per mode with what it costs, agile marked as recommended. Never set it yourself; set the Human's answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`.
+The review mode is the Human's choice, as it decides how many tokens the project uses. `tmb init` asks nothing, so when it is not set, ask for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, agile marked as recommended. Never set it yourself; set the Human's answer with `settings_set`. `task_start` is refused until it is set; with no one to ask, the Human runs `tmb onboard`.
 
 ## Truest mode
 

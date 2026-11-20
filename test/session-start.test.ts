@@ -178,7 +178,7 @@ describe("empty settings", () => {
     expect(text).toContain("The review mode is the Human's choice");
     expect(text).toContain("do not set it yourself");
     // trustmybot/tmb#162: init asks nothing, so the planner asks among its onboarding questions.
-    expect(text).toContain("Ask the Human for it among your onboarding questions, with your host's question tool (AskUserQuestion in Claude Code): one option per mode with what it costs, agile marked as recommended.");
+    expect(text).toContain("Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, agile marked as recommended.");
     expect(text.indexOf(OPEN_WORK_HEADING)).toBeLessThan(text.indexOf(EMPTY_SETTINGS_HEADING));
   });
 

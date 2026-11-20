@@ -171,7 +171,7 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
         ? "The review mode is the Human's choice, as it decides how many tokens the project uses, and no one can answer in this run: do not set it. " +
             "task_start is refused until the Human runs `tmb onboard`; say so in your answer."
         : "The review mode is the Human's choice, as it decides how many tokens the project uses: do not set it yourself. " +
-            `Ask the Human for it among your onboarding questions, with your host's question tool (AskUserQuestion in Claude Code): one option per mode with what it costs, ${RECOMMENDED_REVIEW_MODE} marked as recommended. ` +
+            `Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, ${RECOMMENDED_REVIEW_MODE} marked as recommended. ` +
             "Set their answer with settings_set. task_start is refused until it is set.",
     );
   }
