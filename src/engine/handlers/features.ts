@@ -5,9 +5,9 @@ import { refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, PR_OPEN, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
-import { branchRef, isAncestor, moveFeature, type PushOutcome, pushFeature } from "./fold.ts";
+import { backupPush, branchRef, isAncestor, moveFeature, type PushOutcome } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
 export type FeatureSummary = {
@@ -90,7 +90,8 @@ export function featureTip(projectDir: string, feature: Feature): string {
 /**
  * The feature branch a task starts on: the one named, or with none named the only one open (in
  * `repo` when the task names one). A branch named whose pull request closed without a merge takes
- * the task too: the task start moves it back to open (trustmybot/tmb#152). Refuses none open,
+ * the task too: the task start moves it back to open (trustmybot/tmb#152). So does one whose pull
+ * request is open, which stays pr_open: a fix task (trustmybot/tmb#168). Refuses none open,
  * several open, and a name the record does not hold open or closed.
  */
 export function featureForTask(store: Store, name: string | undefined, repo?: string): Feature {
@@ -101,8 +102,8 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
     if (!feature) {
       throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? HOW_TO_START : `the open ones are ${names}`}`);
     }
-    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
-      throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one, or on one whose pull request closed without a merge`);
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN) {
+      throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one, one whose pull request is open, or one whose pull request closed without a merge`);
     }
     return feature;
   }
@@ -241,7 +242,9 @@ export function featureUpdate(store: Store, actor: Actor, input: unknown, contex
   requireRole(actor, "feature_update", ["planner"]);
   const feature = store.findFeature(given.feature);
   if (!feature) throw new HandlerError("not_found", `no feature branch ${given.feature} in the record; feature_list lists them`);
-  if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}; only an open one takes the base branch in`);
+  if (feature.state !== OPEN && feature.state !== PR_OPEN) {
+    throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}; only an open one, or one whose pull request is open, takes the base branch in`);
+  }
   const dir = featureDir(store, context.projectDir, feature);
   const from = featureTip(dir, feature);
   const base = fetchedBase(dir, feature.baseBranch, `into the feature branch ${feature.name}`);
@@ -281,7 +284,7 @@ export function featureUpdate(store: Store, actor: Actor, input: unknown, contex
     undo();
     throw error;
   }
-  return result(to, how, pushFeature(dir, feature.name, actor));
+  return result(to, how, backupPush(store, dir, feature.name, actor));
 }
 
 // --- feature_list -------------------------------------------------------------------------
