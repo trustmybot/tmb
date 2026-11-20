@@ -2,7 +2,7 @@
 // the path; the store never works out where the file lives.
 import { Database, SQLiteError } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { runningProgram } from "../../program.ts";
+import { runningProgram, upgradeAdvice } from "../../program.ts";
 import { version as tmbVersion } from "../../version.ts";
 import { SCHEMA_STEPS, SCHEMA_VERSION } from "./schema.ts";
 import { SHAPE_WRITER_KEY, type ShapeWriter, Store } from "./store.ts";
@@ -131,7 +131,10 @@ export function openStore(dbPath: string, options: { create: boolean; writer?: S
       const writer = readShapeWriter(db);
       db.close();
       const by = writer === null ? "made by a newer tmb" : `made by a newer tmb (${writer.program} ${writer.version} wrote it)`;
-      const remedy = writer === null ? "" : `; run ${writer.program} in this project, or a tmb at least as new as ${writer.version}`;
+      // Names a command the person can run, never a version: the writer may be a build no channel offers.
+      const running = runningProgram(tmbVersion);
+      const upgrade = upgradeAdvice(running, tmbVersion);
+      const remedy = writer === null || writer.program === running.name ? `; ${upgrade}` : `; run ${writer.program} in this project, or ${upgrade}`;
       return failed(
         "newer",
         `${dbPath} has schema version ${header.version}, ${by}; this tmb (${tmbVersion}) reads up to version ${SCHEMA_VERSION}${remedy}`,
