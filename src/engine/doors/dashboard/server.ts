@@ -8,6 +8,7 @@ import page from "../../../../dashboard/web/index.html";
 import { openView } from "../../graph/fresh.ts";
 import { HandlerError, OPERATIONS } from "../../handlers/index.ts";
 import { openProjectStore, projectDbPath } from "../../project.ts";
+import { type PullRequestReader, refreshPullRequestStates } from "../../pull-request-state.ts";
 import { workingRepos, workspaceRepos } from "../../repos.ts";
 import type { Actor, Store } from "../../store/index.ts";
 import * as graph from "./code-graph.ts";
@@ -18,6 +19,8 @@ const HOST = "127.0.0.1";
 const TOKEN_HEADER = "x-tmb-token";
 const MAX_BODY_BYTES = 1024 * 1024;
 const HUMAN: Actor = { kind: "human" };
+/** The dashboard asks GitHub about each open pull request at most this often (trustmybot/tmb#131). */
+export const PULL_REQUEST_READ_INTERVAL_MS = 60_000;
 
 export type Dashboard = { url: string; port: number; stop(): Promise<void> };
 
@@ -68,7 +71,7 @@ function pick(body: Json, keys: readonly string[]): Json {
  * Serves the dashboard for the project at `projectDir` until stop() is called. Refuses a
  * project with no record, or one this build cannot read, the same way the other doors do.
  */
-export function startDashboard(options: { projectDir: string; port?: number }): Dashboard {
+export function startDashboard(options: { projectDir: string; port?: number; readPullRequest?: PullRequestReader }): Dashboard {
   const opened = openProjectStore(options.projectDir, { create: false });
   if (!opened.ok) throw opened.error;
   const store: Store = opened.store;
@@ -77,6 +80,20 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
   const token = randomBytes(32).toString("hex");
   let allowedHosts: Set<string> = new Set();
   let graphQueue: Promise<void> = Promise.resolve();
+  const lastRead = new Map<string, number>();
+
+  /** Moves features whose pull request merged or closed, as the Human; each one is read at most once a minute. */
+  function refreshFeatures(): void {
+    refreshPullRequestStates(store, HUMAN, options.projectDir, {
+      read: options.readPullRequest,
+      shouldRead: (feature) => {
+        const now = Date.now();
+        if (now - (lastRead.get(feature.id) ?? -Infinity) < PULL_REQUEST_READ_INTERVAL_MS) return false;
+        lastRead.set(feature.id, now);
+        return true;
+      },
+    });
+  }
 
   /** Refuses a request whose Host is not this server's own, so a page on another site cannot reach the API through DNS rebinding. */
   function checkHost(req: Request): void {
@@ -166,9 +183,9 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
     "/api/summary": read(() => q.summary(db)),
     "/api/issues": read(() => q.issues(db)),
     "/api/issues/:id": read((req) => q.issueDetail(db, req.params.id!)),
-    "/api/tasks": read(() => q.tasks(db)),
-    "/api/tasks/:id": read((req) => q.taskDetail(db, req.params.id!)),
-    "/api/features": read(() => q.features(db)),
+    "/api/tasks": read(() => (refreshFeatures(), q.tasks(db))),
+    "/api/tasks/:id": read((req) => (refreshFeatures(), q.taskDetail(db, req.params.id!))),
+    "/api/features": read(() => (refreshFeatures(), q.features(db))),
     "/api/runs": read((req) => q.runs(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/checks": read((req) => q.checkRuns(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/guard-decisions": read((req) => q.guardDecisions(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),

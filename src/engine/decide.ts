@@ -9,7 +9,9 @@ import { adoptWorktree } from "./handlers/adopt.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
 import { hostRole } from "./settings.ts";
-import { type Actor, ROLES, type Role, type Store, type StoreOpenError } from "./store/index.ts";
+import { FINISHED, STOPPED } from "./host-runs.ts";
+import { OPEN } from "./handlers/common.ts";
+import { type Actor, type ModelUsage, ROLES, type Role, type Run, type Store, type StoreOpenError } from "./store/index.ts";
 
 export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop", "worker-in-folder"] as const;
 export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
@@ -35,6 +37,8 @@ export type TmbEvent = {
   /** The role of the agent starting or stopping; for any other event, MAIN_AGENT or the subagent the event came from. */
   role: string;
   task?: string;
+  /** For an agent stopping: the tokens it used, per model, when its host gives them (trustmybot/tmb#133). */
+  cost?: ModelUsage[] | null;
   /**
    * What is about to happen: the file path, the start prompt of an agent starting, or the role of
    * one stopping; for a worker naming its task, the folder it works in.
@@ -110,8 +114,23 @@ function runStop(store: Store, event: TmbEvent, role: Role): Decision {
       open.length === 0 ? `no open ${role} run${which} to end` : `${open.length} ${role} runs are open and the stop names no task, so none was ended`;
     return { decision: "allow", reason };
   }
-  store.endRun(actorOf(event), open[0]!.id, { outcome: "stopped" });
-  return { decision: "allow", reason: `${role} run ${open[0]!.id} ended` };
+  const run = open[0]!;
+  const outcome = outcomeOf(store, run);
+  store.endRun(actorOf(event), run.id, { outcome, cost: event.cost ?? null });
+  return { decision: "allow", reason: `${role} run ${run.id} ended, ${outcome}` };
+}
+
+/**
+ * How a run ended (trustmybot/tmb#133): a worker finished when its task left the open state during
+ * the run, to in review or closed, since a worker starts only on an open task; a reviewer finished
+ * when it recorded a verdict during the run. Any other end is a stop.
+ */
+function outcomeOf(store: Store, run: Run): string {
+  if (run.role === WORKER) {
+    const task = run.taskId === null ? null : store.getTask(run.taskId);
+    return task !== null && task.state !== OPEN ? FINISHED : STOPPED;
+  }
+  return store.listRunReviews(run.id).length > 0 ? FINISHED : STOPPED;
 }
 
 function deny(reason: string): Decision {
