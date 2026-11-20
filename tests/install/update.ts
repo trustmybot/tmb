@@ -1,6 +1,6 @@
 // Install update test against the real release repo: an older tmb on the channel is
 // installed into a throwaway HOME and must update itself to the channel's newest release,
-// between sessions and never with a task open. Never touches the real HOME.
+// at once, while a running session keeps its build until it is free. Never touches the real HOME.
 //   bun tests/install/update.ts <dev|rc|stable> [expected-version]
 // With an expected version, the channel's newest release must be it. A channel with no
 // release yet is skipped with a notice.
@@ -48,7 +48,8 @@ try {
   // Installed under the channel's own name, as the installer does.
   const scenario = prepareInstall(old, {}, programName(channel));
   try {
-    await updatesItself(scenario, latest, (line) => console.log(`PASS ${line}`));
+    // A release older than trustmybot/tmb#159 cannot take a running session over; the session must say so.
+    await updatesItself(scenario, latest, (line) => console.log(`PASS ${line}`), { moves: false });
     console.log(`install update: the ${channel} install updated itself to ${latest}`);
   } catch (error) {
     failed = true;

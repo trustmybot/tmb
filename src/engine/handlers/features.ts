@@ -1,12 +1,13 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
 import { gitFailure, runGit } from "../git.ts";
+import { refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
-import { branchRef } from "./fold.ts";
+import { branchRef, isAncestor, moveFeature, type PushOutcome, pushFeature } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
 export type FeatureSummary = {
@@ -47,6 +48,30 @@ export function baseBranchTip(projectDir: string, baseBranch: string, cutting: s
   return resolved.stdout;
 }
 
+const ORIGIN = "origin";
+
+/**
+ * The commit a feature branch is cut from and takes in: the base branch as origin holds it,
+ * fetched first, unless the local base branch holds a commit origin lacks, which only the local
+ * one would carry. The local base branch when there is no origin, or origin does not have it.
+ * A fetch that fails, offline say, leaves origin's copy as it was.
+ */
+export function fetchedBase(projectDir: string, baseBranch: string, cutting: string): string {
+  if (!baseBranch.startsWith("-") && runGit(projectDir, ["remote", "get-url", ORIGIN]).ok) {
+    runGit(projectDir, ["fetch", "--quiet", ORIGIN, `+refs/heads/${baseBranch}:refs/remotes/${ORIGIN}/${baseBranch}`], { GIT_TERMINAL_PROMPT: "0" });
+  }
+  return knownBase(projectDir, baseBranch, cutting);
+}
+
+/** The commit fetchedBase would give from what git holds now, without fetching. */
+export function knownBase(projectDir: string, baseBranch: string, cutting: string): string {
+  if (baseBranch.startsWith("-")) return baseBranchTip(projectDir, baseBranch, cutting);
+  const remote = runGit(projectDir, ["rev-parse", "--verify", "--quiet", `refs/remotes/${ORIGIN}/${baseBranch}^{commit}`]);
+  if (!remote.ok) return baseBranchTip(projectDir, baseBranch, cutting);
+  const local = runGit(projectDir, ["rev-parse", "--verify", "--quiet", `${branchRef(baseBranch)}^{commit}`]);
+  return !local.ok || isAncestor(projectDir, local.stdout, remote.stdout) ? remote.stdout : local.stdout;
+}
+
 /** The folder of the repo a feature branch was cut in. */
 export function featureDir(store: Store, projectDir: string, feature: Feature): string {
   return repoOfRow(store, projectDir, feature).dir;
@@ -63,9 +88,10 @@ export function featureTip(projectDir: string, feature: Feature): string {
 }
 
 /**
- * The open feature branch a task starts on: the one named, or with none named the only one
- * open (in `repo` when the task names one). Refuses none open, several open, and a name the
- * record does not hold open.
+ * The feature branch a task starts on: the one named, or with none named the only one open (in
+ * `repo` when the task names one). A branch named whose pull request closed without a merge takes
+ * the task too: the task start moves it back to open (trustmybot/tmb#152). Refuses none open,
+ * several open, and a name the record does not hold open or closed.
  */
 export function featureForTask(store: Store, name: string | undefined, repo?: string): Feature {
   const open = store.listFeatures(OPEN).filter((feature) => name !== undefined || repo === undefined || feature.repo === repo);
@@ -75,7 +101,9 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
     if (!feature) {
       throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? HOW_TO_START : `the open ones are ${names}`}`);
     }
-    if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one`);
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
+      throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}; a task starts only on an open one, or on one whose pull request closed without a merge`);
+    }
     return feature;
   }
   if (open.length === 1) return open[0]!;
@@ -139,7 +167,7 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
   if (runGit(dir, ["rev-parse", "--verify", "--quiet", ref]).ok) {
     throw new HandlerError("refused", `the branch ${name} already exists in git; pick another name`);
   }
-  const baseCommit = baseBranchTip(dir, baseBranch, `the feature branch ${name}`);
+  const baseCommit = fetchedBase(dir, baseBranch, `the feature branch ${name}`);
 
   // The empty old value makes git refuse when the branch appeared since the check above.
   const created = runGit(dir, ["update-ref", "-m", `tmb: feature_start ${name} at ${baseBranch}`, ref, baseCommit, ""]);
@@ -164,11 +192,105 @@ export function noBaseBranch(repo: string | null): string {
     : `the repo ${repo} has no base branch set: the planner sets it in repos with settings_set, or the Human with \`tmb onboard --repo ${repo} --base <branch>\``;
 }
 
+// --- feature_update -----------------------------------------------------------------------
+
+/** What an audit entry of a base branch brought into a feature branch is about. */
+export const FEATURE_UPDATE = "feature_update";
+
+export const featureUpdateSchema: InputSchema = {
+  type: "object",
+  properties: {
+    feature: { type: "string", description: "The feature branch's name, as feature_list shows it.", pattern: NOT_BLANK },
+  },
+  required: ["feature"],
+  additionalProperties: false,
+};
+
+export type FeatureUpdateResult = {
+  feature: string;
+  baseBranch: string;
+  /** The base branch's commit taken in: origin's, fetched first, unless the local one is ahead of it. */
+  base: string;
+  /** The feature branch's tip before the step. */
+  from: string;
+  /** Its tip after: a merge commit, the base itself when the branch had no commit of its own, or `from` when it held the base already. */
+  to: string;
+  /** `merged`, `fast_forward`, or `none` when the branch held the base already. */
+  how: "merged" | "fast_forward" | "none";
+  /** The backup push of the moved branch; null when nothing moved. */
+  push: PushOutcome | null;
+};
+
+/** The files a merge of `ours` and `theirs` would leave in conflict, or the merged tree when there are none. */
+function mergeTree(dir: string, ours: string, theirs: string): { tree: string } | { conflicts: string[] } {
+  const merged = runGit(dir, ["merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs]);
+  const lines = merged.stdout.split("\n").filter((line) => line !== "");
+  // git exits 1 on a conflict, printing the tree and then each conflicted file; any other failure says why.
+  if (merged.ok && lines.length > 0) return { tree: lines[0]! };
+  if (merged.status === 1 && lines.length > 1) return { conflicts: [...new Set(lines.slice(1))] };
+  throw new HandlerError("refused", `git could not merge ${theirs} into ${ours}: ${gitFailure(merged)}`);
+}
+
+/**
+ * Brings the base branch into a feature branch, so its review judges a tip that holds the base and
+ * a conflict shows here, before the pull request. Merges, never rebases: the branch is pushed as a
+ * backup, and rewriting it would rewrite what was pushed. A conflict changes nothing and names the files.
+ */
+export function featureUpdate(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureUpdateResult {
+  const given = validateInput<{ feature: string }>("feature_update", featureUpdateSchema, input);
+  requireRole(actor, "feature_update", ["planner"]);
+  const feature = store.findFeature(given.feature);
+  if (!feature) throw new HandlerError("not_found", `no feature branch ${given.feature} in the record; feature_list lists them`);
+  if (feature.state !== OPEN) throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}; only an open one takes the base branch in`);
+  const dir = featureDir(store, context.projectDir, feature);
+  const from = featureTip(dir, feature);
+  const base = fetchedBase(dir, feature.baseBranch, `into the feature branch ${feature.name}`);
+  const result = (to: string, how: FeatureUpdateResult["how"], push: PushOutcome | null): FeatureUpdateResult => ({
+    feature: feature.name,
+    baseBranch: feature.baseBranch,
+    base,
+    from,
+    to,
+    how,
+    push,
+  });
+  if (isAncestor(dir, base, from)) return result(from, "none", null);
+
+  let to = base;
+  let how: FeatureUpdateResult["how"] = "fast_forward";
+  if (!isAncestor(dir, from, base)) {
+    const merged = mergeTree(dir, from, base);
+    if ("conflicts" in merged) {
+      throw new HandlerError(
+        "refused",
+        `bringing ${feature.baseBranch} at ${base} into the feature branch ${feature.name} conflicts in:\n${merged.conflicts.join("\n")}\n` +
+          `Nothing changed: ${feature.name} stays at ${from}. Settle it in a task on ${feature.name} whose worker runs \`git merge ${base}\` in its worktree, resolves the conflicts and commits, or raise it to the Human; then call feature_update again.`,
+      );
+    }
+    const message = `Merge ${feature.baseBranch} into ${feature.name}\n\ntmb: feature_update brought ${feature.baseBranch} at ${base} into ${feature.name}.`;
+    const committed = runGit(dir, ["commit-tree", merged.tree, "-p", from, "-p", base, "-m", message]);
+    if (!committed.ok) throw new HandlerError("refused", `git could not write the merge commit, so ${feature.name} stays at ${from}: ${gitFailure(committed)}`);
+    to = committed.stdout;
+    how = "merged";
+  }
+  const why = `tmb: feature_update ${feature.name} with ${feature.baseBranch} at ${base}`;
+  const undo = moveFeature(dir, feature.name, from, to, why);
+  try {
+    store.recordAudit(actor, { what: FEATURE_UPDATE, detail: JSON.stringify({ feature_id: feature.id, feature: feature.name, base, from, to, how }) });
+  } catch (error) {
+    undo();
+    throw error;
+  }
+  return result(to, how, pushFeature(dir, feature.name, actor));
+}
+
 // --- feature_list -------------------------------------------------------------------------
 
 export const featureListSchema: InputSchema = { type: "object", properties: {}, required: [], additionalProperties: false };
 
-export function featureList(store: Store, _actor: Actor, input: unknown): FeatureSummary[] {
+export function featureList(store: Store, actor: Actor, input: unknown, context?: OperationContext): FeatureSummary[] {
   validateInput("feature_list", featureListSchema, input);
+  // A feature whose pull request merged or closed moves on first (trustmybot/tmb#131); a read that fails changes nothing.
+  if (context !== undefined) refreshPullRequestStates(store, actor, context.projectDir);
   return store.listFeatures().map((feature) => summaryOf(store, feature));
 }

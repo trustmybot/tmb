@@ -11,11 +11,11 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { repoChecks, repoOfRow, resolveRepo } from "../repos.ts";
 import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
-import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
-import { type PushOutcome, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
+import { type PushOutcome, branchHoldsWork, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { dropMainFolderSnapshot, type MainFolderReport, mainFolderNotes, mainFolderReport, snapshotMainFolder } from "./main-folder.ts";
 import { truestBase, truestClose, type TruestReview, truestReviewOf } from "./truest.ts";
@@ -61,6 +61,12 @@ export type TaskBrief = {
   startLine: string;
   /** A truest task's review: its reviews, waivers and whether its commit is covered; absent in agile mode. */
   review?: TruestReview;
+  /** Why the task was dropped; null unless it is. */
+  dropReason: string | null;
+  /** The dropped task this one replaces; null when it replaces none. */
+  replaces: string | null;
+  /** The tasks started to replace this one, oldest first. */
+  replacedBy: string[];
 };
 
 export type TaskSummary = {
@@ -79,6 +85,10 @@ export type TaskSummary = {
   files: string[];
   /** The pull request a truest task opened; null until then. */
   prUrl: string | null;
+  /** Why the task was dropped; null unless it is. */
+  dropReason: string | null;
+  /** The dropped task this one replaces; null when it replaces none. */
+  replaces: string | null;
 };
 
 /** How the closed task reached its feature branch: fast-forwarded, or rebased onto a tip that moved and checked again. */
@@ -213,6 +223,15 @@ function requireOpenIssue(store: Store, issueId: string): void {
   if (issue.state !== OPEN) throw new HandlerError("refused", `issue ${issueId} is closed; reopen it before starting a task on it`);
 }
 
+/** Refuses a `replaces` that names no dropped task: a task replaces one only once that one is dropped, with its reason. */
+function requireDropped(store: Store, id: string): void {
+  const old = store.getTask(id);
+  if (!old) throw new HandlerError("not_found", `no task ${id} in the record, so the new task cannot replace it`);
+  if (old.state !== DROPPED) {
+    throw new HandlerError("refused", `task ${id} is ${old.state}, not dropped; drop it with task_drop and the reason first, then start the task that replaces it`);
+  }
+}
+
 /** The folder of the repo a task was cut in. */
 export function taskDir(store: Store, projectDir: string, task: Task): string {
   return repoOfRow(store, projectDir, task).dir;
@@ -246,6 +265,9 @@ export function briefOf(store: Store, task: Task): TaskBrief {
     checks: [...repoChecks(store, task.repo), ...spec.checks],
     startLine: taskStartLine(task.id),
     ...(task.reviewMode === TRUEST ? { review: truestReviewOf(store, task) } : {}),
+    dropReason: task.dropReason,
+    replaces: task.replaces,
+    replacedBy: store.listTasks().filter((other) => other.replaces === task.id).map((other) => other.id),
   };
 }
 
@@ -285,6 +307,11 @@ export const taskStartSchema: InputSchema = {
       type: "array",
       description: "Shell commands this task adds to the project's checks; all must pass before it closes.",
       items: TEXT_ITEM,
+    },
+    replaces: {
+      type: "string",
+      description: "The id of the dropped task this one replaces, when it takes up that task's work another way. Drop the old task with task_drop first.",
+      pattern: RECORD_ID,
     },
   },
   required: ["issue_id", "kind", "intent", "files", "criteria"],
@@ -329,6 +356,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
     files: string[];
     criteria: string[];
     checks?: string[];
+    replaces?: string;
   }>("task_start", taskStartSchema, input);
   requireRole(actor, "task_start", ["planner"]);
   const spec: TaskSpec = {
@@ -338,6 +366,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
     criteria: request.criteria,
   };
   requireOpenIssue(store, request.issue_id);
+  if (request.replaces !== undefined) requireDropped(store, request.replaces);
   const settings = readSettings(store);
   // The review mode decides how many tokens the project uses, so no task starts until the Human chose it.
   const truest = settings.review_mode === TRUEST;
@@ -376,7 +405,10 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   try {
     store.transaction(() => {
       requireOpenIssue(store, request.issue_id);
+      if (request.replaces !== undefined) requireDropped(store, request.replaces);
       shared = sharedFiles(store, spec.files, repo.name);
+      // Rework on a branch whose pull request closed reopens it, so review and a new pull request run as before (trustmybot/tmb#152).
+      if (feature !== null && feature.state === CLOSED_UNMERGED) store.updateFeature(actor, feature.id, { state: OPEN });
       store.appendTask(actor, {
         id,
         issueId: request.issue_id,
@@ -390,6 +422,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
         kind: request.kind,
         mainSnapshot,
         repo: repo.name,
+        replaces: request.replaces ?? null,
       });
       // A task keeps the mode of its start, so a mode change cannot strand it halfway.
       store.updateTask(actor, id, { reviewMode: truest ? TRUEST : DEFAULT_REVIEW_MODE });
@@ -418,13 +451,13 @@ export function taskBrief(store: Store, _actor: Actor, input: unknown): TaskBrie
 
 // --- task_list ----------------------------------------------------------------------------
 
-export const TASK_LIST_STATES = [OPEN, IN_REVIEW, CLOSED, "all"] as const;
+export const TASK_LIST_STATES = [OPEN, IN_REVIEW, CLOSED, DROPPED, "all"] as const;
 export type TaskListState = (typeof TASK_LIST_STATES)[number];
 
 export const taskListSchema: InputSchema = {
   type: "object",
   properties: {
-    state: { type: "string", description: "Which tasks to list: open (the default), in_review (truest tasks waiting for the reviewer or their pull request), closed or all.", enum: TASK_LIST_STATES },
+    state: { type: "string", description: "Which tasks to list: open (the default), in_review (truest tasks waiting for the reviewer or their pull request), closed, dropped or all.", enum: TASK_LIST_STATES },
   },
   required: [],
   additionalProperties: false,
@@ -445,6 +478,8 @@ export function taskList(store: Store, _actor: Actor, input: unknown): TaskSumma
     commitSha: task.commitSha,
     files: specOf(task).files,
     prUrl: task.prUrl,
+    dropReason: task.dropReason,
+    replaces: task.replaces,
   }));
 }
 
@@ -640,7 +675,7 @@ function finishFold(
   const dir = taskDir(store, context.projectDir, task);
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, featureName);
+  const push = pushFeature(dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
@@ -718,7 +753,55 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   recordFindings(task, dir);
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = pushFeature(dir, feature.name);
+  const push = pushFeature(dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
   return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
+}
+
+// --- task_drop ----------------------------------------------------------------------------
+
+export const taskDropSchema: InputSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", description: "The task's id.", pattern: RECORD_ID },
+    reason: { type: "string", description: "Why the task is dropped: the approach is wrong, or nobody will finish it.", pattern: NOT_BLANK },
+  },
+  required: ["id", "reason"],
+  additionalProperties: false,
+};
+
+export type TaskDropResult = {
+  brief: TaskBrief;
+  /** What could not be cleaned up; the task stays dropped. */
+  cleanupProblems: string[];
+  /** What the cleanup dropped with the task's worktree: files git ignores, one line. */
+  cleanedUp: string[];
+  /** The branch kept because it holds the task's commits, with how to delete it; null when none was kept. */
+  keptBranch: string | null;
+};
+
+/**
+ * Ends an open task, or a truest task in review, without its work, with the reason. The task's
+ * worktree goes as a closed task's does, unless it holds work nobody committed; its branch stays
+ * while it holds commits past the task's base, so nothing committed is lost.
+ */
+export function taskDrop(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskDropResult {
+  const { id, reason } = validateInput<{ id: string; reason: string }>("task_drop", taskDropSchema, input);
+  requireRole(actor, "task_drop", ["planner"]);
+  store.transaction(() => {
+    const task = requireTask(store, id);
+    if (task.state !== OPEN && task.state !== IN_REVIEW) {
+      throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task or one in review is dropped`);
+    }
+    store.updateTask(actor, id, { state: DROPPED, dropReason: reason.trim() });
+  });
+  const task = requireTask(store, id);
+  const dir = taskDir(store, context.projectDir, task);
+  dropMainFolderSnapshot(dir, id);
+  const holdsWork = branchHoldsWork(dir, task);
+  const keptBranch = holdsWork
+    ? `the branch ${task.branch} was kept: it holds the dropped task's commits. Delete it once nothing there is needed: git branch -D ${task.branch}`
+    : null;
+  const cleanup = task.worktree === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, task.worktree, holdsWork ? null : task.branch);
+  return { brief: briefOf(store, task), cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, keptBranch };
 }

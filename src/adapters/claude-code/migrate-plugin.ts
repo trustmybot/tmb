@@ -6,6 +6,8 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createIdFactory } from "../../engine/ids.ts";
+import { isManaged } from "../../engine/repos.ts";
+import type { RepoPolicies } from "../../engine/settings.ts";
 import type { Actor, Role, Store } from "../../engine/store/index.ts";
 import { HOST_ID } from "./mcp-json.ts";
 
@@ -28,13 +30,15 @@ export class MigrationError extends Error {
   override name = "MigrationError";
 }
 
-/** `openTasks` counts the copied tasks left open: tmb waits for them to close before it updates itself. */
+/** `openTasks` counts the copied tasks left open: a running session stays on its tmb build until they close. */
 export type MigrationCounts = { issues: number; discussions: number; tasks: number; openTasks: number; reviews: number; checkRuns: number; runs: number };
 
 export type MigrationResult = {
   from: string;
   pluginVersion: string | null;
   repo: string | null;
+  /** The workspace repo the rows went to; null in a single-repo project. */
+  into: string | null;
   counts: MigrationCounts;
   /** Records of the carried issues left behind because tmb has no such kind, per plugin kind. */
   leftBehind: Record<string, number>;
@@ -92,6 +96,7 @@ type TaskRow = {
   workflow_mode: string | null;
   base_sha: string | null;
   no_code_class: string | null;
+  repo: string | null;
 };
 type AttemptRow = {
   id: number;
@@ -275,18 +280,10 @@ function backdatedIds(): (at: string) => string {
   };
 }
 
-/**
- * Copies the plugin project's records at `pluginDbPath` into `store`, in one transaction:
- * either every record carries over or none does. Refuses a database at any schema version
- * but 76, and a record that already holds issues or tasks.
- */
-export function migratePluginProject(store: Store, options: { pluginDbPath: string; projectDir: string; repo?: string }): MigrationResult {
-  const from = path.resolve(options.pluginDbPath);
+/** Opens a readable copy of a plugin database at the schema this tool reads, and hands it to `use`. */
+function withPluginDb<T>(pluginDbPath: string, use: (db: Database, from: string, pluginVersion: string | null) => T): T {
+  const from = path.resolve(pluginDbPath);
   if (!statSync(from, { throwIfNoEntry: false })?.isFile()) throw new MigrationError(`no plugin database at ${from}`);
-  if (store.listIssues().length > 0 || store.listTasks().length > 0) {
-    throw new MigrationError("the tmb record already holds issues or tasks; a migration only fills a new record");
-  }
-
   const { db, cleanup } = readableCopy(from);
   try {
     const { schemaVersion, pluginVersion } = pluginMeta(db, from);
@@ -297,14 +294,118 @@ export function migratePluginProject(store: Store, options: { pluginDbPath: stri
           : "this tmb reads only that version";
       throw new MigrationError(`${from} has plugin schema version ${schemaVersion}; the migration reads version ${PLUGIN_SCHEMA_VERSION}: ${advice}`);
     }
-    const repo = chooseRepo(db, options.repo, options.projectDir);
-    return store.transaction(() => copyRecords(db, store, { from, pluginVersion, repo }));
+    return use(db, from, pluginVersion);
   } finally {
     cleanup();
   }
 }
 
-function copyRecords(db: Database, store: Store, source: { from: string; pluginVersion: string | null; repo: string | null }): MigrationResult {
+/** The plugin's repos, by the names its issues give them. */
+function pluginRepos(db: Database): string[] {
+  return (db.query("SELECT DISTINCT repo FROM issues WHERE repo IS NOT NULL AND id <> ? ORDER BY repo").all(SYSTEM_ISSUE_ID) as { repo: string }[]).map(
+    (row) => row.repo,
+  );
+}
+
+/**
+ * Copies the plugin project's records at `pluginDbPath` into `store`, in one transaction:
+ * either every record carries over or none does. Refuses a database at any schema version
+ * but 76, and a record that already holds issues or tasks.
+ */
+export function migratePluginProject(store: Store, options: { pluginDbPath: string; projectDir: string; repo?: string }): MigrationResult {
+  if (!statSync(path.resolve(options.pluginDbPath), { throwIfNoEntry: false })?.isFile()) {
+    throw new MigrationError(`no plugin database at ${path.resolve(options.pluginDbPath)}`);
+  }
+  if (store.listIssues().length > 0 || store.listTasks().length > 0) {
+    throw new MigrationError("the tmb record already holds issues or tasks; a migration only fills a new record");
+  }
+  return withPluginDb(options.pluginDbPath, (db, from, pluginVersion) => {
+    const repo = chooseRepo(db, options.repo, options.projectDir);
+    return store.transaction(() => copyRecords(db, store, { from, pluginVersion, repo, into: null, withRepoless: true, targets: new Map() }));
+  });
+}
+
+/** What a workspace migration did: one result per plugin repo copied, and each plugin repo it left out, with why. */
+export type WorkspaceMigration = { results: MigrationResult[]; leftOut: { repo: string; reason: string }[] };
+
+/** Why a workspace folder cannot take a plugin repo's rows; null when it can. */
+function targetRefusal(repos: RepoPolicies, name: string): string | null {
+  const policy = repos[name];
+  if (policy === undefined) return `the workspace has no repo ${JSON.stringify(name)}; its repos are ${Object.keys(repos).join(", ") || "none"}`;
+  if (policy.git === false) return `${name} is a folder that is not a repo, so tmb does no work in it`;
+  if (!isManaged(policy)) return `${name} is exempt, so tmb does no work in it`;
+  return null;
+}
+
+/**
+ * Copies a multi-repo plugin project into a workspace's one record (trustmybot/tmb#193), in one
+ * transaction. A plugin repo goes to the workspace repo of the same name, or to `into` when
+ * `repo` names it; nothing else is guessed. With no `repo`, every plugin repo that maps is
+ * copied and each one left out is named. A plugin repo already migrated into the record is
+ * refused, and the plugin's issues of no repo are copied once, with the first migration.
+ * Each copied task names its workspace repo; issues stay repo-less.
+ */
+export function migratePluginWorkspace(
+  store: Store,
+  repos: RepoPolicies,
+  options: { pluginDbPath: string; repo?: string; into?: string },
+): WorkspaceMigration {
+  if (options.into !== undefined && options.repo === undefined) throw new MigrationError("--into names where --repo's rows go; name the plugin repo with --repo");
+  const earlier = store.listAuditAbout(MIGRATION_AUDIT).map((entry) => (JSON.parse(entry.detail) as { repo?: string | null }).repo ?? null);
+  const migrated = new Set(earlier.filter((repo): repo is string => repo !== null));
+  return withPluginDb(options.pluginDbPath, (db, from, pluginVersion) => {
+    const plugin = pluginRepos(db);
+    const workspace = Object.keys(repos).sort();
+    const sides = `the plugin's repos are ${plugin.join(", ") || "none"}; the workspace's are ${workspace.join(", ") || "none"}`;
+    const targets = new Map<string, string>();
+    const leftOut: WorkspaceMigration["leftOut"] = [];
+    if (options.repo !== undefined) {
+      if (!plugin.includes(options.repo)) throw new MigrationError(`the plugin database has no issues in repo ${JSON.stringify(options.repo)}; ${sides}`);
+      if (migrated.has(options.repo)) throw new MigrationError(`the plugin's repo ${options.repo} is already migrated into this record`);
+      const into = options.into ?? (repos[options.repo] !== undefined ? options.repo : null);
+      if (into === null) {
+        throw new MigrationError(`the workspace has no repo named ${options.repo}; name where its rows go with --repo ${options.repo} --into <workspace repo>: ${sides}`);
+      }
+      const refusal = targetRefusal(repos, into);
+      if (refusal !== null) throw new MigrationError(`the plugin's repo ${options.repo} cannot go to ${into}: ${refusal}`);
+      targets.set(options.repo, into);
+    } else {
+      for (const name of plugin) {
+        if (migrated.has(name)) leftOut.push({ repo: name, reason: "already migrated into this record" });
+        else if (repos[name] === undefined) leftOut.push({ repo: name, reason: `the workspace has no repo of that name; map it with --repo ${name} --into <workspace repo>` });
+        else {
+          const refusal = targetRefusal(repos, name);
+          if (refusal !== null) leftOut.push({ repo: name, reason: `${refusal}; map it with --repo ${name} --into <workspace repo>` });
+          else targets.set(name, name);
+        }
+      }
+      if (targets.size === 0) {
+        const why = leftOut.map((left) => `${left.repo}: ${left.reason}`).join("; ");
+        throw new MigrationError(`no plugin repo maps to a workspace repo to migrate (${why || "the plugin has no repos"}); ${sides}`);
+      }
+    }
+    return store.transaction(() => {
+      let withRepoless = earlier.length === 0;
+      const results: MigrationResult[] = [];
+      for (const [repo, into] of targets) {
+        results.push(copyRecords(db, store, { from, pluginVersion, repo, into, withRepoless, targets }));
+        withRepoless = false;
+      }
+      return { results, leftOut };
+    });
+  });
+}
+
+/**
+ * `into` is the workspace repo the rows go to, null in a single-repo project. `withRepoless`
+ * copies the plugin's issues of no repo too. A task the plugin cut in another repo that `targets`
+ * maps goes to that repo's workspace repo; any other goes to `into`.
+ */
+function copyRecords(
+  db: Database,
+  store: Store,
+  source: { from: string; pluginVersion: string | null; repo: string | null; into: string | null; withRepoless: boolean; targets: ReadonlyMap<string, string> },
+): MigrationResult {
   const now = new Date().toISOString();
   const counts: MigrationCounts = { issues: 0, discussions: 0, tasks: 0, openTasks: 0, reviews: 0, checkRuns: 0, runs: 0 };
   const issueIds = new Map<number, string>();
@@ -315,7 +416,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
   const issues = db
     .query(
       `SELECT id, objective, description, status, created_at, updated_at, closed_at, gh_iid, gl_iid, repo, milestone
-         FROM issues WHERE id <> ? AND (repo IS NULL OR repo = ?) ORDER BY created_at, id`,
+         FROM issues WHERE id <> ? AND (${source.withRepoless ? "repo IS NULL OR " : ""}repo = ?) ORDER BY created_at, id`,
     )
     .all(SYSTEM_ISSUE_ID, source.repo) as IssueRow[];
   const issueId = backdatedIds();
@@ -353,7 +454,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
   const taskRows = db
     .query(
       `SELECT id, issue_id, branch_id, title, description, status, spec_body, commit_sha, created_at, updated_at, completed_at,
-              worktree_path, workflow_mode, base_sha, no_code_class
+              worktree_path, workflow_mode, base_sha, no_code_class, repo
          FROM tasks ORDER BY created_at, id`,
     )
     .all() as TaskRow[];
@@ -375,6 +476,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
         worktree: task.worktree_path,
         baseCommit: task.base_sha,
         kind: taskKind(task),
+        repo: source.into === null ? null : ((task.repo === null ? undefined : source.targets.get(task.repo)) ?? source.into),
       }),
     );
     if (closed && (task.workflow_mode === "agile" || task.workflow_mode === "truest")) {
@@ -493,6 +595,7 @@ function copyRecords(db: Database, store: Store, source: { from: string; pluginV
     from: source.from,
     pluginVersion: source.pluginVersion,
     repo: source.repo,
+    into: source.into,
     counts,
     leftBehind,
     ids: {

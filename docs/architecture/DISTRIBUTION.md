@@ -14,16 +14,16 @@ One step per platform. After it, two commands inside a project:
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | One, on a terminal: the review mode. Planned for v1.0.0 (trustmybot/tmb#162): none, and the planner asks for the review mode at onboarding |
+| `tmb init` | Finds the installed host and has its adapter register tmb's tools, roles and guards with it ([HOSTS.md](HOSTS.md)), creates the project's database, adds git's push hook and indexes the code graph. It leaves tmb's settings empty and ends by saying so and how they get filled. | None: it never asks or waits for input, on a terminal or not (trustmybot/tmb#162). The planner asks for the review mode at onboarding, and on the stable channel, once per machine, whether to join the feedback program |
 | `tmb onboard` | Sets the project's settings: the base branch, the review mode, the checks to run, a host's role. It can be run again at any time. | Yes |
 
 **Onboarding happens by itself.** When a session starts in a project whose settings are empty, the engine tells the planner. The planner works out the settings it recommends for that project, applies them through its `settings_set` tool and shows them, all but the review mode. It reminds the Human that `tmb onboard` can be run again at any time, and that the planner can change a value when asked. In an unattended run it does the same and names each value it applied; the review mode stays unset.
 
-**The review mode is the Human's choice.** Decided by the Human on 2026-11-20 (trustmybot/tmb#114). The review mode decides how many tokens a project uses, so tmb recommends one but never picks it. No task starts until the Human has chosen: at the end of `tmb init` on a terminal, with `tmb onboard`, or when the planner asks at the first session and stores the answer. With nobody to ask, the task start is refused, the refusal names `tmb onboard`, and the planner cannot set the mode. The record keeps which of the three ways chose it. The other settings stay the planner's recommendation.
+**The review mode is the Human's choice.** Decided by the Human on 2026-11-20 (trustmybot/tmb#114). The review mode decides how many tokens a project uses, so tmb recommends one but never picks it. No task starts until the Human has chosen: in the planner's onboarding questions at the first session, which show each mode with what it costs and mark agile as recommended, with `tmb onboard`, or with `tmb onboard --review-mode`. `tmb init` is non-interactive, as the Human decided on 2026-11-20 (trustmybot/tmb#162), so it never asks. With nobody to ask, the task start is refused, the refusal names `tmb onboard`, and the planner cannot set the mode. The record keeps which of the three ways chose it. The other settings stay the planner's recommendation.
 
 Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 
-**A project follows the program's updates.** Decided by the Human on 2026-11-20 (trustmybot/tmb#128). A newer tmb that opens a project's database upgrades it by itself. The files init wrote follow at a session's start:
+**A project follows the program's updates.** Decided by the Human on 2026-11-20 (trustmybot/tmb#128). A newer tmb that opens a project's database upgrades it by itself. An older tmb refuses a record a newer one reshaped, and names the program that wrote it and the command that moves on, an update or the installer for a pinned build, never a version number (trustmybot/tmb#173). Such a project never holds this tmb's update back: no task there can run on it, and the update is what lets it read the record. The files init wrote follow at a session's start:
 
 - **When another version of the same program last wired the project, tmb redoes init's wiring**: each host the project is set up for, and git's push hook. That replaces only what tmb wrote, asks nothing and changes no setting. An older version refreshes as a newer one does, so the files match the program that runs.
 - **Never while a task is open.** tmb waits for a session start with none open, and says so.
@@ -33,7 +33,7 @@ Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#
 - **A refresh that fails never stops the session.** The line says what failed and names `tmb init`.
 - **Init takes out what a version no longer wires**, as remove would: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use.
 
-Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
+Removing tmb from a project (`tmb remove`) undoes what init added and leaves the Human's own settings alone. Two things stay: the lines init added to `.gitignore`, and the repo from `git init` in a folder that had none.
 
 tmb is one program for the whole machine. Only the database and the host wiring are per project.
 

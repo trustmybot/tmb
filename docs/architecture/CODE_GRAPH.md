@@ -23,37 +23,42 @@ The plugin called this the world model.
 - **Built from git, never from the working folder.** Each repo is indexed at the commit of its base branch, so every session and worktree reads the same graph. A task's own commit is laid on top, so a worker sees its change and its base together.
 - **It never guesses.** A reference is linked to a definition only on proof, such as a resolved import. What could not be resolved is reported as unresolved.
 - **It can always be rebuilt.** Everything except concepts is derived from git. A rebuild keeps the concepts and re-checks each against the new graph; one whose code is gone is marked broken, never dropped.
-- **It keeps itself fresh.** A read brings a graph that is behind its base branch forward before it answers. A full rebuild is the fallback.
+- **It keeps itself fresh.** A read brings a graph that is behind its base branch forward before it answers. `tmb index --rebuild` is the fallback, run by the Human: a read that fails does not rebuild by itself. Three limits, found on 2026-11-20: the base branch is the local one, so a merge on GitHub is not seen until it is fetched; in agile mode no lookup reads a feature branch, so work already folded into it is missing from a scope and from the reviewer's lookups (trustmybot/tmb#182); and folders named `build`, `dist` or `vendor` are left out without a count.
 - **Summaries are untrusted text.** They come from file contents, so they are shown to agents as data, never as instructions.
-- **It works offline.** Indexing needs no network. Search by meaning uses a small local model; when that model is absent, search by name still works.
+- **It works offline.** Indexing needs no network. Search is by name and by the words in a name. Search by meaning is left out for now.
 
 ## Indexing
 
 ```mermaid
 flowchart TD
-    A[tmb init, a new base branch from onboard, tmb index, or a merged change of structure] --> B[Read and parse each repo at its base commit]
+    A[tmb init, a new base branch from onboard, or tmb index] --> B[Read and parse each repo at its base commit]
     B --> C[Apply the whole graph in one step]
     C --> D[Re-check concepts]
-    E[A read or a task start] --> F{Graph behind the base branch?}
-    F -- yes --> G[Bring it forward; on failure, rebuild that repo]
+    E[A read] --> F{Graph behind the base branch?}
+    F -- yes --> G[Bring it forward]
     F -- no --> H[Answer from the current graph]
     G --> H
 ```
 
 ## Every function, and a page to see it
 
-Planned for v1.0.0. Decided by the Human on 2026-11-20: the code graph shows code as a graph, at function level, and no function is left out. The details below are proposed, for the Human's review, in each issue.
+Decided by the Human on 2026-11-20: the code graph shows code as a graph, at function level, and no function is left out.
 
-Today the graph holds every named function at the top of a file and every class method, but few of the functions without a name. Measured on tmb's own repo on 2026-11-20, against the TypeScript compiler: 1,250 of 3,256 functions, 38%.
+Built:
 
-- **Every function is a node, unnamed ones included** (trustmybot/tmb#140). TypeScript and JavaScript first. Each symbol gets a link to what contains it: a function, a class or the file. An unnamed function is named by where it is used.
-- **A coverage test holds it at 100%.** A second, independent parser lists every function, and the graph must match it one to one.
-- **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and is counted.
+- **Every function is a node, unnamed ones included** (trustmybot/tmb#140). TypeScript and JavaScript so far. Each symbol links to what contains it: a function, a class or the file. An unnamed function is named by where it is used, such as the callback of the call it is passed to, or else by its line.
+- **A coverage test holds it at 100%.** A second, independent parser, the TypeScript compiler, lists every function, and the graph must match it one to one. On tmb's own repo on 2026-11-20: 3,340 of 3,340. Before, it was 1,250 of 3,256.
+- **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and indexing prints how many there are.
 - **Agents' answers do not change.** A lookup names the nearest named function, and unnamed functions stay out of search.
-- **The dashboard gets a code graph page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once.
-- **Areas** (trustmybot/tmb#146): the planner groups files into the project's logical parts, such as login or billing, and "tests" is an area from the start. Every file and function names its area, and the page draws each area as a box around its files.
-- **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147), so the links are there to draw.
-- **Python, bash and the other languages follow**, each with its own coverage test (trustmybot/tmb#141, v1.x).
+- **Each language is a module of its own** (trustmybot/tmb#157). Every module answers the same questions for the engine, and one list names the modules, so adding a language touches nothing else. TypeScript, TSX and JavaScript share one module. A language's parser loads only when a file in that language is read. The plugin's own rules, for its tool registrations and settings reads, are not carried over.
+- **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a workspace of several repos the page opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
+
+Planned:
+
+- **Areas** (trustmybot/tmb#146, v1.0.0): the planner groups files into the project's logical parts, such as login or billing, and "tests" is an area from the start. Every file and function names its area, and the page draws each area as a box around its files.
+- **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147, v1.0.0), so the links are there to draw.
+- **Python, bash and the other languages get every function too**, each as its own module with its own coverage test (trustmybot/tmb#141, v1.x). Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after. Proposed, for the Human's review.
+- **A file's language comes from GitHub Linguist's list** (trustmybot/tmb#154, v1.x). Today each module names its own file extensions.
 
 ## Honest limits
 

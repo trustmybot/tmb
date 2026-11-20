@@ -6,6 +6,7 @@ import {
   type FeatureBrief,
   type FeaturePrResult,
   type FeatureSummary,
+  type FeatureUpdateResult,
   type GraphAnswer,
   HandlerError,
   type IssueDetail,
@@ -19,6 +20,7 @@ import {
   type TaskPrResult,
   type TaskStartResult,
   type TaskSummary,
+  type TaskDropResult,
   type TaskWaiveResult,
   type WaiveResult,
 } from "../handlers/index.ts";
@@ -55,6 +57,8 @@ ${JSON_NOTE}`,
   feature: `  tmb feature start <name> [--repo <name>]
                             Cut a feature branch from the base branch and record it; in a
                             workspace of several repos, --repo names the repo it is cut in
+  tmb feature update <name> Bring the base branch into the feature branch with a merge commit,
+                            fetched from origin first; a conflict changes nothing and names the files
   tmb feature list          List the feature branches with their base, state and tasks
   tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
   tmb feature waive <name> --reason <text>
@@ -64,15 +68,20 @@ ${JSON_NOTE}`,
                             the reviewer passed its tip or the Human waived the review
 ${JSON_NOTE}`,
   task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] [--repo <name>] --intent <text>
-                 --file <path>... --criterion <text>... [--check <command>]...
+                 --file <path>... --criterion <text>... [--check <command>]... [--replaces <id>]
                             Start a task: cut its branch and worktree from the feature
-                            branch and record its spec
-  tmb task list [--state open|in_review|closed|all]
-                            List the open tasks, or those in review, the closed ones or all
+                            branch and record its spec; --replaces names the dropped task
+                            it takes over from
+  tmb task list [--state open|in_review|closed|dropped|all]
+                            List the open tasks, or those in review, the closed ones, the
+                            dropped ones or all
   tmb task brief <id>       Show a task's spec, worktree, branch and checks
   tmb task close <id>       Run the checks on the task's commit; when all pass, close it,
                             fold it into its feature branch and push that to origin
                             (in truest mode: put it in review at that commit)
+  tmb task drop <id> --reason <text>
+                            Drop a task whose approach is wrong or that nobody will finish;
+                            its worktree goes unless it holds uncommitted work
   tmb task waive <id> --reason <text>
                             Waive the review of a truest task at its commit (the Human only)
   tmb task pr <id> --title <text> [--body <text>]
@@ -95,8 +104,8 @@ ${JSON_NOTE}`,
 /** The actions of the record commands that take one, in the order the help lists them. */
 export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> = {
   issue: ["create", "list", "show", "close", "reopen"],
-  feature: ["start", "list", "brief", "waive", "pr"],
-  task: ["start", "list", "brief", "close", "waive", "pr"],
+  feature: ["start", "update", "list", "brief", "waive", "pr"],
+  task: ["start", "list", "brief", "close", "drop", "waive", "pr"],
   graph: ["map", "find", "symbol", "scope", "concepts"],
 };
 
@@ -259,6 +268,9 @@ function briefLines(brief: TaskBrief): string[] {
     ...(brief.reviewMode ? [`Review mode: ${brief.reviewMode}`] : []),
     ...(brief.push ? [`Push: ${brief.push.result}, ${brief.push.detail}`] : []),
     ...(brief.review ? truestReviewLines(brief) : []),
+    ...(brief.dropReason === null ? [] : [`Dropped: ${brief.dropReason}`]),
+    ...(brief.replaces === null ? [] : [`Replaces task: ${brief.replaces}`]),
+    ...(brief.replacedBy.length === 0 ? [] : [`Replaced by: ${brief.replacedBy.join(", ")}`]),
     "",
     brief.spec.intent.trimEnd(),
     "",
@@ -276,13 +288,15 @@ function briefLines(brief: TaskBrief): string[] {
 function taskLine(task: TaskSummary, withState: boolean): string {
   const state = withState ? `  ${task.state.padEnd(6)}` : "";
   const commit = task.commitSha ? `\n  closed at: ${task.commitSha}` : "";
+  const dropped = task.dropReason === null ? "" : `\n  dropped: ${task.dropReason}`;
+  const replaces = task.replaces === null ? "" : `\n  replaces: ${task.replaces}`;
   const repo = task.repo ? `${task.repo}  ` : "";
-  return `${task.id}${state}  ${repo}${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}`;
+  return `${task.id}${state}  ${repo}${task.branch ?? ""}  ${task.title}\n  files: ${task.files.join(", ")}${commit}${dropped}${replaces}`;
 }
 
 /** The open list keeps its plain form; a list that may mix states shows each task's state. */
 function formatTasks(state: string | undefined) {
-  const which = state === undefined || state === "open" ? "open " : state === "closed" ? "closed " : "";
+  const which = state === undefined || state === "open" ? "open " : state === "closed" || state === "dropped" ? `${state} ` : "";
   return (tasks: TaskSummary[]) =>
     tasks.length === 0 ? `No ${which}tasks.` : tasks.map((task) => taskLine(task, which !== "open ")).join("\n");
 }
@@ -310,6 +324,7 @@ function featureBriefLines(brief: FeatureBrief): string[] {
   return [
     `Feature branch ${brief.name}  ${brief.state}  into ${brief.baseBranch}`,
     `Tip: ${brief.tip}  (review the diff from ${brief.mergeBase})`,
+    `Holds the base: ${brief.base === null ? "unknown: git cannot read the base branch" : brief.holdsBase ? `yes, ${brief.baseBranch} at ${brief.base}` : `no, ${brief.baseBranch} is at ${brief.base}; bring it in with feature_update before the review`}`,
     `Covered at the tip: ${cover}`,
     ...(brief.prUrl === null ? [] : [`Pull request: ${brief.prUrl}`]),
     "Task groups:",
@@ -335,6 +350,16 @@ function featureRequest(args: string[]): Request {
         `Started feature branch ${feature.name}${feature.repo ? ` in ${feature.repo}` : ""} from ${feature.baseBranch} at ${feature.baseCommit}.`;
       const input = { name: only(positionals, "feature branch name"), ...(values.repo === undefined ? {} : { repo: values.repo }) };
       return { operation: "feature_start", input, json: values.json === true, format };
+    }
+    case "update": {
+      const { values, positionals } = parse(rest, {});
+      const format = (update: FeatureUpdateResult) => {
+        if (update.how === "none") return `${update.feature} already holds ${update.baseBranch} at ${update.base}; nothing changed.`;
+        const how = update.how === "merged" ? `merged into it at ${update.to}` : `fast-forwarded to it`;
+        const push = update.push === null ? "" : ` Backup push: ${update.push.result} (${update.push.detail}).`;
+        return `Brought ${update.baseBranch} at ${update.base} into ${update.feature}: ${how}.${push}`;
+      };
+      return { operation: "feature_update", input: { feature: only(positionals, "feature branch name") }, json: values.json === true, format };
     }
     case "list": {
       const { values, positionals } = parse(rest, {});
@@ -381,6 +406,7 @@ function taskRequest(args: string[]): Request {
         criterion: { type: "string", multiple: true },
         check: { type: "string", multiple: true },
         repo: { type: "string" },
+        replaces: { type: "string" },
       });
       const input = {
         issue_id: only(positionals, "issue id"),
@@ -391,6 +417,7 @@ function taskRequest(args: string[]): Request {
         files: values.file ?? [],
         criteria: values.criterion ?? [],
         checks: values.check,
+        ...(values.replaces === undefined ? {} : { replaces: values.replaces }),
       };
       const format = (started: TaskStartResult) => {
         const shared = started.sharedFiles.map((s) => `  - ${s.file} with ${s.theirs} of open task ${s.task} (${s.title})`);
@@ -412,6 +439,18 @@ function taskRequest(args: string[]): Request {
     case "close": {
       const { values, positionals } = parse(rest, {});
       return { operation: "task_close", input: { id: only(positionals, "task id") }, json: values.json === true, format: formatClose };
+    }
+    case "drop": {
+      const { values, positionals } = parse(rest, { reason: { type: "string" } });
+      if (values.reason === undefined) throw new UsageError("task drop needs --reason <text>: why the task is dropped");
+      const format = (dropped: TaskDropResult) =>
+        [
+          `Dropped task ${dropped.brief.id}: ${dropped.brief.dropReason}`,
+          ...dropped.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
+          ...dropped.cleanedUp,
+          ...(dropped.keptBranch === null ? [] : [`Kept: ${dropped.keptBranch}`]),
+        ].join("\n");
+      return { operation: "task_drop", input: { id: only(positionals, "task id"), reason: values.reason }, json: values.json === true, format };
     }
     case "waive": {
       const { values, positionals } = parse(rest, { reason: { type: "string" } });
@@ -696,7 +735,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     return 1;
   }
   const line = (stats: Awaited<ReturnType<typeof indexProject>>) =>
-    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}.`;
+    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`;
   try {
     const repos = workspaceRepos(opened.store);
     if (repos !== null) {

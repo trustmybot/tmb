@@ -110,6 +110,11 @@ describe("the push gate", () => {
 
       git(project, "merge", "-q", "--ff-only", "feat/greet");
       expect(push(project, "origin", BASE_BRANCH).stderr).toContain("add greet");
+      // The close's push is recorded as the worker's that closed the task; the push typed by hand stays the Human's (#134).
+      expect(pushDecisions(project).map((decision) => [decision.decision, decision.createdBy])).toEqual([
+        ["allow", { kind: "agent", role: "worker", host: "claude-code" }],
+        ["deny", { kind: "human" }],
+      ]);
 
       expect(startSubagent(project, "reviewer", "feature=feat/greet")).toBeNull();
       await callJson(client, "review_record", { feature: "feat/greet", commit: tip, verdict: "pass", role: "reviewer" });

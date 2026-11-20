@@ -4,6 +4,24 @@ tmb is a harness for coding agents: a standalone engine that adds a record, a co
 
 Status: early. v1 supports one host, Claude Code; other hosts are not supported yet. Install it and set up a project with [docs/reference](docs/reference/README.md); the design lives in [docs/architecture](docs/architecture/README.md).
 
+## Install
+
+The stable channel installs the program `tmb`. macOS and Linux:
+
+```sh
+curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh | TMB_CHANNEL=stable sh
+```
+
+Windows, in PowerShell:
+
+```powershell
+$env:TMB_CHANNEL = 'stable'; irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1 | iex
+```
+
+No stable release is out yet. Until v1.0.0, install the dev channel from [tmb-releases](https://github.com/trustmybot/tmb-releases#channels).
+
+Then, inside a project: `tmb init`. The rc and dev channels are on [tmb-releases](https://github.com/trustmybot/tmb-releases#channels); updates, setup and removal are in [docs/reference](docs/reference/README.md).
+
 ## Three pillars
 
 | Pillar | What it gives you |

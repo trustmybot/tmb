@@ -30,6 +30,11 @@ export type HookRun = {
    * it wired them, and returns the one line the session start says, or null. Never throws.
    */
   refresh?: (projectDir: string) => string | null;
+  /**
+   * At a planner's session start: the one line on what \`tmb doctor\` would find, or null when it
+   * finds nothing (trustmybot/tmb#160). Never throws.
+   */
+  doctor?: (projectDir: string) => string | null;
 };
 
 /** What every host adapter gives the command line. */
@@ -56,6 +61,15 @@ export interface HostAdapter {
    * the project or tmb's hooks, one step each; none when nothing is left. tmb never does these itself.
    */
   pendingSteps?(projectDir: string): string[];
+  /**
+   * What `tmb doctor` finds different from what `setup` would write with `tmbCommand`, one line
+   * each; none when init would change nothing. Reads only.
+   */
+  wiringGaps?(projectDir: string, tmbCommand: readonly string[]): string[];
   /** Answers a host event: the host's stdin in, the host's stdout out (empty when there is nothing to say). Throws on bad input. */
   answerHook(event: string, stdinText: string, run: HookRun): string;
+  /** What the Human does in this host to restart tmb's tool server in a running session, in the host's own words. */
+  reconnectToolServer: string;
+  /** The title the Human gave the session, from a session start's input, when the host passes it; null otherwise. Never throws. */
+  sessionTitle?(stdinText: string): string | null;
 }

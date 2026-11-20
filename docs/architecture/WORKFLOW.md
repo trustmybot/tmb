@@ -9,7 +9,7 @@ The path a piece of work takes from the Human's request to a merge, and who does
 | Human | The developer | Sets the goal, tries the result, merges. |
 | Planner | The host agent, under the name bro | Talks to the Human, records the goal, splits it into tasks, writes each task's spec, judges the result. Writes docs tasks itself. |
 | Worker | A subagent the host starts | Carries out one code task in its own worktree and reports against the spec. |
-| Reviewer | A subagent the host starts | Judges a finished change without having written it. It cannot edit files. |
+| Reviewer | A subagent the host starts | Judges a finished change without having written it. It is given no tool that edits a file; what that holds back differs by host ([The gate](#the-gate)). |
 
 How the host starts workers and the reviewer is in [HOSTS.md](HOSTS.md).
 
@@ -27,18 +27,18 @@ How the host starts workers and the reviewer is in [HOSTS.md](HOSTS.md).
 | Docs task | The planner | The change is to docs or prompts and changes no behaviour. |
 
 - **The planner judges which kind a task is.** A project declares no list of paths that count as docs: such a list is wrong for the next project and for the next file. The planner names the kind when it starts the task, and the record keeps it.
-- **The engine checks the call by file type.** A docs task whose commit touches a file written in a programming language is refused at its close, and the refusal names the file. The engine tells a programming language from prose, markup and data with the language table of GitHub's Linguist, which it ships with. The table is maintained for every project, so tmb keeps no list of its own. Where the table gives one extension to several languages, the file is refused only when every one of them is a programming language; tmb does not read the file to guess.
+- **The engine checks the call by file type.** A docs task whose commit touches a file written in a programming language is refused at its close, and the refusal names the file. The engine tells a programming language from prose, markup and data with the language table of GitHub's Linguist, which it ships with. The table is maintained for every project, so tmb keeps no list of its own. Where the table gives one extension to several languages, the file is refused only when every one of them is a programming language (as built, the engine first keeps the languages that have the extension as their main one, so `.ts` is refused, and `.vue`, `.svelte`, `.html` and `.sql` are allowed; a fixed list of allowed types is planned, trustmybot/tmb#185); tmb does not read the file to guess.
 - **The rest stays the planner's call.** The table marks config and data files as data, and cannot tell whether a change to one alters behaviour.
 - **A docs task is checked like any other.** Its checks run at close, and the reviewer sees it in the same review as the code tasks.
 - **A wrong call the engine cannot see is caught in review.** A docs task that changed behaviour is a finding, and that part is redone as a code task.
 
 ## Review modes
 
-The review mode decides who reviews a change and when. Only the Human sets it.
+The review mode decides who reviews a change and when. Only the Human sets it: the planner stores the Human's answer, and never picks one. Not yet enforced on the command line, where an agent with a shell can set it (trustmybot/tmb#179).
 
 | Mode | Review | Reaches the base branch as | For |
 |---|---|---|---|
-| **Agile** (default) | Once, on the whole feature branch | One pull request per milestone | Building a feature in many small tasks and judging it as a whole. |
+| **Agile** (recommended) | Once, on the whole feature branch | One pull request per milestone | Building a feature in many small tasks and judging it as a whole. |
 | **Truest** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed. |
 
 Agile is built first, at level 4. Truest is built last, at level 10 (see [the build order](README.md#build-order)).
@@ -51,7 +51,7 @@ Agile is built first, at level 4. Truest is built last, at level 10 (see [the bu
 ```mermaid
 flowchart TD
     A[Human names a milestone] --> B[Planner proposes a feature branch and its scope; Human approves]
-    B --> C[Engine cuts the feature branch from the base branch]
+    B --> C[Engine fetches the base branch and cuts the feature branch from it]
     C --> D[Planner writes a task spec]
     D --> E[Engine prepares a worktree on a task branch cut from the feature branch]
     E --> F[Worker changes code, or the planner writes docs]
@@ -61,7 +61,8 @@ flowchart TD
     H --> I[Engine pushes the feature branch as a backup, with no pull request]
     I --> D
     I --> J[Human tries the feature branch at any time]
-    I --> K[Milestone reached: reviewer reviews the whole branch]
+    I --> U[Milestone reached: planner has the engine bring the base branch in]
+    U --> K[Reviewer reviews the whole branch]
     K -- fail --> D
     K -- pass, or Human waiver --> L[One pull request into the base branch]
     L --> M[Human merges]
@@ -70,6 +71,11 @@ flowchart TD
 - A task closes only when its checks pass on its commit. That holds in every mode.
 - The feature branch's pull request opens only after the reviewer passes the branch, or after a Human waiver that is recorded.
 - The Human can try the feature branch in a separate worktree while tasks continue.
+- **The feature branch starts from the remote's base branch** (trustmybot/tmb#169). The engine fetches it first. It uses the local base branch instead when that holds a commit the remote lacks, when there is no remote, or when the remote is out of reach.
+- **The base branch is brought in before the review.** On the planner's request the engine merges the base branch into the feature branch, with a merge commit and never a rebase, and pushes the branch as a backup. A conflict changes nothing and names the files: the planner settles it in a task, or raises it to the Human. The feature branch's brief says whether it holds the base branch. Nothing refuses a review of a branch that does not; the brief is how the planner and the reviewer know. Proposed, for the Human's review.
+- **A feature branch ends as merged or closed** (trustmybot/tmb#131). Once its pull request is open, tmb reads that pull request's state through the Human's own GitHub CLI: merged makes the branch merged, closed without a merge makes it closed. tmb reads it when the planner's session starts, when the features are listed, and for the dashboard at most once a minute per branch. A read that fails changes nothing, so with no network the branch stays as it was. tmb never deletes the branch.
+- The planner's session start names each pull request that ended since the last session.
+- Planned for v1.0.0 (trustmybot/tmb#152): a second pull request on a closed feature branch. Today the gate still needs the branch open.
 
 ## Truest mode
 
@@ -112,8 +118,8 @@ A gate denies when it cannot read the record, and allows in a project tmb has ne
 
 **Checkpoints, not steps.** tmb checks what is delivered, like CI, and does not watch every step (trustmybot/tmb#98). Decided by the Human on 2026-11-19.
 
-- **Roles are kept in bounds by the host.** Each role's definition takes away only the tools it must never use: the reviewer cannot edit, and the worker loses nothing. The host enforces that list itself.
-- **A worker starts inside its worktree.** The host gives each worker a folder of its own to start in, and keeps its edits out of the main folder. When the worker first reads its brief, the engine makes that folder the task's worktree, on the task's branch. It does so only when the folder is clean and belongs to no other task; otherwise the task keeps the worktree the engine cut.
+- **Roles are kept in bounds by the host.** Each role's definition takes away only the tools it must never use: the reviewer is given no tool that edits a file, and the worker loses nothing. The host enforces that list itself. As built it is weaker than it reads: on Claude Code the reviewer keeps its shell, which can write a file or push, and on Codex nothing is taken away. Planned for v1.0.0 (trustmybot/tmb#185): the guard denies the reviewer's writes by role.
+- **A worker starts inside its worktree.** On Claude Code. On Codex the worker uses the worktree the engine cut. The host gives each worker a folder of its own to start in, and keeps its edits out of the main folder. When the worker first reads its brief, the engine makes that folder the task's worktree, on the task's branch. It does so only when the folder is clean and belongs to no other task; otherwise the task keeps the worktree the engine cut.
 - **Two tasks may change the same file.** There is no lock. git settles it when the work is merged, and a clash holds back the later task's close until it is resolved.
 - **A close reports, and refuses only on its checks.** A file the task changed outside its spec is named at close, and the spec stays as written. The planner or the reviewer checks with git which files those are; it is a check of names, not a second review of content. The main folder is compared with how it was when the task started, and anything that changed there since is listed with the command that puts it back. The planner raises that list to the Human as a report, the way a git host shows a merge conflict, and the Human settles it. tmb puts nothing back by itself, because the list can hold the Human's own edits made meanwhile.
 - **The engine reads no shell command.**
@@ -153,11 +159,12 @@ What tmb does today when work goes wrong, and what is planned. The plugin had a 
 | The reviewer fails a truest task | The task reopens in its worktree. A worker reworks it, and it closes again for a new review. | v1.x: after two fails in a row, no worker starts on the task until the planner has recorded the cause. |
 | The reviewer fails a feature branch | The planner starts fix tasks on the branch, and the new tip is reviewed again. | |
 | A check fails, or a reviewer comments, on an open pull request | In agile mode nothing: a feature branch whose pull request is open takes no task. | v1.0.0 (trustmybot/tmb#168): the branch takes fix tasks, and the reviewed new tip updates the same pull request. v1.x: the syncer brings the comments in, and the planner sorts them into tasks (trustmybot/tmb#70). |
-| The pull request is closed without a merge | The feature branch is recorded as closed, and takes no task. | v1.0.0 (trustmybot/tmb#152): it can take a second pull request. |
+| The pull request is closed without a merge | Nothing: tmb does not look at the pull request after it opens, so the feature branch stays recorded as having an open pull request, and takes no task (trustmybot/tmb#131). | v1.0.0 (trustmybot/tmb#152): it can take a second pull request. |
 | A fold or a rebase conflicts | The step is undone and names the files. The task stays open until the worker has settled it. | |
-| The base branch moved under a feature branch | Nothing. The clash shows on GitHub, after the review. | v1.0.0 (trustmybot/tmb#169): a feature branch starts from a fetched base, and the engine brings the base in before the review. |
-| The approach is wrong, or nobody will finish the task | Nothing. The task stays open. | v1.0.0 (trustmybot/tmb#170): the planner or the Human drops the task with a reason, and a new task can name the one it replaces. |
-| A run started and never ended | The record holds it. Nothing lists it. | v1.0.0 (trustmybot/tmb#160): `tmb doctor` lists it, and a session start names it. |
+| The base branch moved under a feature branch | The planner has the engine bring the base branch in before the review (trustmybot/tmb#169). A conflict changes nothing and names the files, and is settled in a task. | |
+| The approach is wrong, or nobody will finish the task | The planner or the Human drops the task with a reason (trustmybot/tmb#170). It works on an open task and on a truest task in review. The task is recorded as dropped, never as closed, and nothing of it reaches the feature branch. Its worktree goes as a closed task's does, unless it holds work nobody committed. Its branch is kept while it holds commits, and the answer names it and how to delete it. A new task can name the dropped task it replaces. | |
+| A run started and never ended | `tmb doctor` lists it, and the planner's session start names it in one line (trustmybot/tmb#160). The planner decides. | |
 
-- **Nothing here waits for a timer.** tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`, not by a watcher.
-- **A project with no remote.** Decided by the Human on 2026-11-20. Nothing is pushed and no pull request is opened. After the reviewer passes the feature branch, or the Human waives the review, tmb says the branch is ready and the Human merges it locally.
+- **Nothing here waits for a timer.** tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor` (trustmybot/tmb#160), not by a watcher.
+- **A project with no remote.** Planned for v1.0.0 (trustmybot/tmb#183), decided by the Human on 2026-11-20: nothing is pushed and no pull request is opened. After the reviewer passes the feature branch, or the Human waives the review, tmb says the branch is ready and the Human merges it locally. Today the pull request step refuses for want of a remote, and the feature branch, or a truest task, stays where it is.
+- **Found on 2026-11-20, not yet fixed.** A task that was open when the pull request opened can still fold into the branch, unreviewed (trustmybot/tmb#181). A project folder below the top of its repo has no working push gate (trustmybot/tmb#178). A repo that already has a pre-push hook of its own has no push gate, and tmb says so once, at init (trustmybot/tmb#184).

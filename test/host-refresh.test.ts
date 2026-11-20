@@ -163,6 +163,19 @@ describe("refreshing a project's host files after an update", () => {
     expect(refreshes(dir)).toHaveLength(1);
   });
 
+  test("a dropped task holds nothing back: it counts as ended for the refresh", () => {
+    const dir = newProject("p");
+    wire(dir, A);
+    ageFiles(dir);
+    withStore(dir, (store) => {
+      const issueId = store.createIssue(HUMAN, { title: "work" });
+      const taskId = store.appendTask(PLANNER, { issueId, title: "a task", state: "open" });
+      store.updateTask(PLANNER, taskId, { state: "dropped", dropReason: "the approach is wrong" });
+    });
+    expect(refresh(dir)).toContain("tmb refreshed");
+    expect(refreshes(dir)).toHaveLength(1);
+  });
+
   test("a project wired by another program is left alone", () => {
     const dir = newProject("p");
     wire(dir, A, "tmb-dev");

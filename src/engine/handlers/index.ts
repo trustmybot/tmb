@@ -63,13 +63,19 @@ export const OPERATIONS = {
   },
   feature_start: {
     description:
-      "Start a feature branch for a milestone's work, before its first task: tmb cuts it from the base branch's latest commit, checking it out nowhere, and records it. Every task is cut from a feature branch and folds back into it when it closes. For the planner.",
+      "Start a feature branch for a milestone's work, before its first task: tmb cuts it from the base branch's latest commit, fetched from origin first unless the local base branch is ahead of it, checking it out nowhere, and records it. Every task is cut from a feature branch and folds back into it when it closes. For the planner.",
     inputSchema: feature.featureStartSchema,
     run: feature.featureStart,
   },
+  feature_update: {
+    description:
+      "Bring the base branch into a feature branch: tmb fetches the base from origin (the local one when it is ahead or there is no origin), merges it into the branch with a merge commit, never a rebase, and pushes the branch as a backup. Call it before you start the reviewer on the branch, and earlier whenever the base moved. A conflict changes nothing and names the files: settle it in a task on the branch, or raise it to the Human. For the planner.",
+    inputSchema: feature.featureUpdateSchema,
+    run: feature.featureUpdate,
+  },
   feature_list: {
     description:
-      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. Use it before starting a task to see which feature branch it belongs on.",
+      "List the feature branches in the project's tmb record, each with the base branch and commit it was cut from, its state and the ids of its tasks. A feature branch in pr_open whose pull request merged or closed moves to merged or closed first, read through the Human's GitHub command line. Use it before starting a task to see which feature branch it belongs on.",
     inputSchema: feature.featureListSchema,
     run: feature.featureList,
   },
@@ -133,9 +139,15 @@ export const OPERATIONS = {
     inputSchema: truest.taskPrSchema,
     run: truest.taskPr,
   },
+  task_drop: {
+    description:
+      "Drop a task whose approach is wrong or that nobody will finish, with the reason: it ends without its work, as an open task or a truest task in review. tmb removes its worktree as at a close, unless it holds work nobody committed, and keeps its branch while that holds commits. A new task can name it in task_start's replaces. For the planner, or the Human (`tmb task drop <id> --reason <text>`).",
+    inputSchema: task.taskDropSchema,
+    run: task.taskDrop,
+  },
   task_list: {
     description:
-      "List the open tasks in the project's tmb record, or the closed ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
+      "List the open tasks in the project's tmb record, or those in review, the closed ones, the dropped ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },

@@ -5,12 +5,12 @@
 // never reaches the base branch by a push either.
 import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
-import { endHostReviewerRun, ensureHostReviewerRun, isReviewerHost } from "../host-runs.ts";
+import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
-import { OPEN, type OperationContext, requireRole } from "./common.ts";
+import { CLOSED_UNMERGED, OPEN, type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
-import { featureDir, featureTip } from "./features.ts";
-import { pushFeature } from "./fold.ts";
+import { featureDir, featureTip, knownBase } from "./features.ts";
+import { isAncestor, pushFeature } from "./fold.ts";
 import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
 import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -51,6 +51,9 @@ export type FeatureBrief = {
   /** Where the feature branch leaves the base branch: the diff to review is from here to the tip. */
   mergeBase: string;
   tip: string;
+  /** The base branch's commit as tmb last fetched it (the local one when that is ahead), and whether the tip holds it; feature_update brings it in. */
+  base: string | null;
+  holdsBase: boolean;
   /** Each closed task's commits on the branch, in the order they landed. */
   groups: ReviewGroup[];
   reviews: ReviewSummary[];
@@ -143,21 +146,33 @@ export function coveredCommits(store: Store): string[] {
   return [...commits];
 }
 
-/** Each closed task's commits on the branch, in the order git holds them between the merge base and the tip. */
+/**
+ * Each closed task's commits on the branch, in the order they landed: along the branch's own line
+ * of commits from where it leaves the base branch. A merge of the base branch starts the next
+ * group after it, so no group shows the base's changes as the task's.
+ */
 function groupsOf(store: Store, projectDir: string, feature: Feature, mergeBase: string, tip: string): ReviewGroup[] {
-  const listed = runGit(projectDir, ["rev-list", "--reverse", `${mergeBase}..${tip}`]);
-  const order = listed.ok ? listed.stdout.split("\n").filter((sha) => sha !== "") : [];
-  const position = new Map(order.map((sha, i) => [sha, i]));
-  const landed = store
-    .listFeatureTasks(feature.id)
-    .filter((task) => task.commitSha !== null && position.has(task.commitSha))
-    .sort((a, b) => position.get(a.commitSha!)! - position.get(b.commitSha!)!);
-  let from = mergeBase;
-  return landed.map((task) => {
-    const group = { task: task.id, title: task.title, kind: task.kind, from, to: task.commitSha! };
-    from = task.commitSha!;
-    return group;
-  });
+  const listed = runGit(projectDir, ["rev-list", "--reverse", "--first-parent", "--parents", `${mergeBase}..${tip}`]);
+  const lines = listed.ok ? listed.stdout.split("\n").filter((line) => line !== "").map((line) => line.split(" ")) : [];
+  const tasks = new Map(
+    store
+      .listFeatureTasks(feature.id)
+      .filter((task) => task.commitSha !== null)
+      .map((task) => [task.commitSha!, task]),
+  );
+  let from = lines[0]?.[1] ?? mergeBase;
+  const groups: ReviewGroup[] = [];
+  for (const [sha, ...parents] of lines) {
+    const task = tasks.get(sha!);
+    if (task !== undefined) {
+      groups.push({ task: task.id, title: task.title, kind: task.kind, from, to: sha! });
+      from = sha!;
+    } else if (parents.length > 1) {
+      // A merge of the base branch: what came in with it is the base's, not the next task's.
+      from = sha!;
+    }
+  }
+  return groups;
 }
 
 /**
@@ -178,6 +193,12 @@ export function featureBriefOf(store: Store, projectDir: string, feature: Featur
   const reviews = store.listFeatureReviews(feature.id);
   const waivers = allWaivers(store).filter((waiver) => waiver.featureId === feature.id);
   const mergeBase = mergeBaseOf(dir, feature, tip);
+  let base: string | null = null;
+  try {
+    base = knownBase(dir, feature.baseBranch, `the feature branch ${feature.name}`);
+  } catch {
+    // A base branch git cannot read leaves the brief without it.
+  }
   const coveredBy = coverageAt(reviews, waivers, tip);
   return {
     name: feature.name,
@@ -187,6 +208,8 @@ export function featureBriefOf(store: Store, projectDir: string, feature: Featur
     baseCommit: feature.baseCommit,
     mergeBase,
     tip,
+    base,
+    holdsBase: base !== null && isAncestor(dir, base, tip),
     groups: groupsOf(store, dir, feature, mergeBase, tip),
     reviews: reviews.map(summaryOf),
     waivers: waivers.map(({ featureId: _, ...waiver }) => waiver),
@@ -254,7 +277,7 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   }
   requireRole(actor, "review_record", ["reviewer"]);
   // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
-  if (!store.openRuns("reviewer").some((run) => run.createdBy.kind === "agent" && run.createdBy.host === actor.host)) {
+  if (openRunsOf(store, actor.host).length === 0) {
     throw new HandlerError(
       "refused",
       "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
@@ -277,9 +300,15 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   }
 
   const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
-  const id = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip });
+  // The review names the run that wrote it, and that run its feature branch, since a branch review's start prompt may not name it (trustmybot/tmb#135).
+  const run = openRunsOf(store, actor.host)[0]!;
+  const id = store.transaction(() => {
+    const written = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip, runId: run.id });
+    if (run.featureId === null && run.taskId === null) store.setRunFeature(actor, run.id, feature.id);
+    return written;
+  });
   const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
-  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, `verdict ${given.verdict} at ${tip}`);
+  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, FINISHED);
   const mark = markReviewed(store, actor, dir, tip, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
@@ -357,7 +386,11 @@ export function existingPullRequest(projectDir: string, branch: string): string 
 export function featurePr(store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult {
   const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
   requireRole(actor, "feature_pr", ["planner"]);
-  const feature = requireOpenFeature(store, given.feature, "its pull request does not open again");
+  // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
+  const feature = requireFeature(store, given.feature);
+  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED) {
+    throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}, so its pull request does not open again`);
+  }
   const brief = featureBriefOf(store, context.projectDir, feature);
   if (brief.coveredBy === null) {
     const newest = brief.reviews.at(-1);
@@ -374,7 +407,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   }
 
   const dir = featureDir(store, context.projectDir, feature);
-  const push = pushFeature(dir, feature.name);
+  const push = pushFeature(dir, feature.name, actor);
   if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
   // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
   trySendPendingMarks(store, actor, dir);
@@ -383,7 +416,12 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
       ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
       : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
   const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
-  const opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
+  let opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
+  if (!opened.ok) {
+    // A pull request already open from the branch (an earlier feature_pr, or one the Human reopened) is the branch's: record it, open no second one.
+    const existing = existingPullRequest(dir, feature.name);
+    if (existing !== null) opened = { ok: true, url: existing };
+  }
   if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
   const markRequired = markRequiredOn(dir, feature.baseBranch);

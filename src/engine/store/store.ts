@@ -72,6 +72,8 @@ export type NewTask = {
   mainSnapshot?: string | null;
   /** The repo the task was cut in, by its name in the workspace; null for the project folder itself. */
   repo?: string | null;
+  /** The dropped task this one replaces. */
+  replaces?: string | null;
 };
 export type Task = {
   id: string;
@@ -94,6 +96,10 @@ export type Task = {
   mainSnapshot: string | null;
   /** The repo the task was cut in, by its name in the workspace; null for the project folder itself. */
   repo: string | null;
+  /** Why the task was dropped; null unless it is. */
+  dropReason: string | null;
+  /** The dropped task this one replaces; null when it replaces none. */
+  replaces: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -109,6 +115,8 @@ export type TaskChanges = {
   baseCommit?: string | null;
   /** The worktree a worker's host made and tmb adopted as the task's. */
   worktree?: string | null;
+  /** Why the planner or the Human dropped the task. */
+  dropReason?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string; repo?: string | null };
 export type FeatureChanges = { state?: string; prUrl?: string | null };
@@ -126,16 +134,22 @@ export type Feature = {
   createdAt: string;
   updatedAt: string;
 };
+/** Tokens one model used in a run, as the host reported them; never money (trustmybot/tmb#133). */
+export type ModelUsage = { model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
 export type Run = {
   id: string;
   taskId: string | null;
+  /** The feature branch a branch review's run reviewed; a worker's run reads its feature through its task. */
+  featureId: string | null;
   role: Role;
   startedAt: string;
   endedAt: string | null;
   outcome: string | null;
+  /** One entry per model, or null when the host gave none. */
+  cost: ModelUsage[] | null;
   createdBy: Actor;
 };
-export type RunEnd = { endedAt?: string; outcome?: string | null };
+export type RunEnd = { endedAt?: string; outcome?: string | null; cost?: ModelUsage[] | null };
 export type CheckRun = {
   id: string;
   taskId: string;
@@ -154,7 +168,8 @@ export type NewRun = {
   startedAt?: string;
   endedAt?: string | null;
   outcome?: string | null;
-  cost?: Record<string, unknown> | null;
+  cost?: ModelUsage[] | Record<string, unknown> | null;
+  featureId?: string | null;
 };
 export type NewCheckRun = {
   id?: string;
@@ -173,6 +188,8 @@ export type NewReview = {
   /** The feature branch a branch review judged, and the commit it judged it at. */
   featureId?: string | null;
   commitSha?: string | null;
+  /** The reviewer run that wrote it. */
+  runId?: string | null;
 };
 export type Review = {
   id: string;
@@ -182,6 +199,7 @@ export type Review = {
   findings: unknown[];
   featureId: string | null;
   commitSha: string | null;
+  runId: string | null;
   createdBy: Actor;
   createdAt: string;
 };
@@ -220,6 +238,8 @@ type TaskRow = {
   pr_url?: string | null;
   main_snapshot?: string | null;
   repo?: string | null;
+  drop_reason?: string | null;
+  replaces?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -244,10 +264,21 @@ type ReviewRow = {
   findings: string;
   feature_id: string | null;
   commit_sha: string | null;
+  run_id: string | null;
   created_by: string;
   created_at: string;
 };
-type RunRow = { id: string; task_id: string | null; role: Role; started_at: string; ended_at: string | null; outcome: string | null; created_by: string };
+type RunRow = {
+  id: string;
+  task_id: string | null;
+  feature_id: string | null;
+  role: Role;
+  started_at: string;
+  ended_at: string | null;
+  outcome: string | null;
+  cost: string | null;
+  created_by: string;
+};
 type CheckRunRow = {
   id: string;
   task_id: string;
@@ -325,6 +356,8 @@ function toTask(row: TaskRow): Task {
     prUrl: row.pr_url ?? null,
     mainSnapshot: row.main_snapshot ?? null,
     repo: row.repo ?? null,
+    dropReason: row.drop_reason ?? null,
+    replaces: row.replaces ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -355,6 +388,7 @@ function toReview(row: ReviewRow): Review {
     findings: JSON.parse(row.findings) as unknown[],
     featureId: row.feature_id,
     commitSha: row.commit_sha,
+    runId: row.run_id,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
   };
@@ -364,10 +398,12 @@ function toRun(row: RunRow): Run {
   return {
     id: row.id,
     taskId: row.task_id,
+    featureId: row.feature_id,
     role: row.role,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     outcome: row.outcome,
+    cost: row.cost === null ? null : (JSON.parse(row.cost) as ModelUsage[]),
     createdBy: JSON.parse(row.created_by) as Actor,
   };
 }
@@ -494,6 +530,7 @@ export class Store {
       kind: task.kind ?? null,
       main_snapshot: task.mainSnapshot ?? null,
       repo: task.repo ?? null,
+      replaces: task.replaces ?? null,
     }, task.id);
   }
 
@@ -507,6 +544,7 @@ export class Store {
       pr_url: changes.prUrl,
       base_commit: changes.baseCommit,
       worktree: changes.worktree,
+      drop_reason: changes.dropReason,
     });
   }
 
@@ -538,7 +576,11 @@ export class Store {
   }
 
   updateFeature(actor: Actor, id: string, changes: FeatureChanges): void {
-    this.append(actor, "feature", id, "updated", { state: changes.state, pr_url: changes.prUrl });
+    // Only what changes: a key with no value would clear its column.
+    this.append(actor, "feature", id, "updated", {
+      ...(changes.state === undefined ? {} : { state: changes.state }),
+      ...(changes.prUrl === undefined ? {} : { pr_url: changes.prUrl }),
+    });
   }
 
   getFeature(id: string): Feature | null {
@@ -569,11 +611,32 @@ export class Store {
       ended_at: run.endedAt ?? null,
       outcome: run.outcome ?? null,
       cost: run.cost ?? null,
+      feature_id: run.featureId ?? null,
     }, run.id);
   }
 
   endRun(actor: Actor, id: string, end: RunEnd = {}): void {
-    this.append(actor, "run", id, "updated", { ended_at: end.endedAt ?? new Date().toISOString(), outcome: end.outcome ?? null });
+    this.append(actor, "run", id, "updated", {
+      ended_at: end.endedAt ?? new Date().toISOString(),
+      outcome: end.outcome ?? null,
+      ...(end.cost === undefined || end.cost === null ? {} : { cost: end.cost }),
+    });
+  }
+
+  /** Links a branch review's run to the feature branch it reviewed. */
+  setRunFeature(actor: Actor, id: string, featureId: string): void {
+    this.append(actor, "run", id, "updated", { feature_id: featureId });
+  }
+
+  getRun(id: string): Run | null {
+    const row = this.db.query("SELECT * FROM runs WHERE id = ?").get(id) as RunRow | null;
+    return row ? toRun(row) : null;
+  }
+
+  /** The reviews a run wrote, oldest first. */
+  listRunReviews(runId: string): Review[] {
+    const rows = this.db.query("SELECT * FROM reviews WHERE run_id = ? ORDER BY id").all(runId) as ReviewRow[];
+    return rows.map(toReview);
   }
 
   /** Runs of a role that have a start and no end, oldest first; only those of `taskId` when given. */
@@ -611,6 +674,22 @@ export class Store {
     return rows.map(toCheckRun);
   }
 
+  /** Runs of any role that have a start and no end, oldest first: what is stuck, or still running. */
+  unendedRuns(): Run[] {
+    return (this.db.query("SELECT * FROM runs WHERE ended_at IS NULL ORDER BY id").all() as RunRow[]).map(toRun);
+  }
+
+  /** Check runs that have a start and no end, oldest first. */
+  unendedCheckRuns(): CheckRun[] {
+    return (this.db.query("SELECT * FROM check_runs WHERE ended_at IS NULL ORDER BY id").all() as CheckRunRow[]).map(toCheckRun);
+  }
+
+  /** The tasks any agent run names. */
+  tasksWithRuns(): Set<string> {
+    const rows = this.db.query("SELECT DISTINCT task_id FROM runs WHERE task_id IS NOT NULL").all() as { task_id: string }[];
+    return new Set(rows.map((row) => row.task_id));
+  }
+
   appendReview(actor: Actor, review: NewReview): string {
     return this.create(actor, "review", {
       target_kind: review.target.kind,
@@ -619,6 +698,7 @@ export class Store {
       findings: review.findings ?? [],
       feature_id: review.featureId ?? null,
       commit_sha: review.commitSha ?? null,
+      run_id: review.runId ?? null,
     }, review.id);
   }
 

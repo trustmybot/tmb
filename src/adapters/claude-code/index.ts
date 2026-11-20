@@ -3,9 +3,9 @@ import { keptRecordLine, listed, setUpRecord, shown } from "../common/record.ts"
 import type { HostAdapter } from "../host-adapter.ts";
 import { detect } from "./detect.ts";
 import { answerHook } from "./hook.ts";
-import { HOST_ID, registerServer, unregisterServer } from "./mcp-json.ts";
-import { removeRoleFiles, roleFilePath, writeRoleFiles } from "./role-files.ts";
-import { install, remove } from "./settings.ts";
+import { HOST_ID, registerServer, serverGap, unregisterServer } from "./mcp-json.ts";
+import { removeRoleFiles, roleFileGaps, roleFilePath, writeRoleFiles } from "./role-files.ts";
+import { install, remove, settingsGaps } from "./settings.ts";
 
 function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): string[] {
   const result = writeRoleFiles(projectDir, roles);
@@ -22,6 +22,17 @@ export const adapter: HostAdapter = {
   id: HOST_ID,
   name: "Claude Code",
   command: "claude",
+  reconnectToolServer: "run `/mcp`, then Reconnect on tmb",
+
+  sessionTitle(stdinText) {
+    // Claude Code passes `session_title` at a session start when the Human named the session (`--name` or `/rename`).
+    try {
+      const title = (JSON.parse(stdinText) as { session_title?: unknown }).session_title;
+      return typeof title === "string" && title.trim() !== "" ? title.trim() : null;
+    } catch {
+      return null;
+    }
+  },
 
   limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
 
@@ -74,6 +85,11 @@ export const adapter: HostAdapter = {
 
     lines.push(...keptRecordLine(projectDir));
     return lines;
+  },
+
+  wiringGaps(projectDir, tmbCommand) {
+    const server = serverGap(projectDir, tmbCommand);
+    return [...(server === null ? [] : [server]), ...settingsGaps(projectDir, tmbCommand), ...roleFileGaps(projectDir, SUBAGENT_ROLES)];
   },
 
   answerHook,
