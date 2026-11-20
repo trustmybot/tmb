@@ -46,7 +46,7 @@ Each program keeps itself up to date on its own channel. When a session starts, 
 
 Set `TMB_NO_UPDATE=1` to turn updates off. Each program keeps the kept build, the time of the last look and its session markers in a folder of its own name, such as `~/.local/state/tmb-dev` (`$XDG_STATE_HOME/tmb-dev` when that is set; Windows: `%LOCALAPPDATA%\tmb-dev`), so one never swaps another. A tmb run from source never updates itself.
 
-Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy; run `tmb init` again in any project you set up with it.
+Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy and names the program to run `init` with again, such as `tmb-dev`, in any project you set up with it.
 
 `tmb --version` prints the program's name, its version, the source commit it was built from and the channel it follows. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
@@ -124,6 +124,27 @@ Once the project is set up:
 ## Unattended runs
 
 When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults, names each default it used, and stops with the reason when a default is not safe. Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
+
+## Help and mistyped commands
+
+`tmb --help` lists the commands in four groups, one line each. `tmb help <command>` and `tmb <command> --help` give that command's detail, and the same works one level down, as in `tmb task close --help`. The commands only a host or git calls are left out; `tmb help --all` lists them last.
+
+A command tmb does not know is answered with the closest one, a usage line and where to read more, never with the full help:
+
+```
+error: unrecognized command 'inti'
+
+  tip: a similar command exists: 'init'
+
+Usage: tmb <COMMAND>
+
+For more information, try 'tmb --help'.
+```
+
+- A command is named when it is at most two typing mistakes away, or starts with what was typed. Every match is named; with none, there is no tip.
+- `tmb upgrade` is not a command; its tip names `update`.
+- A usage mistake goes to stderr and exits with code 2: an unknown command, a flag a command does not take, or `tmb` with no command, which prints the short help.
+- Help and errors are coloured on a terminal. `NO_COLOR` turns colour off and `FORCE_COLOR` turns it on; with both set, `NO_COLOR` wins. Output sent to a file or a pipe, or a terminal with `TERM=dumb`, has no colour.
 
 ## The record from the command line
 
