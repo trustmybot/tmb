@@ -31,6 +31,8 @@ export interface HostAdapter {
   id: string;
   /** The host's display name. */
   name: string;
+  /** The program the Human runs to start the host in a project, such as `claude`. */
+  command: string;
   limits: HostLimits;
   /** Looks for the host's program; `searchPath` replaces PATH for the lookup. Never throws. */
   detect(searchPath?: string): HostDetection;

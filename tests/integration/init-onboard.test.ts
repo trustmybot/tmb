@@ -58,10 +58,13 @@ describe("tmb init", () => {
     const stdout = await new Response(child.stdout).text();
     expect(status).toBe(0);
     expect(stdout).toContain("Indexed the code graph of trunk");
-    expect(stdout.trimEnd().split("\n").at(-1)).toBe(
-      "The settings are still empty: base branch, review mode and checks. When you open Claude Code here, the planner applies the ones it recommends for this project and shows them; " +
-        "run tmb onboard to set them yourself instead, at any time.",
-    );
+    // Piped, so plain: no colour codes around the commands.
+    expect(stdout.trimEnd().split("\n").slice(-4)).toEqual([
+      "tmb is set up for Claude Code. Next:",
+      "  1. Run `claude` in this folder.",
+      "  2. Send `@bro`.",
+      "The settings are still empty: base branch, review mode and checks; bro applies the ones it recommends. To set them yourself, run `tmb onboard`.",
+    ]);
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, ...EMPTY });
     for (const file of [".tmb/trajectory.db", ".mcp.json", ".claude/settings.local.json", ".claude/agents/worker.md", ".git/hooks/pre-push"]) {
       expect(existsSync(path.join(project, file))).toBe(true);
