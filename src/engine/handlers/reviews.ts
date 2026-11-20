@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, localMergeCommand, OPEN, type OperationContext, PR_OPEN, READY, requireRole } from "./common.ts";
+import { CLOSED_UNMERGED, endReadyLine, type LocalMerge, localMergeCommand, OPEN, type OperationContext, PR_OPEN, READY, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureDir, featureTip, knownBase } from "./features.ts";
 import { hasOrigin, isAncestor, pushFeature } from "./fold.ts";
@@ -74,7 +74,7 @@ export type FeaturePrResult = {
   /** The pull request's address; null in a repo with no remote, where none opens. */
   url: string | null;
   /** Set in a repo with no remote: the branch is ready, and the Human merges it locally with these commands, in `dir`. */
-  localMerge: { dir: string; command: string } | null;
+  localMerge: LocalMerge | null;
   base: string;
   tip: string;
   coveredBy: "review" | "waiver";
@@ -417,7 +417,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   if (!hasOrigin(dir)) {
     // No remote (trustmybot/tmb#183): nothing is pushed and no pull request opens; the Human merges locally.
     store.updateFeature(actor, feature.id, { state: READY });
-    const localMerge = { dir, command: localMergeCommand(feature.baseBranch, feature.name) };
+    const localMerge = { dir, command: localMergeCommand(feature.baseBranch, feature.name), otherwise: endReadyLine("feature", feature.name) };
     return { feature: feature.name, url: null, localMerge, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: "skipped: the repository has no remote named origin", markRequired: null };
   }
   const push = pushFeature(dir, feature.name, actor);

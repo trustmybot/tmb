@@ -4,6 +4,7 @@ import { repoOfRow, workingRepos, workspaceRepos } from "../repos.ts";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
   type FeatureBrief,
+  type FeatureDropResult,
   type FeaturePrResult,
   type FeatureSummary,
   type FeatureUpdateResult,
@@ -27,6 +28,7 @@ import {
 import type { Area } from "../graph/areas.ts";
 import type { Concept } from "../graph/concepts.ts";
 import { indexProject } from "../graph/fresh.ts";
+import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
 import type { Hit, MapResult, ScopeResult, SymbolCard } from "../graph/lookups.ts";
 import { openProjectStore } from "../project.ts";
@@ -67,6 +69,9 @@ ${JSON_NOTE}`,
   tmb feature pr <name> --title <text> [--body <text>]
                             Open the feature branch's pull request into the base branch, once
                             the reviewer passed its tip or the Human waived the review
+  tmb feature drop <name> --reason <text>
+                            End an open, closed or ready feature branch without a merge, with
+                            why; its branch is kept. Refused while its pull request is open
 ${JSON_NOTE}`,
   task: `  tmb task start <issue-id> --kind code|docs [--feature <name>] [--repo <name>] --intent <text>
                  --file <path>... --criterion <text>... [--check <command>]... [--replaces <id>]
@@ -320,7 +325,9 @@ function formatClose({ brief, checks, fold, push, cleanupProblems, cleanedUp, ne
 function featureLine(feature: FeatureSummary): string {
   const tasks = feature.tasks.length === 0 ? "no tasks" : `tasks: ${feature.tasks.join(", ")}`;
   const repo = feature.repo ? ` in ${feature.repo}` : "";
-  return `${feature.name}  ${feature.state.padEnd(6)}${repo}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}`;
+  const ended = feature.dropReason === null ? "" : `\n  dropped: ${feature.dropReason}`;
+  const ready = feature.state === "ready" ? `\n  ${endReadyLine("feature", feature.name)}` : "";
+  return `${feature.name}  ${feature.state.padEnd(6)}${repo}  from ${feature.baseBranch} at ${feature.baseCommit}\n  ${tasks}${ready}${ended}`;
 }
 
 function featureBriefLines(brief: FeatureBrief): string[] {
@@ -376,6 +383,13 @@ function featureRequest(args: string[]): Request {
       const format = (brief: FeatureBrief) => featureBriefLines(brief).join("\n");
       return { operation: "feature_brief", input: { feature: only(positionals, "feature branch name") }, json: values.json === true, format };
     }
+    case "drop": {
+      const { values, positionals } = parse(rest, { reason: { type: "string" } });
+      if (values.reason === undefined) throw new UsageError("feature drop needs --reason <text>: why the feature branch is dropped");
+      const format = (dropped: FeatureDropResult) =>
+        [`Dropped feature branch ${dropped.feature.name}: ${dropped.feature.dropReason}`, ...(dropped.keptBranch === null ? [] : [`Kept: ${dropped.keptBranch}`])].join("\n");
+      return { operation: "feature_drop", input: { feature: only(positionals, "feature branch name"), reason: values.reason }, json: values.json === true, format };
+    }
     case "waive": {
       const { values, positionals } = parse(rest, { reason: { type: "string" } });
       if (values.reason === undefined) throw new UsageError("feature waive needs --reason <text>: why the review is waived");
@@ -391,7 +405,7 @@ function featureRequest(args: string[]): Request {
         [
           pr.localMerge === null
             ? `Opened the pull request of ${pr.feature} into ${pr.base} at ${pr.tip} (${pr.coveredBy}): ${pr.url}`
-            : `${pr.feature} is ready at ${pr.tip} (${pr.coveredBy}). The repository has no remote, so nothing was pushed and no pull request opened. Merge it locally, in ${pr.localMerge.dir}:\n  ${pr.localMerge.command}`,
+            : `${pr.feature} is ready at ${pr.tip} (${pr.coveredBy}). The repository has no remote, so nothing was pushed and no pull request opened. Merge it locally, in ${pr.localMerge.dir}:\n  ${pr.localMerge.command}\n${pr.localMerge.otherwise}`,
           markRequiredLine(pr.base, pr.markRequired),
         ]
           .filter((line) => line !== null)
@@ -476,7 +490,7 @@ function taskRequest(args: string[]): Request {
         [
           pr.localMerge === null
             ? `Opened the pull request of task ${pr.task} (${pr.branch}) into ${pr.base} at ${pr.commit} (${pr.coveredBy}): ${pr.url}`
-            : `Task ${pr.task} (${pr.branch}) is ready at ${pr.commit} (${pr.coveredBy}). The repository has no remote, so nothing was pushed and no pull request opened. Merge it locally, in ${pr.localMerge.dir}:\n  ${pr.localMerge.command}`,
+            : `Task ${pr.task} (${pr.branch}) is ready at ${pr.commit} (${pr.coveredBy}). The repository has no remote, so nothing was pushed and no pull request opened. Merge it locally, in ${pr.localMerge.dir}:\n  ${pr.localMerge.command}\n${pr.localMerge.otherwise}`,
           ...(pr.rebasedOnto === null ? [] : [`Rebased onto ${pr.base} at ${pr.rebasedOnto} first; the patch was unchanged, so the review carried over.`]),
           ...pr.cleanupProblems.map((problem) => `Not cleaned up: ${problem}`),
           ...pr.cleanedUp,

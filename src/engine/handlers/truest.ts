@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { gitFailure, runGit } from "../git.ts";
 import { repoOfRow } from "../repos.ts";
 import type { Actor, Review, Store, Task } from "../store/index.ts";
-import { CLOSED, IN_REVIEW, localMergeCommand, OPEN, type OperationContext, READY, requireRole, TRUEST } from "./common.ts";
+import { CLOSED, endReadyLine, IN_REVIEW, type LocalMerge, localMergeCommand, OPEN, type OperationContext, READY, requireRole, TRUEST } from "./common.ts";
 import { openRunsOf } from "../host-runs.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, noBaseBranch } from "./features.ts";
@@ -350,7 +350,7 @@ export type TaskPrResult = {
   /** The pull request's address; null in a repo with no remote, where none opens. */
   url: string | null;
   /** Set in a repo with no remote: the task is ready, and the Human merges its branch locally with these commands, in `dir`. */
-  localMerge: { dir: string; command: string } | null;
+  localMerge: LocalMerge | null;
   base: string;
   branch: string;
   commit: string;
@@ -486,7 +486,7 @@ async function readyForLocalMerge(
   return {
     task: task.id,
     url: null,
-    localMerge: { dir, command: localMergeCommand(baseBranch, task.branch!) },
+    localMerge: { dir, command: localMergeCommand(baseBranch, task.branch!), otherwise: endReadyLine("task", task.id) },
     base: baseBranch,
     branch: task.branch!,
     commit,
@@ -530,7 +530,7 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   }
   if (!hasOrigin(dir)) {
     if (!wasReady) return readyForLocalMerge(store, actor, task, dir, baseBranch, context);
-    const localMerge = { dir, command: localMergeCommand(baseBranch, task.branch!) };
+    const localMerge = { dir, command: localMergeCommand(baseBranch, task.branch!), otherwise: endReadyLine("task", task.id) };
     return { task: task.id, url: null, localMerge, base: baseBranch, branch: task.branch!, commit: task.commitSha!, coveredBy: review.coveredBy, rebasedOnto: null, push: `skipped: the repository has no remote named ${ORIGIN}`, markRequired: null, cleanupProblems: [], cleanedUp: [] };
   }
 
