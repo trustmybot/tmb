@@ -4,6 +4,7 @@
 import type { Database } from "bun:sqlite";
 import { STOPWORDS, splitWords } from "./extract.ts";
 import type { Actor } from "../store/index.ts";
+import { areasOf } from "./areas.ts";
 import { type Concept, conceptsOn } from "./concepts.ts";
 
 export const MAP_MAX_NODES = 500;
@@ -17,9 +18,13 @@ export type FileNode = { path: string; lane: string; summary: string; lang: stri
 export type DirNode = { path: string; summary: string; fileCount: number; files?: FileNode[] };
 export type MapResult = { root: string; depth: number; dirs: DirNode[]; truncated: boolean };
 
+/** Keeps a path in a search or a scope; built from the areas to look in and to leave out. */
+export type PathFilter = (path: string) => boolean;
+
+/** Hits on a symbol or a file name the file's areas, its main area first. */
 export type Hit =
-  | { kind: "symbol"; name: string; qualifiedName: string; symbolKind: string; path: string; line: number | null; signature: string; doc: string }
-  | { kind: "file"; path: string; summary: string; lane: string }
+  | { kind: "symbol"; name: string; qualifiedName: string; symbolKind: string; path: string; line: number | null; signature: string; doc: string; areas?: string[] }
+  | { kind: "file"; path: string; summary: string; lane: string; areas?: string[] }
   | { kind: "dir"; path: string; summary: string };
 
 export type SymbolRef = { qualifiedName: string; kind: string; path: string; line: number | null };
@@ -37,9 +42,11 @@ export type SymbolCard = {
   /** References that name it but could not be proven to mean it: possible callers, not facts. */
   unresolved: { count: number; sample: SymbolRef[] };
   concepts: { name: string; status: string }[];
+  /** The areas of its file, the main one first; a symbol takes its file's areas. */
+  areas: string[];
 };
 
-export type ScopeFile = { path: string; lane: string; summary: string; via: string[] };
+export type ScopeFile = { path: string; lane: string; summary: string; via: string[]; areas: string[] };
 export type ScopeResult = {
   files: ScopeFile[];
   tests: ScopeFile[];
@@ -182,13 +189,17 @@ function fileRow(db: Database, layer: string, path: string): { path: string; sum
 }
 
 /** Where X lives: exact names and paths first, then a full-text match over symbols, files and directory summaries. */
-export function find(db: Database, layer: string, query: string, k = 10): Hit[] {
+export function find(db: Database, layer: string, query: string, k = 10, filter: PathFilter | null = null): Hit[] {
   const limit = Math.min(Math.max(k, 1), FIND_MAX);
+  // A filter drops hits after ranking, so it ranks more of them to fill the list.
+  const ranked = filter === null ? limit * 2 : limit * 8;
   const seen = new Set<string>();
   const hits: Hit[] = [];
   const add = (hit: Hit) => {
     const key = hitKey(hit);
     if (seen.has(key) || hits.length >= limit) return;
+    // A directory is in no area; a search narrowed to areas lists files and symbols only.
+    if (filter !== null && (hit.kind === "dir" || !filter(hit.path))) return;
     seen.add(key);
     hits.push(hit);
   };
@@ -198,14 +209,15 @@ export function find(db: Database, layer: string, query: string, k = 10): Hit[] 
   if (file) add({ kind: "file", ...file });
   const words = queryWords(trimmed);
   if (words.length > 0) {
-    let ranked = ftsHits(db, layer, words, "AND", limit * 2);
-    if (ranked.length < MIN_AND_HITS && words.length > 1) {
-      const more = ftsHits(db, layer, words, "OR", limit * 2);
-      ranked = [...ranked, ...more];
+    let found = ftsHits(db, layer, words, "AND", ranked);
+    if (found.length < MIN_AND_HITS && words.length > 1) {
+      const more = ftsHits(db, layer, words, "OR", ranked);
+      found = [...found, ...more];
     }
-    for (const { hit } of ranked) add(hit);
+    for (const { hit } of found) add(hit);
   }
-  return hits;
+  const areas = areasOf(db, [...new Set(hits.filter((h) => h.kind !== "dir").map((h) => h.path))]);
+  return hits.map((hit) => (hit.kind === "dir" ? hit : { ...hit, areas: areas.get(hit.path) ?? [] }));
 }
 
 // --- symbol card ---
@@ -286,6 +298,7 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
       sample: unresolvedRows.slice(0, CARD_LIST_MAX).map((r) => ({ qualifiedName: r.qualified_name, kind: r.kind, path: r.path, line: r.line })),
     },
     concepts: concepts.map((c: Concept) => ({ name: c.name, status: c.status })),
+    areas: areasOf(db, [row.path]).get(row.path) ?? [],
   };
 }
 
@@ -300,7 +313,8 @@ export function lookupSymbol(db: Database, layer: string, name: string, path?: s
 // --- scope ---
 
 /** The files in scope for a task: seeded by the objective's search and by named anchors, widened by their callers, importers and tests. */
-export function scope(db: Database, layer: string, input: { objective: string; anchors: string[]; k?: number }): ScopeResult {
+export function scope(db: Database, layer: string, input: { objective: string; anchors: string[]; k?: number; filter?: PathFilter | null }): ScopeResult {
+  const filter = input.filter ?? null;
   const k = input.k ?? 8;
   const byPath = new Map<string, Set<string>>();
   const add = (path: string, via: string) => {
@@ -339,7 +353,7 @@ export function scope(db: Database, layer: string, input: { objective: string; a
   }
 
   if (input.objective.trim() !== "") {
-    const hits = find(db, layer, input.objective, k);
+    const hits = find(db, layer, input.objective, k, filter);
     let widened = 0;
     for (const hit of hits) {
       if (hit.kind === "dir") continue;
@@ -354,10 +368,13 @@ export function scope(db: Database, layer: string, input: { objective: string; a
     }
   }
 
+  // Anchors are named on purpose and stay; the files they bring in are kept to the asked areas.
+  const kept = [...byPath].filter(([path, via]) => filter === null || via.has("anchor") || filter(path));
+  const areas = areasOf(db, kept.map(([path]) => path));
   const entries: ScopeFile[] = [];
-  for (const [path, via] of byPath) {
+  for (const [path, via] of kept) {
     const file = fileRow(db, layer, path);
-    if (file) entries.push({ path, lane: file.lane, summary: file.summary, via: [...via].sort() });
+    if (file) entries.push({ path, lane: file.lane, summary: file.summary, via: [...via].sort(), areas: areas.get(path) ?? [] });
   }
   const weight = (f: ScopeFile) => (f.via.includes("anchor") ? 100 : 0) + (f.via.includes("search") ? 10 : 0) + f.via.length;
   entries.sort((a, b) => weight(b) - weight(a) || a.path.localeCompare(b.path));

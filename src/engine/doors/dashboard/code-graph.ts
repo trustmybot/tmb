@@ -4,6 +4,7 @@
 // once, and nothing here writes: the page reads the same graph the agents' lookups read.
 import type { Database } from "bun:sqlite";
 import { FUNCTION_KINDS } from "../../graph/build.ts";
+import { areasOf, listAreas } from "../../graph/areas.ts";
 import { type SymbolCard, symbolCard } from "../../graph/lookups.ts";
 
 const KIND_LIST = [...FUNCTION_KINDS];
@@ -13,14 +14,20 @@ const CALL_KINDS = ["calls", "instantiates", "runs", "sources"];
 const LINK_KINDS = [...CALL_KINDS, "imports"];
 export const SEARCH_MAX = 30;
 
+/**
+ * A child's area is its main area: for a file the first of its areas, for a folder the one main
+ * area every file under it shares, else null. The page draws each area as a box around its children.
+ */
 export type TreeChild =
-  | { kind: "dir"; path: string; name: string; files: number; functions: number }
-  | { kind: "file"; path: string; name: string; lang: string | null; lane: string; functions: number; notParsed: string | null };
+  | { kind: "dir"; path: string; name: string; files: number; functions: number; area: string | null }
+  | { kind: "file"; path: string; name: string; lang: string | null; lane: string; functions: number; notParsed: string | null; area: string | null };
 
 /** Proven links between two children of the folder: calls and imports, counted. */
 export type TreeLink = { from: string; to: string; calls: number; imports: number };
 
-export type TreeResult = { path: string; functions: number; children: TreeChild[]; links: TreeLink[] };
+export type TreeArea = { name: string; purpose: string; parent: string | null; status: string };
+
+export type TreeResult = { path: string; functions: number; children: TreeChild[]; links: TreeLink[]; areas: TreeArea[] };
 
 export type FileSymbol = {
   id: number;
@@ -44,6 +51,8 @@ export type FileResult = {
   lang: string | null;
   lane: string;
   notParsed: string | null;
+  /** The file's areas, its main one first; each of its functions is in them too. */
+  areas: string[];
   functions: number;
   symbols: FileSymbol[];
   /** Proven calls between the symbols of this file. */
@@ -113,12 +122,36 @@ export function tree(db: Database, layer: string, dir: string): TreeResult | nul
     lane: string;
     parse_error: string | null;
   }[];
+  // Every file under the folder, by the child it is under, to name each child's main area.
+  const under = db.query(path === "." ? "SELECT path FROM files WHERE layer = ?" : "SELECT path FROM files WHERE layer = ? AND substr(path, 1, ?) = ?");
+  const below = (path === "." ? under.all(layer) : under.all(layer, path.length + 1, `${path}/`)) as { path: string }[];
+  const mainArea = new Map([...areasOf(db, below.map((r) => r.path))].map(([file, areas]) => [file, areas[0] ?? null]));
+  const childArea = new Map<string, string | null>();
+  for (const { path: file } of below) {
+    const child = childOf(path, file);
+    if (child === null) continue;
+    const area = mainArea.get(file) ?? null;
+    childArea.set(child, childArea.has(child) && childArea.get(child) !== area ? null : area);
+  }
   const children: TreeChild[] = [
-    ...dirs.map((d): TreeChild => ({ kind: "dir", path: d.path, name: baseName(d.path), files: d.file_count, functions: byChild.get(d.path) ?? 0 })),
+    ...dirs.map((d): TreeChild => ({ kind: "dir", path: d.path, name: baseName(d.path), files: d.file_count, functions: byChild.get(d.path) ?? 0, area: childArea.get(d.path) ?? null })),
     ...files.map(
-      (f): TreeChild => ({ kind: "file", path: f.path, name: baseName(f.path), lang: f.lang, lane: f.lane, functions: byChild.get(f.path) ?? 0, notParsed: notParsedReason(db, layer, f) }),
+      (f): TreeChild => ({
+        kind: "file",
+        path: f.path,
+        name: baseName(f.path),
+        lang: f.lang,
+        lane: f.lane,
+        functions: byChild.get(f.path) ?? 0,
+        notParsed: notParsedReason(db, layer, f),
+        area: childArea.get(f.path) ?? null,
+      }),
     ),
   ];
+  const shown = new Set(children.map((c) => c.area));
+  const areas = listAreas(db)
+    .filter((a) => shown.has(a.name))
+    .map((a): TreeArea => ({ name: a.name, purpose: a.purpose, parent: a.parent, status: a.status }));
 
   const edges = db
     .query(
@@ -139,7 +172,7 @@ export function tree(db: Database, layer: string, dir: string): TreeResult | nul
     else link.calls += e.n;
     links.set(key, link);
   }
-  return { path, functions: total, children, links: [...links.values()] };
+  return { path, functions: total, children, links: [...links.values()], areas };
 }
 
 type SymbolRow = {
@@ -213,6 +246,7 @@ export function file(db: Database, layer: string, filePath: string): FileResult 
     lang: row.lang,
     lane: row.lane,
     notParsed: notParsedReason(db, layer, row),
+    areas: areasOf(db, [path]).get(path) ?? [],
     functions: symbols.filter((s) => FUNCTION_KINDS.has(s.kind)).length,
     symbols,
     links: internal.filter((l) => drawn.has(l.src) && drawn.has(l.dst) && l.src !== l.dst).map((l) => ({ from: l.src, to: l.dst, count: l.n })),
