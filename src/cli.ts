@@ -380,6 +380,9 @@ async function runToolServer(args: string[]): Promise<number> {
     updater.endSession();
     const applied = updater.apply();
     if (applied.outcome === "applied") process.stderr.write(`tmb: updated to ${applied.version}; the next session runs it\n`);
+    // A kept build that stays kept says why, so a host's log shows what holds the update back.
+    else if (applied.outcome === "waiting") process.stderr.write(`tmb: the update to ${applied.version} waits: ${applied.reason}\n`);
+    else if (applied.outcome === "failed") process.stderr.write(`tmb: the update to ${applied.version} failed: ${applied.reason}\n`);
   };
   const onSignal = () => void end().finally(() => process.exit(0));
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, onSignal);

@@ -3,7 +3,7 @@
 // worker start only on an open task and record its run.
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import type { Run, Store } from "../../src/engine/store/index.ts";
@@ -132,6 +132,29 @@ describe("task commands", () => {
       expect(checkRuns.map((checkRun) => checkRun.result)).toEqual(["failed", "passed"]);
       for (const checkRun of checkRuns) expect(checkRun.endedAt).toBeString();
     });
+  });
+
+  test("drop a task with its reason as the Human, and start the one that replaces it", () => {
+    const project = setUpProject("true");
+    const issue = tmbJson(["issue", "create", "Build the thing"], project);
+    tmb(["feature", "start", FEATURE], project);
+    const old = tmbJson(["task", "start", issue.id, "--kind", "code", "--intent", "First try", "--file", "src", "--criterion", "SC1"], project);
+
+    const noReason = run(["task", "drop", old.id], project);
+    expect(noReason.status).toBe(2);
+    expect(noReason.stderr).toContain("task drop needs --reason <text>");
+
+    const dropped = tmb(["task", "drop", old.id, "--reason", "the approach is wrong"], project);
+    expect(dropped).toContain(`Dropped task ${old.id}: the approach is wrong`);
+    expect(existsSync(old.worktree)).toBe(false);
+    expect(tmb(["task", "list"], project)).toContain("No open tasks.");
+    expect(tmb(["task", "list", "--state", "dropped"], project)).toContain("dropped: the approach is wrong");
+
+    const next = tmbJson(["task", "start", issue.id, "--kind", "code", "--intent", "Second try", "--file", "src", "--criterion", "SC1", "--replaces", old.id], project);
+    expect(next.brief.replaces).toBe(old.id);
+    expect(tmb(["task", "brief", old.id], project)).toContain(`Replaced by: ${next.id}`);
+    expect(tmb(["task", "brief", next.id], project)).toContain(`Replaces task: ${old.id}`);
+    withStore(project, (store) => expect(store.history(old.id).at(-1)!.actor).toEqual({ kind: "human" }));
   });
 
   test("refuses bad task input with what is allowed", () => {

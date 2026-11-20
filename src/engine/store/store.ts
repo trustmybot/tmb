@@ -72,6 +72,8 @@ export type NewTask = {
   mainSnapshot?: string | null;
   /** The repo the task was cut in, by its name in the workspace; null for the project folder itself. */
   repo?: string | null;
+  /** The dropped task this one replaces. */
+  replaces?: string | null;
 };
 export type Task = {
   id: string;
@@ -94,6 +96,10 @@ export type Task = {
   mainSnapshot: string | null;
   /** The repo the task was cut in, by its name in the workspace; null for the project folder itself. */
   repo: string | null;
+  /** Why the task was dropped; null unless it is. */
+  dropReason: string | null;
+  /** The dropped task this one replaces; null when it replaces none. */
+  replaces: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -109,6 +115,8 @@ export type TaskChanges = {
   baseCommit?: string | null;
   /** The worktree a worker's host made and tmb adopted as the task's. */
   worktree?: string | null;
+  /** Why the planner or the Human dropped the task. */
+  dropReason?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string; repo?: string | null };
 export type FeatureChanges = { state?: string; prUrl?: string | null };
@@ -220,6 +228,8 @@ type TaskRow = {
   pr_url?: string | null;
   main_snapshot?: string | null;
   repo?: string | null;
+  drop_reason?: string | null;
+  replaces?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -325,6 +335,8 @@ function toTask(row: TaskRow): Task {
     prUrl: row.pr_url ?? null,
     mainSnapshot: row.main_snapshot ?? null,
     repo: row.repo ?? null,
+    dropReason: row.drop_reason ?? null,
+    replaces: row.replaces ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -494,6 +506,7 @@ export class Store {
       kind: task.kind ?? null,
       main_snapshot: task.mainSnapshot ?? null,
       repo: task.repo ?? null,
+      replaces: task.replaces ?? null,
     }, task.id);
   }
 
@@ -507,6 +520,7 @@ export class Store {
       pr_url: changes.prUrl,
       base_commit: changes.baseCommit,
       worktree: changes.worktree,
+      drop_reason: changes.dropReason,
     });
   }
 
