@@ -134,13 +134,13 @@ describe("tmb remove", () => {
   });
 });
 
-describe("tmb setup, until it goes", () => {
-  test("is init followed by onboard, and says on stderr that it is going away", () => {
+describe("tmb setup", () => {
+  test("is gone: it is refused as an unknown command, and writes nothing", () => {
     const project = newProject();
-    const result = run(["setup", "--base", "release", "--yes"], project);
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe("tmb setup is going away: run tmb init, then tmb onboard.\n");
-    expect(result.stdout.trimEnd().split("\n").at(-1)).toBe("tmb is set up for Claude Code. Open it in this project to start as the planner.");
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "release", review_mode: "agile", checks: ["bun run test"] });
+    const before = snapshot(project);
+    const result = run(["setup", "--yes"], project);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("setup");
+    expect(snapshot(project)).toEqual(before);
   });
 });

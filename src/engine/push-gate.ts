@@ -176,14 +176,14 @@ export function installPushGate(projectDir: string, tmbCommand: readonly string[
   if (existsSync(file) && !isOurs(file)) {
     return [`git's pre-push hook ${file} is not tmb's, so it was left alone; add this line to it to turn the push gate on: ${command} "$@"`];
   }
-  const script = `#!/bin/sh\n${HOOK_MARK} tmb setup wrote this file and tmb remove deletes it.\nexec ${command} "$@"\n`;
+  const script = `#!/bin/sh\n${HOOK_MARK} tmb init wrote this file and tmb remove deletes it.\nexec ${command} "$@"\n`;
   const before = existsSync(file) ? readFileSync(file, "utf8") : null;
   if (before === script) return [`git's pre-push hook ${file} already runs the push gate.`];
   writeFileSync(file, script, { mode: 0o755 });
   return [`Wrote git's pre-push hook ${file}: every push from this project asks tmb first.`];
 }
 
-/** Deletes the pre-push hook setup wrote; a hook that is not tmb's stays. Returns what it did. */
+/** Deletes the pre-push hook init wrote; a hook that is not tmb's stays. Returns what it did. */
 export function removePushGate(projectDir: string): string[] {
   const file = hookPath(projectDir);
   if (file === null || !(statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) return [];

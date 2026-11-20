@@ -1,4 +1,4 @@
-// Runs the PreToolUse hook setup wired, as its own process through a shell the way Claude
+// Runs the PreToolUse hook init wired, as its own process through a shell the way Claude
 // Code runs it, in a set-up project: an allow prints nothing and a broken record denies,
 // from the project folder or any subfolder of it.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -34,12 +34,14 @@ afterAll(() => {
 function setUpProject(): string {
   const project = mkdtempSync(path.join(scratch, "project-"));
   expect(spawnSync("git", ["init", "-q"], { cwd: project, env, timeout: 10_000 }).status).toBe(0);
-  const setup = spawnSync(process.execPath, [CLI, "setup"], { cwd: project, env, encoding: "utf8", timeout: 30_000 });
-  expect(setup.status).toBe(0);
+  for (const command of [["init"], ["onboard", "--yes"]]) {
+    const result = spawnSync(process.execPath, [CLI, ...command], { cwd: project, env, encoding: "utf8", timeout: 30_000 });
+    expect(result.status).toBe(0);
+  }
   return project;
 }
 
-/** The PreToolUse hook command setup wrote into the project's settings. */
+/** The PreToolUse hook command init wrote into the project's settings. */
 function preToolUseCommand(project: string): string {
   const settings = JSON.parse(readFileSync(path.join(project, ".claude", "settings.local.json"), "utf8"));
   const command: string = settings.hooks.PreToolUse[0].hooks[0].command;

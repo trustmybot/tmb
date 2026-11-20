@@ -169,7 +169,7 @@ export function askClaude(project: string, prompt: string, log: string, options:
   return runToFile("claude", args, log, { cwd: project, env: withEnv({ TMB_UNATTENDED: "1" }) });
 }
 
-/** A tmb run in `project`: `tmb(project, "setup")` shows its output and fails the test on an error. */
+/** A tmb run in `project`: `tmb.shown(["init"], why)` shows its output and fails the test on an error. */
 export class Tmb {
   constructor(
     readonly bin: string,

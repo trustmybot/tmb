@@ -90,22 +90,22 @@ async function smoke(): Promise<void> {
   else if (!versionLine.includes(`on the ${channel} channel`)) fail(`${name} --version names the ${channel} channel: '${versionLine}'`);
   else pass(`tmb --version: ${versionLine}`);
 
-  // Setup needs an installed host, and a clean machine has none: a copy of tmb named claude
-  // stands in, since setup only needs `claude --version` to answer.
+  // Init needs an installed host, and a clean machine has none: a copy of tmb named claude
+  // stands in, since init only needs `claude --version` to answer.
   const fakeHost = path.join(work, "fake-host");
   mkdirSync(fakeHost, { recursive: true });
   copyFileSync(tmb, path.join(fakeHost, IS_WINDOWS ? "claude.exe" : "claude"));
-  const setupLog = path.join(work, "setup.log");
+  const initLog = path.join(work, "init.log");
   const gitInit = run("git", ["init", "-q"], { cwd: project, env: homeEnv });
-  const setupStatus =
-    gitInit.status === 0 ? runToFile(tmb, ["setup"], setupLog, { cwd: project, env: withEnv({ PATH: `${fakeHost}${path.delimiter}${pathOf(homeEnv)}` }, homeEnv) }) : -1;
+  const initStatus =
+    gitInit.status === 0 ? runToFile(tmb, ["init"], initLog, { cwd: project, env: withEnv({ PATH: `${fakeHost}${path.delimiter}${pathOf(homeEnv)}` }, homeEnv) }) : -1;
   const settings = path.join(project, ".claude", "settings.local.json");
-  if (setupStatus === 0 && existsSync(settings) && readFileSync(settings, "utf8").includes("hook session-start")) {
-    pass("tmb setup wired the SessionStart hook in a fresh git repo");
+  if (initStatus === 0 && existsSync(settings) && readFileSync(settings, "utf8").includes("hook session-start")) {
+    pass("tmb init wired the SessionStart hook in a fresh git repo");
   } else {
     if (gitInit.status !== 0) console.log(`  | git init: ${gitInit.output.trim()}`);
-    showLog(setupLog);
-    fail("tmb setup wired the SessionStart hook in a fresh git repo");
+    showLog(initLog);
+    fail("tmb init wired the SessionStart hook in a fresh git repo");
   }
 
   const hook = run(tmb, ["hook", "session-start"], { cwd: project, env: homeEnv, input: "{}" });

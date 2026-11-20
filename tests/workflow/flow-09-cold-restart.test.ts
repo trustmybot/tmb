@@ -1,16 +1,16 @@
 // Workflow simulation, ported from the plugin's flow 09 (cold restart): once the project is set
 // up and work is recorded, a new session's start, answered by the session start hook, lists the
-// open issue and the open task from the record, and asks for no setup; the answers setup stored
-// are still in force. Scripted through the tool server and the hook, with no model.
+// open issue and the open task from the record, and asks for no init or onboarding; the settings
+// onboard stored are still in force. Scripted through the tool server and the hook, with no model.
 import { afterAll, describe, expect, test } from "bun:test";
-import { OPEN_WORK_HEADING, plannerRole } from "../../src/engine/index.ts";
+import { EMPTY_SETTINGS_HEADING, OPEN_WORK_HEADING, plannerRole } from "../../src/engine/index.ts";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
 
 const { tmbJson, setUpProject, sessionStart, connect, cleanup } = tmbProcesses("tmb-flow-09-");
 afterAll(cleanup);
 
 describe("flow 09: a cold restart", () => {
-  test("a new session after setup and recorded work is told the open issue and open task, and is not sent to setup", async () => {
+  test("a new session after init, onboard and recorded work is told the open issue and open task, and is not sent to init or onboarding", async () => {
     const project = setUpProject("true");
     const first = await connect(project);
     let issue: any;
@@ -34,11 +34,12 @@ describe("flow 09: a cold restart", () => {
     expect(work).toContain(`- ${issue.id} Add dark mode (decision: A toggle in the header)`);
     expect(work).toContain(`- ${task.id} Add the dark mode toggle (issue ${issue.id}, feature branch feat/dark-mode, worktree ${task.worktree})`);
     expect(work).not.toContain(closedIssue.id);
-    // The record is found and read, so the session is not sent back to setup.
-    expect(context).not.toContain("tmb setup");
+    // The record is found and read and the settings are set, so the session is sent to neither.
+    expect(context).not.toContain("run tmb init");
+    expect(context).not.toContain(EMPTY_SETTINGS_HEADING);
     expect(context).not.toContain("could not read the record");
 
-    // The new session's tools see the same record, with setup's answers still in force.
+    // The new session's tools see the same record, with onboard's settings still in force.
     const second = await connect(project);
     try {
       expect((await callJson(second, "task_list", {})).map((open: any) => open.id)).toEqual([task.id]);

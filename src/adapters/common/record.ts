@@ -1,4 +1,4 @@
-// What every adapter's setup does first: make the project's record through the engine, kept
+// What every adapter's setup does first, for tmb init: make the project's record through the engine, kept
 // out of git, and the helpers its report lines share.
 import { existsSync } from "node:fs";
 import path from "node:path";

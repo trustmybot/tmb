@@ -2,8 +2,7 @@
 // tmb into the project, adds git's push hook and indexes the code graph; it asks nothing and
 // leaves the project's settings empty, for the planner to fill at the first session start.
 // `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
-// again at any time. `tmb setup`, going away, is init followed by onboard. They reach a host
-// only through the adapter interface, so they name none.
+// again at any time. They reach a host only through the adapter interface, so they name none.
 import { createInterface } from "node:readline";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "./adapters/index.ts";
 import {
@@ -351,20 +350,6 @@ export async function runOnboard(options: SetupOptions): Promise<void> {
   const onboarded = await onboardProject(options);
   printSettings(projectDir, onboarded.recorded, out);
   sayNoBase(onboarded.base, out);
-}
-
-/** `tmb setup`, going away: init, then onboard. Throws SetupError or SettingError, before writing anything when it can. */
-export async function runSetup(options: SetupOptions): Promise<void> {
-  const { projectDir, out } = options;
-  // Every flag is checked before init writes anything.
-  validatedFlags(options.flags);
-  const init = await initProject(options);
-  // init wired the host it chose; onboard asks about that one.
-  const onboarded = await onboardProject({ ...options, flags: { ...options.flags, host: init.adapter.id } });
-  printSettings(projectDir, init.recorded + onboarded.recorded, out);
-  sayNoBase(onboarded.base, out);
-  sayReady(projectDir, init.adapter, onboarded.role, out);
-  if (init.warning) out(init.warning);
 }
 
 /** Asks on the process's terminal, one line per question. */

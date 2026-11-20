@@ -27,7 +27,8 @@ const tmb = new Tmb(tmbBin, project);
 fixtureProject(fixture, project, { base, name: "tmb reviewer run", email: "reviewer-run@example.com", message: "Add the math project" });
 // A bare origin that already holds the base branch, so the feature branch's backup push and the review have somewhere to go.
 bareOrigin(project, path.join(work, "origin.git"), base);
-tmb.shown(["setup", "--yes", "--base", base, "--check", check], `tmb setup failed in ${project}`);
+tmb.shown(["init"], `tmb init failed in ${project}`);
+tmb.shown(["onboard", "--yes", "--base", base, "--check", check], `tmb onboard failed in ${project}`);
 
 // The Human lands the fix as a task on the feature branch, so there is a finished branch to review.
 const issue = tmb.json<{ id: string }>(["issue", "create", "add returns the wrong sum"]).data.id;

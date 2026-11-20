@@ -11,7 +11,7 @@ import { type Actor, ROLES, type Role, type Store } from "../store/index.ts";
 export const SERVER_NAME = "tmb";
 const ROLE_FIELD = {
   type: "string",
-  description: `Your role in tmb's workflow: ${ROLES.join(", ")}. Defaults to the role this host was set up in, the planner unless setup named another; a worker or a reviewer subagent passes its own.`,
+  description: `Your role in tmb's workflow: ${ROLES.join(", ")}. Defaults to the role this host was set up in, the planner unless init or onboard named another; a worker or a reviewer subagent passes its own.`,
   enum: ROLES,
 } as const;
 
