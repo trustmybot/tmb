@@ -56,7 +56,7 @@ Why this way:
 - **It uses what the host already does well:** parallel subagents, a model and effort per role, isolation, and permission prompts shown to the Human.
 - **It works wherever the host runs.** Claude Code fires the same events in its command line and in its desktop app.
 
-Running several workers at once, each on its own task and worktree, is the host's parallel subagents plus the engine's rule that two open tasks never share a file.
+Running several workers at once, each on its own task and worktree, is the host's parallel subagents plus git: each task has its own branch, two open tasks may change the same file, and git settles it when their work is merged. A clash refuses the later task's close until it is resolved. The engine tells the planner which open tasks share a file, as information.
 
 ## What an adapter provides
 
@@ -115,12 +115,11 @@ flowchart LR
 |---|---|---|
 | Session start | A host session opens in a tmb project | Host |
 | Before a file write | An agent is about to write a file | Host |
-| Before a command | An agent is about to run a shell command | Host |
 | Before an agent start | The host is about to start a subagent | Host |
 | After an agent stop | A subagent has ended | Host |
 | Before a task start | The engine is asked to start a task | Engine |
 | Before a task close | The engine is asked to close a task | Engine |
-| Before a push | Commits are about to leave the machine | git, and the host for a push an agent types |
+| Before a push | Commits are about to leave the machine | git |
 | After a branch moves | A merge, a fetch or a checkout moved a branch | git |
 
 - An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen.
