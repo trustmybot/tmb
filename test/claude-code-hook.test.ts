@@ -89,10 +89,21 @@ describe("hook pre-tool-use", () => {
 
   test("takes the role from agent_type inside a subagent, and records under it and the host", () => {
     createRecord();
-    expect(preToolUse("Write", { file_path: "/p/a.ts" }, { agent_id: "a1", agent_type: "reviewer" })).toBe("");
+    expect(preToolUse("Write", { file_path: "/p/a.ts" }, { agent_id: "a1", agent_type: "worker" })).toBe("");
     const [recorded] = guardDecisions();
-    expect(recorded!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
-    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-file-write", role: "reviewer", action: "/p/a.ts" });
+    expect(recorded!.createdBy).toEqual({ kind: "agent", role: "worker", host: "claude-code" });
+    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-file-write", role: "worker", action: "/p/a.ts" });
+  });
+
+  test("denies a reviewer subagent's write by role, in Claude Code's form, even if its agent file let the edit tool through (#185)", () => {
+    createRecord();
+    for (const tool of ["Write", "Edit", "MultiEdit", "NotebookEdit"]) {
+      const field = tool === "NotebookEdit" ? "notebook_path" : "file_path";
+      const output = JSON.parse(preToolUse(tool, { [field]: "/p/a.ts" }, { agent_id: "a1", agent_type: "reviewer" }));
+      expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
+      expect(output.hookSpecificOutput.permissionDecisionReason).toContain("never edits");
+    }
+    expect(guardDecisions().map((decision) => decision.decision)).toEqual(["deny", "deny", "deny", "deny"]);
   });
 
   test("answers nothing and records nothing for a tool it does not guard", () => {

@@ -9,11 +9,13 @@ import path from "node:path";
 import { PROJECT_DIR_NAME } from "../project.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 2;
+export const GRAPH_SCHEMA_VERSION = 3;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
 export const taskLayer = (taskId: string): string => `task:${taskId}`;
+/** One layer per feature branch that is neither merged nor closed, at the branch's tip (trustmybot/tmb#182). */
+export const featureLayer = (featureId: string): string => `feature:${featureId}`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS layers (
@@ -25,6 +27,7 @@ CREATE TABLE IF NOT EXISTS layers (
   symbols    INTEGER NOT NULL,
   edges      INTEGER NOT NULL,
   unresolved INTEGER NOT NULL,
+  unresolved_imports INTEGER NOT NULL DEFAULT 0,
   functions  INTEGER NOT NULL DEFAULT 0,
   not_parsed INTEGER NOT NULL DEFAULT 0
 );
@@ -129,6 +132,9 @@ CREATE TABLE IF NOT EXISTS misses (
 );
 `;
 
+/** Schema 3 counts the imports of the repo's own code that link no file (trustmybot/tmb#147). */
+const SCHEMA_2_TO_3 = ["ALTER TABLE layers ADD COLUMN unresolved_imports INTEGER NOT NULL DEFAULT 0"];
+
 const SCHEMA_1_TO_2 = [
   "ALTER TABLE layers ADD COLUMN functions INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE layers ADD COLUMN not_parsed INTEGER NOT NULL DEFAULT 0",
@@ -164,6 +170,7 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         // Schema 1 lacked each symbol's container and the counts of functions and of files not
         // parsed. Its layers were built by an older extractor, so the next read rebuilds them.
         if (version === 1) for (const statement of SCHEMA_1_TO_2) db.run(statement);
+        if (version === 1 || version === 2) for (const statement of SCHEMA_2_TO_3) db.run(statement);
         db.run(SCHEMA);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();
@@ -196,6 +203,7 @@ export type LayerRow = {
   symbols: number;
   edges: number;
   unresolved: number;
+  unresolved_imports: number;
   functions: number;
   not_parsed: number;
 };
