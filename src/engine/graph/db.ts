@@ -9,7 +9,7 @@ import path from "node:path";
 import { PROJECT_DIR_NAME } from "../project.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 1;
+export const GRAPH_SCHEMA_VERSION = 2;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS layers (
   files      INTEGER NOT NULL,
   symbols    INTEGER NOT NULL,
   edges      INTEGER NOT NULL,
-  unresolved INTEGER NOT NULL
+  unresolved INTEGER NOT NULL,
+  functions  INTEGER NOT NULL DEFAULT 0,
+  not_parsed INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS dirs (
   layer          TEXT NOT NULL,
@@ -61,11 +63,16 @@ CREATE TABLE IF NOT EXISTS symbols (
   doc            TEXT NOT NULL DEFAULT '',
   start_line     INTEGER,
   end_line       INTEGER,
-  exported       INTEGER NOT NULL DEFAULT 0
+  exported       INTEGER NOT NULL DEFAULT 0,
+  parent_id      INTEGER,
+  unnamed        INTEGER NOT NULL DEFAULT 0,
+  named_id       INTEGER
 );
 CREATE INDEX IF NOT EXISTS symbols_name ON symbols(layer, name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS symbols_qualified ON symbols(layer, qualified_name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS symbols_path ON symbols(layer, path);
+CREATE INDEX IF NOT EXISTS symbols_parent ON symbols(parent_id);
+CREATE INDEX IF NOT EXISTS symbols_named ON symbols(named_id);
 CREATE TABLE IF NOT EXISTS edges (
   layer      TEXT NOT NULL,
   src_id     INTEGER NOT NULL,
@@ -122,6 +129,14 @@ CREATE TABLE IF NOT EXISTS misses (
 );
 `;
 
+const SCHEMA_1_TO_2 = [
+  "ALTER TABLE layers ADD COLUMN functions INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE layers ADD COLUMN not_parsed INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE symbols ADD COLUMN parent_id INTEGER",
+  "ALTER TABLE symbols ADD COLUMN unnamed INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE symbols ADD COLUMN named_id INTEGER",
+];
+
 export function graphDbPath(projectDir: string): string {
   return path.join(projectDir, PROJECT_DIR_NAME, GRAPH_FILE_NAME);
 }
@@ -141,6 +156,9 @@ export function openGraphDb(projectDir: string): Database {
     }
     if (version < GRAPH_SCHEMA_VERSION) {
       db.transaction(() => {
+        // Schema 1 lacked each symbol's container and the counts of functions and of files not
+        // parsed. Its layers were built by an older extractor, so the next read rebuilds them.
+        if (version === 1) for (const statement of SCHEMA_1_TO_2) db.run(statement);
         db.run(SCHEMA);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();
@@ -173,6 +191,8 @@ export type LayerRow = {
   symbols: number;
   edges: number;
   unresolved: number;
+  functions: number;
+  not_parsed: number;
 };
 
 export function layerRow(db: Database, layer: string): LayerRow | null {

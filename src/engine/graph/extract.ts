@@ -52,6 +52,17 @@ export interface ExtractedSymbol {
   // A TS/JS function's or method's FunctionParams as JSON (GH 3176); absent
   // on every other kind and language.
   params_json?: string;
+  // What contains it, as an index into Extraction.symbols: a function, a class
+  // or the file. Absent only on the file's own 'module' row.
+  parent?: number;
+  // 1 on a function with no name of its own. Its owner is the nearest named
+  // symbol around it, which agents' lookups name in its place.
+  unnamed?: number;
+  owner?: number;
+  // How far a named function's bare name reaches: 'nested' inside another
+  // function, 'member' when bound as an object's key or an assignment's target,
+  // which no bare call names. Absent on a declaration of the file or a class.
+  reach?: 'nested' | 'member';
 }
 
 export interface ParamInfo {
@@ -408,8 +419,10 @@ class Collector {
   readonly edges: ExtractedEdge[] = [];
   private readonly byKey = new Map<string, number>();
 
-  symbol(s: ExtractedSymbol): number {
-    const key = `${s.kind}\u0000${s.qualified_name}`;
+  // A symbol seen again under the same key is the same row: by default its
+  // kind and name, so a class and its merged declarations are one; a function
+  // passes its own place, so two functions that share a name stay two.
+  symbol(s: ExtractedSymbol, key = `${s.kind}\u0000${s.qualified_name}`): number {
     const known = this.byKey.get(key);
     if (known !== undefined) return known;
     this.symbols.push(s);
@@ -718,6 +731,101 @@ function inValuePosition(node: Node): boolean {
   }
 }
 
+// Every node that is one function when it has a body (trustmybot/tmb#140): a
+// declaration, an expression, an arrow, a generator, and a method of a class
+// or of an object, its constructor, getters and setters included. A signature
+// with no body parses as another node type, so it is never one.
+const FUNCTION_NODES = new Set([
+  'function_declaration',
+  'generator_function_declaration',
+  'function_expression',
+  'function',
+  'generator_function',
+  'arrow_function',
+  'method_definition',
+]);
+// Expressions that wrap a value without changing which value it is.
+const VALUE_WRAPPERS = new Set(['parenthesized_expression', 'as_expression', 'satisfies_expression', 'non_null_expression', 'type_assertion']);
+const UNNAMED_LABEL_MAX = 80;
+
+type FunctionName = {
+  kind: 'function' | 'method';
+  name: string;
+  unnamed: boolean;
+  reach?: 'member';
+  // Where its doc comment and signature start: the declaration that binds it.
+  anchor: Node;
+};
+
+// The name a call's callee goes by: an identifier, or a member's property.
+function calleeName(call: Node): string | null {
+  const fn = call.childForFieldName(call.type === 'new_expression' ? 'constructor' : 'function');
+  if (fn?.type === 'identifier') return fn.text;
+  if (fn?.type === 'member_expression') return fn.childForFieldName('property')?.text ?? null;
+  return null;
+}
+
+// A key's name: an identifier, a string literal, or a computed `["literal"]`; else its text.
+function keyText(key: Node): string {
+  if (key.type === 'property_identifier') return key.text;
+  const inner = key.type === 'computed_property_name' ? named(key)[0] : key;
+  return (inner ? literalText(inner) : null) ?? oneLine(key.text);
+}
+
+// A function's name: the name it binds or is bound to (`const f = …`, an
+// object's `key: …`, a class field, an assignment's target), else its own
+// name, else where it is used: "callback of `map`", and with a string first
+// argument, "callback of `test` 'lists open tasks'"; else "function at line N".
+function functionName(fn: Node, cls: string | null): FunctionName {
+  const own = fn.childForFieldName('name');
+  if (fn.type === 'method_definition') {
+    const name = own ? keyText(own) : `method at line ${fn.startPosition.row + 1}`;
+    if (fn.parent?.type === 'class_body') return { kind: 'method', name: cls ? `${cls}.${name}` : name, unnamed: false, anchor: fn };
+    return { kind: 'function', name, unnamed: false, reach: 'member', anchor: fn };
+  }
+  let at = fn;
+  let p = fn.parent;
+  while (p && VALUE_WRAPPERS.has(p.type)) {
+    at = p;
+    p = p.parent;
+  }
+  if (p?.type === 'variable_declarator' && isField(p, 'value', at)) {
+    const n = p.childForFieldName('name');
+    if (n?.type === 'identifier') return { kind: 'function', name: n.text, unnamed: false, anchor: p.parent ?? p };
+  } else if (p?.type === 'pair' && isField(p, 'value', at)) {
+    const key = p.childForFieldName('key');
+    if (key) return { kind: 'function', name: keyText(key), unnamed: false, reach: 'member', anchor: p };
+  } else if ((p?.type === 'public_field_definition' || p?.type === 'field_definition') && isField(p, 'value', at)) {
+    const n = p.childForFieldName('name') ?? p.childForFieldName('property');
+    if (n) return { kind: 'method', name: cls ? `${cls}.${keyText(n)}` : keyText(n), unnamed: false, anchor: p };
+  } else if (p?.type === 'assignment_expression' && isField(p, 'right', at)) {
+    const left = p.childForFieldName('left');
+    const n = left?.type === 'member_expression' ? left.childForFieldName('property') : left?.type === 'identifier' ? left : null;
+    if (n) return { kind: 'function', name: n.text, unnamed: false, ...(left?.type === 'member_expression' ? { reach: 'member' as const } : {}), anchor: p.parent ?? p };
+  }
+  if (own) return { kind: 'function', name: own.text, unnamed: false, anchor: fn };
+  const unnamed = (name: string): FunctionName => ({ kind: 'function', name: clip(name, UNNAMED_LABEL_MAX + 40), unnamed: true, anchor: fn });
+  if (p?.type === 'arguments' && p.parent) {
+    const callee = calleeName(p.parent);
+    if (callee) {
+      const first = named(p)[0];
+      const label = first && first.id !== at.id ? literalText(first) : null;
+      return unnamed(`callback of \`${callee}\`${label === null ? '' : ` '${clip(oneLine(label), UNNAMED_LABEL_MAX)}'`}`);
+    }
+  }
+  if (p?.type === 'jsx_expression' && p.parent?.type === 'jsx_attribute') {
+    const attr = named(p.parent)[0]?.text;
+    if (attr) return unnamed(`callback of \`${attr}\``);
+  }
+  if (p?.type === 'export_statement') return unnamed('default export');
+  return unnamed(`function at line ${fn.startPosition.row + 1}`);
+}
+
+// TS/JS, in one walk. `scope` is the symbol a reference made here starts at:
+// the innermost function, unnamed ones included, or a class or module-level
+// const. `container` is what contains a symbol defined here (a function, a
+// class or the file), and `owner` the nearest named scope, which lookups name
+// for the unnamed functions inside it.
 function extractTs(root: Node, src: string, out: Collector, moduleSymbol: number, relPath: string): void {
   const types = receiverTypes(root);
   const consts = stringConsts(root);
@@ -732,7 +840,7 @@ function extractTs(root: Node, src: string, out: Collector, moduleSymbol: number
     out.edge(scope, kind, dst, at.startPosition.row + 1);
   };
   const boundValue = (node: Node, name: string): boolean => bindings.names.has(name) && !shadowed(node, name);
-  const definition = (node: Node, kind: SymbolKind, qualifiedName: string): number =>
+  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, parent: number): number =>
     out.symbol({
       kind,
       qualified_name: qualifiedName,
@@ -742,51 +850,90 @@ function extractTs(root: Node, src: string, out: Collector, moduleSymbol: number
       end_line: node.endPosition.row + 1,
       body_hash: normalizedHash(node),
       exported: node.parent?.type === 'export_statement' ? 1 : 0,
+      parent,
       ...(kind === 'function' || kind === 'method' ? { params_json: JSON.stringify(functionParams(node)) } : {}),
     });
+  // Functions whose symbol was made before the walk reached them: a module-level
+  // `const f = () => …`, and a registration's handler.
+  const made = new Map<number, number>();
+  const fnKey = (fn: Node): string => `fn\u0000${fn.startIndex}`;
 
-  const visit = (node: Node, scope: number, cls: string | null): void => {
+  const visit = (node: Node, scope: number, cls: string | null, container: number, owner: number): void => {
     let inner = scope;
     let innerCls = cls;
+    let innerContainer = container;
+    let innerOwner = owner;
     const t = node.type;
     const name = (): string | undefined => node.childForFieldName('name')?.text;
-    if (t === 'function_declaration' || t === 'generator_function_declaration') {
-      const n = name();
-      if (n) inner = definition(node, 'function', n);
+    if (FUNCTION_NODES.has(t)) {
+      const known = made.get(node.id);
+      if (known !== undefined) {
+        inner = known;
+        innerContainer = known;
+      } else {
+        const fn = functionName(node, cls);
+        const body = node.childForFieldName('body');
+        const anchor = fn.unnamed ? node : fn.anchor;
+        inner = out.symbol(
+          {
+            kind: fn.kind,
+            qualified_name: fn.name,
+            signature: clip(oneLine(src.slice(anchor.startIndex, body ? body.startIndex : Math.min(node.endIndex, anchor.startIndex + 160))), 200),
+            doc: fn.unnamed ? '' : docOf(anchor),
+            start_line: node.startPosition.row + 1,
+            end_line: node.endPosition.row + 1,
+            body_hash: normalizedHash(node),
+            exported: anchor.parent?.type === 'export_statement' || node.parent?.type === 'export_statement' ? 1 : 0,
+            params_json: JSON.stringify(functionParams(node)),
+            parent: container,
+            ...(fn.unnamed ? { unnamed: 1, owner } : {}),
+            ...(fn.reach ? { reach: fn.reach } : container !== moduleSymbol && out.symbols[container]?.kind !== 'class' ? { reach: 'nested' as const } : {}),
+          },
+          fnKey(node),
+        );
+        innerContainer = inner;
+        if (!fn.unnamed) innerOwner = inner;
+      }
     } else if (t === 'class_declaration' || t === 'abstract_class_declaration') {
       const n = name();
       if (n) {
-        inner = definition(node, 'class', n);
+        inner = definition(node, 'class', n, container);
         innerCls = n;
+        innerContainer = inner;
+        innerOwner = inner;
       }
-    } else if (t === 'method_definition' && cls) {
-      const n = name();
-      if (n) inner = definition(node, 'method', `${cls}.${n}`);
+    } else if (t === 'class') {
+      innerCls = null;
     } else if (t === 'interface_declaration') {
       const n = name();
-      if (n) definition(node, 'interface', n);
+      if (n) definition(node, 'interface', n, container);
     } else if (t === 'type_alias_declaration' || t === 'enum_declaration') {
       const n = name();
-      if (n) definition(node, 'type', n);
+      if (n) definition(node, 'type', n, container);
     } else if (t === 'variable_declarator' && scope === moduleSymbol) {
       const decl = node.parent;
       const holder = decl?.parent?.type;
       const n = node.childForFieldName('name');
       if (decl && (holder === 'program' || holder === 'export_statement') && n?.type === 'identifier') {
-        const value = node.childForFieldName('value');
-        const isFn = value !== null && FUNCTION_VALUES.has(value.type);
+        let value = node.childForFieldName('value');
+        while (value && VALUE_WRAPPERS.has(value.type)) value = value.namedChildren[0] ?? null;
+        const isFn = value !== null && FUNCTION_NODES.has(value.type);
         const bodyStart = value?.type === 'arrow_function' ? value.childForFieldName('body')?.startIndex : undefined;
-        inner = out.symbol({
+        const symbol: ExtractedSymbol = {
           kind: isFn ? 'function' : 'const',
           qualified_name: n.text,
           signature: clip(oneLine(src.slice(decl.startIndex, bodyStart ?? Math.min(decl.endIndex, decl.startIndex + 140))), 200),
           doc: docOf(decl),
-          start_line: decl.startPosition.row + 1,
-          end_line: decl.endPosition.row + 1,
+          start_line: (isFn ? value! : decl).startPosition.row + 1,
+          end_line: (isFn ? value! : decl).endPosition.row + 1,
           body_hash: normalizedHash(node),
           exported: holder === 'export_statement' ? 1 : 0,
-          ...(isFn ? { params_json: JSON.stringify(functionParams(value)) } : {}),
-        });
+          parent: moduleSymbol,
+          ...(isFn ? { params_json: JSON.stringify(functionParams(value!)) } : {}),
+        };
+        inner = isFn ? out.symbol(symbol, fnKey(value!)) : out.symbol(symbol);
+        innerOwner = inner;
+        if (isFn) made.set(value!.id, inner);
       }
     } else if (t === 'call_expression' || t === 'new_expression') {
       const fn = node.childForFieldName(t === 'call_expression' ? 'function' : 'constructor');
@@ -821,23 +968,31 @@ function extractTs(root: Node, src: string, out: Collector, moduleSymbol: number
     } else if (t === 'pair') {
       const registered = registration(node);
       if (registered) {
+        // The handler is the function the registration names: it takes the tool's name.
         const { key, handler } = registered;
-        inner = out.symbol({
-          kind: 'function',
-          qualified_name: `tool:${key}`,
-          signature: clip(src.slice(node.startIndex).split('\n', 1)[0]!.trim(), 200),
-          doc: docOf(node),
-          start_line: node.startPosition.row + 1,
-          end_line: node.endPosition.row + 1,
-          body_hash: normalizedHash(node),
-          exported: 0,
-          params_json: JSON.stringify(functionParams(handler)),
-        });
+        inner = out.symbol(
+          {
+            kind: 'function',
+            qualified_name: `tool:${key}`,
+            signature: clip(src.slice(node.startIndex).split('\n', 1)[0]!.trim(), 200),
+            doc: docOf(node),
+            start_line: handler.startPosition.row + 1,
+            end_line: handler.endPosition.row + 1,
+            body_hash: normalizedHash(node),
+            exported: 0,
+            params_json: JSON.stringify(functionParams(handler)),
+            parent: container,
+          },
+          fnKey(handler),
+        );
+        made.set(handler.id, inner);
+        innerContainer = inner;
+        innerOwner = inner;
         if (inner !== scope) out.edge(scope, 'calls', `tool:${key}`, node.startPosition.row + 1);
-      } else if (scope !== moduleSymbol) {
+      } else if (owner !== moduleSymbol) {
         const text = descriptionText(node);
-        const owner = out.symbols[scope];
-        if (text && owner) owner.doc = clip(owner.doc ? `${owner.doc} ${text}` : text, DOC_MAX);
+        const ownerRow = out.symbols[owner];
+        if (text && ownerRow) ownerRow.doc = clip(ownerRow.doc ? `${ownerRow.doc} ${text}` : text, DOC_MAX);
       }
     } else if (t === 'identifier' || t === 'shorthand_property_identifier') {
       if (inValuePosition(node) && boundValue(node, node.text)) reference(scope, 'calls', node.text, node);
@@ -854,9 +1009,9 @@ function extractTs(root: Node, src: string, out: Collector, moduleSymbol: number
       for (const key of configKeyReads(boundSqlText(node, consts), callParams(node, consts))) out.edge(scope, 'reads_config', key, line);
       if (/CREATE\s+(VIRTUAL\s+)?TABLE/i.test(text)) extractSqlDdl(text, out, null, node.startPosition.row);
     }
-    for (const c of named(node)) visit(c, inner, innerCls);
+    for (const c of named(node)) visit(c, inner, innerCls, innerContainer, innerOwner);
   };
-  visit(root, moduleSymbol, null);
+  visit(root, moduleSymbol, null, moduleSymbol, moduleSymbol);
 }
 
 function stripQuotes(s: string): string {
@@ -879,6 +1034,7 @@ function extractBash(root: Node, out: Collector, moduleSymbol: number): void {
           end_line: node.endPosition.row + 1,
           body_hash: normalizedHash(node),
           exported: 1,
+          parent: scope,
         });
       }
     } else if (t === 'command') {
@@ -964,7 +1120,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
   const target = (name: string): string => aliases.get(name) ?? name;
   const isClass = (name: string): boolean => classes.has(name) || (bound.has(name) && /^[A-Z]/.test(target(name)));
   const exportedName = (name: string): number => (name.startsWith('_') ? 0 : 1);
-  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number): number => {
+  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number, parent: number): number => {
     const anchor = node.parent?.type === 'decorated_definition' ? node.parent : node;
     return out.symbol({
       kind,
@@ -975,6 +1131,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       end_line: node.endPosition.row + 1,
       body_hash: normalizedHash(anchor),
       exported,
+      parent,
     });
   };
 
@@ -989,7 +1146,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       innerPlace = 'nested';
       innerCls = null;
       if (n && place === 'module') {
-        inner = definition(node, 'class', n, exportedName(n));
+        inner = definition(node, 'class', n, exportedName(n), scope);
         innerCls = n;
         innerPlace = 'class';
         for (const base of named(node.childForFieldName('superclasses') ?? node).filter((c) => c.type === 'identifier')) {
@@ -999,8 +1156,8 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     } else if (t === 'function_definition') {
       const n = node.childForFieldName('name')?.text;
       innerPlace = 'nested';
-      if (n && place === 'module') inner = definition(node, 'function', n, exportedName(n));
-      else if (n && place === 'class' && cls) inner = definition(node, 'method', `${cls}.${n}`, 0);
+      if (n && place === 'module') inner = definition(node, 'function', n, exportedName(n), scope);
+      else if (n && place === 'class' && cls) inner = definition(node, 'method', `${cls}.${n}`, 0, scope);
     } else if (t === 'expression_statement' && node.parent?.type === 'module') {
       const assignment = node.namedChildren[0];
       const hasValue = assignment?.type === 'assignment' && assignment.childForFieldName('right') !== null;
@@ -1257,11 +1414,11 @@ export function extractFile(parsers: Parsers | null, relPath: string, lang: Sour
   });
   if (lang === 'sql') {
     extractSqlDdl(src, out, moduleSymbol);
-    return out;
+    return withParents(out);
   }
   if (lang === 'perl') {
     extractPerl(src, out);
-    return out;
+    return withParents(out);
   }
   if (!parsers) throw new Error(`no parser loaded for ${lang}`);
   const tree = parsers[lang].parse(src);
@@ -1273,5 +1430,14 @@ export function extractFile(parsers: Parsers | null, relPath: string, lang: Sour
   } finally {
     tree.delete();
   }
+  return withParents(out);
+}
+
+// Every symbol but the file's own row has a container; one an extractor gave
+// none is the file's.
+function withParents(out: Collector): Collector {
+  out.symbols.forEach((s, i) => {
+    if (i > 0 && s.parent === undefined) s.parent = 0;
+  });
   return out;
 }

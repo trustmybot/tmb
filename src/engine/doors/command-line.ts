@@ -686,7 +686,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     output.out(
       json
         ? JSON.stringify(stats, null, 2)
-        : `Indexed ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}.`,
+        : `Indexed ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved); parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`,
     );
     return 0;
   } catch (error) {

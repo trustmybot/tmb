@@ -247,7 +247,7 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void): 
   if (!opened.ok) throw new SetupError(`cannot index the code graph: ${opened.error.message}`);
   try {
     const stats = await indexProject(projectDir, opened.store, { rebuild: false });
-    out(`Indexed the code graph of ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols.`);
+    out(`Indexed the code graph of ${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`);
   } catch (error) {
     // The settings are stored by now, and every lookup indexes the graph itself, so a failed index never fails the run.
     const message = error instanceof Error ? error.message : String(error);
