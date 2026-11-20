@@ -212,7 +212,7 @@ export async function updatesItself(scenario: Scenario, expected: string, log: (
   if (installedVersion(scenario) !== before) throw new Error("the update applied while a session ran");
   await second.end();
   const after = installedVersion(scenario);
-  if (after !== expected) throw new Error(`after the session ended with no task open, tmb is ${after}, expected ${expected}; the session printed: ${second.stderr().trim() || "nothing"}`);
+  if (after !== expected) throw new Error(`after the session ended with no task open, tmb is ${after}, expected ${expected}; the session printed: ${second.stderr().trim() || "nothing"}; a kept build is ${existsSync(path.join(scenario.stateDir, "staged.json")) ? "still there" : "gone"}`);
   log(`after the next session ended with no task open, tmb is ${after}`);
 
   const again = await runUpdate(scenario);
