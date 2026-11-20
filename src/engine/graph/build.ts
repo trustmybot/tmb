@@ -11,6 +11,7 @@ import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
 import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
 import { laneOf } from "./test-paths.ts";
+import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
@@ -283,7 +284,10 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
         };
       }
       const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs);
-      if (layer === BASE_LAYER) recheckConcepts(db, commit);
+      if (layer === BASE_LAYER) {
+        recheckConcepts(db, commit);
+        recheckAreas(db, commit);
+      }
       return applied;
     })
     .immediate();
