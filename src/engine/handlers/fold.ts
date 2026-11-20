@@ -15,6 +15,11 @@ export type PushOutcome = { result: PushResult; detail: string };
 
 const ORIGIN = "origin";
 
+/** Whether the repo at `dir` has a remote named origin; with none, nothing is pushed and no pull request opens (trustmybot/tmb#183). */
+export function hasOrigin(dir: string): boolean {
+  return runGit(dir, ["remote", "get-url", ORIGIN]).ok;
+}
+
 export function branchRef(name: string): string {
   return `refs/heads/${name}`;
 }
@@ -275,7 +280,7 @@ export function backupPush(store: Store, projectDir: string, featureName: string
  * The push names `actor` to git's pre-push hook, so the push gate records it as theirs.
  */
 export function pushFeature(projectDir: string, featureName: string, actor: Actor): PushOutcome {
-  if (!runGit(projectDir, ["remote", "get-url", ORIGIN]).ok) return { result: "skipped", detail: `the repository has no remote named ${ORIGIN}` };
+  if (!hasOrigin(projectDir)) return { result: "skipped", detail: `the repository has no remote named ${ORIGIN}` };
   const ref = branchRef(featureName);
   // No terminal prompt: a push that needs credentials fails and says so instead of waiting.
   const pushed = runGit(projectDir, ["push", "--quiet", ORIGIN, `${ref}:${ref}`], { GIT_TERMINAL_PROMPT: "0", ...pushActorEnv(actor) });

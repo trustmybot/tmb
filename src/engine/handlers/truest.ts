@@ -9,11 +9,11 @@ import { spawnSync } from "node:child_process";
 import { gitFailure, runGit } from "../git.ts";
 import { repoOfRow } from "../repos.ts";
 import type { Actor, Review, Store, Task } from "../store/index.ts";
-import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TRUEST } from "./common.ts";
+import { CLOSED, IN_REVIEW, localMergeCommand, OPEN, type OperationContext, READY, requireRole, TRUEST } from "./common.ts";
 import { openRunsOf } from "../host-runs.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, noBaseBranch } from "./features.ts";
-import { isAncestor, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
+import { hasOrigin, isAncestor, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
 import { existingPullRequest, type Finding, openPullRequest, type ReviewSummary, summaryOf, type Verdict } from "./reviews.ts";
@@ -303,7 +303,9 @@ export function taskReview(store: Store, actor: Actor, input: unknown, context: 
   const mark = markReviewed(store, actor, dir, task.commitSha!, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
-    ? `the pull request may open: the planner calls task_pr for task ${task.id}`
+    ? hasOrigin(dir)
+      ? `the pull request may open: the planner calls task_pr for task ${task.id}`
+      : `the repository has no remote, so no pull request opens: the planner calls task_pr for task ${task.id}, which records it ready for the Human to merge locally`
     : `task ${task.id} is open again: the planner starts a worker on it with the task_id=${task.id} line to rework each blocking finding, and its close sends it back to review`;
   return { review, task: task.id, state: covered ? IN_REVIEW : OPEN, covered, next, mark };
 }
@@ -345,7 +347,10 @@ export const taskPrSchema: InputSchema = {
 
 export type TaskPrResult = {
   task: string;
-  url: string;
+  /** The pull request's address; null in a repo with no remote, where none opens. */
+  url: string | null;
+  /** Set in a repo with no remote: the task is ready, and the Human merges its branch locally with these commands, in `dir`. */
+  localMerge: { dir: string; command: string } | null;
   base: string;
   branch: string;
   commit: string;
@@ -459,15 +464,54 @@ async function rebaseIfBaseMoved(
   return { commit: rebased, onto: tip };
 }
 
+/**
+ * task_pr in a repo with no remote (trustmybot/tmb#183): brings the reviewed commit onto the local
+ * base branch as a push would, then records the task ready, nothing pushed and no pull request.
+ * The worktree goes and the branch stays, for the Human to merge locally.
+ */
+async function readyForLocalMerge(
+  store: Store,
+  actor: Actor,
+  given: Task,
+  dir: string,
+  baseBranch: string,
+  context: OperationContext,
+): Promise<TaskPrResult> {
+  const { commit, onto } = await rebaseIfBaseMoved(store, actor, given, baseBranch, context);
+  const task = requireTask(store, given.id);
+  const coveredBy = truestReviewOf(store, task).coveredBy;
+  if (coveredBy === null) throw new HandlerError("refused", `task ${task.id} at ${commit} is no longer covered by a pass or a waiver; review it again`);
+  store.updateTask(actor, task.id, { state: READY, pushResult: "skipped", pushDetail: `the repository has no remote named ${ORIGIN}` });
+  const cleanup = removeTaskCheckout(dir, task.worktree!, null);
+  return {
+    task: task.id,
+    url: null,
+    localMerge: { dir, command: localMergeCommand(baseBranch, task.branch!) },
+    base: baseBranch,
+    branch: task.branch!,
+    commit,
+    coveredBy,
+    rebasedOnto: onto,
+    push: `skipped: the repository has no remote named ${ORIGIN}`,
+    markRequired: null,
+    cleanupProblems: cleanup.problems,
+    cleanedUp: cleanup.dropped,
+  };
+}
+
 export async function taskPr(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskPrResult> {
   const given = validateInput<{ id: string; title: string; body?: string }>("task_pr", taskPrSchema, input);
   requireRole(actor, "task_pr", ["planner"]);
-  let task = requireInReview(store, given.id, "its pull request does not open");
+  // A ready task (a repo with no remote) may ask again: for the merge command, or for its pull request once a remote was added.
+  const asked = requireTask(store, given.id);
+  const wasReady = asked.state === READY && asked.reviewMode === TRUEST;
+  let task = wasReady ? asked : requireInReview(store, given.id, "its pull request does not open");
   const repo = repoOfRow(store, context.projectDir, task);
   const dir = repo.dir;
   const baseBranch = repo.baseBranch;
   if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
-  if (!worktreeReady({ ...task, state: OPEN }) || task.branch === null) {
+  if (wasReady && task.branch === null) throw new HandlerError("refused", `task ${task.id} has no branch, so tmb has nothing to bring onto the base branch`);
+  if (!wasReady && (!worktreeReady({ ...task, state: OPEN }) || task.branch === null)) {
     throw new HandlerError("refused", `task ${task.id}'s worktree ${task.worktree ?? "(none)"} is missing, so tmb cannot bring it onto the base branch`);
   }
   const review = truestReviewOf(store, task);
@@ -484,12 +528,15 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
       `the pull request of task ${task.id} opens only after the reviewer passes it at ${task.commitSha}, or the Human waives the review: ${why}. Start the reviewer with the ${taskReviewLine(task.id)} line in its prompt, or ask the Human to run \`tmb task waive ${task.id} --reason <text>\`.`,
     );
   }
-  if (!runGit(dir, ["remote", "get-url", ORIGIN]).ok) {
-    throw new HandlerError("refused", `the repository has no remote named ${ORIGIN}, so task ${task.id} has nowhere to push and no pull request to open`);
+  if (!hasOrigin(dir)) {
+    if (!wasReady) return readyForLocalMerge(store, actor, task, dir, baseBranch, context);
+    const localMerge = { dir, command: localMergeCommand(baseBranch, task.branch!) };
+    return { task: task.id, url: null, localMerge, base: baseBranch, branch: task.branch!, commit: task.commitSha!, coveredBy: review.coveredBy, rebasedOnto: null, push: `skipped: the repository has no remote named ${ORIGIN}`, markRequired: null, cleanupProblems: [], cleanedUp: [] };
   }
 
   // A branch already on origin is never rebased, so a retry after a pull request that did not open pushes the same commit again.
-  const { commit, onto } = task.pushResult === "pushed" ? { commit: task.commitSha!, onto: null } : await rebaseIfBaseMoved(store, actor, task, baseBranch, context);
+  // Nor is a ready task's: its worktree went when it became ready, so its reviewed commit is pushed as it is.
+  const { commit, onto } = task.pushResult === "pushed" || wasReady ? { commit: task.commitSha!, onto: null } : await rebaseIfBaseMoved(store, actor, task, baseBranch, context);
   task = requireTask(store, task.id);
   const coveredBy = truestReviewOf(store, task).coveredBy;
   if (coveredBy === null) throw new HandlerError("refused", `task ${task.id} at ${commit} is no longer covered by a pass or a waiver; review it again`);
@@ -514,8 +561,8 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
   if (!opened.ok) throw new HandlerError("refused", `${task.branch} was pushed to origin, but its pull request did not open: ${opened.why}`);
   store.updateTask(actor, task.id, { state: CLOSED, prUrl: opened.url });
 
-  // The branch stays, on origin and here, for the pull request; only the worktree goes.
-  const cleanup = removeTaskCheckout(dir, task.worktree!, null);
+  // The branch stays, on origin and here, for the pull request; only the worktree goes (a ready task's went already).
+  const cleanup = wasReady || task.worktree === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, task.worktree, null);
   const markRequired = markRequiredOn(dir, baseBranch);
-  return { task: task.id, url: opened.url, base: baseBranch, branch: task.branch!, commit, coveredBy, rebasedOnto: onto, push: push.detail, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, markRequired };
+  return { task: task.id, url: opened.url, localMerge: null, base: baseBranch, branch: task.branch!, commit, coveredBy, rebasedOnto: onto, push: push.detail, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, markRequired };
 }
