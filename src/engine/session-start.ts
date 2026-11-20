@@ -124,6 +124,7 @@ function workspaceSection(projectDir: string, repos: RepoPolicies): string {
   const names = Object.keys(repos);
   const lines = names.map((name) => {
     const policy = repos[name]!;
+    if (policy.git === false) return `- ${oneLineText(name)}: not a repo, tmb does no work in it`;
     if (policy.exempt === true) return `- ${oneLineText(name)}: exempt, tmb does no work in it`;
     return `- ${oneLineText(name)} on \`${oneLineText(policy.base_branch ?? "")}\`: ${indexedLine(projectDir, name)}`;
   });

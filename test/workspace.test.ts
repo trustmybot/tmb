@@ -12,7 +12,7 @@ import type { HostAdapter } from "../src/adapters/index.ts";
 import { graphDbPath } from "../src/engine/graph/db.ts";
 import { featureStart, HandlerError, issueCreate, settingsSet, taskClose, taskStart } from "../src/engine/handlers/index.ts";
 import { judgePush, openProjectStore, readSettings, removePushGates, TMB_EVENT_TYPES, writeSetting } from "../src/engine/index.ts";
-import { scanRepos } from "../src/engine/repos.ts";
+import { resolveRepo, scanWorkspace } from "../src/engine/repos.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 import { runInit, runOnboard, type SetupFlags } from "../src/setup.ts";
 
@@ -110,12 +110,16 @@ beforeEach(async () => {
   b = makeRepo("b", "main");
   // A linked worktree in the workspace has a .git file, never a repo of its own.
   git(a, "worktree", "add", "-q", "-b", "side", path.join(workspace, "a-side"));
+  // A folder that is no repo, such as test material, is recorded and left alone.
+  mkdirSync(path.join(workspace, "notes", "deep"), { recursive: true });
+  writeFileSync(path.join(workspace, "notes", "deep", "data.txt"), "data\n");
   await runInit(setupOptions());
   withStore((store) => {
     // Each repo's own checks: a's leaves a mark in its worktree, b's fails, so a mixed-up close shows.
     writeSetting(store, HUMAN, "repos", {
       a: { base_branch: "dev", checks: ["touch checked-in-a"] },
       b: { base_branch: "main", checks: ["false"] },
+      notes: { git: false },
     });
   });
 });
@@ -126,7 +130,11 @@ afterEach(() => {
 
 describe("init in a workspace", () => {
   test("finds both repos with their own base branches, gates and indexes each, and skips a linked worktree", () => {
-    expect(scanRepos(workspace)).toEqual(["a", "b"]);
+    expect(scanWorkspace(workspace)).toEqual({ repos: ["a", "b"], folders: ["notes"] });
+    expect(output).toContain("  Recorded folder notes: it is not a repo, so tmb does no work in it.");
+    expect(existsSync(path.join(workspace, ".git"))).toBe(false);
+    expect(existsSync(path.join(workspace, "notes", ".git"))).toBe(false);
+    expect(existsSync(graphDbPath(workspace, "notes"))).toBe(false);
     expect(output).toContain("  Added repo a: base branch dev, from origin's default branch.");
     expect(output).toContain("  Added repo b: base branch main, from origin's default branch.");
     for (const repo of ["a", "b"]) {
@@ -145,7 +153,8 @@ describe("init in a workspace", () => {
     output = [];
     await runInit(setupOptions());
     const repos = withStore((store) => readSettings(store).repos);
-    expect(repos).toEqual({ a: { base_branch: "dev", checks: ["touch checked-in-a"] }, "tools/c": { base_branch: "trunk", checks: [] } });
+    expect(repos).toEqual({ a: { base_branch: "dev", checks: ["touch checked-in-a"] }, notes: { git: false }, "tools/c": { base_branch: "trunk", checks: [] } });
+    expect(output).toContain("  notes (not a repo)");
     expect(output).toContain("  Added repo tools/c: base branch trunk, from origin's default branch.");
     expect(output).toContain("  Dropped repo b: it is no longer a repo in this folder.");
     expect(existsSync(path.join(workspace, "tools", "c", ".git", "hooks", "pre-push"))).toBe(true);
@@ -163,7 +172,9 @@ describe("init in a workspace", () => {
     expect(withStore((store) => readSettings(store).repos)).toEqual({
       a: { base_branch: "dev", checks: ["touch checked-in-a"] },
       b: { base_branch: "release", checks: ["true"] },
+      notes: { git: false },
     });
+    await expect(runOnboard(setupOptions({ repo: "notes", base: "main" }))).rejects.toThrow("the folder notes is not a repo");
     await runOnboard(setupOptions({ repo: "b", exempt: true }));
     expect(withStore((store) => readSettings(store).repos?.b?.exempt)).toBe(true);
   });
@@ -177,7 +188,8 @@ describe("settings in a workspace", () => {
       expect(refusal(() => settingsSet(store, PLANNER, { repos: { zz: { base_branch: "x" } } }, context)).code).toBe("not_found");
       const set = settingsSet(store, PLANNER, { repos: { b: { base_branch: "main", checks: ["true"] } } }, context);
       expect(set.changed).toEqual(["repos"]);
-      expect(set.settings.repos).toEqual({ a: { base_branch: "dev", checks: ["touch checked-in-a"] }, b: { base_branch: "main", checks: ["true"] } });
+      expect(set.settings.repos).toEqual({ a: { base_branch: "dev", checks: ["touch checked-in-a"] }, b: { base_branch: "main", checks: ["true"] }, notes: { git: false } });
+      expect(refusal(() => settingsSet(store, PLANNER, { repos: { notes: { base_branch: "main" } } }, context)).message).toContain("the folder notes is not a repo");
       expect(set.empty).toEqual(["review_mode"]);
     });
   });
@@ -204,6 +216,7 @@ describe("features and tasks in a workspace", () => {
     const refused = refusal(() => featureStart(store, PLANNER, { name: "feat/x" }, context()));
     expect(refused.message).toContain("this workspace has 2 repos (a, b); name the one this works in with repo");
     expect(refusal(() => featureStart(store, PLANNER, { name: "feat/x", repo: "zz" }, context())).code).toBe("not_found");
+    expect(refusal(() => featureStart(store, PLANNER, { name: "feat/x", repo: "notes" }, context())).message).toContain("the folder notes is not a repo, so tmb does no work in it");
 
     git(a, "commit", "-q", "--allow-empty", "-m", "latest on dev");
     const started = featureStart(store, PLANNER, { name: "feat/x", repo: "a" }, context());
@@ -303,6 +316,49 @@ describe("the push gate in a workspace", () => {
     const worktree = path.join(scratch, "wt");
     git(a, "worktree", "add", "-q", "-b", "wt-branch", worktree, "dev");
     expect(judgePush(workspace, "origin", pushLine(worktree, "dev"), worktree).decision).toBe("deny");
+  });
+});
+
+describe("a project folder with no repo yet", () => {
+  test("init runs git init in a folder that holds no repo, and the project is one repo, named .", async () => {
+    const empty = path.join(scratch, "empty");
+    mkdirSync(path.join(empty, "material"), { recursive: true });
+    output = [];
+    await runInit({ ...setupOptions(), projectDir: empty });
+    expect(output).toContain("This folder held no git repo, so tmb ran git init in it: it is a project of one repo.");
+    expect(statSync(path.join(empty, ".git")).isDirectory()).toBe(true);
+    expect(existsSync(path.join(empty, ".git", "hooks", "pre-push"))).toBe(true);
+    const opened = openProjectStore(empty, { create: false });
+    if (!opened.ok) throw opened.error;
+    try {
+      expect(readSettings(opened.store).repos).toBeNull();
+      expect(resolveRepo(opened.store, empty, undefined)).toMatchObject({ name: null, dir: empty });
+      expect(resolveRepo(opened.store, empty, ".")).toMatchObject({ name: null, dir: empty });
+      expect(refusal(() => resolveRepo(opened.store, empty, "zz")).message).toContain("its one repo is ., the project folder");
+    } finally {
+      opened.store.close();
+    }
+  });
+
+  test("init goes on without git when git init cannot run", async () => {
+    const empty = path.join(scratch, "no-git");
+    mkdirSync(empty);
+    output = [];
+    const pathBefore = process.env.PATH;
+    process.env.PATH = path.join(scratch, "nowhere");
+    try {
+      await runInit({ ...setupOptions(), projectDir: empty });
+    } finally {
+      process.env.PATH = pathBefore;
+    }
+    expect(output.some((line) => line.startsWith("This folder holds no git repo, and git init could not run in it"))).toBe(true);
+    expect(existsSync(path.join(empty, ".git"))).toBe(false);
+  });
+
+  test("init never runs git init in a folder that holds a repo", () => {
+    // The workspace's init above found repos a and b, so it wired them and left the folder as it was.
+    expect(existsSync(path.join(workspace, ".git"))).toBe(false);
+    expect(output.some((line) => line.includes("ran git init"))).toBe(false);
   });
 });
 

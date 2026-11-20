@@ -90,6 +90,16 @@ async function initAndOnboard(options: RunOptions = {}): Promise<void> {
   await onboard(options);
 }
 
+/**
+ * init, then onboard in a folder that is no longer a git work tree, so no base branch is detected:
+ * init runs git init in a folder holding no repo, and git always names a branch.
+ */
+async function initAndOnboardOutsideGit(options: RunOptions = {}): Promise<void> {
+  await init(options);
+  rmSync(path.join(project, ".git"), { recursive: true, force: true });
+  await onboard(options);
+}
+
 function record<T>(read: (settings: Settings, audit: AuditEntry[]) => T): T {
   const opened = openProjectStore(project, { create: false });
   if (!opened.ok) throw opened.error;
@@ -294,7 +304,7 @@ describe("tmb onboard", () => {
 describe("the questions", () => {
   test("without a terminal, take the defaults but never choose the review mode, and print each value stored", async () => {
     writeFileSync(path.join(project, "go.mod"), "module x\n");
-    await initAndOnboard();
+    await initAndOnboardOutsideGit();
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: ["go test ./..."], repos: null });
     expect(output).toContain(
       "There is no terminal to ask on, so each question takes its default, except the review mode, which is yours to choose; --role, --base, --review-mode and --check set them.",
@@ -311,7 +321,7 @@ describe("the questions", () => {
   test("on a terminal, are asked in turn showing their default, and the answers stored", async () => {
     writeFileSync(path.join(project, "Cargo.toml"), "");
     const ask = scripted(["", "", "trunk", "", "cargo test", "cargo clippy", ""]);
-    await initAndOnboard({ ask });
+    await initAndOnboardOutsideGit({ ask });
     expect(ask.prompts).toEqual([
       REVIEW_MODE_PROMPT,
       "Role of Host A's main agent, one of: planner, reviewer [planner]: ",
@@ -328,7 +338,7 @@ describe("the questions", () => {
 
   test("with no detected base branch, asks again until it gets one", async () => {
     const ask = scripted(["", "", "", "  ", "main"]);
-    await initAndOnboard({ ask });
+    await initAndOnboardOutsideGit({ ask });
     expect(ask.prompts.slice(2, 5)).toEqual(Array(3).fill("Base branch, the branch pull requests merge into: "));
     expect(settings().base_branch).toBe("main");
   });

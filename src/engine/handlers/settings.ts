@@ -114,6 +114,11 @@ function mergedRepos(current: RepoPolicies, value: unknown): RepoPolicies {
       throw new HandlerError("not_found", `no repo ${JSON.stringify(name)} in this workspace; its repos are ${Object.keys(current).join(", ") || "none"}, and \`tmb init\` finds new ones`);
     }
   }
+  for (const name of Object.keys(given)) {
+    if (current[name]!.git === false) {
+      throw new HandlerError("refused", `the folder ${name} is not a repo, so it takes no policy; once it is a repo, tmb init records it as one`);
+    }
+  }
   return { ...current, ...given };
 }
 

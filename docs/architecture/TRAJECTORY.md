@@ -28,7 +28,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 
 ## Where it lives
 
-One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one, in the workspace folder ([Several repos in one workspace](WORKFLOW.md#several-repos-in-one-workspace)). Its `repos` setting holds each repo's name and policy, and each feature branch and task names the repo it was cut in; a row with no repo belongs to the project folder itself, as every row of a single-repo project does. The engine creates it at `tmb init`, and is the only program that migrates it.
+One database file per project, inside the project's folder and left out of git. A project of one or several repos has one, in the project folder ([One record, one or several repos](WORKFLOW.md#one-record-one-or-several-repos)). In a workspace, its `repos` setting holds each repo's name and policy, and each folder that is not a repo. Each feature branch and task names the repo it was cut in; a row with no repo belongs to the project folder itself, the repo `.`, as every row of a single-repo project does. The engine creates it at `tmb init`, and is the only program that migrates it.
 
 | State | Gate | Other commands |
 |---|---|---|

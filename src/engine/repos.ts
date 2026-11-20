@@ -26,33 +26,51 @@ export function inGitWorkTree(dir: string): boolean {
   return result.ok && result.stdout === "true";
 }
 
+/** What a scan of a workspace finds: its repos, and its top-level folders that are no repo and hold none. */
+export type Scan = { repos: string[]; folders: string[] };
+
 /**
- * The repos under a workspace folder, by name: each folder up to SCAN_DEPTH down whose .git is a
- * folder, a repo's own checkout. A .git file is a linked worktree or a submodule, never a repo of
- * its own. A scan does not go into a repo it found, a dot-folder or node_modules.
+ * The folders under a workspace folder, by name. A repo is a folder up to SCAN_DEPTH down whose
+ * .git is a folder, a repo's own checkout; a .git file is a linked worktree or a submodule, never a
+ * repo of its own, and is skipped. A top-level folder that is no repo and holds none is recorded as a folder, such as
+ * one of test material. A scan does not go into a repo it found, a dot-folder or node_modules.
  */
-export function scanRepos(workspaceDir: string): string[] {
-  const found: string[] = [];
-  const walk = (dir: string, depth: number) => {
+export function scanWorkspace(workspaceDir: string): Scan {
+  const scan: Scan = { repos: [], folders: [] };
+  const nameOf = (dir: string) => path.relative(workspaceDir, dir).split(path.sep).join("/");
+  const walk = (dir: string, depth: number): number => {
     let entries: string[];
     try {
       entries = readdirSync(dir).sort();
     } catch {
-      return;
+      return 0;
     }
+    let found = 0;
     for (const entry of entries) {
       if (entry.startsWith(".") || SKIPPED.has(entry)) continue;
       const child = path.join(dir, entry);
       if (!isDirectory(child)) continue;
       if (isDirectory(path.join(child, ".git"))) {
-        found.push(path.relative(workspaceDir, child).split(path.sep).join("/"));
+        scan.repos.push(nameOf(child));
+        found++;
         continue;
       }
-      if (depth < SCAN_DEPTH) walk(child, depth + 1);
+      // A linked worktree or a submodule belongs to a repo found elsewhere: neither a repo nor a folder.
+      if (statSync(path.join(child, ".git"), { throwIfNoEntry: false }) !== undefined) continue;
+      const inside = depth < SCAN_DEPTH ? walk(child, depth + 1) : 0;
+      if (depth === 1 && inside === 0) scan.folders.push(nameOf(child));
+      found += inside;
     }
+    return found;
   };
   walk(workspaceDir, 1);
-  return found;
+  scan.repos.sort();
+  return scan;
+}
+
+/** The repos under a workspace folder, by name. */
+export function scanRepos(workspaceDir: string): string[] {
+  return scanWorkspace(workspaceDir).repos;
 }
 
 /** The workspace's repos as the record holds them, or null in a single-repo project. */
@@ -79,10 +97,18 @@ function listNames(names: readonly string[]): string {
   return names.length === 0 ? "none" : names.join(", ");
 }
 
-/** The repos a feature or task may be cut in: registered and not exempt. */
-export function workingRepos(repos: RepoPolicies): string[] {
-  return Object.keys(repos).filter((name) => repos[name]!.exempt !== true);
+/** Whether tmb manages a recorded folder: a repo, not exempt. */
+export function isManaged(policy: RepoPolicy): boolean {
+  return policy.git !== false && policy.exempt !== true;
 }
+
+/** The repos a feature or task may be cut in: registered repos tmb manages. */
+export function workingRepos(repos: RepoPolicies): string[] {
+  return Object.keys(repos).filter((name) => isManaged(repos[name]!));
+}
+
+/** The name of a single-repo project's one repo, the project folder itself. */
+export const PROJECT_REPO = ".";
 
 /**
  * The repo a call works in: the one it names, else the only one. In a single-repo project, the
@@ -92,7 +118,10 @@ export function workingRepos(repos: RepoPolicies): string[] {
 export function resolveRepo(store: Store, projectDir: string, named: string | undefined): Repo {
   const repos = workspaceRepos(store);
   if (repos === null) {
-    if (named !== undefined) throw new HandlerError("invalid_input", `this project is one repo, so repo is not taken; got ${JSON.stringify(named)}`);
+    // A single-repo project is a project of one repo, the project folder, named ".".
+    if (named !== undefined && named.trim().replace(/[\\/]+$/, "") !== PROJECT_REPO) {
+      throw new HandlerError("not_found", `no repo ${JSON.stringify(named)} in this project; its one repo is ${PROJECT_REPO}, the project folder`);
+    }
     return projectRepo(store, projectDir);
   }
   const working = workingRepos(repos);
@@ -100,6 +129,7 @@ export function resolveRepo(store: Store, projectDir: string, named: string | un
     const name = named.trim().replace(/\\/g, "/").replace(/\/+$/, "");
     const policy = repos[name];
     if (policy === undefined) throw new HandlerError("not_found", `no repo ${JSON.stringify(named)} in this workspace; its repos are ${listNames(working)}`);
+    if (policy.git === false) throw new HandlerError("refused", `the folder ${name} is not a repo, so tmb does no work in it; its repos are ${listNames(working)}`);
     if (policy.exempt === true) throw new HandlerError("refused", `the repo ${name} is exempt, so tmb does no work in it; its other repos are ${listNames(working.filter((other) => other !== name))}`);
     return repoFrom(projectDir, name, policy);
   }
@@ -146,7 +176,7 @@ export function repoOf(store: Store, projectDir: string, dir: string): Repo | nu
   if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
   const name = relative.split(path.sep).join("/");
   const policy = repos[name];
-  return policy === undefined || policy.exempt === true ? null : repoFrom(projectDir, name, policy);
+  return policy === undefined || !isManaged(policy) ? null : repoFrom(projectDir, name, policy);
 }
 
 /** The checks every task in a repo runs: the project's own in a single-repo project, else the repo's. */
