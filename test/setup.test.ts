@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "../src/adapters/index.ts";
-import { openProjectStore, readSettings, SettingError, type Settings, tiedProgram, TMB_EVENT_TYPES } from "../src/engine/index.ts";
+import { openProjectStore, readSettings, reviewModeChosenVia, SettingError, type Settings, tiedProgram, TMB_EVENT_TYPES } from "../src/engine/index.ts";
 import type { AuditEntry } from "../src/engine/store/index.ts";
 import { type Ask, runInit, runOnboard, SetupError, type SetupFlags, type SetupOptions } from "../src/setup.ts";
 
@@ -98,6 +98,19 @@ function record<T>(read: (settings: Settings, audit: AuditEntry[]) => T): T {
 }
 
 const settings = () => record((current) => current);
+const chosenVia = () => {
+  const opened = openProjectStore(project, { create: false });
+  if (!opened.ok) throw opened.error;
+  try {
+    return reviewModeChosenVia(opened.store);
+  } finally {
+    opened.store.close();
+  }
+};
+
+const REVIEW_MODE_PROMPT = "Review mode, one of: agile, truest [agile]: ";
+const NO_REVIEW_MODE_LINE =
+  "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. Run tmb onboard on a terminal, or tmb onboard --review-mode <agile|truest> --yes.";
 const auditCount = () => record((_, audit) => audit.length);
 
 describe("choosing the host", () => {
@@ -154,26 +167,53 @@ describe("a host this release does not support yet", () => {
 });
 
 describe("tmb init", () => {
-  test("asks nothing, sets only the host and its role, and ends saying the settings are empty and how they get filled", async () => {
+  test("with no terminal, asks nothing, sets only the host and its role, and ends saying how the settings get filled and that no task starts without a review mode", async () => {
     writeFileSync(path.join(project, "go.mod"), "module x\n");
-    const ask = scripted(["should not be read"]);
-    await init({ ask, flags: { base: "main", reviewMode: "truest", checks: ["x"] } });
-    expect(ask.prompts).toEqual([]);
+    await init({ flags: { base: "main", reviewMode: "truest", checks: ["x"] } });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: null });
     expect(output).toContain("Settings in the record:");
     expect(output).toContain("tmb is set up for Host A. Open it in this project to start as the planner.");
-    expect(output.at(-1)).toBe(
-      "The settings are still empty: base branch, review mode and checks. When you open Host A here, the planner applies the ones it recommends for this project and shows them; " +
+    expect(output.at(-2)).toBe(
+      "The settings are still empty: base branch and checks. When you open Host A here, the planner applies the ones it recommends for this project and shows them; " +
         "run tmb onboard to set them yourself instead, at any time.",
     );
+    expect(output.at(-1)).toBe(
+      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. The planner asks you before the first task, or run tmb onboard; no task starts until it is set.",
+    );
+  });
+
+  test("on a terminal, asks one question, the review mode, with what each mode costs, and records that init chose it", async () => {
+    const ask = scripted(["truest"]);
+    await init({ ask });
+    expect(ask.prompts).toEqual([REVIEW_MODE_PROMPT]);
+    expect(output).toContain("  agile: one review of each feature branch as a whole; the fewer tokens (recommended)");
+    expect(output).toContain("  truest: a review of every task before its push; more tokens, as every task is reviewed");
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: "truest", checks: null });
+    expect(chosenVia()).toBe("init");
+    expect(output.join("\n")).not.toContain("No review mode is chosen");
+
+    // A project that has a review mode is not asked again.
+    const again = scripted(["agile"]);
+    await init({ ask: again });
+    expect(again.prompts).toEqual([]);
+    expect(settings().review_mode).toBe("truest");
+  });
+
+  test("on a terminal whose input ends before an answer, chooses nothing", async () => {
+    const ask = scripted([]);
+    await init({ ask });
+    expect(ask.prompts).toEqual([REVIEW_MODE_PROMPT]);
+    expect(settings().review_mode).toBeNull();
+    expect(chosenVia()).toBeNull();
   });
 
   test("keeps what onboard stored, and a re-run changes nothing", async () => {
     await init();
     await onboard({ flags: { base: "trunk", reviewMode: "truest", checks: ["make check"], role: "reviewer" } });
+    expect(chosenVia()).toBe("onboard");
     const recorded = auditCount();
     output.length = 0;
-    await init();
+    await init({ ask: scripted(["agile"]) });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "reviewer" }, base_branch: "trunk", review_mode: "truest", checks: ["make check"] });
     expect(auditCount()).toBe(recorded);
     expect(output).toContain("No setting changed, so nothing was recorded.");
@@ -183,9 +223,10 @@ describe("tmb init", () => {
   test("sets the role --role names, and a reviewer host leaves the settings to the planner's", async () => {
     await init({ flags: { role: "reviewer" } });
     expect(settings().host_roles).toEqual({ a: "reviewer" });
-    expect(output.at(-1)).toBe(
-      "The settings are still empty: base branch, review mode and checks. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.",
+    expect(output.at(-2)).toBe(
+      "The settings are still empty: base branch and checks. The planner's host applies the ones it recommends at its first session; run tmb onboard to set them yourself, at any time.",
     );
+    expect(output.at(-1)).toBe(NO_REVIEW_MODE_LINE);
   });
 
   test("refuses an unknown role before anything is written", async () => {
@@ -213,10 +254,12 @@ describe("tmb onboard", () => {
     const before = auditCount();
     await onboard({ ask: scripted(["", "release", "", ""]) });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: "agile", checks: [] });
-    expect(auditCount()).toBe(before + 3);
+    // Three settings, and which way the review mode was chosen.
+    expect(auditCount()).toBe(before + 4);
+    expect(chosenVia()).toBe("onboard");
     await onboard({ ask: scripted(["reviewer", "", "truest", "make test", ""]) });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["make test"] });
-    expect(auditCount()).toBe(before + 6);
+    expect(auditCount()).toBe(before + 8);
   });
 
   test("sets the role of the host --host names, keeping the others'", async () => {
@@ -228,27 +271,31 @@ describe("tmb onboard", () => {
 });
 
 describe("the questions", () => {
-  test("without a terminal, take the defaults and print each value stored", async () => {
+  test("without a terminal, take the defaults but never choose the review mode, and print each value stored", async () => {
     writeFileSync(path.join(project, "go.mod"), "module x\n");
     await initAndOnboard();
-    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: "agile", checks: ["go test ./..."] });
-    expect(output).toContain("There is no terminal to ask on, so each question takes its default; --role, --base, --review-mode and --check set them.");
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: ["go test ./..."] });
+    expect(output).toContain(
+      "There is no terminal to ask on, so each question takes its default, except the review mode, which is yours to choose; --role, --base, --review-mode and --check set them.",
+    );
     expect(output).toContain("Settings in the record:");
     expect(output).toContain("  host: a");
     expect(output).toContain("  base branch: (not set)");
-    expect(output).toContain("  review mode: agile");
+    expect(output).toContain("  review mode: (not set)");
+    expect(output.at(-1)).toBe(NO_REVIEW_MODE_LINE);
     expect(output).toContain('  checks: "go test ./..."');
     expect(output).toContain("No base branch is set: this folder is not a git work tree. Run tmb onboard --base <branch> to set one.");
   });
 
   test("on a terminal, are asked in turn showing their default, and the answers stored", async () => {
     writeFileSync(path.join(project, "Cargo.toml"), "");
-    const ask = scripted(["", "trunk", "", "cargo test", "cargo clippy", ""]);
+    const ask = scripted(["", "", "trunk", "", "cargo test", "cargo clippy", ""]);
     await initAndOnboard({ ask });
     expect(ask.prompts).toEqual([
+      REVIEW_MODE_PROMPT,
       "Role of Host A's main agent, one of: planner, reviewer [planner]: ",
       "Base branch, the branch pull requests merge into: ",
-      "Review mode, one of: agile, truest [agile]: ",
+      REVIEW_MODE_PROMPT,
       "> ",
       "> ",
       "> ",
@@ -259,14 +306,14 @@ describe("the questions", () => {
   });
 
   test("with no detected base branch, asks again until it gets one", async () => {
-    const ask = scripted(["", "", "  ", "main"]);
+    const ask = scripted(["", "", "", "  ", "main"]);
     await initAndOnboard({ ask });
-    expect(ask.prompts.slice(1, 4)).toEqual(Array(3).fill("Base branch, the branch pull requests merge into: "));
+    expect(ask.prompts.slice(2, 5)).toEqual(Array(3).fill("Base branch, the branch pull requests merge into: "));
     expect(settings().base_branch).toBe("main");
   });
 
   test("refuse a role or review mode that does not exist, and ask again", async () => {
-    const ask = scripted(["boss", "reviewer", "main", "strict", "truest"]);
+    const ask = scripted(["strict", "truest", "boss", "reviewer", "main", ""]);
     await initAndOnboard({ ask });
     expect(output).toContain('a host\'s role must be planner or reviewer, got "boss"');
     expect(output).toContain('review mode must be agile or truest, got "strict"');
@@ -276,7 +323,7 @@ describe("the questions", () => {
 
   test("none clears the checks; Enter keeps the default", async () => {
     writeFileSync(path.join(project, "go.mod"), "");
-    await initAndOnboard({ ask: scripted(["", "main", "", "none"]) });
+    await initAndOnboard({ ask: scripted(["", "", "main", "", "none"]) });
     expect(settings().checks).toEqual([]);
     await initAndOnboard({ ask: scripted(["", "", "", ""]) });
     expect(output).toContain("  Stored: none.");
@@ -285,10 +332,10 @@ describe("the questions", () => {
 
   test("a re-run offers the stored answers as defaults and, given them back, records nothing", async () => {
     writeFileSync(path.join(project, "go.mod"), "");
-    await initAndOnboard({ flags: { base: "develop", checks: ["make check"] } });
+    await initAndOnboard({ flags: { base: "develop", reviewMode: "agile", checks: ["make check"] } });
     const recorded = auditCount();
-    // Five settings, and the program the project is tied to.
-    expect(recorded).toBe(6);
+    // Five settings, which way the review mode was chosen, and the program the project is tied to.
+    expect(recorded).toBe(7);
     output = [];
     const ask = scripted([]);
     await initAndOnboard({ ask });
@@ -325,18 +372,29 @@ describe("the program the project is tied to (trustmybot/tmb#89)", () => {
 });
 
 describe("flags", () => {
-  test("answer their questions without asking and override the defaults; --yes takes the rest", async () => {
+  test("answer their questions without asking and override the defaults; --yes takes the rest but not the review mode", async () => {
     writeFileSync(path.join(project, "go.mod"), "");
+    await init();
     const ask = scripted([]);
-    await initAndOnboard({ ask, flags: { base: "release", checks: ["make lint", "make test"], yes: true } });
+    await onboard({ ask, flags: { base: "release", checks: ["make lint", "make test"], yes: true } });
     expect(ask.prompts).toEqual([]);
-    expect(output).toContain("--yes was given, so each question takes its default; --role, --base, --review-mode and --check set them.");
-    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
+    expect(output).toContain(
+      "--yes was given, so each question takes its default, except the review mode, which is yours to choose; --role, --base, --review-mode and --check set them.",
+    );
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: null, checks: ["make lint", "make test"] });
+    expect(output.at(-1)).toBe(NO_REVIEW_MODE_LINE);
+
+    // --review-mode with --yes sets it without a question, for scripts.
+    await onboard({ ask, flags: { reviewMode: "truest", yes: true } });
+    expect(ask.prompts).toEqual([]);
+    expect(settings().review_mode).toBe("truest");
+    expect(chosenVia()).toBe("onboard");
   });
 
   test("answer only their own question on a terminal", async () => {
+    await init();
     const ask = scripted([""]);
-    await initAndOnboard({ ask, flags: { base: "main", reviewMode: "agile", role: "planner" } });
+    await onboard({ ask, flags: { base: "main", reviewMode: "agile", role: "planner" } });
     expect(ask.prompts).toEqual(["> "]);
     expect(settings().base_branch).toBe("main");
   });

@@ -10,7 +10,7 @@ import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
-import { readSettings } from "./settings.ts";
+import { readSettings, REVIEW_MODE_COSTS, type ReviewMode } from "./settings.ts";
 import { type Store, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
@@ -96,12 +96,13 @@ function projectMapSection(projectDir: string): string {
   }
 }
 
-const REVIEW_MODE_MEANING: Record<string, string> = { agile: "one review per feature branch", truest: "a review of every task before its push" };
 const SETTING_LABELS = { base_branch: "base branch", review_mode: "review mode", checks: "checks" } as const;
 
 /**
  * When the project's settings are empty, as `tmb init` leaves them, the planner onboards the
- * project itself: it applies the settings it recommends and shows them. Empty when all are set.
+ * project itself: it applies the base branch and checks it recommends and shows them. The review
+ * mode is the Human's choice: the planner asks for it before the first task, and with no one to
+ * ask leaves it unset, so task_start is refused. Empty when all are set.
  */
 function emptySettingsSection(store: Store, projectDir: string, unattended: boolean): string {
   const empty = emptySettings(readSettings(store));
@@ -111,16 +112,28 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
   const found = [
     `base branch: ${detected.base_branch === null ? "none found, as this is not a git work tree" : `\`${oneLineText(detected.base_branch)}\``}`,
     `checks: ${checks}`,
-    `review modes: ${detected.review_modes.map((mode) => `${mode} (${REVIEW_MODE_MEANING[mode]})`).join(" or ")}`,
+    `review modes: ${detected.review_modes.map((mode) => `${mode} (${REVIEW_MODE_COSTS[mode as ReviewMode]})`).join(" or ")}`,
   ];
-  const after = unattended
-    ? "Name each value you applied in your answer."
-    : "Then show the Human what you applied, and remind them that `tmb onboard` can be run again at any time to change the settings, and that you can change a value when they ask.";
-  return (
-    `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ` +
-    "Before other work, work out the settings you recommend for this project, reading what you need of it, and apply them with settings_set. " +
-    `${after}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`
-  );
+  const others = empty.filter((name) => name !== "review_mode");
+  const parts: string[] = [];
+  if (others.length > 0) {
+    parts.push(
+      `Before other work, work out the ${others.map((name) => SETTING_LABELS[name]).join(" and ")} you recommend for this project, reading what you need of it, and apply them with settings_set.`,
+      unattended
+        ? "Name each value you applied in your answer."
+        : "Then show the Human what you applied, and remind them that `tmb onboard` can be run again at any time to change the settings, and that you can change a value when they ask.",
+    );
+  }
+  if (empty.includes("review_mode")) {
+    parts.push(
+      unattended
+        ? "The review mode is the Human's choice, as it decides how many tokens the project uses, and no one can answer in this run: do not set it. " +
+            "task_start is refused until the Human runs `tmb onboard`; say so in your answer."
+        : "The review mode is the Human's choice, as it decides how many tokens the project uses: do not set it yourself. " +
+            "Before the first task, ask the Human which mode they choose, with the mode you recommend and what each costs, and set their answer with settings_set. task_start is refused until it is set.",
+    );
+  }
+  return `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ${parts.join(" ")}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`;
 }
 
 function withRole(section: string): string {

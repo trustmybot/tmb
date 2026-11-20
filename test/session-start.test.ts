@@ -172,7 +172,12 @@ describe("empty settings", () => {
     expect(text).toContain("remind them that `tmb onboard` can be run again at any time");
     expect(text).toContain("you can change a value when they ask");
     expect(text).toContain("- checks: `go test ./...`");
-    expect(text).toContain("- review modes: agile (one review per feature branch) or truest (a review of every task before its push)");
+    expect(text).toContain("- review modes: agile (one review of each feature branch as a whole; the fewer tokens) or truest (a review of every task before its push; more tokens, as every task is reviewed)");
+    // The review mode is the Human's: the planner asks for it and never sets it itself.
+    expect(text).toContain("work out the base branch and checks you recommend");
+    expect(text).toContain("The review mode is the Human's choice");
+    expect(text).toContain("do not set it yourself");
+    expect(text).toContain("ask the Human which mode they choose, with the mode you recommend and what each costs");
     expect(text.indexOf(OPEN_WORK_HEADING)).toBeLessThan(text.indexOf(EMPTY_SETTINGS_HEADING));
   });
 
@@ -181,12 +186,23 @@ describe("empty settings", () => {
     expect(contextWith(false)).toContain("Not set yet: review mode, checks.");
   });
 
-  test("in an unattended run, are applied and named, with no one to remind", () => {
+  test("with only the review mode empty, ask the Human for it and apply nothing", () => {
+    withStore((store) => {
+      writeSetting(store, HUMAN, "base_branch", "main");
+      writeSetting(store, HUMAN, "checks", []);
+    });
+    const text = contextWith(false);
+    expect(text).toContain("Not set yet: review mode. The review mode is the Human's choice");
+    expect(text).not.toContain("apply them with settings_set");
+  });
+
+  test("in an unattended run, the others are applied and named, and the review mode is left for the Human's tmb onboard", () => {
     withStore(() => {});
     const text = contextWith(true);
     expect(text).toContain("apply them with settings_set");
     expect(text).toContain("Name each value you applied in your answer.");
-    expect(text).not.toContain("tmb onboard");
+    expect(text).not.toContain("remind them");
+    expect(text).toContain("no one can answer in this run: do not set it. task_start is refused until the Human runs `tmb onboard`");
   });
 
   test("are not mentioned once set", () => {

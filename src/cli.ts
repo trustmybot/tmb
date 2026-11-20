@@ -109,7 +109,7 @@ async function runToolServer(args: string[]): Promise<number> {
   const projectDir = values.project === undefined ? projectRootOf(process.cwd()) : path.resolve(values.project);
   const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
-    await serveTools({ projectDir, host: values.host, version });
+    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended });
     return 0;
   }
   // A session start looks for an update in the background; the session's end may apply it.
@@ -130,7 +130,7 @@ async function runToolServer(args: string[]): Promise<number> {
   const onSignal = () => void end().finally(() => process.exit(0));
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, onSignal);
   try {
-    await serveTools({ projectDir, host: values.host, version });
+    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended });
   } finally {
     await end();
   }
@@ -222,8 +222,8 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
   const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean };
-  // Ask only when a person is at both ends; otherwise never wait for input. init never asks.
-  const terminal = command !== "init" && process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  // Ask only when a person is at both ends; otherwise never wait for input. init asks only for the review mode.
+  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
   const run = { init: runInit, onboard: runOnboard }[command];
   const setupOptions: SetupOptions = {
     projectDir: process.cwd(),

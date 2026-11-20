@@ -4,7 +4,8 @@ import type { Actor, Role } from "../store/index.ts";
 import { HandlerError } from "./errors.ts";
 
 /** Where an operation runs: the project's folder, and how long each check may take. */
-export type OperationContext = { projectDir: string; checkTimeoutMs?: number };
+/** `unattended` is true when no one can answer in the run the call comes from. */
+export type OperationContext = { projectDir: string; checkTimeoutMs?: number; unattended?: boolean };
 
 export const OPEN = "open";
 export const CLOSED = "closed";

@@ -58,7 +58,7 @@ fixtureProject(fixture, project, {
 });
 if (!bunTest(project, path.join(logs, "base.log"))) fail(`the project's tests fail before any work: ${readFileSync(path.join(logs, "base.log"), "utf8")}`);
 tmb.shown(["init", "--host", "claude-code", "--role", "planner"], `tmb init for Claude Code failed in ${project}`);
-tmb.shown(["onboard", "--host", "claude-code", "--yes", "--base", base, "--check", check], `tmb onboard failed in ${project}`);
+tmb.shown(["onboard", "--host", "claude-code", "--yes", "--base", base, "--review-mode", "agile", "--check", check], `tmb onboard failed in ${project}`);
 tmb.shown(["init", "--host", "codex", "--role", "reviewer"], `tmb init for Codex failed in ${project}`);
 
 const plannerLog = path.join(logs, "planner.log");
