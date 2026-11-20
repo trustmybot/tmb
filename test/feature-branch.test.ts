@@ -15,7 +15,9 @@ import {
   taskClose,
   taskStart,
 } from "../src/engine/handlers/index.ts";
-import { moveFeature } from "../src/engine/handlers/fold.ts";
+import { adoptWorktree } from "../src/engine/handlers/adopt.ts";
+import { moveFeature, retryKeptCheckouts } from "../src/engine/handlers/fold.ts";
+import { sessionStartContext } from "../src/engine/session-start.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 
@@ -362,9 +364,95 @@ describe("folding a closed task into its feature branch", () => {
     const closed = await taskClose(store, WORKER, { id: started.id }, context());
     expect(store.getTask(started.id)).toMatchObject({ state: "closed", commitSha: head });
     expect(tip()).toBe(head);
-    expect(closed.cleanupProblems).toHaveLength(2);
-    expect(closed.cleanupProblems[0]).toContain(`the worktree ${started.worktree} was not removed`);
-    expect(closed.cleanupProblems[1]).toContain(`the branch ${started.branch} was not deleted`);
+    expect(closed.cleanupProblems).toEqual([
+      `the worktree ${started.worktree} and the branch ${started.branch} were kept: the host locked the worktree, so it may still be in use; tmb tries again at a session start with no task open`,
+    ]);
+    expect(branches()).toContain(started.branch);
+  });
+
+  test("files git ignores, left by the checks, go with the worktree, and the close names them (#132)", async () => {
+    writeSetting(store, HUMAN, "checks", ["mkdir -p dist && echo built > dist/app.js"]);
+    const started = startTask(["src/a"]);
+    writeFileSync(path.join(started.worktree, ".gitignore"), ".tmb/\ndist/\n");
+    commitFile(started.worktree, "src/a/one.ts");
+
+    const closed = await taskClose(store, WORKER, { id: started.id }, context());
+    expect(closed.cleanupProblems).toEqual([]);
+    expect(closed.cleanedUp).toEqual([`Removed the worktree ${started.worktree} with the files git ignores in it: dist/`]);
+    expect(existsSync(started.worktree)).toBe(false);
+    expect(branches()).toEqual([FEATURE, "main"]);
+  });
+
+  test("files git does not ignore keep the worktree and the branch, naming the files and the command (#132)", async () => {
+    writeSetting(store, HUMAN, "checks", ["echo built > app.tsbuildinfo"]);
+    const started = startTask(["src/a"]);
+    commitFile(started.worktree, "src/a/one.ts");
+
+    const closed = await taskClose(store, WORKER, { id: started.id }, context());
+    expect(store.getTask(started.id)).toMatchObject({ state: "closed" });
+    expect(closed.cleanupProblems).toHaveLength(1);
+    expect(closed.cleanupProblems[0]).toContain(`the worktree ${started.worktree} and the branch ${started.branch} were kept: it holds files git does not ignore`);
+    expect(closed.cleanupProblems[0]).toContain("app.tsbuildinfo");
+    expect(closed.cleanupProblems[0]).toContain(`git worktree remove --force ${started.worktree} && git branch -D ${started.branch}`);
+    expect(closed.cleanedUp).toEqual([]);
+    expect(existsSync(path.join(started.worktree, "app.tsbuildinfo"))).toBe(true);
+    expect(branches()).toContain(started.branch);
+
+    // Once the project ignores the file, the next session start with no task open removes both.
+    writeFileSync(path.join(git(project, "rev-parse", "--path-format=absolute", "--git-common-dir"), "info", "exclude"), "*.tsbuildinfo\n");
+    expect(retryKeptCheckouts(project, store.listTasks("closed"))).toEqual([`task ${started.id}: ${started.worktree} and ${started.branch}`]);
+    expect(existsSync(started.worktree)).toBe(false);
+    expect(branches()).toEqual([FEATURE, "main"]);
+  });
+
+  test("changes to tracked files keep the worktree and the branch, naming the files (#132)", async () => {
+    writeSetting(store, HUMAN, "checks", ["echo changed >> README.md"]);
+    const started = startTask(["src/a"]);
+    commitFile(started.worktree, "src/a/one.ts");
+
+    const closed = await taskClose(store, WORKER, { id: started.id }, context());
+    expect(closed.cleanupProblems).toEqual([`the worktree ${started.worktree} and the branch ${started.branch} were kept: it has changes that are not committed: README.md`]);
+    expect(existsSync(started.worktree)).toBe(true);
+    // Retrying changes nothing while the change is there.
+    expect(retryKeptCheckouts(project, store.listTasks("closed"))).toEqual([]);
+    expect(existsSync(started.worktree)).toBe(true);
+  });
+
+  test("an adopted host worktree goes with its branch, and a locked one goes at the next session start once unlocked (#132)", async () => {
+    const started = startTask(["src/a"]);
+    const host = path.join(project, ".claude", "worktrees", "agent-1");
+    git(project, "worktree", "add", "-q", "-b", "worktree-agent-1", host, tip());
+    expect(adoptWorktree(store, WORKER, project, started.id, host).adopted).toBe(true);
+    commitFile(host, "src/a/one.ts");
+    git(project, "worktree", "lock", host);
+
+    const closed = await taskClose(store, WORKER, { id: started.id }, context());
+    expect(closed.cleanupProblems[0]).toContain(`the worktree ${host} and the branch ${started.branch} were kept: the host locked the worktree`);
+    expect(retryKeptCheckouts(project, store.listTasks("closed"))).toEqual([]);
+
+    git(project, "worktree", "unlock", host);
+    expect(retryKeptCheckouts(project, store.listTasks("closed"))).toEqual([`task ${started.id}: ${host} and ${started.branch}`]);
+    expect(existsSync(host)).toBe(false);
+    expect(branches()).toEqual([FEATURE, "main"]);
+    expect(git(project, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
+  });
+
+  test("a session start with no task open retries the cleanup; with a task open it waits (#132)", async () => {
+    const started = startTask(["src/a"]);
+    commitFile(started.worktree, "src/a/one.ts");
+    git(project, "worktree", "lock", started.worktree);
+    await taskClose(store, WORKER, { id: started.id }, context());
+    git(project, "worktree", "unlock", started.worktree);
+
+    const other = startTask(["src/b"]);
+    sessionStartContext(project, false);
+    expect(existsSync(started.worktree)).toBe(true);
+
+    git(project, "worktree", "remove", other.worktree);
+    store.updateTask(HUMAN, other.id, { state: "closed" });
+    sessionStartContext(project, false);
+    expect(existsSync(started.worktree)).toBe(false);
+    expect(branches()).toEqual([FEATURE, "main"]);
   });
 
   test("a docs task takes the same checks and fold, committed by the planner", async () => {

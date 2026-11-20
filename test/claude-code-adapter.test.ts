@@ -6,6 +6,7 @@ import path from "node:path";
 import { answerHook } from "../src/adapters/claude-code/hook.ts";
 import { adapter } from "../src/adapters/claude-code/index.ts";
 import { mcpJsonPath, registerServer, serverEntry, unregisterServer } from "../src/adapters/claude-code/mcp-json.ts";
+import { setUpRecord } from "../src/adapters/common/record.ts";
 import { hookCommand, install, isTmbHookCommand, remove, settingsPath } from "../src/adapters/claude-code/settings.ts";
 import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath } from "../src/engine/index.ts";
 
@@ -251,6 +252,19 @@ describe(".gitignore", () => {
     writeFileSync(path.join(project, ".gitignore"), "*.local.json\n");
     expect(install(project, BINARY).gitignoreChanged).toBe(false);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe("*.local.json\n");
+  });
+
+  test("init ignores the whole .tmb/ folder when the project already ignores *.db (#130)", () => {
+    gitInit(project);
+    writeFileSync(path.join(project, ".gitignore"), "*.db\n");
+    expect(setUpRecord(project)).toContain("Added .tmb/ to .gitignore.");
+    expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe("*.db\n.tmb/\n");
+    writeFileSync(path.join(project, ".tmb", "claude-code-created.json"), "{}");
+    const status = spawnSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: project, encoding: "utf8" });
+    expect(status.stdout).not.toContain(".tmb/");
+
+    expect(setUpRecord(project).some((line) => line.includes(".gitignore"))).toBe(false);
+    expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe("*.db\n.tmb/\n");
   });
 
   test("creates nothing outside a git work tree", () => {

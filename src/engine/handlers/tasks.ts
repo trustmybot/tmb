@@ -91,6 +91,8 @@ export type TaskCloseResult = {
   push: PushOutcome | null;
   /** What could not be cleaned up after the close; the task stays closed. */
   cleanupProblems: string[];
+  /** What the cleanup dropped with the task's worktree: files git ignores, one line. */
+  cleanedUp: string[];
   /** In truest mode, what comes next: the task waits in review at its commit. */
   next?: string;
   /** Files the task's commit touched outside its declared files, from git; the spec stays as the planner wrote it. */
@@ -562,10 +564,10 @@ export function closeResult(
   store: Store,
   id: string,
   runs: CheckRunOutcome[],
-  rest: Pick<TaskCloseResult, "fold" | "push" | "cleanupProblems"> & CloseFindings,
+  rest: Pick<TaskCloseResult, "fold" | "push" | "cleanupProblems"> & Partial<Pick<TaskCloseResult, "cleanedUp">> & CloseFindings,
 ): TaskCloseResult {
   const last = runs[runs.length - 1]!;
-  return { brief: briefOf(store, requireTask(store, id)), checkRunId: last.id, checks: last.results, checkRunIds: runs.map((run) => run.id), ...rest };
+  return { brief: briefOf(store, requireTask(store, id)), checkRunId: last.id, checks: last.results, checkRunIds: runs.map((run) => run.id), cleanedUp: [], ...rest };
 }
 
 /** Every check a task's close runs; refuses when there is none, since a task never closes unchecked. */
@@ -603,10 +605,10 @@ function finishFold(
     store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
   });
   recordFindings(task, context.projectDir);
-  const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
+  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(context.projectDir, worktree, task.branch);
   const push = pushFeature(context.projectDir, featureName);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems, ...findings });
+  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
 
 export async function taskClose(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> {
@@ -680,8 +682,8 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
   }
 
   recordFindings(task, context.projectDir);
-  const cleanupProblems = task.branch === null ? [] : removeTaskCheckout(context.projectDir, worktree, task.branch);
+  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(context.projectDir, worktree, task.branch);
   const push = pushFeature(context.projectDir, feature.name);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems, ...findings });
+  return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }

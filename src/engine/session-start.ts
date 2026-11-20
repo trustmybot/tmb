@@ -6,6 +6,7 @@ import plannerRole from "../../roles/planner.md" with { type: "text" };
 import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
 import { firstRunSection } from "./feedback/first-run.ts";
 import type { FeedbackEnv } from "./feedback/index.ts";
+import { retryKeptCheckouts } from "./handlers/fold.ts";
 import { featureBriefOf, reviewLine } from "./handlers/reviews.ts";
 import { detectedSettings, emptySettings } from "./handlers/settings.ts";
 import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
@@ -231,6 +232,19 @@ function feedbackSection(feedback: FeedbackEnv): string {
   }
 }
 
+/**
+ * With no task open, tries again to remove the worktrees and branches closed tasks kept
+ * (trustmybot/tmb#132), so one goes once its files are gone or ignored. Never throws.
+ */
+function tidyClosedTasks(store: Store, projectDir: string): void {
+  try {
+    if (store.listTasks("open").length > 0 || store.listTasks("in_review").length > 0) return;
+    retryKeptCheckouts(projectDir, store.listTasks("closed"));
+  } catch {
+    // A session start never fails over a cleanup; the next one tries again.
+  }
+}
+
 /** Never throws: a missing record gives the role alone, a bad one the role and a line naming the problem. */
 function plannerContext(projectDir: string, unattended: boolean): string {
   const opened = openProjectStore(projectDir, { create: false });
@@ -238,6 +252,7 @@ function plannerContext(projectDir: string, unattended: boolean): string {
     return opened.error.failure === "missing" ? plannerRole : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
   }
   try {
+    tidyClosedTasks(opened.store, projectDir);
     return withRole(`${openWork(opened.store)}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir)}`);
   } catch (error) {
     return withRole(`tmb could not read the record: ${oneLine(error)}`);

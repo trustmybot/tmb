@@ -23,7 +23,8 @@ export function setUpRecord(projectDir: string): string[] {
   if (!opened.ok) throw new Error(`cannot set up the record: ${opened.error.message}`);
   opened.store.close();
   const lines = [existed ? `${dbFile} already holds the record; kept it.` : `Created the record at ${dbFile}.`];
-  if (ignoreInGit(projectDir, `${PROJECT_DIR_NAME}/`, path.join(PROJECT_DIR_NAME, "trajectory.db"))) {
+  // Probe the folder itself: a rule such as `*.db` covers the record but not the rest of .tmb/.
+  if (ignoreInGit(projectDir, `${PROJECT_DIR_NAME}/`)) {
     lines.push(`Added ${PROJECT_DIR_NAME}/ to .gitignore.`);
   }
   return lines;
