@@ -141,4 +141,31 @@ describe("a feature branch after its pull request", () => {
       await client.close();
     }
   }, 60_000);
+
+  test("a task open when the pull request opened folds without a push; its tip waits for a review (trustmybot/tmb#181)", async () => {
+    const project = setUpProject("true", undefined, { origin: true });
+    const issue = tmbJson(["issue", "create", "Nod"], project);
+    const client = await connect(project, "claude-code");
+    const onOrigin = () => git(project, "ls-remote", "origin", "refs/heads/feat/nod").split(/\s/)[0];
+    try {
+      await callJson(client, "feature_start", { name: "feat/nod" });
+      const first = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add nod", files: ["src/nod.ts"], criteria: ["SC1: it nods"] });
+      commitFile(first.worktree, "src/nod.ts", "export const nod = () => 'yes';\n", "add nod");
+      await callJson(client, "task_close", { id: first.id, role: "worker" });
+      const late = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add shake", files: ["src/shake.ts"], criteria: ["SC1: it shakes"] });
+      tmb(["feature", "waive", "feat/nod", "--reason", "The Human read it"], project);
+      github({ create: PR_1, existing: null, view: "OPEN" });
+      await callJson(client, "feature_pr", { feature: "feat/nod", title: "Nod" });
+      const opened = onOrigin();
+
+      commitFile(late.worktree, "src/shake.ts", "export const shake = () => 'no';\n", "add shake");
+      const closed = await callJson(client, "task_close", { id: late.id, role: "worker" });
+      expect(closed.push).toMatchObject({ result: "skipped" });
+      expect(onOrigin()).toBe(opened);
+      expect(await callJson(client, "feature_brief", { feature: "feat/nod" })).toMatchObject({ state: "pr_open", covered: false });
+      expect(await callRefused(client, "feature_pr", { feature: "feat/nod", title: "Nod" })).toContain("opens only after the reviewer passes");
+    } finally {
+      await client.close();
+    }
+  }, 60_000);
 });

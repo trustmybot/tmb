@@ -92,7 +92,8 @@ describe("openStore", () => {
     return { issueId, discussionId, taskId };
   }
 
-  for (const version of [1, 2, 3]) {
+  // 8 and 9 take the multi-repo and dropped-task steps on to the run links of version 10 (trustmybot/tmb#163, trustmybot/tmb#170, trustmybot/tmb#135).
+  for (const version of [1, 2, 3, 8, 9]) {
     test(`upgrades a version-${version} database in place, keeping its records`, () => {
       const records = oldDatabase(version);
       const result = openStore(dbPath, { create: false });
