@@ -33,11 +33,11 @@ Each channel installs as a program of its own name, so channels and versions liv
 
 On Windows, set `$env:TMB_CHANNEL` or `$env:TMB_INSTALL_VERSION` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
 
-The examples on this page say `tmb`; use the name of the program you installed. A project runs the program that initialised it: its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it. A program refuses a project whose record a newer tmb has reshaped, and names the program and version that did; run that one, or a newer one, there.
+The examples on this page say `tmb`; use the name of the program you installed. A project runs the program that initialised it: its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it. A program refuses a project whose record a newer tmb has reshaped, and names the program that did; run that one there, or update this program with its `update` command (a program pinned to one release names the installer command instead).
 
 Before the channels had their own names, every channel installed as `tmb`. Such a `tmb` keeps following the channel it was on, and the installer points it out when it installs the channel's new name.
 
-Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. Until then it keeps running the version it has, and with no network it simply runs that version.
+Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. A project whose record a newer tmb reshaped never holds the swap back: this program can do nothing there, so no task there runs on it. Until then it keeps running the version it has, and with no network it simply runs that version.
 
 | Command | Does |
 |---|---|
