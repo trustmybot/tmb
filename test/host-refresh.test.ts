@@ -1,6 +1,6 @@
 // trustmybot/tmb#128: after an update, a session start brings a project's host files to the
 // running tmb by itself, as a fresh `tmb init` of that version would write them.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +15,9 @@ import { HOST_ADAPTERS } from "../src/adapters/index.ts";
 import { handleEvent, HOST_FILES_HEADING, installPushGate, openProjectStore, SUBAGENT_ROLES, tiedProgram, tieProgram, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 import { REFRESH_AUDIT, refreshProject } from "../src/refresh.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "claude-code" };

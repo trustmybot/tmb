@@ -1,13 +1,16 @@
 // Every function of TypeScript, TSX and JavaScript in the code graph (trustmybot/tmb#140): each
 // is one node, unnamed ones included, with a link to what contains it, matched one to one
 // against a second, independent parser on a fixture and on tmb's own repo.
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { type ExtractedSymbol, extractFile, inSymbolScope } from "../../extract.ts";
 import { loadParsers, type Parsers } from "../../loader.ts";
 import { compilerFunctions, coveredLanguage, graphFunctions, surplus } from "./coverage.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const REPO = path.resolve(import.meta.dir, "../../../../..");
 

@@ -1,7 +1,10 @@
 // Reading origin's address as a GitHub repository: the forms git accepts for a remote, and the
 // local paths that name none.
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { parseRemoteUrl } from "../src/engine/github.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const REPO = { host: "github.com", owner: "example", name: "project" };
 

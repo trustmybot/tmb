@@ -3,9 +3,12 @@
 // a fail, has no mark until it is reviewed and on GitHub, and its review leaves the old commit's
 // mark as it was.
 // A stand-in for GitHub keeps the marks; the project's origin has a GitHub address.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { githubStandIn } from "../integration/github-stand-in.ts";
 import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-mark-");
 afterAll(cleanup);

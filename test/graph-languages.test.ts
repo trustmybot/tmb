@@ -1,6 +1,6 @@
 // Each language the code graph reads is a module of its own (trustmybot/tmb#157): a language is
 // one folder and one registry line, and a grammar loads only when a file needs it.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +11,9 @@ import { lookupSymbol } from "../src/engine/graph/lookups.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 import { toy } from "./graph-language-fixture/toy/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const SRC = path.resolve(import.meta.dir, "../src");

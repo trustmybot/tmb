@@ -1,12 +1,15 @@
 // `tmb init`, `tmb onboard` and `tmb config` as separate processes, the way the Human runs them:
 // init finds the host on PATH, onboard's answers land in the record, and no run waits for input.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");

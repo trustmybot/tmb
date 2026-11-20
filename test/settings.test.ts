@@ -1,10 +1,13 @@
 // The project's settings: stored as audit entries in the record, the newest in force.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readSettings, SettingError, settingLines, validateSetting, writeSetting } from "../src/engine/index.ts";
 import { type Actor, openStore, type Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 

@@ -1,7 +1,7 @@
 // Dropping a task (trustmybot/tmb#170): the planner or the Human ends a task without its work,
 // with the reason; its worktree goes as a closed task's does unless it holds work, and a new
 // task can name the one it replaces. Runs against a real git repository.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +22,9 @@ import { retryKeptCheckouts } from "../src/engine/handlers/fold.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import { sessionStartContext } from "../src/engine/session-start.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

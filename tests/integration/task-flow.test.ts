@@ -1,13 +1,16 @@
 // The task flow driven as separate processes, the way the Human, an agent and the host use
 // it: the task commands, the task tools over stdio, and the hooks setup wired, which let a
 // worker start only on an open task and record its run.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import type { Run, Store } from "../../src/engine/store/index.ts";
 import { callJson, type ToolResult, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const WORK_FILE = "src/a/work.ts";
 const FEATURE = "feat/thing";

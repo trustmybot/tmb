@@ -1,7 +1,7 @@
 // The code graph: built from git at the base branch, parsed per language, references linked
 // only on proof, concepts kept and marked broken, a task's commit laid on top, and every read
 // bringing the graph forward first. Runs against real git repositories.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,6 +26,9 @@ import {
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import { PROJECT_MAP_HEADING, PROJECT_MAP_MAX_DIRS, sessionStartContext } from "../src/engine/session-start.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

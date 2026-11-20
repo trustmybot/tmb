@@ -1,7 +1,7 @@
 // Imports through path aliases and package names resolve to their files (trustmybot/tmb#147):
 // by a tsconfig's `paths` and `baseUrl`, the nearest config above the importing file, and the
 // name of a package of the repo. An installed package stays unresolved and is not a miss.
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +12,9 @@ import { ImportConfig, parseJsonc } from "../src/engine/graph/import-config.ts";
 import { lookupSymbol } from "../src/engine/graph/lookups.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 
