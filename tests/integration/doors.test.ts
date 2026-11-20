@@ -41,6 +41,8 @@ const TOOLS = [
   "graph_concept_upsert",
   "graph_concepts",
   "graph_miss",
+  "feedback_draft",
+  "feedback_send",
 ];
 
 let scratch: string;

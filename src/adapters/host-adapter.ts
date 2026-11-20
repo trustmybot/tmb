@@ -1,4 +1,4 @@
-import type { SubagentRole, TmbEventType } from "../engine/index.ts";
+import type { FeedbackEnv, SubagentRole, TmbEventType } from "../engine/index.ts";
 
 /** Whether the host is installed on this machine, and its version when it says. */
 export type HostDetection = { installed: boolean; version?: string };
@@ -23,6 +23,8 @@ export type HostLimits = {
 export type HookRun = {
   /** No one can answer in the run. */
   unattended: boolean;
+  /** The feedback program's environment, so a first session can tell the Human about it once. */
+  feedback?: FeedbackEnv;
 };
 
 /** What every host adapter gives the command line. */

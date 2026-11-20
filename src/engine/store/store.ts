@@ -672,6 +672,12 @@ export class Store {
     return rows.map(toEvent);
   }
 
+  /** The kinds of the newest `limit` events, oldest first, as `task updated`; never their content. */
+  recentEventKinds(limit: number): string[] {
+    const rows = this.db.query("SELECT record_kind, type FROM events ORDER BY id DESC LIMIT ?").all(limit) as { record_kind: string; type: string }[];
+    return rows.reverse().map((row) => `${row.record_kind} ${row.type}`);
+  }
+
   /** Empties every projection and the search index, then replays all events into them. */
   rebuildProjections(): void {
     this.db

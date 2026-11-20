@@ -27,6 +27,8 @@ import {
   usageErrorText,
 } from "./engine/doors/help.ts";
 import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
+import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
+import { type FeedbackEnv, feedbackEnv, keepLastError } from "./engine/feedback/index.ts";
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGate } from "./engine/push-gate.ts";
@@ -34,6 +36,7 @@ import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts"
 import { runningProgram } from "./program.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
+import type { HostAdapter } from "./adapters/host-adapter.ts";
 
 /** Each command's detail, as `tmb help <command>` and `tmb <command> --help` show it. */
 const USAGE: Record<string, string> = {
@@ -59,6 +62,7 @@ const USAGE: Record<string, string> = {
   dashboard: `  tmb dashboard [--port <n>] [--project <dir>]
                             Serve the record as a local web page, on port ${DEFAULT_PORT}
                             unless named; 0 picks a free one`,
+  feedback: FEEDBACK_USAGE,
   update: `  tmb update [--check]      Look for a newer build on this program's channel now and apply it
                             when no session of it is running and no task is open; with
                             --check, only report. tmb follows stable, tmb-rc rc and tmb-dev
@@ -111,6 +115,7 @@ const GROUPS: HelpGroup[] = [
     commands: [
       { name: "dashboard", summary: "Open the dashboard" },
       { name: "update", summary: "Look for a newer build" },
+      { name: "feedback", summary: "Report a bug in tmb itself" },
       { name: "help", summary: "Show help for a command" },
     ],
   },
@@ -177,6 +182,21 @@ function tmbCommand(): string[] {
   return isCompiledEntry(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
 }
 
+/** Each host with its version, as `<host> 2.1.0`, for a report; a host that is not installed is left out. */
+function hostLines(adapters: readonly HostAdapter[]): string[] {
+  return adapters.flatMap((adapter) => {
+    const found = adapter.detect();
+    return found.installed ? [`${adapter.name} ${found.version ?? "(version unknown)"}`] : [];
+  });
+}
+
+/** The feedback program's environment for this tmb; `hosts` are the ones a report names, every supported one unless given. */
+function feedbackEnvironment(hosts: readonly HostAdapter[] = HOST_ADAPTERS): FeedbackEnv {
+  const options = updaterOptions(version, isCompiledEntry(Bun.main));
+  const program = options.program!;
+  return feedbackEnv({ stateDir: options.stateDir, program, version, versionLine: versionLine(program), hosts: () => hostLines(hosts) });
+}
+
 /**
  * Whoever starts a run sets this to `1` when no one can answer in it. Only this door reads it;
  * the adapter and the engine get a plain flag.
@@ -197,7 +217,9 @@ async function runHook(args: string[]): Promise<number> {
     if (extra.length > 0) throw new Error(`hook takes one event name, got ${positionals.join(" ")}`);
     const adapter = adapterById(values.host ?? DEFAULT_HOST_ID);
     const stdinText = await Bun.stdin.text();
-    const output = adapter.answerHook(event, stdinText, hookRun());
+    // Only a session's start may tell the Human about the feedback program.
+    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]) } : hookRun();
+    const output = adapter.answerHook(event, stdinText, run);
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
     if (output !== "") process.stdout.write(output + "\n");
   } catch (error) {
@@ -219,6 +241,12 @@ async function runPrePush(args: string[]): Promise<number> {
   return 0;
 }
 
+/** The feedback environment the planner's tools use: the report names the host that runs them. */
+function toolFeedback(host: string): FeedbackEnv {
+  const adapter = HOST_ADAPTERS.find((candidate) => candidate.id === host);
+  return feedbackEnvironment(adapter === undefined ? [] : [adapter]);
+}
+
 async function runToolServer(args: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
@@ -232,7 +260,7 @@ async function runToolServer(args: string[]): Promise<number> {
   const projectDir = values.project === undefined ? projectRootOf(process.cwd()) : path.resolve(values.project);
   const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
   if (!updater.active) {
-    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended });
+    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended, feedback: toolFeedback(values.host) });
     return 0;
   }
   // A session start looks for an update in the background; the session's end may apply it.
@@ -253,7 +281,7 @@ async function runToolServer(args: string[]): Promise<number> {
   const onSignal = () => void end().finally(() => process.exit(0));
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, onSignal);
   try {
-    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended });
+    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended, feedback: toolFeedback(values.host) });
   } finally {
     await end();
   }
@@ -357,6 +385,7 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
     ask: terminal?.ask ?? null,
     out: (line) => process.stdout.write(`${line}\n`),
     colour: colourOn(process.stdout),
+    feedback: command === "init" ? feedbackEnvironment() : undefined,
   };
   try {
     await run(setupOptions);
@@ -427,6 +456,16 @@ function runMigrateCommand(args: string[]): number {
   return 0;
 }
 
+/** `tmb feedback`: asks only when a person is at both ends. */
+async function runFeedback(args: string[]): Promise<number> {
+  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
+  try {
+    return await runFeedbackCommand(args, feedbackEnvironment(), { out: stdout, err: stderr, ask: terminal?.ask ?? null, cwd: process.cwd() });
+  } finally {
+    terminal?.close();
+  }
+}
+
 async function dispatch(command: string, rest: string[]): Promise<number> {
   if (isRecordCommand(command)) return runRecordCommand(command, rest, process.cwd(), OUTPUT);
   switch (command) {
@@ -447,6 +486,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return runMigrateCommand(rest);
     case "dashboard":
       return runDashboard(rest);
+    case "feedback":
+      return runFeedback(rest);
     case "mcp":
       return runToolServer(rest);
     case "hook":
@@ -489,9 +530,26 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
+/** The command a failure came from, for a report: its name and, when it is a plain word, its action; never its values. */
+function failedCommand(argv: string[]): string {
+  const [command, action] = argv;
+  return [command, action !== undefined && /^[a-z][a-z-]*$/.test(action) ? action : undefined].filter((word) => word !== undefined).join(" ");
+}
+
 try {
   process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   process.stderr.write(`tmb: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
+  // Kept for `tmb feedback`, which may put it in a report the Human reads first.
+  try {
+    keepLastError(updaterOptions(version, isCompiledEntry(Bun.main)).stateDir, {
+      at: new Date().toISOString(),
+      command: failedCommand(process.argv.slice(2)),
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? (error.stack ?? null) : null,
+    });
+  } catch {
+    // The error above is what matters.
+  }
 }

@@ -3,10 +3,9 @@
 // no tmb session is running and no task is open, so no session or task ever mixes versions.
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "./engine/project.ts";
-import { type Channel, channelOf, type Program, programOf } from "./program.ts";
+import { type Channel, channelOf, type Program, programOf, programStateDir } from "./program.ts";
 
 export { CHANNELS, type Channel, channelOf, isCompiledEntry } from "./program.ts";
 
@@ -76,8 +75,6 @@ export type UpdaterOptions = {
 
 /** The updater's settings from the environment, for the tmb that is running. */
 export function updaterOptions(version: string, compiled: boolean, env: NodeJS.ProcessEnv = process.env): UpdaterOptions {
-  const home = env.HOME || env.USERPROFILE || homedir();
-  const stateRoot = IS_WINDOWS ? env.LOCALAPPDATA || path.join(home, "AppData", "Local") : env.XDG_STATE_HOME || path.join(home, ".local", "state");
   // TMB_UPDATE_FILE names the file to update in place of the running executable, for a run from source.
   const target = env.TMB_UPDATE_FILE || (compiled ? process.execPath : null);
   const program = programOf(target, version);
@@ -86,7 +83,7 @@ export function updaterOptions(version: string, compiled: boolean, env: NodeJS.P
     target,
     program,
     // Each program keeps its own machine-wide state, so one never swaps another's build in.
-    stateDir: env.TMB_STATE_DIR || path.join(stateRoot, program.name),
+    stateDir: programStateDir(program.name, env),
     releasesUrl: (env.TMB_RELEASES_URL || DEFAULT_RELEASES_URL).replace(/\/+$/, ""),
     releasesApi: (env.TMB_RELEASES_API || DEFAULT_RELEASES_API).replace(/\/+$/, ""),
     enabled: env.TMB_NO_UPDATE !== "1",

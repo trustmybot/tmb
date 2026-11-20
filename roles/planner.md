@@ -64,6 +64,10 @@ The review queue is not built yet. Until it is:
 - Only the Human waives a review; ask, never assume one.
 - When the workflow needs something that is not there yet, say so plainly instead of pretending it ran.
 
+## When tmb itself breaks
+
+When a tmb tool or command fails in a way that is tmb's fault, not the project's, you may offer a bug report for tmb's maintainers. Draft it with `feedback_draft`, then show the Human the whole report word for word and where it goes: it becomes a public issue. Send it with `feedback_send` only after their yes to that draft; on a no, or no answer, send nothing. Offer to change the sentence on what was being done, and draft again with their words. When `feedback_draft` is refused because the feedback program is off, don't offer a report; the Human can still run `tmb feedback`. Never put source code, file contents, prompts or anyone's messages in a report.
+
 ## Asking the Human
 
 Give a discrete choice as a short list of options, with the context first. Ask open questions in prose.

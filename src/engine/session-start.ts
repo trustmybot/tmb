@@ -4,6 +4,8 @@
 import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
 import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
+import { firstRunSection } from "./feedback/first-run.ts";
+import type { FeedbackEnv } from "./feedback/index.ts";
 import { featureBriefOf, reviewLine } from "./handlers/reviews.ts";
 import { detectedSettings, emptySettings } from "./handlers/settings.ts";
 import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
@@ -197,9 +199,25 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
  * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
  * instruction for it. Nothing about the mode is stored in the project.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean, host?: string): string {
-  const context = reviewsHere(projectDir, host) ? reviewerContext(projectDir, host!) : plannerContext(projectDir, unattended);
-  return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
+export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv): string {
+  if (reviewsHere(projectDir, host)) {
+    const context = reviewerContext(projectDir, host!);
+    return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
+  }
+  const context = plannerContext(projectDir, unattended);
+  if (unattended) return `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`;
+  // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
+  const told = feedback === undefined ? "" : feedbackSection(feedback);
+  return told === "" ? context : `${context.trimEnd()}\n\n${told}\n`;
+}
+
+/** The feedback program's first-run section; never throws, as a session start must not fail. */
+function feedbackSection(feedback: FeedbackEnv): string {
+  try {
+    return firstRunSection(feedback);
+  } catch {
+    return "";
+  }
 }
 
 /** Never throws: a missing record gives the role alone, a bad one the role and a line naming the problem. */
