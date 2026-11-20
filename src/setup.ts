@@ -30,6 +30,8 @@ import {
   validateSetting,
   writeSetting,
 } from "./engine/index.ts";
+import { firstRunAtInit } from "./engine/feedback/first-run.ts";
+import type { FeedbackEnv } from "./engine/feedback/index.ts";
 import { indexProject } from "./engine/graph/fresh.ts";
 import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
@@ -59,6 +61,8 @@ export type SetupOptions = {
   program?: { name: string; version: string };
   /** Whether `out` may be coloured: the commands init's next steps name are then painted. Plain unless given. */
   colour?: boolean;
+  /** The feedback program's environment: init's end on a terminal tells or asks about it once. Nothing is said unless given. */
+  feedback?: FeedbackEnv;
 };
 
 export class SetupError extends Error {
@@ -410,6 +414,8 @@ export async function runInit(options: SetupOptions): Promise<void> {
     out(`The settings are still empty: ${listed(empty)}; ${howEmptySettingsFill(init.role)}. To set them yourself, run ${onboard}.`);
   }
   if (settings.review_mode === null) out(howReviewModeIsChosen(init.role, onboard));
+  // The feedback program's notice or question, once per program on this machine, only with someone to answer.
+  if (options.ask !== null && options.feedback !== undefined) await firstRunAtInit(options.feedback, options.ask, out);
   // Said again last, so it is not lost above init's other lines.
   if (init.warning) out(init.warning);
 }

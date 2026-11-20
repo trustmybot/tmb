@@ -1,11 +1,13 @@
 // What the feature and task operations share: where they run, who may call them, and the
 // states and branch names they use.
+import type { FeedbackEnv } from "../feedback/index.ts";
 import type { Actor, Role } from "../store/index.ts";
 import { HandlerError } from "./errors.ts";
 
 /** Where an operation runs: the project's folder, and how long each check may take. */
 /** `unattended` is true when no one can answer in the run the call comes from. */
-export type OperationContext = { projectDir: string; checkTimeoutMs?: number; unattended?: boolean };
+/** `feedback` is the feedback program's environment, given by the door that runs the planner's tools. */
+export type OperationContext = { projectDir: string; checkTimeoutMs?: number; unattended?: boolean; feedback?: FeedbackEnv };
 
 export const OPEN = "open";
 export const CLOSED = "closed";

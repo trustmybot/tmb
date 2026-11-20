@@ -2,6 +2,7 @@
 // telling an agent when to use it. The tool server publishes these as its tools.
 import type { Actor, Store } from "../store/index.ts";
 import * as feature from "./features.ts";
+import * as feedback from "./feedback.ts";
 import * as graph from "./graph.ts";
 import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
@@ -191,6 +192,18 @@ export const OPERATIONS = {
     inputSchema: graph.graphMissSchema,
     run: graph.graphMiss,
   },
+  feedback_draft: {
+    description:
+      "Draft a bug report about tmb itself when tmb breaks: a tmb tool or command failed in a way that looks like tmb's fault, not the project's. tmb fills in its version, the OS, the host, the error and the kinds of recent record events, cleans paths and secrets, and returns the whole report without sending it. Refused when the feedback program is off. For the planner.",
+    inputSchema: feedback.feedbackDraftSchema,
+    run: feedback.feedbackDraft,
+  },
+  feedback_send: {
+    description:
+      "Send a report feedback_draft drafted, only after the Human read the whole draft and said yes to it: it becomes a public issue on tmb's repo from their GitHub account, or opens the filled-in bug form for them to submit. Refused without the Human's yes and in a run where no one can answer. For the planner.",
+    inputSchema: feedback.feedbackSendSchema,
+    run: feedback.feedbackSend,
+  },
 } as const satisfies Record<string, Operation>;
 
 export type OperationName = keyof typeof OPERATIONS;
@@ -202,6 +215,7 @@ export function isOperationName(name: unknown): name is OperationName {
 export { HandlerError, type HandlerErrorCode } from "./errors.ts";
 export { type FieldSchema, type InputSchema } from "./input.ts";
 export * from "./features.ts";
+export * from "./feedback.ts";
 export * from "./graph.ts";
 export * from "./marks.ts";
 export { type PushOutcome, type PushResult } from "./fold.ts";

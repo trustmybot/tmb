@@ -3,6 +3,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, type CallToolResult, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { FeedbackEnv } from "../feedback/index.ts";
 import { HandlerError, isOperationName, OPERATIONS } from "../handlers/index.ts";
 import { openProjectStore } from "../project.ts";
 import { hostRole } from "../settings.ts";
@@ -44,6 +45,8 @@ export class ToolSession {
     readonly host: string,
     /** True when no one can answer in the run this server serves. */
     readonly unattended = false,
+    /** The feedback program's environment, for the planner's feedback tools. */
+    readonly feedback?: FeedbackEnv,
   ) {
     if (host.trim() === "") throw new Error("the tool server needs a host id");
   }
@@ -69,7 +72,7 @@ export class ToolSession {
     try {
       const store = this.openStore();
       const actor: Actor = { kind: "agent", role: (role as Role | undefined) ?? hostRole(store, this.host), host: this.host };
-      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir, unattended: this.unattended });
+      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir, unattended: this.unattended, feedback: this.feedback });
       return textResult(JSON.stringify(result));
     } catch (error) {
       return textResult(error instanceof HandlerError ? error.message : describe(error), true);
@@ -83,8 +86,8 @@ export class ToolSession {
 }
 
 /** Serves the tools on stdin and stdout until stdin closes. */
-export async function serveTools(options: { projectDir: string; host: string; version: string; unattended?: boolean }): Promise<void> {
-  const session = new ToolSession(options.projectDir, options.host, options.unattended === true);
+export async function serveTools(options: { projectDir: string; host: string; version: string; unattended?: boolean; feedback?: FeedbackEnv }): Promise<void> {
+  const session = new ToolSession(options.projectDir, options.host, options.unattended === true, options.feedback);
   const server = new Server({ name: SERVER_NAME, version: options.version }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listTools() }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => session.call(request.params.name, request.params.arguments));

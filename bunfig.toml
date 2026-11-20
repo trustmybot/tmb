@@ -1,6 +1,8 @@
 # The agent runs' fixture projects carry their own tests, which fail as shipped on purpose.
 [test]
 pathIgnorePatterns = ["tests/agent-run/fixtures/**"]
+# Every tmb the tests run keeps its machine-wide state in a scratch folder, not the person's.
+preload = ["./tests/lib/isolate-state.ts"]
 
 # The dashboard's pages are bundled when it serves them from source; their styles need Tailwind.
 [serve.static]

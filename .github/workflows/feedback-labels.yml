@@ -1,0 +1,47 @@
+name: feedback-labels
+
+# A report `tmb feedback` filed through the GitHub CLI carries one hidden line naming the issue
+# form it was drafted from. GitHub drops the labels of an issue created through its API by
+# someone who cannot write to the repo, so this adds that form's labels, read from the form on
+# the default branch: labels come from the form on both routes (trustmybot/tmb#122).
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    if: contains(github.event.issue.body, '<!-- tmb-feedback form=')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add the form's labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          # Only a form file name, never a path: the body is the reporter's text.
+          form=$(printf '%s' "$BODY" | grep -oE '<!-- tmb-feedback form=[a-z0-9][a-z0-9-]*\.yml -->' | head -n 1 | sed -E 's/.*form=([a-z0-9-]+\.yml).*/\1/' || true)
+          if [ -z "$form" ]; then
+            echo "No form named; nothing to label."
+            exit 0
+          fi
+          if ! gh api "repos/$REPO/contents/.github/ISSUE_TEMPLATE/$form?ref=$DEFAULT_BRANCH" -H "Accept: application/vnd.github.raw" > form.yml; then
+            echo "No form $form on $DEFAULT_BRANCH; nothing to label."
+            exit 0
+          fi
+          # A form's labels are a list or one comma-separated string.
+          labels=$(yq -r '.labels | select(. != null) | (select(tag == "!!seq") | .[]), (select(tag == "!!str") | split(",") | .[])' form.yml | sed -E 's/^ +| +$//g' | grep -v '^$' | paste -sd, - || true)
+          if [ -z "$labels" ]; then
+            echo "Form $form names no labels."
+            exit 0
+          fi
+          gh issue edit "$NUMBER" --repo "$REPO" --add-label "$labels"
+          echo "Added $labels from $form."

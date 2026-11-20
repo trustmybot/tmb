@@ -2,6 +2,7 @@
 // separate names (trustmybot/tmb#89): `tmb` follows stable, `tmb-rc` rc, `tmb-dev` dev, and
 // `tmb-<version>` is one exact version that never updates itself. The name is the installed
 // file's, so the same build installed under two names is two programs.
+import { homedir } from "node:os";
 import path from "node:path";
 
 export const CHANNELS = ["dev", "rc", "stable"] as const;
@@ -60,4 +61,16 @@ export function runningProgram(version: string): Program {
 /** How a program describes itself: its name, version and what it follows. */
 export function describeProgram(program: Program, version: string): string {
   return `${program.name} ${version}, ${program.channel === null ? "pinned: it never updates itself" : `on the ${program.channel} channel`}`;
+}
+
+/**
+ * Where a program keeps its machine-wide state: the updater's, and the person's feedback
+ * setting. One folder per program, so each channel's program keeps its own. TMB_STATE_DIR
+ * names it instead.
+ */
+export function programStateDir(name: string, env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): string {
+  if (env.TMB_STATE_DIR) return env.TMB_STATE_DIR;
+  const home = env.HOME || env.USERPROFILE || homedir();
+  const root = platform === "win32" ? env.LOCALAPPDATA || path.join(home, "AppData", "Local") : env.XDG_STATE_HOME || path.join(home, ".local", "state");
+  return path.join(root, name);
 }

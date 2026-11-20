@@ -1,3 +1,4 @@
+import type { FeedbackEnv } from "./feedback/index.ts";
 import { endHostReviewerRun, isReviewerHost, NO_VERDICT } from "./host-runs.ts";
 import { openProjectStore } from "./project.ts";
 import { sessionStartContext } from "./session-start.ts";
@@ -8,7 +9,7 @@ import { sessionStartContext } from "./session-start.ts";
  * answered as the planner's.
  */
 export type EngineEvent =
-  | { type: "session-start"; projectDir: string; unattended: boolean; host?: string }
+  | { type: "session-start"; projectDir: string; unattended: boolean; host?: string; feedback?: FeedbackEnv }
   | { type: "session-end"; projectDir: string; host: string };
 
 export type EngineAnswer = { context: string };
@@ -29,7 +30,7 @@ function sessionEnd(projectDir: string, host: string): void {
 export function handleEvent(event: EngineEvent): EngineAnswer {
   switch (event.type) {
     case "session-start":
-      return { context: sessionStartContext(event.projectDir, event.unattended, event.host) };
+      return { context: sessionStartContext(event.projectDir, event.unattended, event.host, event.feedback) };
     case "session-end":
       sessionEnd(event.projectDir, event.host);
       return { context: "" };
@@ -42,6 +43,8 @@ export { OPERATIONS } from "./handlers/index.ts";
 export { installPushGate, judgePush, parsePushRefs, type PushRef, removePushGate } from "./push-gate.ts";
 export { AWAITING_REVIEW_HEADING, EMPTY_SETTINGS_HEADING, OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole, reviewerRole, UNATTENDED_INSTRUCTION } from "./session-start.ts";
 export { NO_VERDICT } from "./host-runs.ts";
+export { type FeedbackEnv, feedbackEnv } from "./feedback/index.ts";
+export { FEEDBACK_HEADING, firstRunAtInit } from "./feedback/first-run.ts";
 export { openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "./project.ts";
 export { detectBaseBranch, FALLBACK_BASE_BRANCH } from "./base-branch.ts";
 export { type ProgramTie, tiedProgram, tieProgram } from "./program-tie.ts";
