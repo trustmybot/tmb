@@ -23,7 +23,15 @@ One step per platform. After it, two commands inside a project:
 
 Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's, so init replaces them and remove deletes them.
 
-**A project follows the program's updates.** A newer tmb that opens a project's database upgrades it by itself. Planned for v1.0.0 (trustmybot/tmb#128), decided by the Human on 2026-11-20: when a session starts in a project that another version of the same program wired, tmb redoes init's wiring by itself, never in the middle of a task, and the record keeps the change. Until that is built, the files init wrote stay as they were until `tmb init` is run again.
+**A project follows the program's updates.** Decided by the Human on 2026-11-20 (trustmybot/tmb#128). A newer tmb that opens a project's database upgrades it by itself. The files init wrote follow at a session's start:
+
+- **When another version of the same program last wired the project, tmb redoes init's wiring**: each host the project is set up for, and git's push hook. That replaces only what tmb wrote, asks nothing and changes no setting. An older version refreshes as a newer one does, so the files match the program that runs.
+- **Never while a task is open.** tmb waits for a session start with none open, and says so.
+- **Not for a project tied to another channel's program.** Moving a project stays the Human's `tmb init`.
+- **The hosts read their files when a session starts**, so a refresh takes effect from the next session. The session start says so in one line, and in an unattended run the role names it in its answer.
+- **The record keeps each refresh** as an audit entry: the program, from which version to which, the hosts and what changed. The project is then tied to the new version.
+- **A refresh that fails never stops the session.** The line says what failed and names `tmb init`.
+- **Init takes out what a version no longer wires**, as remove would: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use.
 
 Removing tmb from a project (`tmb remove`) undoes exactly what init added and leaves the Human's own settings alone.
 

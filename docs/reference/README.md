@@ -50,7 +50,7 @@ Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). Th
 
 `tmb --version` prints the program's name, its version, the source commit it was built from and the channel it follows. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
 
-After an update, each project's database is upgraded by itself the first time tmb opens it. The files `tmb init` wrote into a project are not refreshed yet: run `tmb init` in the project again to get the new ones. tmb doing this by itself is planned for v1.0.0 (trustmybot/tmb#128).
+After an update, each project catches up by itself. Its database is upgraded the first time tmb opens it. The files `tmb init` wrote are refreshed at the next session start, when no task is open, and the session says so in one line; your agent program reads those files when a session starts, so the new ones apply from the session after. A project you set up with another channel's program is left alone: run that program's `init` to move it. If a refresh fails, the session goes on and the line names `tmb init`.
 
 ## Set up a project
 
@@ -81,6 +81,8 @@ On a terminal, init first asks one question: the review mode, with what each mod
 `tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
 
 It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
+
+Run again, init replaces what an earlier tmb wrote and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
 
 On a terminal it asks for the review mode before those lines, unless one is stored. Without a terminal it asks nothing, never waits for input, and ends by saying that no review mode is chosen and that no task starts until it is.
 

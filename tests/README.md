@@ -229,6 +229,14 @@ What a close checks beyond the checks, and a worker started in a worktree its ho
 | Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | Claude Code raises a worker's folder when the worker names its task with task_brief or task_close; Codex, whose worker works in the worktree tmb cut, does not. |
 | Workflow simulation | [tests/workflow/close-checks.test.ts](workflow/close-checks.test.ts) | A commit outside the task's files closes, and the close names those files and leaves the spec as written; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |
 
+## Refresh after an update
+
+A project's host files after `tmb update` (trustmybot/tmb#128).
+
+| Level | Test | Covers |
+|---|---|---|
+| Unit | [test/host-refresh.test.ts](../test/host-refresh.test.ts) | A project wired by one version and opened by another ends with the files a fresh init writes, and one refresh in the record; a second session start changes nothing; the Human's own entries stay; nothing is refreshed while a task is open; a project of another program, or with no record, is left alone; an older program refreshes too; a failed refresh names `tmb init` and records nothing; the session start's one line, attended and unattended; init takes out a tmb hook under an event it no longer uses, for Claude Code and Codex. |
+
 ## Feedback
 
 The feedback program (trustmybot/tmb#122).
