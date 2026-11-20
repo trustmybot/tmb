@@ -160,7 +160,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
         commitFile(task.worktree, file, text, `add ${file}`);
         await callJson(client, "task_close", { id: task.id, role: "worker" });
       }
-      tmb(["feature", "waive", "feat/squash", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/squash", "--reason", "The Human read it"], project);
       expect(await callJson(client, "feature_pr", { feature: "feat/squash", title: "Squash" })).toMatchObject({ url: null });
 
       // The Human squashes the branch into one commit on main: the tip is not on main, its work is.
@@ -176,7 +176,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       const part = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/part", intent: "Add c", files: ["src"], criteria: ["SC1: x"] });
       commitFile(part.worktree, "src/c.ts", "export const c = 3;\n", "add c");
       await callJson(client, "task_close", { id: part.id, role: "worker" });
-      tmb(["feature", "waive", "feat/part", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/part", "--reason", "The Human read it"], project);
       await callJson(client, "feature_pr", { feature: "feat/part", title: "Part" });
       commitFile(project, "src/c.ts", "export const c = 4;\n", "a different c on main");
       expect((await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/part")).toMatchObject({ state: "ready" });
@@ -194,7 +194,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", feature: "feat/limit", intent: "Add greet", files: ["src"], criteria: ["SC1: x"] });
       commitFile(task.worktree, "src/greet.ts", "export const greet = () => 'hi';\n", "add greet");
       await callJson(client, "task_close", { id: task.id, role: "worker" });
-      tmb(["feature", "waive", "feat/limit", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/limit", "--reason", "The Human read it"], project);
       const ready = await callJson(client, "feature_pr", { feature: "feat/limit", title: "Limit" });
       // The answer that names the ready branch says how to end it when tmb cannot see its merge.
       expect(ready.localMerge.otherwise).toContain('tmb feature drop feat/limit --reason "<where the work went>"');
@@ -221,14 +221,14 @@ describe("a project with no remote ends with a local merge by the Human", () => 
 
   test("a truest task cherry-picked onto the base branch by hand is closed", async () => {
     const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": "one\ntwo\n" });
-    tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+    human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
     const issue = tmbJson(["issue", "create", "Fix the lines"], project);
     const client = await connect(project, "claude-code");
     try {
       const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Fix line two", files: ["src"], criteria: ["SC1: it works"] });
       commitFile(task.worktree, "src/lines.txt", "one\nTWO\n", "fix two");
       await callJson(client, "task_close", { id: task.id, role: "worker" });
-      tmb(["task", "waive", task.id, "--reason", "The Human read it"], project);
+      human(["task", "waive", task.id, "--reason", "The Human read it"], project);
       const ready = await callJson(client, "task_pr", { id: task.id, title: "Fix" });
       commitFile(project, "OTHER.md", "other\n", "someone else's change");
       git(project, "cherry-pick", ready.commit);

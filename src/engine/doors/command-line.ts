@@ -113,7 +113,7 @@ ${JSON_NOTE}`,
 /** The actions of the record commands that take one, in the order the help lists them. */
 export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> = {
   issue: ["create", "list", "show", "close", "reopen"],
-  feature: ["start", "update", "list", "brief", "waive", "pr"],
+  feature: ["start", "update", "list", "brief", "waive", "pr", "drop"],
   task: ["start", "list", "brief", "close", "drop", "waive", "pr"],
   graph: ["map", "find", "symbol", "scope", "concepts", "areas"],
 };
