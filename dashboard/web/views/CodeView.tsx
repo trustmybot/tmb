@@ -59,7 +59,13 @@ const width = (n: number) => Math.min(1 + Math.log2(n + 1), 6);
 const COSE: LayoutOptions = { name: 'cose', animate: false, nodeDimensionsIncludeLabels: true, padding: 24, componentSpacing: 60, nodeRepulsion: () => 8000, idealEdgeLength: () => 80 } as LayoutOptions;
 const PRESET: LayoutOptions = { name: 'preset', padding: 24 } as LayoutOptions;
 
-/** The link to a place on the page: a folder, a file or one function. */
+/**
+ * The query of a graph read: its own params, and the repo the address names. In a workspace the
+ * page names one; in a project of one repo there is none to name.
+ */
+const graphQuery = (params: Record<string, string>, repo: string | null) => query(repo === null ? params : { ...params, repo });
+
+/** The link to a place on the page: a folder, a file or one function, in the repo the address names. */
 export const placeHref = (place: { dir?: string; file?: string; fn?: number }) =>
   hrefWith({ dir: place.dir ?? null, file: place.file ?? null, fn: place.fn === undefined ? null : String(place.fn) }, 'code');
 
@@ -71,10 +77,19 @@ const LINK = 'text-fg-link hover:underline';
 
 function Breadcrumb({ path, last }: { path: string; last?: ReactNode }) {
   const parts = path === '.' ? [] : path.split('/');
+  const repo = useHashParam('repo');
   return (
     <nav aria-label="Path" className="flex flex-wrap items-center gap-1 text-sm">
+      {repo !== null && (
+        <span className="flex items-center gap-1">
+          <a className={LINK} href={hrefWith({ repo: null, dir: null, file: null, fn: null }, 'code')}>
+            (repos)
+          </a>
+          <span className="text-fg-muted">/</span>
+        </span>
+      )}
       <a className={LINK} href={placeHref({ dir: '.' })}>
-        (project)
+        {repo ?? '(project)'}
       </a>
       {parts.map((part, i) => {
         const at = parts.slice(0, i + 1).join('/');
@@ -96,9 +111,9 @@ function Breadcrumb({ path, last }: { path: string; last?: ReactNode }) {
   );
 }
 
-function Search() {
+function Search({ repo }: { repo: string | null }) {
   const [text, setText] = useState('');
-  const hits = useApi<{ hits: Hit[] }>(`graph/search?${query({ q: text })}`, { enabled: text.trim().length > 1, keepPrevious: true });
+  const hits = useApi<{ hits: Hit[] }>(`graph/search?${graphQuery({ q: text }, repo)}`, { enabled: text.trim().length > 1, keepPrevious: true });
   return (
     <div className="relative w-full max-w-md">
       <label className="flex items-center gap-2">
@@ -408,14 +423,47 @@ export function CodeView() {
   const dir = useHashParam('dir');
   const file = useHashParam('file');
   const fn = useHashParam('fn');
+  const repo = useHashParam('repo');
+  const repos = useApi<{ repos: string[] }>('graph/repos');
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Subhead>Code Graph</Subhead>
-        <Search />
-      </div>
-      {fn !== null ? <FunctionPage id={fn} /> : file !== null ? <FilePage path={file} /> : <FolderPage path={dir ?? '.'} />}
+      <Loading q={repos}>
+        {({ repos: names }) =>
+          // A workspace of several repos opens on their list; the Human picks one, and the address
+          // carries it. A project of one repo, or a workspace with one, opens straight on its graph.
+          repo === null && names.length > 1 ? (
+            <RepoList names={names} />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Subhead>Code Graph</Subhead>
+                <Search key={repo} repo={repo} />
+              </div>
+              {fn !== null ? <FunctionPage id={fn} repo={repo} /> : file !== null ? <FilePage path={file} repo={repo} /> : <FolderPage path={dir ?? '.'} repo={repo} />}
+            </>
+          )
+        }
+      </Loading>
     </div>
+  );
+}
+
+function RepoList({ names }: { names: string[] }) {
+  return (
+    <section className="space-y-3">
+      <Subhead>Code Graph</Subhead>
+      <p className="text-sm text-fg-muted">This workspace has {plural(names.length, 'repo')}, each with a graph of its own. Pick one.</p>
+      <ul aria-label="Repos" className="divide-y divide-border-default rounded-md border border-border-default">
+        {names.map((name) => (
+          <li key={name}>
+            <a className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-(--bgColor-muted)" href={hrefWith({ repo: name, dir: null, file: null, fn: null }, 'code')}>
+              <FileDirectoryIcon size={16} className="text-fg-muted" aria-hidden="true" />
+              <span className="font-semibold text-fg-link">{name}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -427,17 +475,17 @@ function Footer({ data }: { data: Base }) {
   );
 }
 
-function FolderPage({ path }: { path: string }) {
-  const q = useApi<TreeData>(`graph/tree?${query({ path })}`);
+function FolderPage({ path, repo }: { path: string; repo: string | null }) {
+  const q = useApi<TreeData>(`graph/tree?${graphQuery({ path }, repo)}`);
   return <Loading q={q}>{(data) => <><FolderLevel data={data} /><Footer data={data} /></>}</Loading>;
 }
 
-function FilePage({ path }: { path: string }) {
-  const q = useApi<FileData>(`graph/file?${query({ path })}`);
+function FilePage({ path, repo }: { path: string; repo: string | null }) {
+  const q = useApi<FileData>(`graph/file?${graphQuery({ path }, repo)}`);
   return <Loading q={q}>{(data) => <><FileLevel key={data.path} data={data} /><Footer data={data} /></>}</Loading>;
 }
 
-function FunctionPage({ id }: { id: string }) {
-  const q = useApi<FunctionData>(`graph/function/${encodeURIComponent(id)}`);
+function FunctionPage({ id, repo }: { id: string; repo: string | null }) {
+  const q = useApi<FunctionData>(`graph/function/${encodeURIComponent(id)}?${graphQuery({}, repo)}`);
   return <Loading q={q}>{(data) => <><FunctionLevel data={data} /><Footer data={data} /></>}</Loading>;
 }

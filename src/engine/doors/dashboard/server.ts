@@ -8,6 +8,7 @@ import page from "../../../../dashboard/web/index.html";
 import { openView } from "../../graph/fresh.ts";
 import { HandlerError, OPERATIONS } from "../../handlers/index.ts";
 import { openProjectStore, projectDbPath } from "../../project.ts";
+import { workingRepos, workspaceRepos } from "../../repos.ts";
 import type { Actor, Store } from "../../store/index.ts";
 import * as graph from "./code-graph.ts";
 import * as q from "./queries.ts";
@@ -104,7 +105,8 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
 
   /**
    * A read of the code graph at the base branch, brought forward first as every graph read is.
-   * The page never sees a task's own changes.
+   * The page never sees a task's own changes. In a workspace, `repo` names whose graph; the page
+   * shows the list of repos first, so it always names one when there are several.
    */
   function graphRead(handler: (db: Database, layer: string, req: Request & { params: Record<string, string> }) => unknown) {
     return async (req: Request & { params: Record<string, string> }) => {
@@ -115,7 +117,8 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
       await turn;
       try {
         checkHost(req);
-        const view = await openView(options.projectDir, store);
+        const repo = new URL(req.url).searchParams.get("repo") || undefined;
+        const view = await openView(options.projectDir, store, { repo });
         try {
           const body = view.db.transaction(() => handler(view.db, view.layer, req)).deferred();
           return body === null ? fail(404, "not_found", "no such path or function in the code graph") : json({ ...(body as Json), commit: view.freshness.commit, baseBranch: view.freshness.baseBranch });
@@ -170,6 +173,12 @@ export function startDashboard(options: { projectDir: string; port?: number }): 
     "/api/checks": read((req) => q.checkRuns(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/guard-decisions": read((req) => q.guardDecisions(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
     "/api/audit": read((req) => q.audit(db, q.clampLimit(new URL(req.url).searchParams.get("limit")))),
+    // The repos whose graphs the Code page can show: none in a project of one repo, which opens
+    // straight on its graph.
+    "/api/graph/repos": read(() => {
+      const repos = workspaceRepos(store);
+      return { repos: repos === null ? [] : workingRepos(repos) };
+    }),
     "/api/graph/tree": graphRead((db, layer, req) => graph.tree(db, layer, new URL(req.url).searchParams.get("path") ?? ".")),
     "/api/graph/file": graphRead((db, layer, req) => graph.file(db, layer, new URL(req.url).searchParams.get("path") ?? "")),
     "/api/graph/function/:id": graphRead((db, layer, req) => (/^\d+$/.test(req.params.id!) ? graph.functionView(db, layer, Number(req.params.id)) : null)),
