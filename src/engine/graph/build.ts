@@ -3,7 +3,7 @@
 // per blob: a later commit reparses only the files it changed.
 import type { Database } from "bun:sqlite";
 import { basename, posix } from "node:path";
-import { type Extraction, extractFile, inSymbolScope, languageOf, needsParser, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { type Extraction, extractFile, inSymbolScope, languageOf, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
@@ -59,7 +59,7 @@ function cachedParse(db: Database, blob: string, lang: string): { extraction: Ex
 
 function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text: string): { extraction: Extraction | null; error: string | null } {
   try {
-    const { symbols, edges } = extractFile(needsParser(lang) ? parsers : null, entry.path, lang, text);
+    const { symbols, edges } = extractFile(parsers, entry.path, lang, text);
     return { extraction: { symbols, edges }, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -94,14 +94,19 @@ async function planCommit(
     if (wantsText) needText.push(entry.blob);
   }
   const texts = readBlobs(repoDir, needText);
-  const parsers = await loadParsers();
-  let parsed = 0;
-  const cache = db.prepare("INSERT OR REPLACE INTO parsed (blob, lang, extractor, extraction, error) VALUES (?, ?, ?, ?, ?)");
   for (const plan of plans) {
     const text = texts.get(plan.entry.blob) ?? null;
     if (plan.lang === null && text !== null && byExtension.get(plan.entry.path) === null) {
       plan.lang = languageOf(plan.entry.path, () => text.slice(0, 120));
     }
+  }
+  // Only the grammars of the files this commit parses anew are loaded (trustmybot/tmb#157).
+  const toParse = plans.filter((p) => p.lang !== null && p.extraction === null && p.error === null && p.entry.size <= MAX_PARSE_BYTES);
+  const parsers = await loadParsers(toParse.map((p) => p.lang as SourceLanguage));
+  let parsed = 0;
+  const cache = db.prepare("INSERT OR REPLACE INTO parsed (blob, lang, extractor, extraction, error) VALUES (?, ?, ?, ?, ?)");
+  for (const plan of plans) {
+    const text = texts.get(plan.entry.blob) ?? null;
     if (plan.lang !== null && plan.extraction === null && plan.error === null) {
       if (plan.entry.size > MAX_PARSE_BYTES) {
         plan.error = `larger than ${MAX_PARSE_BYTES} bytes; not parsed`;

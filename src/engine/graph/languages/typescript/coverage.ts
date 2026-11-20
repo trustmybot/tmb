@@ -2,8 +2,8 @@
 // must be one function of the code graph, matched by file and lines, and the graph must hold
 // no other. The second parser is the TypeScript 5.9 compiler, a development dependency only.
 import ts from "typescript5";
-import { extractFile, languageOf, type SourceLanguage } from "../../src/engine/graph/extract.ts";
-import type { Parsers } from "../../src/engine/graph/loader.ts";
+import { extractFile, languageOf, type SourceLanguage } from "../../extract.ts";
+import type { Parsers } from "../../loader.ts";
 
 const SCRIPT_KIND: Record<string, ts.ScriptKind> = {
   ts: ts.ScriptKind.TS,
