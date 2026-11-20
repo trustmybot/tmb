@@ -35,4 +35,10 @@ The words tmb uses, and the plugin's word for the same thing. tmb prefers the na
 
 ## Not carried over
 
-Lane, roundtable, cheatcode, headless shim, sandbox setup, research switch.
+Lane, roundtable, headless shim, sandbox setup, research switch.
+
+## Coming back
+
+| Word | Meaning |
+|---|---|
+| Cheatcode | Planned for v2 (trustmybot/tmb#112), decided by the Human on 2026-11-20. In the plugin, a published skill, tool server or plugin that bro found, vetted and installed for one agent after the Human's yes. In tmb the name stays and the scope grows: a skill is given to a role once, for every host in that role. |
