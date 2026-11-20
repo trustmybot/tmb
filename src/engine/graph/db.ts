@@ -14,6 +14,8 @@ const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
 export const taskLayer = (taskId: string): string => `task:${taskId}`;
+/** One layer per feature branch that is neither merged nor closed, at the branch's tip (trustmybot/tmb#182). */
+export const featureLayer = (featureId: string): string => `feature:${featureId}`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS layers (
