@@ -34,7 +34,7 @@ describe("slugify", () => {
   test("follows GitHub's heading anchors", () => {
     expect(slugify("Build order")).toBe("build-order");
     expect(slugify("The gate: what it checks?")).toBe("the-gate-what-it-checks");
-    expect(slugify("`tmb setup` and [links](x.md)")).toBe("tmb-setup-and-links");
+    expect(slugify("`tmb init` and [links](x.md)")).toBe("tmb-init-and-links");
     expect(slugify("Pre-merge snake_case")).toBe("pre-merge-snake_case");
   });
 

@@ -18,7 +18,7 @@ export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
 
 /**
  * The role an adapter gives an event from the host's main agent, which is not a subagent. The
- * engine reads the host's role in the record for it: the planner, unless setup named another.
+ * engine reads the host's role in the record for it: the planner, unless init or onboard named another.
  */
 export const MAIN_AGENT = "main-agent";
 

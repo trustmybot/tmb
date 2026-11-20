@@ -8,7 +8,7 @@ import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts
 import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectRootOf } from "./engine/project.ts";
 import { judgePush, removePushGate } from "./engine/push-gate.ts";
-import { runInit, runOnboard, runSetup, type SetupOptions, terminalAsk } from "./setup.ts";
+import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { runningProgram } from "./program.ts";
 import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
@@ -26,7 +26,6 @@ const USAGE = `Usage:
                             Set the project's settings: a host's role, the base branch, the
                             review mode and the checks. Asks on a terminal, else keeps the
                             stored values; run it again at any time
-  tmb setup                 Going away: tmb init, then tmb onboard, taking onboard's flags
   tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept
   tmb migrate [--from <plugin db>] [--repo <name>]
@@ -217,17 +216,15 @@ const SETTING_OPTIONS = {
   check: { type: "string", multiple: true },
 } as const;
 
-/** `tmb init`, `tmb onboard` or `tmb setup`; init takes only the host and its role, as it asks nothing and sets no other setting. */
-async function runPrepareCommand(command: "init" | "onboard" | "setup", args: string[]): Promise<number> {
+/** `tmb init` or `tmb onboard`; init takes only the host and its role, as it asks nothing and sets no other setting. */
+async function runPrepareCommand(command: "init" | "onboard", args: string[]): Promise<number> {
   const options = command === "init" ? INIT_OPTIONS : { ...SETTING_OPTIONS, yes: { type: "boolean", short: "y" } as const };
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
   const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean };
-  // Said on stderr, so whatever reads setup's output still reads the same lines.
-  if (command === "setup") console.error("tmb setup is going away: run tmb init, then tmb onboard.");
   // Ask only when a person is at both ends; otherwise never wait for input. init never asks.
   const terminal = command !== "init" && process.stdin.isTTY === true && process.stdout.isTTY === true ? terminalAsk() : null;
-  const run = { init: runInit, onboard: runOnboard, setup: runSetup }[command];
+  const run = { init: runInit, onboard: runOnboard }[command];
   const setupOptions: SetupOptions = {
     projectDir: process.cwd(),
     tmbCommand: tmbCommand(),
@@ -319,7 +316,6 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     case "init":
     case "onboard":
-    case "setup":
       return runPrepareCommand(command, rest);
     case "config":
       return runConfigCommand(rest, process.cwd(), { out: (text) => console.log(text), err: (text) => console.error(text) });

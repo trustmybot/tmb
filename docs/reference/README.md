@@ -64,7 +64,6 @@ Then open the host. At the first session the planner applies the settings it rec
 |---|---|---|
 | `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's settings empty. | No |
 | `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks. Run it again at any time. | Yes |
-| `tmb setup` | Going away: `tmb init`, then `tmb onboard`. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
 ### init
@@ -98,8 +97,6 @@ When a session starts as the planner and the base branch, the review mode or the
 ### Settings
 
 Init, onboard and `settings_set` store the settings in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Init and onboard print the settings in force, and `tmb config` shows them later.
-
-`tmb setup` runs init, then onboard, with onboard's flags, as earlier versions did, and says on stderr that it is going away. It is removed once init and onboard have shipped.
 
 `tmb init` also:
 

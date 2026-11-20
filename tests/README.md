@@ -86,7 +86,7 @@ Each level has one test issue with this list. A later level keeps every earlier 
 |---|---|
 | 0. Wake up | **Install:** the dev build downloads and starts on macOS, Windows and Linux with no login. **Lint:** types and links. **Integration:** a session start event passed through the adapter returns the planner's role and rules. **Agent run:** Claude Code, opened in a project, answers as bro. |
 | 1. Memory | **Unit:** each record rule. **Integration:** every tool answers through the tool server and the command line. **Agent chain:** bro records an issue, and a new session picks it up. |
-| 2. Setup | **Integration:** setup on a fresh project writes the three registrations and the database; removal restores the project and leaves the Human's own settings unchanged. **Agent run:** bro answers as bro after a full setup. |
+| 2. Setup | **Integration:** init on a fresh project writes the three registrations and the database; removal restores the project and leaves the Human's own settings unchanged. **Agent run:** bro answers as bro after init and onboard. |
 | 3. Workers | **Unit:** task rules. **Workflow simulation:** a task cannot close until its checks pass. **Agent run:** bro hands a code task to a worker and it closes. |
 | 4. Agile mode | **Workflow simulation:** the plugin's workflow flows, ported as contract tests. **Agent chain:** a feature branch collects several tasks across sessions. |
 | 5. Code graph | **Unit:** parsing and lookups per language. **Integration:** the graph is current after a change. **Agent run:** bro scopes a task from the graph. |
@@ -136,7 +136,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Layer | Test | What it proves |
 |---|---|---|
 | Unit | [test/commands.test.ts](../test/commands.test.ts), [test/decide.test.ts](../test/decide.test.ts) | The command reader finds git and gh through quotes, prefixes, `sh -c` and `eval`; the host guards deny skipping git's hook, a push by a worker or the reviewer, a hand-made pull request, a subcommand that is not plain text, and a write outside an open task's worktree. |
-| Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Setup writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
+| Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Init writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
 | Workflow simulation | [tests/workflow/review-gate.test.ts](workflow/review-gate.test.ts) | Review, fail, rework, pass and the pull request on one feature branch, and a Human waiver on a second; only a reviewer run records a verdict, and only on the branch's tip. |
 | Agent run | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) (`bun run test:reviewer`) | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
 
@@ -184,9 +184,9 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 | Layer | Test | What it proves |
 |---|---|---|
 | Lint | [tests/lint/host-neutral.test.ts](lint/host-neutral.test.ts) | The engine names no host, Codex included; only the adapters do. |
-| Unit | [test/host-roles.test.ts](../test/host-roles.test.ts) | Setup gives each host a role, planner by default. A host set up as the reviewer has its main agent briefed, guarded and recorded as the reviewer, is told which feature branches wait for a review at their tip, and has a run that opens at its session start, ends with its verdict or with no verdict at its session end, and opens again at its next brief. |
-| Unit | [test/codex-adapter.test.ts](../test/codex-adapter.test.ts) | Codex's config block, hooks file and agent files are added and removed leaving the Human's files byte for byte; a model the Human names, a local one included, reaches both hosts' role files; setup names the trust steps the Human must take; shell commands, each file of a patch and a spawned agent become tmb events in the host's role. |
-| Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | One shared set of tests that Claude Code and Codex both pass: setup and removal, session start, guarded tool calls, agent start and stop, and a host set up as the reviewer. |
+| Unit | [test/host-roles.test.ts](../test/host-roles.test.ts) | Init gives each host a role, planner by default. A host set up as the reviewer has its main agent briefed, guarded and recorded as the reviewer, is told which feature branches wait for a review at their tip, and has a run that opens at its session start, ends with its verdict or with no verdict at its session end, and opens again at its next brief. |
+| Unit | [test/codex-adapter.test.ts](../test/codex-adapter.test.ts) | Codex's config block, hooks file and agent files are added and removed leaving the Human's files byte for byte; a model the Human names, a local one included, reaches both hosts' role files; files and a config block an earlier build marked as written by `tmb setup` are still found and replaced or removed; init names the trust steps the Human must take; shell commands, each file of a patch and a spawned agent become tmb events in the host's role. |
+| Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | One shared set of tests that Claude Code and Codex both pass: init and onboard, removal, session start, guarded tool calls, agent start and stop, and a host set up as the reviewer. |
 | Integration | [tests/integration/two-hosts.test.ts](integration/two-hosts.test.ts) | Two hosts write one record at once and nothing is lost. |
 | Agent chain | [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) (`bun run test:chain:second-host`) | Claude Code, set up as the planner, builds a feature branch, and Codex, set up as the reviewer in the same project, records a verdict at its tip in a run its own session start opened. Needs a logged-in claude and codex, and the Human's prompt in `prompts/second-host-reviewer.txt`; it exits 2 without them. |
 
@@ -200,14 +200,14 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 
 ## Init and onboard
 
-`tmb setup` split into `tmb init`, which asks nothing and leaves the settings empty, and `tmb onboard`, which asks the questions; at the first session with empty settings the planner applies the ones it recommends (trustmybot/tmb#89, Part 1).
+`tmb init` asks nothing and leaves the settings empty, and `tmb onboard` asks the questions; at the first session with empty settings the planner applies the ones it recommends. They replaced `tmb setup`, which is gone (trustmybot/tmb#89).
 
 | Layer | Test | What it proves |
 |---|---|---|
-| Unit | [test/setup.test.ts](../test/setup.test.ts) | init never asks, stores only the host and its role, keeps what onboard stored and refuses an unknown role; onboard refuses a project or a host init has not prepared, changes a setting and can be run twice, and asks a host's role, the base branch, the review mode and the checks; setup is init followed by onboard. |
+| Unit | [test/setup.test.ts](../test/setup.test.ts) | init never asks, stores only the host and its role, keeps what onboard stored and refuses an unknown role; onboard refuses a project or a host init has not prepared, changes a setting and can be run twice, and asks a host's role, the base branch, the review mode and the checks. |
 | Unit | [test/settings-tools.test.ts](../test/settings-tools.test.ts) | settings_get shows the settings, the empty ones and what tmb found; settings_set is the planner's, changes only what it is given and refuses an empty request or a bad value. |
 | Unit | [test/session-start.test.ts](../test/session-start.test.ts) | With the settings empty the planner's session start tells it to apply its recommendation, with what tmb found, and to remind the Human of `tmb onboard`; an unattended run is told to name the values; only the empty ones are named, and once all are set the section is gone. |
-| Integration | [tests/integration/init-onboard.test.ts](integration/init-onboard.test.ts) | As separate processes: `tmb init` on a fresh project asks no question, refuses any flag but the host and role, and ends saying the settings are empty and how they get filled; the next session start tells the planner, settings_set through the tool server fills them, and the section is gone after; `tmb onboard` changes a setting and can be run twice; `tmb remove` undoes `tmb init`, keeping the record and the `.gitignore` lines; `tmb setup` runs both and says it is going away. |
+| Integration | [tests/integration/init-onboard.test.ts](integration/init-onboard.test.ts) | As separate processes: `tmb init` on a fresh project asks no question, refuses any flag but the host and role, and ends saying the settings are empty and how they get filled; the next session start tells the planner, settings_set through the tool server fills them, and the section is gone after; `tmb onboard` changes a setting and can be run twice; `tmb remove` undoes `tmb init`, keeping the record and the `.gitignore` lines; `tmb setup` is refused as an unknown command. |
 
 ## Docs task check
 

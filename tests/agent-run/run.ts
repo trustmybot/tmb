@@ -20,16 +20,17 @@ const tmb = new Tmb(tmbBin, project);
 try {
   git(project, "init", "-q");
 } catch {
-  fail(`tmb setup failed in ${project}`);
+  fail(`git init failed in ${project}`);
 }
-tmb.shown(["setup"], `tmb setup failed in ${project}`);
+tmb.shown(["init"], `tmb init failed in ${project}`);
+tmb.shown(["onboard", "--yes"], `tmb onboard failed in ${project}`);
 
-// With no terminal, setup takes each default: the host, the project's branch and agile.
-const settings = tmb.text(["config"], `tmb config failed after setup in ${project}`);
+// With no terminal, onboard takes each default: the host, the project's branch and agile.
+const settings = tmb.text(["config"], `tmb config failed after onboard in ${project}`);
 for (const line of [/^host: \S/m, /^base branch: \S/m, /^review mode: agile$/m]) {
-  if (!line.test(settings)) fail(`tmb config after setup has no line matching '${line.source}'; it showed:\n${settings}`);
+  if (!line.test(settings)) fail(`tmb config after onboard has no line matching '${line.source}'; it showed:\n${settings}`);
 }
-console.log(`tmb config after setup:\n${settings.trimEnd()}`);
+console.log(`tmb config after onboard:\n${settings.trimEnd()}`);
 
 console.log(`Asking claude (${MODEL}): ${prompt}`);
 const status = askClaude(project, prompt, log);

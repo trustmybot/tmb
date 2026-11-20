@@ -134,7 +134,7 @@ export function removeHooks(projectDir: string): RemoveResult {
         deleteFile(file, projectDir);
         result.fileDeleted = true;
       } else if (original !== null && humansPart(JSON.parse(original.trim() === "" ? "{}" : original), file) === humansPart(config, file)) {
-        // Nothing of the Human's changed since setup: their file comes back byte for byte.
+        // Nothing of the Human's changed since init: their file comes back byte for byte.
         writeFileSync(file, original);
       } else {
         writeJsonObject(file, config);
