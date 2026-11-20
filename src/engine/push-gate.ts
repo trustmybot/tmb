@@ -364,14 +364,39 @@ function foreignHookLine(dir: string, file: string): string {
 export function addedLine(program: string, dir: string, projectDir: string): string {
   const name = shellQuote(program);
   const run = [program, "pre-push", "--project", projectFromTop(dir, projectDir)].map(shellQuote).join(" ");
+  // A step that fails before the gate has judged ends the push too; under `sh -e`, as husky runs hooks, nothing else ends it.
   return (
-    `if command -v ${name} >/dev/null 2>&1; then tmb_refs=$(mktemp) && cat > "$tmb_refs" && ` +
-    `{ ${run} "$@" < "$tmb_refs" || { rm -f "$tmb_refs"; exit 1; }; } && ${HAND_OVER} && rm -f "$tmb_refs"; fi ${ADDED_MARK}`
+    `if command -v ${name} >/dev/null 2>&1; then tmb_refs=$(mktemp) || exit 1; ` +
+    `cat > "$tmb_refs" && ${run} "$@" < "$tmb_refs" || { rm -f "$tmb_refs"; exit 1; }; ${HAND_OVER}; rm -f "$tmb_refs"; fi ${ADDED_MARK}`
   );
 }
 
+const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash"]);
+
+/**
+ * The program a hook names on its shebang line when it is not a shell, as a Node or Python hook
+ * is; null for a shell script or one with no shebang, which git runs with sh.
+ */
+function nonShellProgram(text: string): string | null {
+  const first = text.split("\n", 1)[0] ?? "";
+  if (!first.startsWith("#!")) return null;
+  const words = first.slice(2).trim().split(/\s+/);
+  const named = path.basename(words[0] ?? "") === "env" ? words.slice(1).find((word) => !word.startsWith("-")) : words[0];
+  const program = path.basename(named ?? "");
+  return SHELLS.has(program) ? null : program;
+}
+
+/**
+ * What tmb says about a hook in another language, which it does not change: how to call the gate
+ * from it by hand, before anything in it reads git's ref lines.
+ */
+export function handCallLine(hook: ForeignHook, program: string, projectDir: string): string {
+  const run = [program, "pre-push", "--project", projectFromTop(hook.dir, projectDir)].map(shellQuote).join(" ");
+  return `The push gate stays off in ${hook.dir}: git's pre-push hook ${hook.file} is a ${hook.program} script, not a shell one, so tmb does not change it. To turn the gate on, have it run \`${run}\` with the hook's own arguments and git's ref lines on its input before it reads them, and end the push when that fails.`;
+}
+
 /** A repo whose pre-push hook is not tmb's and does not run the push gate: its folder and the hook file. */
-export type ForeignHook = { dir: string; file: string };
+export type ForeignHook = { dir: string; file: string; /** The hook's program when it is not a shell script, which tmb leaves alone; null for a shell script. */ program: string | null };
 
 /** The repos, among those that should run the push gate, whose pre-push hook is another tool's and does not run it. */
 export function foreignHooks(projectDir: string, repos: RepoPolicies | null): ForeignHook[] {
@@ -380,7 +405,7 @@ export function foreignHooks(projectDir: string, repos: RepoPolicies | null): Fo
     if (file === null || !existsSync(file) || isOurs(file)) return [];
     const text = readFileSync(file, "utf8");
     // An added line that is not first, or an older one, can miss git's ref lines: the gate is off until it is moved.
-    return runsAddedLineFirst(text) ? [] : [{ dir, file }];
+    return runsAddedLineFirst(text) ? [] : [{ dir, file, program: nonShellProgram(text) }];
   });
 }
 
@@ -391,6 +416,7 @@ export function foreignHooks(projectDir: string, repos: RepoPolicies | null): Fo
 export function addToForeignHook(hook: ForeignHook, program: string, projectDir: string): string {
   const text = readFileSync(hook.file, "utf8");
   if (runsAddedLineFirst(text)) return `git's pre-push hook ${hook.file} already runs the push gate.`;
+  if (hook.program !== null) return handCallLine(hook, program, projectDir);
   const lines = text.split("\n").filter((line) => !line.includes(ADDED_MARK));
   const at = lines[0]?.startsWith("#!") ? 1 : 0;
   lines.splice(at, 0, addedLine(program, hook.dir, projectDir));

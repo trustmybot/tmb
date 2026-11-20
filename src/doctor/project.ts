@@ -13,7 +13,7 @@ import { keptCheckouts, removeTaskCheckout } from "../engine/handlers/fold.ts";
 import { emptySettings } from "../engine/handlers/settings.ts";
 import { tiedProgram } from "../engine/program-tie.ts";
 import { PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "../engine/project.ts";
-import { addToForeignHook, FOREIGN_GAP, foreignHooks, pushGateGaps } from "../engine/push-gate.ts";
+import { addToForeignHook, FOREIGN_GAP, foreignHooks, handCallLine, pushGateGaps } from "../engine/push-gate.ts";
 import { repoDirOf, workingRepos } from "../engine/repos.ts";
 import { readSettings, type Settings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, SHAPE_WRITER_KEY, Store, type Task } from "../engine/store/index.ts";
@@ -190,16 +190,21 @@ function hostFilesChecks(env: DoctorEnv, projectDir: string, state: { store: Sto
   const gate = pushGateGaps(projectDir, settings.repos, command).filter((gap) => !foreign.some((hook) => gap.startsWith(`${FOREIGN_GAP} ${hook.file} `)));
   if (foreign.length > 0) {
     const program = tiedProgram(state.store)?.program ?? env.program.name;
+    // A hook in another language is left alone: the finding says how to call the gate from it by hand.
+    const shell = foreign.filter((hook) => hook.program === null);
     findings.push(
       finding("host files", {
         status: "warn",
         summary: "the push gate is off where git's pre-push hook is another tool's",
-        details: foreign.map((hook) => `${hook.dir}: its hook ${hook.file} is not tmb's and does not run the push gate`),
-        fix: {
-          say: `\`${env.program.name} onboard --add-push-gate\`, which adds tmb's one line to each such hook`,
-          ask: `Add tmb's one line to ${foreign.map((hook) => hook.file).join(", ")}, so every push there asks tmb first?`,
-          apply: () => foreign.map((hook) => addToForeignHook(hook, program, projectDir)).join(" "),
-        },
+        details: foreign.map((hook) => (hook.program === null ? `${hook.dir}: its hook ${hook.file} is not tmb's and does not run the push gate` : handCallLine(hook, program, projectDir))),
+        fix:
+          shell.length === 0
+            ? { say: "calling the push gate from each such hook by hand, as its line says" }
+            : {
+                say: `\`${env.program.name} onboard --add-push-gate\`, which adds tmb's one line to each such shell hook`,
+                ask: `Add tmb's one line to ${shell.map((hook) => hook.file).join(", ")}, so every push there asks tmb first?`,
+                apply: () => shell.map((hook) => addToForeignHook(hook, program, projectDir)).join(" "),
+              },
       }),
     );
   }
