@@ -227,3 +227,12 @@ What a close checks beyond the checks, and a worker started in a worktree its ho
 | Unit | [test/claude-code-role-files.test.ts](../test/claude-code-role-files.test.ts) | The worker's Claude Code agent file asks for worktree isolation; the reviewer's does not. |
 | Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | Claude Code raises a worker's folder when the worker names its task with task_brief or task_close; Codex, whose worker works in the worktree tmb cut, does not. |
 | Workflow simulation | [tests/workflow/close-checks.test.ts](workflow/close-checks.test.ts) | A commit outside the task's files closes, and the close names those files and leaves the spec as written; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |
+
+## Help and mistyped commands
+
+The command line's help, tips and colour (trustmybot/tmb#111).
+
+| Layer | Test | What it proves |
+|---|---|---|
+| Unit | [test/help.test.ts](../test/help.test.ts) | A command at most two typing mistakes away, or one that starts with what was typed, is named; a swap of two neighbouring letters counts as one mistake; every match is named and none when none is close; a hidden command is never named; `upgrade` reaches `update` only through the table of other names. Colour is on for a terminal, off for a pipe, a file, `TERM=dumb` and `NO_COLOR`, on with `FORCE_COLOR`, and `NO_COLOR` wins over it. The short help groups the commands in one column. |
+| Integration | [tests/integration/cli-help.test.ts](integration/cli-help.test.ts) | As separate processes: `--help` and `help` print the grouped help on stdout and exit 0; `tmb` alone prints it on stderr and exits 2; the commands only a host or git calls appear only with `--all`; every command and sub-command answers `--help` with its own detail; an unknown command, also one level down, prints the tip and one usage line on stderr and exits 2; an unknown flag exits 2; piped output has no colour codes. |
