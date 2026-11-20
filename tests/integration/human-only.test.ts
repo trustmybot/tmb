@@ -3,16 +3,16 @@
 // refused, and the record holds no entry by the Human from it.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { asHuman } from "../lib/as-human.ts";
-import { CLI, tmbProcesses } from "./tmb-processes.ts";
+import { BASE_BRANCH, CLI, tmbProcesses } from "./tmb-processes.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { env, run, tmb, human, setUpProject, hook, cleanup } = tmbProcesses("tmb-human-only-");
+const { scratch, env, git, run, tmb, human, setUpProject, hook, cleanup } = tmbProcesses("tmb-human-only-");
 afterAll(cleanup);
 
 /** Each file under the project, git's own objects aside, by a hash of its bytes. */
@@ -79,13 +79,33 @@ describe("a step only the Human may take", () => {
     expect(human(["onboard", "--review-mode", "truest", "--yes"], project)).toContain("Recorded 1 change in the record's audit trail.");
   }, 90_000);
 
-  test("with unattended mode on and no terminal, a run that is the Human's, such as CI, sets the review mode; nothing else is let through", () => {
-    const project = setUpProject("true");
+  test("with unattended mode on and no terminal, a run such as CI sets a review mode where none is set, never changes one, and lets nothing else through (trustmybot/tmb#223)", () => {
     const unattended = { ...env, TMB_UNATTENDED: "1" };
-    const set = Bun.spawnSync([process.execPath, CLI, "onboard", "--review-mode", "truest", "--yes"], { cwd: project, env: unattended });
+    const onboard = (project: string, ...args: string[]) => Bun.spawnSync([process.execPath, CLI, "onboard", ...args], { cwd: project, env: unattended });
+
+    // A fresh project, as CI meets it: no review mode yet.
+    const fresh = mkdtempSync(path.join(scratch, "fresh-"));
+    git(fresh, "init", "-q", "-b", BASE_BRANCH);
+    tmb(["init"], fresh);
+    const set = onboard(fresh, "--base", BASE_BRANCH, "--review-mode", "truest", "--check", "true", "--yes");
     expect(set.exitCode).toBe(0);
     expect(set.stdout.toString()).toContain("review mode: truest");
-    const removed = Bun.spawnSync([process.execPath, CLI, "remove"], { cwd: project, env: unattended });
+
+    // Now one is set: the same run, or one in the project the Human chose agile for, changes nothing.
+    for (const project of [fresh, setUpProject("true")]) {
+      const before = snapshot(project);
+      const entries = humanEntries(project);
+      for (const args of [["--review-mode", "agile", "--yes"], ["--review-mode=agile"]]) {
+        const changed = onboard(project, ...args);
+        expect(changed.exitCode).toBe(1);
+        expect(changed.stderr.toString()).toContain("unattended mode only sets one where none is set, so nothing was done");
+        expect(changed.stdout.toString()).toBe("");
+      }
+      expect(snapshot(project)).toEqual(before);
+      expect(humanEntries(project)).toBe(entries);
+    }
+
+    const removed = Bun.spawnSync([process.execPath, CLI, "remove"], { cwd: fresh, env: unattended });
     expect(removed.exitCode).toBe(1);
     expect(removed.stderr.toString()).toContain("tmb remove is a step only the Human may take");
   }, 90_000);
