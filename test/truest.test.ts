@@ -107,7 +107,7 @@ describe("truest mode", () => {
     const task = await inReview();
     expect(store.getTask(task.id)).toMatchObject({ state: "in_review", commitSha: task.sha, worktree: task.worktree });
     expect(git(project, "rev-parse", "main")).not.toBe(task.sha);
-    expect(taskBrief(store, PLANNER, { id: task.id }).review).toMatchObject({ to: task.sha, covered: false, reviewLine: `review_task=${task.id}` });
+    expect(taskBrief(store, PLANNER, { id: task.id }, context()).review).toMatchObject({ to: task.sha, covered: false, reviewLine: `review_task=${task.id}` });
   });
 
   test("a fail reopens the task, and a later pass covers only the commit it names", async () => {
@@ -131,7 +131,7 @@ describe("truest mode", () => {
     );
     expect((await refusal(() => taskWaive(store, PLANNER, { id: task.id, reason: "small" }, context()))).message).toContain("only the Human waives");
     expect(taskWaive(store, HUMAN, { id: task.id, reason: "small" }, context())).toMatchObject({ task: task.id, commit: task.sha, reason: "small" });
-    expect(taskBrief(store, PLANNER, { id: task.id }).review).toMatchObject({ covered: true, coveredBy: "waiver" });
+    expect(taskBrief(store, PLANNER, { id: task.id }, context()).review).toMatchObject({ covered: true, coveredBy: "waiver" });
     expect(truestCoveredCommits(store)).toEqual([task.sha]);
   });
 
@@ -141,7 +141,7 @@ describe("truest mode", () => {
     expect((await refusal(() => taskPr(store, PLANNER, { id: task.id, title: "x" }, context()))).message).toContain("no reviewer has reviewed it");
     review(task.id, task.sha, "pass");
     expect(await taskPr(store, PLANNER, { id: task.id, title: "x" }, context())).toMatchObject({ url: null, push: expect.stringContaining("no remote named origin") });
-    expect(taskBrief(store, PLANNER, { id: task.id }).state).toBe("ready");
+    expect(taskBrief(store, PLANNER, { id: task.id }, context()).state).toBe("ready");
   });
 
   test("the mode is fixed at the task's start: an agile task stays agile when the mode changes", async () => {

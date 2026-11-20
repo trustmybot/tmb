@@ -365,6 +365,25 @@ describe("the project", () => {
     expect(git(project, "branch", "--list", "task/1")).toBe("");
   });
 
+  test("another tool's pre-push hook gets tmb's line first after a yes, and an older line at its end is moved there (trustmybot/tmb#218)", async () => {
+    const hook = path.join(project, ".git", "hooks", "pre-push");
+    const other = '#!/bin/sh\ncat > /dev/null\n';
+    // An older added line, at the end, after the other tool has read git's ref lines.
+    const older = "if command -v 'tmb' >/dev/null 2>&1; then 'tmb' 'pre-push' '--project' '.' \"$@\" || exit 1; fi # tmb: added for the push gate; tmb remove takes this line out.";
+    for (const before of [other, `${other}${older}\n`]) {
+      writeFileSync(hook, before, { mode: 0o755 });
+      const off = () => of(runChecks(env()), "host files").filter((finding) => finding.summary.includes("the push gate is off where git's pre-push hook is another tool's"));
+      expect(off().map((finding) => finding.status)).toEqual(["warn"]);
+      await runDoctorCommand(["--fix"], env(), io(answering("y").ask).io);
+      const [shebang, line, ...rest] = readFileSync(hook, "utf8").split("\n");
+      expect(shebang).toBe("#!/bin/sh");
+      expect(line).toContain("'tmb' 'pre-push' '--project' '.'");
+      expect(line).toContain('exec < "$tmb_refs"');
+      expect([shebang, ...rest].join("\n")).toBe(other);
+      expect(off()).toEqual([]);
+    }
+  });
+
   test("a code graph behind its base branch names `tmb index`", () => {
     writeFileSync(path.join(project, "b.ts"), "export const b = 2;\n");
     git(project, "add", "b.ts");

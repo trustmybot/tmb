@@ -197,6 +197,9 @@ describe("the push gate of a project below its repo's top", () => {
     try {
       await callJson(client, "feature_start", { name: "feat/greet" });
       const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add the greeting", files: ["src"], criteria: ["SC1: greet() exists"] });
+      // The brief names where the worker works: the project's folder inside the worktree (trustmybot/tmb#218).
+      expect(task.brief.projectFolder).toBe(path.join(task.worktree, "pkg"));
+      expect((await callJson(client, "task_brief", { id: task.id })).projectFolder).toBe(path.join(task.worktree, "pkg"));
       commitFile(task.worktree, "pkg/src/greet.ts", "export const greet = () => 'hi';\n", "add greet");
       commitFile(task.worktree, "README.md", "the monorepo, greeted\n", "touch the repo's top");
       const closed = await callJson(client, "task_close", { id: task.id, role: "worker" });
@@ -232,7 +235,9 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     const result = spawnSync("git", ["push", ...args], { cwd: project, env: pathEnv, encoding: "utf8", timeout: 60_000 });
     return { status: result.status, stderr: result.stderr };
   };
-  const FOREIGN = "#!/bin/sh\necho the other tool ran\n";
+  // The other tool reads git's ref lines too, as lefthook and husky's scripts can.
+  const FOREIGN = '#!/bin/sh\ncat > "$(git rev-parse --git-dir)/other-tool-saw"\n';
+  const otherToolSaw = (project: string) => readFileSync(path.join(project, ".git", "other-tool-saw"), "utf8");
 
   function setUpWithForeignHook(): string {
     const project = mkdtempSync(path.join(scratch, "husky-"));
@@ -262,9 +267,13 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     expect(doctor).toContain("the push gate is off where git's pre-push hook is another tool's");
     expect(doctor).toContain("onboard --add-push-gate");
 
-    expect(tmb(["onboard", "--add-push-gate", "--yes"], project)).toContain("Added tmb's line to git's pre-push hook");
+    expect(tmb(["onboard", "--add-push-gate", "--yes"], project)).toContain("Added tmb's line first in git's pre-push hook");
     const text = readFileSync(hookFile(project), "utf8");
-    expect(text).toStartWith(FOREIGN);
+    // First, after the shebang, so nothing before it reads git's ref lines; the rest is the other tool's.
+    const [shebang, line, ...rest] = text.split("\n");
+    expect(shebang).toBe("#!/bin/sh");
+    expect(line).toContain("tmb: added for the push gate");
+    expect([shebang, ...rest].join("\n")).toBe(FOREIGN);
     // Safe to commit: no machine's path in it.
     expect(text).toContain("'tmb' 'pre-push' '--project' '.'");
     expect(text).not.toContain(scratch);
@@ -275,8 +284,17 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     expect(refused.status).not.toBe(0);
     expect(refused.stderr).toContain("tmb refused the push to origin");
     expect(refused.stderr).toContain(unreviewed.slice(0, 7));
+    // A push that sends nothing gives the hook no ref lines; it still passes.
+    git(project, "reset", "-q", "--hard", "HEAD~1");
+    expect(pushWith(project, withTmb, "-q", "origin", BASE_BRANCH).status).toBe(0);
+    // A push the gate lets through hands the rest of the hook the same ref lines.
+    const reviewedElsewhere = git(project, "rev-parse", "HEAD").trim();
+    expect(pushWith(project, withTmb, "-q", "origin", "HEAD:refs/heads/elsewhere").status).toBe(0);
+    expect(otherToolSaw(project)).toContain(`refs/heads/elsewhere`);
+    expect(otherToolSaw(project)).toContain(reviewedElsewhere);
     // Where tmb is not installed, the line does nothing and the other tool's hook goes on.
-    expect(pushWith(project, env, "-q", "origin", "HEAD:refs/heads/elsewhere").status).toBe(0);
+    expect(pushWith(project, env, "-q", "origin", "HEAD:refs/heads/other").status).toBe(0);
+    expect(otherToolSaw(project)).toContain("refs/heads/other");
 
     expect(tmb(["remove"], project)).toContain("Took tmb's line out of git's pre-push hook");
     expect(readFileSync(hookFile(project), "utf8")).toBe(FOREIGN);

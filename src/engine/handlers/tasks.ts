@@ -44,6 +44,12 @@ export type TaskBrief = {
   title: string;
   branch: string | null;
   worktree: string | null;
+  /**
+   * The project folder inside the worktree, where the worker works and the checks run: the
+   * worktree itself unless the project is below its repo's top (trustmybot/tmb#218); null with
+   * no worktree, or where the brief is read only for its checks.
+   */
+  projectFolder: string | null;
   /** The feature branch the task was cut from and folds into; null for a task started before feature branches. */
   feature: string | null;
   /** The repo the task was cut in, by its name in the workspace; null in a single-repo project. */
@@ -247,7 +253,7 @@ function pushOf(task: Task): PushOutcome | null {
   return task.pushResult === null ? null : ({ result: task.pushResult, detail: task.pushDetail ?? "" } as PushOutcome);
 }
 
-export function briefOf(store: Store, task: Task): TaskBrief {
+export function briefOf(store: Store, task: Task, projectDir: string | null): TaskBrief {
   const spec = specOf(task);
   return {
     id: task.id,
@@ -256,6 +262,7 @@ export function briefOf(store: Store, task: Task): TaskBrief {
     title: task.title,
     branch: task.branch,
     worktree: task.worktree,
+    projectFolder: task.worktree === null || projectDir === null ? null : projectInWorktree(task, repoDirOf(projectDir, task.repo)),
     feature: featureName(store, task),
     repo: task.repo,
     kind: task.kind,
@@ -437,7 +444,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
     dropMainFolderSnapshot(dir, id);
     throw error;
   }
-  return { id, branch, worktree, brief: briefOf(store, requireTask(store, id)), sharedFiles: shared };
+  return { id, branch, worktree, brief: briefOf(store, requireTask(store, id), context.projectDir), sharedFiles: shared };
 }
 
 // --- task_brief ---------------------------------------------------------------------------
@@ -449,9 +456,9 @@ export const taskBriefSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export function taskBrief(store: Store, _actor: Actor, input: unknown): TaskBrief {
+export function taskBrief(store: Store, _actor: Actor, input: unknown, context: OperationContext): TaskBrief {
   const { id } = validateInput<{ id: string }>("task_brief", taskBriefSchema, input);
-  return briefOf(store, requireTask(store, id));
+  return briefOf(store, requireTask(store, id), context.projectDir);
 }
 
 // --- task_list ----------------------------------------------------------------------------
@@ -658,17 +665,18 @@ export function undoRebaseAndRethrow(error: unknown, worktree: string, rebased: 
 
 export function closeResult(
   store: Store,
+  projectDir: string,
   id: string,
   runs: CheckRunOutcome[],
   rest: Pick<TaskCloseResult, "fold" | "push" | "cleanupProblems"> & Partial<Pick<TaskCloseResult, "cleanedUp">> & CloseFindings,
 ): TaskCloseResult {
   const last = runs[runs.length - 1]!;
-  return { brief: briefOf(store, requireTask(store, id)), checkRunId: last.id, checks: last.results, checkRunIds: runs.map((run) => run.id), cleanedUp: [], ...rest };
+  return { brief: briefOf(store, requireTask(store, id), projectDir), checkRunId: last.id, checks: last.results, checkRunIds: runs.map((run) => run.id), cleanedUp: [], ...rest };
 }
 
 /** Every check a task's close runs; refuses when there is none, since a task never closes unchecked. */
 export function closeChecks(store: Store, task: Task): string[] {
-  const commands = briefOf(store, task).checks;
+  const commands = briefOf(store, task, null).checks;
   if (commands.length === 0) {
     throw new HandlerError(
       "refused",
@@ -707,7 +715,7 @@ function finishFold(
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
   const push = backupPush(store, dir, featureName, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
+  return closeResult(store, context.projectDir, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
 
 export async function taskClose(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> {
@@ -738,7 +746,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
       store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
     });
     recordFindings(task, dir);
-    return closeResult(store, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
+    return closeResult(store, context.projectDir, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
   }
 
   // Fold: fast-forward the feature branch to the task's commit, rebasing it and checking it again first when the feature moved.
@@ -785,7 +793,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
   const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
   const push = backupPush(store, dir, feature.name, actor);
   store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
+  return closeResult(store, context.projectDir, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
 }
 
 // --- task_drop ----------------------------------------------------------------------------
@@ -834,5 +842,5 @@ export function taskDrop(store: Store, actor: Actor, input: unknown, context: Op
     ? `the branch ${task.branch} was kept: it holds the dropped task's commits. Delete it once nothing there is needed: git branch -D ${task.branch}`
     : null;
   const cleanup = task.worktree === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, task.worktree, holdsWork ? null : task.branch);
-  return { brief: briefOf(store, task), cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, keptBranch };
+  return { brief: briefOf(store, task, context.projectDir), cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, keptBranch };
 }
