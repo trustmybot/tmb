@@ -150,7 +150,7 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
   - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb does not read shell commands; git's pre-push hook checks every push.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
-- Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files. Both get tmb's tools.
+- Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
 - In a git work tree, writes git's pre-push hook, so every push asks tmb first; in a workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
@@ -161,7 +161,8 @@ Running init or onboard again with the same answers changes no file and records 
 Once the project is set up:
 
 - tmb records each file write, subagent start and subagent end that the hooks report.
-- tmb refuses file writes and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb.
+- tmb refuses file writes and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb. A record file that is there but empty counts as one it cannot read.
+- tmb refuses every file write by the reviewer, through any of Claude Code's edit tools. tmb does not read shell commands, so a file the reviewer writes from its shell is not refused; git's pre-push hook still checks its pushes.
 - tmb lets a worker start only when its start prompt names an open task as `task_id=<id>` and that task's worktree exists. It records the worker's run from its start to its end.
 - When tmb allows an action it says nothing, so Claude Code still asks you for permission as it would without tmb.
 
@@ -305,6 +306,19 @@ What tmb does with a closed task's worktree depends on what is left in it (trust
 - tmb tries a kept worktree again when the planner's session starts with no task open or in review. It goes once its files are gone or ignored, or the lock is lifted.
 - The main folder is never removed.
 - In truest mode, where a task opens its own pull request, the worktree follows the same rules and the branch is kept for the pull request.
+
+### What a docs task may change
+
+A docs task's close is refused, naming each file, when its change touches a file whose type is not below. A type not listed counts as code, so a change to it goes in a code task (trustmybot/tmb#185).
+
+| Kind | Types |
+|---|---|
+| Prose | `.md` `.markdown` `.txt` `.rst` `.adoc` |
+| Data | `.json` `.yaml` `.yml` `.toml` `.csv` `.tsv` |
+| Images | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` |
+| Files with no extension | `LICENSE` `NOTICE` `AUTHORS` `CHANGELOG` `README` `COPYING` |
+
+The extension is the file's last one and the name is matched without regard to case, so `guide.MD` and `License` are allowed. A data file can still change behaviour, such as a CI file or a setting; the reviewer catches that.
 
 ## Move a plugin project
 

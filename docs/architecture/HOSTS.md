@@ -115,7 +115,7 @@ flowchart LR
 | tmb event | Raised when | Raised by |
 |---|---|---|
 | Session start | A host session opens in a tmb project | Host |
-| Before a file write | An agent is about to write a file. Used only for a host set up as the reviewer. | Host |
+| Before a file write | An agent is about to write a file. Denied for the reviewer, whether it is a subagent the host names or a host set up as the reviewer. | Host |
 | A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | Host |
 | Before an agent start | The host is about to start a subagent | Host |
 | After an agent stop | A subagent has ended | Host |
@@ -139,7 +139,7 @@ The same three building blocks exist in both hosts checked so far, which is what
 
 Setup never trusts a project or its hooks on the Human's behalf: it says what the Human must trust. It cannot tell whether the hooks have been trusted yet, so it always lists that step. Checked against Codex's docs on 2026-11-19; nothing was run.
 
-Codex does not say which agent makes a tool call. A call is judged under the role its host was set up with, so a Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a worker's write from the planner's, and that rule falls back to the close and the push. Proposed, for the Human's review, and to be confirmed on a real Codex.
+Codex does not say which agent makes a tool call. A call is judged under the role its host was set up with, so a Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a worker's or a reviewer subagent's write from the planner's, so a reviewer subagent's write goes through, and that rule falls back to the close and the push. Proposed, for the Human's review, and to be confirmed on a real Codex.
 
 When a host cannot deny an action, the engine's own layers still hold: checks at close, and git's pre-push hook ([WORKFLOW.md](WORKFLOW.md#the-gate)).
 
