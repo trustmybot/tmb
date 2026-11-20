@@ -104,7 +104,7 @@ It asks nothing and never waits for input, on a terminal or not. With no review 
 - The host is the one init stored; `--host <id>` names another host init wired.
 - A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
-- The review mode has no default. `--review-mode` is a [step only you may take](#steps-only-you-may-take): it asks you to type yes on the terminal, also when `--yes` is given. Without a terminal it is refused, unless unattended mode is on for the run (`TMB_UNATTENDED=1`), as in CI. Without the flag and with no terminal, the review mode stays as it is and onboard says so.
+- The review mode has no default. `--review-mode` is a [step only you may take](#steps-only-you-may-take): it asks you to type yes on the terminal, also when `--yes` is given. Without a terminal it is refused, unless unattended mode is on for the run (`TMB_UNATTENDED=1`), as in CI, and no review mode is set yet: unattended mode sets one, never changes one. Without the flag and with no terminal, the review mode stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
 
 ### One repo or a workspace of several
@@ -359,4 +359,4 @@ Some commands are yours alone (trustmybot/tmb#179): `tmb feature waive`, `tmb ta
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.
 - In Claude Code and Codex, tmb's hook also denies one in an agent's shell command before it runs, and tells the agent to ask you.
-- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`).
+- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`), only while none is set (trustmybot/tmb#223). An agent can turn unattended mode on for its own command, so a mode you chose is changed only on a terminal, where you type yes.

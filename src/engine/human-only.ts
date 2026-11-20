@@ -40,6 +40,17 @@ export function noTerminalRefusal(step: HumanOnlyStep): string {
   );
 }
 
+/**
+ * The refusal of an unattended run with no terminal that would change a review mode already set
+ * (trustmybot/tmb#223): unattended mode only sets one where none is set, as for a fresh project in CI.
+ */
+export function unattendedChangeRefusal(mode: string): string {
+  return (
+    `the review mode is already ${mode}, and unattended mode only sets one where none is set, so nothing was done. ` +
+    `Changing it is a step only the Human may take: it runs only on a terminal, where the Human types ${HUMAN_YES}.`
+  );
+}
+
 /** The question a Human-only step asks on a terminal before it runs. */
 export function humanYesQuestion(step: HumanOnlyStep, args: readonly string[]): string {
   return `Only the Human may ${step.what}. Type ${HUMAN_YES} to run tmb ${args.join(" ")}: `;
