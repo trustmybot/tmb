@@ -11,6 +11,7 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip } from "./features.ts";
 import { type PushOutcome, isAncestor, moveFeature, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
@@ -428,7 +429,7 @@ function gitIn(worktree: string, args: readonly string[]): string {
 }
 
 /** The worktree's HEAD, once the tree is clean and HEAD is at least one commit past the base it was cut from. */
-export function committedHead(task: Task): string {
+export function committedHead(task: Task, store: Store): string {
   const worktree = task.worktree!;
   const changes = gitIn(worktree, ["status", "--porcelain"]);
   if (changes !== "") {
@@ -440,7 +441,15 @@ export function committedHead(task: Task): string {
   const head = gitIn(worktree, ["rev-parse", "HEAD"]);
   const base = task.baseCommit;
   if (base === null) throw new HandlerError("refused", `task ${task.id} records no base commit, so tmb cannot tell its new work; start it again with task_start`);
-  if (head === base) throw new HandlerError("refused", `the worktree has no commit past the base commit ${base}; commit the work, then close again`);
+  if (head === base) {
+    // A worker that committed in its host's folder before naming its task left its work there, unadopted.
+    const elsewhere = workElsewhere(store, task);
+    const where =
+      elsewhere.length === 0
+        ? "commit the work, then close again"
+        : `commits that build on it sit in ${elsewhere.join(", ")}, which tmb did not adopt as the task's worktree; bring them into ${worktree} (for example git cherry-pick ${base}..<that folder's HEAD>), then close again`;
+    throw new HandlerError("refused", `the task's worktree ${worktree} has no commit past the base commit ${base}; ${where}`);
+  }
   if (!runGit(worktree, ["merge-base", "--is-ancestor", base, head]).ok) {
     throw new HandlerError("refused", `HEAD ${head} does not build on the task's base commit ${base}; the work must be committed on top of it`);
   }
@@ -612,7 +621,7 @@ export async function taskClose(store: Store, actor: Actor, input: unknown, cont
 
   if (task.reviewMode === TRUEST) return truestClose(store, actor, task, context);
 
-  const head = committedHead(task);
+  const head = committedHead(task, store);
   const commands = closeChecks(store, task);
   const runs = [await checkCommit(store, actor, task, head, commands, context)];
   // Before the fold, which can move the main folder's branch, and on the task's own commit, before any rebase.

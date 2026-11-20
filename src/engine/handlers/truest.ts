@@ -192,7 +192,7 @@ export function truestBase(projectDir: string, baseBranch: string, cutting: stri
 /** Runs the checks on the task's commit; on a pass the task waits for the reviewer at that commit, its worktree kept. */
 export async function truestClose(store: Store, actor: Actor, task: Task, context: OperationContext): Promise<TaskCloseResult> {
   const worktree = task.worktree!;
-  const head = committedHead(task);
+  const head = committedHead(task, store);
   const commands = closeChecks(store, task);
   const runs: CheckRunOutcome[] = [await checkCommit(store, actor, task, head, commands, context)];
   const findings = closeFindings(task, head, context.projectDir);

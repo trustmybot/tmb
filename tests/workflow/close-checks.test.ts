@@ -134,6 +134,35 @@ describe("a worker in a worktree its host made", () => {
     }
   });
 
+  test("a worker that committed in its host's folder before naming its task is refused at close, and told where its commits are", async () => {
+    const project = setUpProject(CHECK);
+    const { client, started, worker } = await startTask(project, ["src/a.txt"]);
+    try {
+      const hostWorktree = path.join(project, ".claude", "worktrees", "agent-d4e5f6");
+      git(project, "worktree", "add", "-q", "-b", "worktree-agent-d4e5f6", hostWorktree, started.brief.baseCommit);
+      commitFile(hostWorktree, "src/a.txt", "a\n", "a");
+      const input = JSON.stringify({
+        session_id: "workflow",
+        hook_event_name: "PreToolUse",
+        cwd: hostWorktree,
+        agent_type: "worker",
+        tool_name: "mcp__tmb__task_close",
+        tool_input: { id: started.id, role: "worker" },
+      });
+      spawnSync(process.execPath, [CLI, "hook", "pre-tool-use"], { cwd: hostWorktree, env: { ...env, CLAUDE_PROJECT_DIR: project }, input, encoding: "utf8" });
+      // The host's folder holds a commit of its own, so it is not adopted, and the task's worktree holds none of the work.
+      expect((await callJson(client, "task_brief", worker)).worktree).toBe(started.worktree);
+      const refused = await client.callTool({ name: "task_close", arguments: worker });
+      expect(refused.isError).toBe(true);
+      const text = JSON.stringify(refused.content);
+      expect(text).toContain("no commit past the base commit");
+      expect(text).toContain(realpathSync(hostWorktree));
+      expect((await callJson(client, "task_brief", worker)).state).toBe("open");
+    } finally {
+      await client.close();
+    }
+  });
+
   test("a worker that names its task from the main folder or from its task's own worktree keeps the task's worktree as it is", async () => {
     const project = setUpProject(CHECK);
     const { client, started, worker } = await startTask(project, ["src/a.txt"]);

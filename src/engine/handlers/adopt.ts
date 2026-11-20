@@ -7,7 +7,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
-import type { Actor, Store } from "../store/index.ts";
+import type { Actor, Store, Task } from "../store/index.ts";
 import { OPEN } from "./common.ts";
 
 /** What adoption did, as the decision's reason records it. */
@@ -62,8 +62,8 @@ export function adoptWorktree(store: Store, actor: Actor, projectDir: string, ta
   const taskTip = git(projectDir, ["rev-parse", `refs/heads/${task.branch}`]);
   if (hostHead === null || taskTip === null) return keep(`git could not read ${here} or the branch ${task.branch}, so no worktree was adopted`);
   const hostBranch = git(here, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-  // Commits no branch but the host's own holds; --all would count every worktree's HEAD, the host's among them.
-  const ownCommits = git(projectDir, ["rev-list", "--count", hostHead, "--not", ...(hostBranch === null ? [] : [`--exclude=refs/heads/${hostBranch}`]), "--branches", "--tags", "--remotes"]);
+  // Commits no branch but the host's own holds; --all would count every worktree's HEAD, the host's among them. A pattern for --branches names the branch without refs/heads/.
+  const ownCommits = git(projectDir, ["rev-list", "--count", hostHead, "--not", ...(hostBranch === null ? [] : [`--exclude=${hostBranch}`]), "--branches", "--tags", "--remotes"]);
   if (ownCommits === null || (ownCommits !== "0" && hostHead !== taskTip)) return keep(`${here} holds commits of its own, so it was not adopted`);
 
   const removed = runGit(projectDir, ["worktree", "remove", task.worktree]);
@@ -78,4 +78,24 @@ export function adoptWorktree(store: Store, actor: Actor, projectDir: string, ta
   const dropped = hostBranch === null || hostBranch === task.branch || (ownCommits === "0" && runGit(projectDir, ["branch", "-D", "--", hostBranch]).ok);
   const branchNote = dropped ? "" : `; the host's branch ${hostBranch} was kept`;
   return { adopted: true, reason: `adopted ${here} as task ${taskId}'s worktree on its branch ${task.branch}, in place of ${task.worktree}${branchNote}` };
+}
+
+/**
+ * The other worktrees of this repository whose commits build on task `task`'s base commit and go
+ * past it: where a worker's work sits when it committed in its host's folder before it named its
+ * task, so tmb never adopted that folder. Leaves out the main folder and every open task's worktree.
+ */
+export function workElsewhere(store: Store, task: Task): string[] {
+  if (task.worktree === null || task.baseCommit === null) return [];
+  const listed = git(task.worktree, ["worktree", "list", "--porcelain"]);
+  if (listed === null) return [];
+  const folders = listed.split("\n").filter((line) => line.startsWith("worktree ")).map((line) => line.slice("worktree ".length));
+  const taken = new Set(store.listTasks(OPEN).flatMap((open) => (open.worktree === null ? [] : [real(open.worktree)])));
+  const main = folders[0] === undefined ? null : real(folders[0]);
+  return folders.filter((folder) => {
+    const here = real(folder);
+    if (here === main || taken.has(here) || !existsSync(folder)) return false;
+    const head = git(folder, ["rev-parse", "HEAD"]);
+    return head !== null && head !== task.baseCommit && runGit(folder, ["merge-base", "--is-ancestor", task.baseCommit!, head]).ok;
+  });
 }
