@@ -1,0 +1,136 @@
+// The one contract every language of the code graph meets (trustmybot/tmb#157): a file's text
+// in; its definitions, the container of each, and its references out. The build, the lookups
+// and the dashboard know only this contract, never a language's own rules.
+import type { Node } from 'web-tree-sitter';
+
+export type SymbolKind =
+  | 'function'
+  | 'method'
+  | 'class'
+  | 'interface'
+  | 'type'
+  | 'const'
+  | 'sh_function'
+  | 'sql_table'
+  | 'sql_index'
+  | 'sql_trigger'
+  | 'module'
+  | 'hook'
+  | 'runner';
+
+export type EdgeKind =
+  | 'calls'
+  | 'imports'
+  | 'instantiates'
+  | 'sources'
+  | 'runs'
+  | 'reads_table'
+  | 'writes_table'
+  | 'indexes'
+  | 'triggers_on'
+  | 'bundles'
+  | 'reads_config'
+  | 'covers';
+
+// A language's name, as its module in the registry gives it.
+export type SourceLanguage = string;
+
+export interface ExtractedSymbol {
+  kind: SymbolKind;
+  qualified_name: string;
+  signature: string;
+  doc: string;
+  start_line: number;
+  end_line: number;
+  body_hash: string;
+  exported: number;
+  run_order?: number;
+  // A TS/JS function's or method's FunctionParams as JSON (GH 3176); absent
+  // on every other kind and language.
+  params_json?: string;
+  // What contains it, as an index into Extraction.symbols: a function, a class
+  // or the file. Absent only on the file's own 'module' row.
+  parent?: number;
+  // 1 on a function with no name of its own. Its owner is the nearest named
+  // symbol around it, which agents' lookups name in its place.
+  unnamed?: number;
+  owner?: number;
+  // How far a named function's bare name reaches: 'nested' inside another
+  // function, 'member' when bound as an object's key or an assignment's target,
+  // which no bare call names. Absent on a declaration of the file or a class.
+  reach?: 'nested' | 'member';
+}
+
+export interface ParamInfo {
+  name: string;
+  type: string | null;
+  optional: boolean;
+  default?: string;
+}
+
+export interface FunctionParams {
+  params: ParamInfo[];
+  returns: string | null;
+}
+
+// src indexes Extraction.symbols. hint is the import specifier of an
+// 'imports' edge, or the receiver of a member call: its class when the file
+// types it (`C` for `obj: C` in obj.fn()), else its text (`obj`).
+export interface ExtractedEdge {
+  src: number;
+  kind: EdgeKind;
+  dst_name: string;
+  line: number;
+  hint: string | null;
+}
+
+export interface Extraction {
+  symbols: ExtractedSymbol[];
+  edges: ExtractedEdge[];
+}
+
+// Gathers one file's symbols and references as a language's rules find them.
+export class Collector {
+  readonly symbols: ExtractedSymbol[] = [];
+  readonly edges: ExtractedEdge[] = [];
+  private readonly byKey = new Map<string, number>();
+
+  // A symbol seen again under the same key is the same row: by default its
+  // kind and name, so a class and its merged declarations are one; a function
+  // passes its own place, so two functions that share a name stay two.
+  symbol(s: ExtractedSymbol, key = `${s.kind}\u0000${s.qualified_name}`): number {
+    const known = this.byKey.get(key);
+    if (known !== undefined) return known;
+    this.symbols.push(s);
+    this.byKey.set(key, this.symbols.length - 1);
+    return this.symbols.length - 1;
+  }
+
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null): void {
+    this.edges.push({ src, kind, dst_name: dstName, line, hint });
+  }
+}
+
+// One file, as a language's rules receive it. `root` is its syntax tree when the language has
+// a grammar, else null. `module` is the file's own row, the container of what the rules find
+// at its top level.
+export interface SourceFile {
+  relPath: string;
+  src: string;
+  root: Node | null;
+  module: number;
+}
+
+export interface LanguageModule {
+  // Its name: the `lang` of each file of it in the graph.
+  name: string;
+  // The file extensions it reads, lowercase and without the dot.
+  extensions: readonly string[];
+  // An extensionless file whose first line matches is in this language.
+  shebang?: RegExp;
+  // The path of its embedded tree-sitter grammar; absent for a language read by patterns.
+  grammar?: string;
+  // Its comment marker, for the file's leading comment: `#` or `--`, or `//` and `/* */`.
+  comment: 'hash' | 'slash';
+  extract(file: SourceFile, out: Collector): void;
+}

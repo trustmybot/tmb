@@ -19,7 +19,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 ## Rules
 
 - **Nothing is skipped silently.** A step that did not run is recorded as not run, with the reason.
-- **A start without an end is a finding.** Every run and check records its start and its end. What is stuck is whatever has a start and no end. Planned for v1.0.0 (trustmybot/tmb#160): `tmb doctor` lists them, and a session start names them in one line. Today the record holds them and nothing lists them.
+- **A start without an end is a finding.** Every run and check records its start and its end. What is stuck is whatever has a start and no end. `tmb doctor` lists them, and the planner's session start names them in one line (trustmybot/tmb#160).
 - **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
 - **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump. Agents spend their context on the work.
 - **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
@@ -34,7 +34,7 @@ One database file per project, inside the project's folder and left out of git. 
 |---|---|---|
 | No database | Allows: tmb stays out of projects it was never set up in | Offer `tmb init` |
 | Readable | Decides normally | Run normally |
-| Unreadable, or made by a newer tmb | Denies, naming the cause, and for a newer one the version and program that wrote its shape | None runs. Each stops and names the cause. Planned for v1.0.0 (trustmybot/tmb#160): `tmb doctor`, the health check, still runs |
+| Unreadable, or made by a newer tmb | Denies, naming the cause, and for a newer one the version and program that wrote its shape | None runs. Each stops and names the cause. `tmb doctor`, the health check, still runs, and reads the record read-only (trustmybot/tmb#160) |
 
 ## The code graph is separate
 

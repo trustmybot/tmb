@@ -403,7 +403,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
   }
 
   const dir = featureDir(store, context.projectDir, feature);
-  const push = pushFeature(dir, feature.name);
+  const push = pushFeature(dir, feature.name, actor);
   if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
   // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
   trySendPendingMarks(store, actor, dir);

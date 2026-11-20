@@ -4,7 +4,8 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
-import type { Task } from "../store/index.ts";
+import { pushActorEnv } from "../push-actor.ts";
+import type { Actor, Task } from "../store/index.ts";
 import { DROPPED, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 
@@ -213,22 +214,37 @@ export function removeTaskCheckout(projectDir: string, worktree: string, branch:
  * branch still here. Run at a session start with no task open; returns what it removed, one line each.
  */
 export function retryKeptCheckouts(projectDir: string, tasks: readonly Task[]): string[] {
+  const removed: string[] = [];
+  for (const { task, worktree, branch } of keptCheckouts(projectDir, tasks)) {
+    const cleanup = removeTaskCheckout(projectDir, worktree, branch);
+    if (cleanup.problems.length === 0) removed.push(`task ${task.id}: ${[worktree, branch].filter((part) => part !== null).join(" and ")}`);
+  }
+  return removed;
+}
+
+/**
+ * What closed tasks left on disk: each worktree git still lists, and each agile task's branch still
+ * here, with the worktree to remove and the branch to delete (null for a truest task's, which stays
+ * for its pull request). Reads only.
+ */
+export function keptCheckouts(projectDir: string, tasks: readonly Task[]): { task: Task; worktree: string; branch: string | null; listed: boolean }[] {
   const listed = listedWorktrees(projectDir);
   const refs = runGit(projectDir, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
   const branches = new Set(refs.ok ? refs.stdout.split("\n") : []);
-  const removed: string[] = [];
+  const kept: { task: Task; worktree: string; branch: string | null; listed: boolean }[] = [];
   for (const task of tasks) {
     if (task.worktree === null) continue;
     // A truest task's branch stays for its pull request, and a dropped task's while it holds commits; only the worktree goes.
     const keepBranch = task.state === DROPPED ? branchHoldsWork(projectDir, task) : task.reviewMode === TRUEST;
     const branch = keepBranch || task.branch === null || !branches.has(task.branch) ? null : task.branch;
-    if (!listed.has(realPath(task.worktree)) && branch === null) continue;
-    const cleanup = removeTaskCheckout(projectDir, task.worktree, branch);
-    if (cleanup.problems.length === 0) removed.push(`task ${task.id}: ${[task.worktree, branch].filter((part) => part !== null).join(" and ")}`);
+    const isListed = listed.has(realPath(task.worktree));
+    if (!isListed && branch === null) continue;
+    kept.push({ task, worktree: task.worktree, branch, listed: isListed });
   }
-  return removed;
+  return kept;
 }
 
+/**
 /**
  * Whether a task's branch holds commits past the commit it was cut from: a dropped task's work,
  * which tmb keeps on its branch. A branch whose base tmb cannot tell is kept too.
@@ -242,11 +258,14 @@ export function branchHoldsWork(projectDir: string, task: Task): boolean {
   return !ahead.ok || ahead.stdout !== "0";
 }
 
-/** Pushes a branch (a feature branch as a backup, or a truest task's branch) to origin, never forced; with no origin, skips. */
-export function pushFeature(projectDir: string, featureName: string): PushOutcome {
+/**
+ * Pushes a branch (a feature branch as a backup, or a truest task's branch) to origin, never forced; with no origin, skips.
+ * The push names `actor` to git's pre-push hook, so the push gate records it as theirs.
+ */
+export function pushFeature(projectDir: string, featureName: string, actor: Actor): PushOutcome {
   if (!runGit(projectDir, ["remote", "get-url", ORIGIN]).ok) return { result: "skipped", detail: `the repository has no remote named ${ORIGIN}` };
   const ref = branchRef(featureName);
   // No terminal prompt: a push that needs credentials fails and says so instead of waiting.
-  const pushed = runGit(projectDir, ["push", "--quiet", ORIGIN, `${ref}:${ref}`], { GIT_TERMINAL_PROMPT: "0" });
+  const pushed = runGit(projectDir, ["push", "--quiet", ORIGIN, `${ref}:${ref}`], { GIT_TERMINAL_PROMPT: "0", ...pushActorEnv(actor) });
   return pushed.ok ? { result: "pushed", detail: `pushed ${featureName} to ${ORIGIN}` } : { result: "failed", detail: gitFailure(pushed) };
 }

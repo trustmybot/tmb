@@ -78,3 +78,15 @@ export function unregisterServer(projectDir: string): UnregisterResult {
   if (tmbCreatedIt) deleteFile(marker, projectDir);
   return result;
 }
+
+/** What `tmb doctor` finds wrong with tmb's entry in .mcp.json, or null when it is the one init writes. Never writes. */
+export function serverGap(projectDir: string, tmbCommand: readonly string[]): string | null {
+  const file = mcpJsonPath(projectDir);
+  try {
+    const entry = serversOf(readJsonObject(file), file)[SERVER_KEY];
+    if (entry === undefined) return `${MCP_JSON} does not register the tmb tool server`;
+    return JSON.stringify(entry) === JSON.stringify(serverEntry(tmbCommand)) ? null : `${MCP_JSON} registers the tmb tool server with another command than this tmb's`;
+  } catch (error) {
+    return `${MCP_JSON} cannot be read: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}

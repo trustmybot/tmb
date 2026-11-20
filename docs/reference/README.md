@@ -33,11 +33,11 @@ Each channel installs as a program of its own name, so channels and versions liv
 
 On Windows, set `$env:TMB_CHANNEL` or `$env:TMB_INSTALL_VERSION` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
 
-The examples on this page say `tmb`; use the name of the program you installed. A project runs the program that initialised it: its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it. A program refuses a project whose record a newer tmb has reshaped, and names the program and version that did; run that one, or a newer one, there.
+The examples on this page say `tmb`; use the name of the program you installed. A project runs the program that initialised it: its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it. A program refuses a project whose record a newer tmb has reshaped, and names the program that did; run that one there, or update this program with its `update` command (a program pinned to one release names the installer command instead).
 
 Before the channels had their own names, every channel installed as `tmb`. Such a `tmb` keeps following the channel it was on, and the installer points it out when it installs the channel's new name.
 
-Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. Until then it keeps running the version it has, and with no network it simply runs that version.
+Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. It swaps the new build in only when a session ends, no other session of the same program is running, and no project tmb has served has an open task, so no session or task ever runs on two versions. A project whose record a newer tmb reshaped never holds the swap back: this program can do nothing there, so no task there runs on it. Until then it keeps running the version it has, and with no network it simply runs that version.
 
 | Command | Does |
 |---|---|
@@ -68,11 +68,11 @@ tmb is set up for Claude Code. Next:
   2. Send `@bro`.
 ```
 
-On a terminal, init first asks one question: the review mode, with what each mode costs. It is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). At the first session the planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
+Init asks nothing. At the first session the planner asks you for the review mode among its onboarding questions, with what each mode costs; it is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). The planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
 
 | Command | Does | Asks questions |
 |---|---|---|
-| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | One, on a terminal: the review mode |
+| `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | None |
 | `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks; in a workspace, each repo's base branch and checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
@@ -84,7 +84,7 @@ It then wires tmb into that host, as listed below, and stores the host and its r
 
 Run again, init replaces what an earlier tmb wrote and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
 
-On a terminal it asks for the review mode before those lines, unless one is stored. Without a terminal it asks nothing, never waits for input, and ends by saying that no review mode is chosen and that no task starts until it is.
+It asks nothing and never waits for input, on a terminal or not. With no review mode stored, it ends by saying that none is chosen, how to choose it, and that no task starts until it is.
 
 ### onboard
 
@@ -117,7 +117,7 @@ In a workspace, `base_branch` and `checks` are not used: each repo has its own i
 
 ### Onboarding by itself
 
-When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. Once all are set, the session start says nothing about them.
+When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. The review mode it never applies: it asks you for it among its onboarding questions, with the host's question tool (AskUserQuestion in Claude Code), showing each mode with what it costs and marking agile as recommended, and stores your answer. Once all are set, the session start says nothing about them.
 
 `settings_get` reads the settings and what tmb found; `settings_set` is the planner's alone.
 
@@ -125,9 +125,11 @@ When a session starts as the planner and the base branch, the review mode or the
 
 The review mode decides how many tokens a project uses, so tmb recommends one and never picks it. While none is set, tmb refuses to start a task and says how to choose. There are three ways:
 
-- answer the question at the end of `tmb init`, on a terminal;
-- run `tmb onboard`, or `tmb onboard --review-mode <mode> --yes` to set it without a question;
-- tell the planner when it asks before the first task. It stores your answer.
+- answer the planner's onboarding question at the first session. It stores your answer;
+- run `tmb onboard` on a terminal;
+- run `tmb onboard --review-mode <mode> --yes` to set it without a question.
+
+`tmb init` never asks for it.
 
 In an unattended run nobody can answer, so the task start is refused, the refusal names `tmb onboard`, and the planner cannot set or change the mode. Set it before the run. The record keeps which way the mode was chosen.
 
@@ -184,6 +186,43 @@ For more information, try 'tmb --help'.
 - A usage mistake goes to stderr and exits with code 2: an unknown command, a flag a command does not take, or `tmb` with no command, which prints the short help.
 - Help and errors are coloured on a terminal. `NO_COLOR` turns colour off and `FORCE_COLOR` turns it on; with both set, `NO_COLOR` wins. Output sent to a file or a pipe, or a terminal with `TERM=dumb`, has no colour.
 
+## Check this machine and project
+
+`tmb doctor` checks the machine and the project you run it in, and prints one line per check: `✓` fine, `!` a warning, `✗` a failure, each with the command or the step that fixes it. It only reads, and exits 1 when a check failed.
+
+| Command | Does |
+|---|---|
+| `tmb doctor` | Runs every check and prints what it finds. |
+| `tmb doctor --json` | Prints the same findings as data. |
+| `tmb doctor --fix` | Asks about each fix it can do, one at a time, `[y/N]`, and does only what you say yes to. Without a terminal it changes nothing and says so. |
+
+| On this machine | Fix |
+|---|---|
+| The program: its name, version, channel, where it is installed, and whether it is the one on the PATH | The install step |
+| Old builds kept on disk, each with its version, its size and the sessions that use it | Deletes each one no running session uses, on your yes. One a session uses is never offered |
+| A downloaded update that has not applied, and why; a look for an update that failed | `tmb update` |
+| Entries of sessions whose process ended | Removes them, on your yes |
+| Files an update left when it stopped half-way | Removes them, on your yes |
+| Other channels' programs installed side by side, each with its version | Shown only |
+| The state folder can be read and written | The step that gives you access |
+
+| In this project | Fix |
+|---|---|
+| The record: readable, its shape's version, and which program wrote it | Repairs a damaged record on your yes, keeping the damaged file beside it; for a newer shape, the program to use |
+| The host files and git's pre-push hook match what this tmb wires | `tmb init --host <id>` |
+| The program the project is tied to, and any running session that keeps it on an older build | Shown only |
+| Empty settings, and the review mode not chosen | `tmb onboard` |
+| Runs and checks with a start and no end, and open tasks no agent run is on | Shown only: the planner decides |
+| Worktrees and branches of closed and dropped tasks still on disk | Removes each on your yes, by the same rules as closing a task: a worktree with work nobody committed stays |
+| The code graph behind its base branch, built by an older indexer, or with files not parsed | `tmb index` |
+| GitHub's CLI installed and signed in | `gh auth login` |
+| Other records in a folder above the project or below it | Shown only |
+
+- **It never deletes without your yes**, and never touches a file tmb did not write.
+- **It runs with a broken record.** Every check that does not need the record still runs, and the ones that do say why they were skipped. A record an older tmb wrote is upgraded by the next tmb command, not by doctor.
+- **A check that fails by itself looks like tmb's own bug.** Its line says so and names `tmb feedback`, which can put that error in a report.
+- **The planner's session start names what doctor finds**, in one line: how many findings, and how many runs or tasks have a start and no end. It runs only the quick checks, and says nothing when there is nothing to say.
+
 ## Report a bug in tmb
 
 When tmb itself goes wrong, a bug report can reach tmb's maintainers as a public issue on `trustmybot/tmb`, from your own GitHub account. Nothing is ever sent by itself: you read each report whole and say yes or no to it.
@@ -195,7 +234,7 @@ When tmb itself goes wrong, a bug report can reach tmb's maintainers as a public
 | `tmb feedback status` | Shows whether the program is on, and why. |
 
 - **On or off only decides whether the planner offers a report.** With the program on, the planner may draft one when tmb breaks, and shows it to you first. `tmb feedback` works either way.
-- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The first run is the end of `tmb init` on a terminal, else the planner's first session.
+- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The notice comes at the end of `tmb init` on a terminal, else at the planner's first session; the question on stable is always the planner's, as init asks nothing.
 - **The setting is yours, not the project's.** It is kept once per machine for each channel's program.
 - **How a report is sent.** With GitHub's CLI signed in, tmb files the issue after your yes and prints its link. Otherwise it opens the repo's bug form in your browser, filled in, and you press submit there; with no browser it prints the link. A report too long for a link is saved to a file, and the form asks you to attach it.
 - **Without a terminal** the draft is only saved to a file, and nothing is sent.

@@ -15,7 +15,7 @@ import { UNTRUSTED_NOTE } from "./graph/summary.ts";
 import { openProjectStore } from "./project.ts";
 import { refreshPullRequestStates } from "./pull-request-state.ts";
 import { repoDirOf, workspaceRepos } from "./repos.ts";
-import { readSettings, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode } from "./settings.ts";
+import { readSettings, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode } from "./settings.ts";
 import { type Actor, type Store, type Task, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
@@ -24,6 +24,7 @@ export const OPEN_WORK_MAX = 20;
 export const PULL_REQUESTS_ENDED_HEADING = "## Pull requests that ended since the last session";
 export const EMPTY_SETTINGS_HEADING = "## The project's settings are empty";
 export const HOST_FILES_HEADING = "## tmb's files in this project";
+export const DOCTOR_HEADING = "## What tmb doctor finds";
 export const PROJECT_MAP_HEADING = "## The project, from the code graph";
 export const PROJECT_MAP_MAX_DIRS = 40;
 const PROJECT_MAP_DEPTH = 2;
@@ -142,8 +143,8 @@ const SETTING_LABELS = { base_branch: "base branch", review_mode: "review mode",
 /**
  * When the project's settings are empty, as `tmb init` leaves them, the planner onboards the
  * project itself: it applies the base branch and checks it recommends and shows them. The review
- * mode is the Human's choice: the planner asks for it before the first task, and with no one to
- * ask leaves it unset, so task_start is refused. Empty when all are set.
+ * mode is the Human's choice: init asks nothing, so the planner asks for it among its onboarding
+ * questions, and with no one to ask leaves it unset, so task_start is refused. Empty when all are set.
  */
 function emptySettingsSection(store: Store, projectDir: string, unattended: boolean): string {
   const empty = emptySettings(readSettings(store));
@@ -173,7 +174,8 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
         ? "The review mode is the Human's choice, as it decides how many tokens the project uses, and no one can answer in this run: do not set it. " +
             "task_start is refused until the Human runs `tmb onboard`; say so in your answer."
         : "The review mode is the Human's choice, as it decides how many tokens the project uses: do not set it yourself. " +
-            "Before the first task, ask the Human which mode they choose, with the mode you recommend and what each costs, and set their answer with settings_set. task_start is refused until it is set.",
+            `Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, ${RECOMMENDED_REVIEW_MODE} marked as recommended. ` +
+            "Set their answer with settings_set. task_start is refused until it is set.",
     );
   }
   return `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ${parts.join(" ")}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`;
@@ -240,12 +242,12 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
  * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
  * instruction for it. Nothing about the mode is stored in the project.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null): string {
+export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null, doctor?: (projectDir: string) => string | null): string {
   if (reviewsHere(projectDir, host)) {
     const context = withHostFiles(reviewerContext(projectDir, host!), refreshed, unattended);
     return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
   }
-  const context = withHostFiles(plannerContext(projectDir, unattended, host), refreshed, unattended);
+  const context = withDoctor(withHostFiles(plannerContext(projectDir, unattended, host), refreshed, unattended), projectDir, doctor, unattended);
   if (unattended) return `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`;
   // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
   const told = feedback === undefined ? "" : feedbackSection(feedback);
@@ -260,6 +262,22 @@ function withHostFiles(context: string, refreshed: string | null, unattended: bo
   if (refreshed === null) return context;
   const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
   return `${context.trimEnd()}\n\n${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tell}\n`;
+}
+
+/**
+ * The planner's one line on what \`tmb doctor\` finds (trustmybot/tmb#160), run after the session
+ * start's own clean-up so it counts only what is left. Never throws.
+ */
+function withDoctor(context: string, projectDir: string, doctor: ((projectDir: string) => string | null) | undefined, unattended: boolean): string {
+  let line: string | null = null;
+  try {
+    line = doctor?.(projectDir) ?? null;
+  } catch {
+    line = null;
+  }
+  if (line === null) return context;
+  const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
+  return `${context.trimEnd()}\n\n${DOCTOR_HEADING}\n\n${oneLine(line)} ${tell}\n`;
 }
 
 /** The feedback program's first-run section; never throws, as a session start must not fail. */

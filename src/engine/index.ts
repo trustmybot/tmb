@@ -9,7 +9,7 @@ import { sessionStartContext } from "./session-start.ts";
  * answered as the planner's.
  */
 export type EngineEvent =
-  | { type: "session-start"; projectDir: string; unattended: boolean; host?: string; feedback?: FeedbackEnv; refreshed?: string | null }
+  | { type: "session-start"; projectDir: string; unattended: boolean; host?: string; feedback?: FeedbackEnv; refreshed?: string | null; doctor?: (projectDir: string) => string | null }
   | { type: "session-end"; projectDir: string; host: string };
 
 export type EngineAnswer = { context: string };
@@ -30,7 +30,7 @@ function sessionEnd(projectDir: string, host: string): void {
 export function handleEvent(event: EngineEvent): EngineAnswer {
   switch (event.type) {
     case "session-start":
-      return { context: sessionStartContext(event.projectDir, event.unattended, event.host, event.feedback, event.refreshed ?? null) };
+      return { context: sessionStartContext(event.projectDir, event.unattended, event.host, event.feedback, event.refreshed ?? null, event.doctor) };
     case "session-end":
       sessionEnd(event.projectDir, event.host);
       return { context: "" };
@@ -40,9 +40,10 @@ export function handleEvent(event: EngineEvent): EngineAnswer {
 export { type Decision, decide, MAIN_AGENT, UNNAMED_AGENT, TMB_EVENT_TYPES, type TmbEvent, type TmbEventType } from "./decide.ts";
 export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
 export { OPERATIONS } from "./handlers/index.ts";
-export { installPushGate, installPushGates, judgePush, parsePushRefs, type PushRef, removePushGate, removePushGates } from "./push-gate.ts";
+export { installPushGate, installPushGates, judgePush, pushGateGaps, parsePushRefs, type PushRef, removePushGate, removePushGates } from "./push-gate.ts";
 export {
   AWAITING_REVIEW_HEADING,
+  DOCTOR_HEADING,
   EMPTY_SETTINGS_HEADING,
   HOST_FILES_HEADING,
   OPEN_WORK_HEADING,

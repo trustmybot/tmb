@@ -1,12 +1,12 @@
 import { SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
 import { keptRecordLine, listed, setUpRecord, shown } from "../common/record.ts";
 import type { HostAdapter } from "../host-adapter.ts";
-import { registerServer, unregisterServer } from "./config-toml.ts";
+import { registerServer, serverGap, unregisterServer } from "./config-toml.ts";
 import { detect } from "./detect.ts";
 import { answerHook } from "./hook.ts";
-import { installHooks, removeHooks } from "./hooks-json.ts";
+import { hooksGaps, installHooks, removeHooks } from "./hooks-json.ts";
 import { HOST_ID } from "./paths.ts";
-import { removeRoleFiles, roleFilePath, writeRoleFiles } from "./role-files.ts";
+import { removeRoleFiles, roleFileGaps, roleFilePath, writeRoleFiles } from "./role-files.ts";
 import { pendingSteps } from "./trust.ts";
 
 function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): string[] {
@@ -72,6 +72,11 @@ export const adapter: HostAdapter = {
   },
 
   pendingSteps,
+
+  wiringGaps(projectDir, tmbCommand) {
+    const server = serverGap(projectDir, tmbCommand);
+    return [...(server === null ? [] : [server]), ...hooksGaps(projectDir, tmbCommand), ...roleFileGaps(projectDir, SUBAGENT_ROLES)];
+  },
 
   answerHook,
 };
