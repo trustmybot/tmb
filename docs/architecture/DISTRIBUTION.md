@@ -83,12 +83,15 @@ A plugin project's records are carried over by `tmb migrate`, a one-way copy fro
 
 ## Feedback
 
-Planned for v1.0.0 (trustmybot/tmb#122). Decided by the Human on 2026-11-20.
+Built for v1.0.0 (trustmybot/tmb#122). Decided by the Human on 2026-11-20. How to use it is in the [reference](../reference/README.md#report-a-bug-in-tmb).
 
-- **The planner drafts a bug report when tmb itself breaks, and the Human says yes to each one.** Nothing is sent by itself, on any channel. The feedback program is on by default on dev and rc and asked about on stable, at the first run.
-- **A report is an issue on the source repo, from the user's own GitHub account.**
-- **A report follows the repo's bug form.** tmb reads the form as it stands on the default branch and fills in its fields, so the version, the labels and the questions are always the current ones ([contributing](../contributing/README.md#issues)).
-- **A report holds no source code, prompts or environment variables.**
+- **The planner drafts a bug report when tmb itself breaks, and the Human says yes to each one.** Nothing is sent by itself, on any channel. `tmb feedback` drafts one on request.
+- **On by default on dev and rc, asked about on stable**, once, at the first run. The setting belongs to the person: it is kept with the machine-wide state of each channel's program.
+- **A report is an issue on the source repo, from the user's own GitHub account.** With GitHub's CLI signed in, tmb files it. Otherwise tmb opens the repo's bug form filled in, and the user submits it. A link is kept under 7,500 characters; a longer report is saved to a file to attach.
+- **A report follows the repo's bug form.** tmb reads the form as it stands on the default branch and sends only the fields that form has, so the version, the labels and the questions are always the current ones ([contributing](../contributing/README.md#issues)). With no network it uses a built-in copy, which the build takes from the repo's own form file, so the two cannot differ.
+- **Labels come from the form on both routes.** GitHub drops the labels of an issue filed through its API by someone who cannot write to the repo. So a report filed through the CLI carries one hidden line, `<!-- tmb-feedback form=bug.yml -->`, and a workflow on the repo reads that form's labels and adds them. Not yet run on GitHub: workflows are stopped while the repo is private.
+- **A report holds no source code, file contents, prompts, agent messages or environment variables.** Paths and values that look like secrets are cleaned before the Human sees it.
+- **The record keeps each report filed, with its link, and each form opened.** For an opened form it cannot know whether the user pressed submit.
 
 ## Offline
 

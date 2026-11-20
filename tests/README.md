@@ -229,6 +229,16 @@ What a close checks beyond the checks, and a worker started in a worktree its ho
 | Integration | [tests/integration/adapter-contract.test.ts](integration/adapter-contract.test.ts) | Claude Code raises a worker's folder when the worker names its task with task_brief or task_close; Codex, whose worker works in the worktree tmb cut, does not. |
 | Workflow simulation | [tests/workflow/close-checks.test.ts](workflow/close-checks.test.ts) | A commit outside the task's files closes, and the close names those files and leaves the spec as written; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |
 
+## Feedback
+
+The feedback program (trustmybot/tmb#122).
+
+| Level | Test | Covers |
+|---|---|---|
+| Unit | [test/feedback.test.ts](../test/feedback.test.ts) | The setting and its channel defaults, the two off switches, the first run's notice and question; a report's fields, cleaned paths and removed secrets; the body for the CLI route and the link for the form route, with a long report shortened; the form read from the repo and the built-in copy; `tmb feedback` and its `on`, `off` and `status`; the planner's two tools and their refusals. |
+
+Not tested: the two routes against GitHub itself, and the labelling workflow. Both wait for the repo to be public.
+
 ## Help and mistyped commands
 
 The command line's help, tips and colour (trustmybot/tmb#111).
