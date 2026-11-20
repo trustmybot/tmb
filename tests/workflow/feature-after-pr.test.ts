@@ -12,7 +12,7 @@ import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processe
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-workflow-after-pr-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-workflow-after-pr-");
 afterAll(cleanup);
 
 const ghDir = path.join(scratch, "gh-state");
@@ -61,7 +61,7 @@ describe("a feature branch after its pull request", () => {
       const first = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add greet", files: ["src"], criteria: ["SC1: it greets"] });
       const tip = commitFile(first.worktree, "src/greet.ts", "export const greet = () => 'hi';\n", "add greet");
       await callJson(client, "task_close", { id: first.id, role: "worker" });
-      tmb(["feature", "waive", "feat/greet", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/greet", "--reason", "The Human read it"], project);
 
       // 1. The first pull request opens, then closes without a merge.
       github({ create: PR_1, view: "OPEN" });
@@ -82,7 +82,7 @@ describe("a feature branch after its pull request", () => {
       const reworked = commitFile(rework.worktree, "src/greet.ts", "export const greet = (name) => 'hi ' + name;\n", "greet by name");
       await callJson(client, "task_close", { id: rework.id, role: "worker" });
       expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet" })).toContain(`at its tip ${reworked}`);
-      tmb(["feature", "waive", "feat/greet", "--reason", "The Human read the rework"], project);
+      human(["feature", "waive", "feat/greet", "--reason", "The Human read the rework"], project);
 
       // 4. The Human reopened a pull request on GitHub: gh refuses a second, and tmb records the open one.
       github({ create: null, existing: PR_3, view: "OPEN" });
@@ -113,7 +113,7 @@ describe("a feature branch after its pull request", () => {
       const first = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add wave", files: ["src"], criteria: ["SC1: it waves"] });
       commitFile(first.worktree, "src/wave.ts", "export const wave = () => 'o/';\n", "add wave");
       await callJson(client, "task_close", { id: first.id, role: "worker" });
-      tmb(["feature", "waive", "feat/wave", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/wave", "--reason", "The Human read it"], project);
       github({ create: PR_1, existing: null, view: "OPEN" });
       await callJson(client, "feature_pr", { feature: "feat/wave", title: "Wave" });
       const opened = onOrigin();
@@ -135,7 +135,7 @@ describe("a feature branch after its pull request", () => {
 
       // 3. The new tip needs a review or a waiver; then feature_pr pushes it to the same pull request and opens none.
       expect(await callRefused(client, "feature_pr", { feature: "feat/wave", title: "Wave" })).toContain(`at its tip ${fixed}`);
-      tmb(["feature", "waive", "feat/wave", "--reason", "The Human read the fix"], project);
+      human(["feature", "waive", "feat/wave", "--reason", "The Human read the fix"], project);
       expect(await callJson(client, "feature_pr", { feature: "feat/wave", title: "Wave" })).toMatchObject({ url: PR_1, tip: fixed, coveredBy: "waiver" });
       expect(onOrigin()).toBe(fixed);
       expect(creates()).toBe(createdBefore);
@@ -156,7 +156,7 @@ describe("a feature branch after its pull request", () => {
       commitFile(first.worktree, "src/nod.ts", "export const nod = () => 'yes';\n", "add nod");
       await callJson(client, "task_close", { id: first.id, role: "worker" });
       const late = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Add shake", files: ["src/shake.ts"], criteria: ["SC1: it shakes"] });
-      tmb(["feature", "waive", "feat/nod", "--reason", "The Human read it"], project);
+      human(["feature", "waive", "feat/nod", "--reason", "The Human read it"], project);
       github({ create: PR_1, existing: null, view: "OPEN" });
       await callJson(client, "feature_pr", { feature: "feat/nod", title: "Nod" });
       const opened = onOrigin();

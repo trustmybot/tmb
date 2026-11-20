@@ -61,7 +61,7 @@ export const claudeCodeHarness: HostHarness = {
           input: input(project, "PreToolUse", { ...agentType(event.role), tool_name: "Write", tool_input: { file_path: event.file, content: "x" } }),
           env,
         };
-      case "shell-command":
+      case "before-shell-command":
         return {
           command: wiredCommand(project, "PreToolUse"),
           input: input(project, "PreToolUse", { ...agentType(event.role), tool_name: "Bash", tool_input: { command: event.command } }),

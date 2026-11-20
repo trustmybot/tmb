@@ -23,7 +23,7 @@ try {
   fail(`git init failed in ${project}`);
 }
 tmb.shown(["init"], `tmb init failed in ${project}`);
-tmb.shown(["onboard", "--yes", "--review-mode", "agile"], `tmb onboard failed in ${project}`);
+tmb.human(["onboard", "--yes", "--review-mode", "agile"], `tmb onboard failed in ${project}`);
 
 // With no terminal, onboard takes each default, the host and the project's branch, and the review mode it was given.
 const settings = tmb.text(["config"], `tmb config failed after onboard in ${project}`);

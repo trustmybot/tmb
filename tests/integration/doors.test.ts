@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathWithFakeClaude } from "./fake-host.ts";
+import { asHuman } from "../lib/as-human.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -78,6 +79,13 @@ function run(args: string[], cwd: string, input?: string) {
 }
 
 /** Runs a tmb command that must succeed and returns its stdout. */
+/** Runs a step only the Human may take, on a terminal where the Human types yes; returns what the terminal showed. */
+function human(args: string[], cwd: string): string {
+  const result = asHuman(process.execPath, [CLI, ...args], { cwd, env });
+  if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.output}`);
+  return result.output;
+}
+
 function tmb(args: string[], cwd: string): string {
   const result = run(args, cwd);
   if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.stderr}`);
@@ -155,7 +163,7 @@ describe("init and remove", () => {
     tmb(["onboard", "--yes"], project);
     expect(files.map((file) => readFileSync(file, "utf8"))).toEqual(before);
 
-    const removed = tmb(["remove"], project);
+    const removed = human(["remove"], project);
     expect(readJson(mcpFile)).toEqual({ mcpServers: { other: otherServer } });
     expect(readJson(settingsFile)).toEqual(originalSettings);
     expect(existsSync(path.join(project, ".tmb", "trajectory.db"))).toBe(true);
@@ -167,7 +175,7 @@ describe("init and remove", () => {
     tmb(["init"], project);
     tmb(["onboard", "--yes"], project);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe(".tmb/\n.mcp.json\n.claude/settings.local.json\n");
-    tmb(["remove"], project);
+    human(["remove"], project);
     expect(existsSync(path.join(project, ".mcp.json"))).toBe(false);
     expect(existsSync(path.join(project, ".claude"))).toBe(false);
     expect(existsSync(path.join(project, ".tmb", "trajectory.db"))).toBe(true);

@@ -12,7 +12,7 @@ import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processe
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } =
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } =
   tmbProcesses("tmb-workflow-truest-");
 afterAll(cleanup);
 
@@ -34,7 +34,7 @@ const LINES = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
 function truestProject(): string {
   const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": LINES }, { origin: true });
   tmb(["init"], project);
-  tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+  human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
   return project;
 }
 
@@ -182,7 +182,7 @@ describe("Truest mode: every task is reviewed before its push", () => {
       const waivedCommit = commitFile(waived.worktree, "docs/new.txt", "new\n", "new");
       await callJson(client, "task_close", { id: waived.id, role: "worker" });
       expect(await callRefused(client, "task_waive", { id: waived.id, reason: "tiny", role: "planner" })).toContain("only the Human waives");
-      expect(tmb(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(`at ${waivedCommit}`);
+      expect(human(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(`at ${waivedCommit}`);
       // gh pr create fails because the pull request is already open: task_pr takes that one.
       writeFileSync(ghFailOnce, "");
       expect(tmb(["task", "pr", waived.id, "--title", "New file"], project)).toContain("https://github.com/example/project/pull/9");

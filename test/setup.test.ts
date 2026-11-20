@@ -127,7 +127,7 @@ const chosenVia = () => {
 
 const REVIEW_MODE_PROMPT = "Review mode, one of: agile, truest [agile]: ";
 const NO_REVIEW_MODE_LINE =
-  "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. Run tmb onboard on a terminal, or tmb onboard --review-mode <agile|truest> --yes.";
+  "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. Run tmb onboard, or tmb onboard --review-mode <agile|truest>, on a terminal.";
 const auditCount = () => record((_, audit) => audit.length);
 
 describe("choosing the host", () => {

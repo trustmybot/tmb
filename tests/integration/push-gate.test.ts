@@ -13,7 +13,7 @@ import { BASE_BRANCH, CLI, callJson, tmbProcesses } from "./tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, run, tmb, tmbJson, setUpProject, commitFile, sessionStart, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
+const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, sessionStart, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
 afterAll(cleanup);
 
 /** A push typed by hand: git runs the pre-push hook; returns its exit status and what it said. */
@@ -42,13 +42,13 @@ describe("the push gate", () => {
     const file = hookFile(project);
     expect(readFileSync(file, "utf8")).toContain("# tmb: the push gate.");
     expect(statSync(file).mode & 0o111).not.toBe(0);
-    expect(tmb(["remove"], project)).toContain("Removed git's pre-push hook");
+    expect(human(["remove"], project)).toContain("Removed git's pre-push hook");
     expect(existsSync(file)).toBe(false);
 
     writeFileSync(file, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     expect(tmb(["init"], project)).toContain("is not tmb's, so it was left alone");
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
-    tmb(["remove"], project);
+    human(["remove"], project);
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
   });
 
@@ -176,7 +176,7 @@ function setUpSubfolderProject(): { repo: string; project: string } {
   git(repo, "remote", "add", "origin", origin);
   git(repo, "push", "-q", "-u", "origin", BASE_BRANCH);
   tmb(["init"], project);
-  tmb(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "test -f pkg-marker", "--yes"], project);
+  human(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "test -f pkg-marker", "--yes"], project);
   return { repo, project };
 }
 
@@ -261,7 +261,7 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     const project = setUpWithForeignHook();
     expect(tmb(["init"], project)).toContain(`The push gate is off in ${project}`);
     // --yes is not the yes to change another tool's hook.
-    const onboarded = tmb(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "true", "--yes"], project);
+    const onboarded = human(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "true", "--yes"], project);
     expect(onboarded).toContain(`The push gate stays off in ${project}`);
     expect(readFileSync(hookFile(project), "utf8")).toBe(FOREIGN);
     for (let start = 0; start < 2; start++) expect(sessionStart(project)).toContain(`The push gate is off in ${project}`);
@@ -298,7 +298,7 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     expect(pushWith(project, env, "-q", "origin", "HEAD:refs/heads/other").status).toBe(0);
     expect(otherToolSaw(project)).toContain("refs/heads/other");
 
-    expect(tmb(["remove"], project)).toContain("Took tmb's line out of git's pre-push hook");
+    expect(human(["remove"], project)).toContain("Took tmb's line out of git's pre-push hook");
     expect(readFileSync(hookFile(project), "utf8")).toBe(FOREIGN);
   });
 });

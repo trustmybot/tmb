@@ -13,7 +13,7 @@ import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processe
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } = tmbProcesses("tmb-workflow-no-remote-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } = tmbProcesses("tmb-workflow-no-remote-");
 afterAll(cleanup);
 
 const ghLog = path.join(scratch, "gh.log");
@@ -70,7 +70,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       const fixed = commitFile(fix.worktree, "src/greet.ts", "export const greet = (name) => 'hi ' + name;\n", "greet by name");
       await callJson(client, "task_close", { id: fix.id, role: "worker" });
       expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet" })).toContain(`at its tip ${fixed}`);
-      tmb(["feature", "waive", "feat/greet", "--reason", "The Human read the fix"], project);
+      human(["feature", "waive", "feat/greet", "--reason", "The Human read the fix"], project);
       const readyAgain = await callJson(client, "feature_pr", { feature: "feat/greet", title: "Greet" });
       expect(readyAgain).toMatchObject({ url: null, tip: fixed, localMerge: ready.localMerge });
 
@@ -89,7 +89,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
 
   test("truest: a passed task is rebased onto the local base, ready, and closed once the Human merges it", async () => {
     const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": "one\ntwo\n" });
-    tmb(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
+    human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
     const issue = tmbJson(["issue", "create", "Fix the lines"], project);
     const client = await connect(project, "claude-code");
     try {
@@ -125,7 +125,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
         const started = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent, files: ["src"], criteria: ["SC1: it works"] });
         commitFile(started.worktree, file, `${intent}\n`, intent);
         await callJson(client, "task_close", { id: started.id, role: "worker" });
-        tmb(["task", "waive", started.id, "--reason", "The Human read it"], project);
+        human(["task", "waive", started.id, "--reason", "The Human read it"], project);
         const answer = await callJson(client, "task_pr", { id: started.id, title: intent });
         expect(answer).toMatchObject({ url: null, coveredBy: "waiver" });
         return { id: started.id, branch: started.branch, localMerge: answer.localMerge };
