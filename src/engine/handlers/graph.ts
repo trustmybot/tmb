@@ -8,6 +8,7 @@ import { FIND_MAX, find, type Hit, lookupSymbol, type MapResult, projectMap, rec
 import { UNTRUSTED_NOTE } from "../graph/summary.ts";
 import type { Actor, Store } from "../store/index.ts";
 import type { OperationContext } from "./common.ts";
+import { resolveRepo } from "../repos.ts";
 import { HandlerError } from "./errors.ts";
 import { type FieldSchema, type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 
@@ -20,6 +21,15 @@ const TASK_ID: FieldSchema = {
   pattern: RECORD_ID,
 };
 
+const REPO: FieldSchema = {
+  type: "string",
+  description: "In a workspace of several repos, the repo whose graph to read, by its name in the workspace (settings_get lists them). With task_id, the task's repo. Omit it in a project of one repo.",
+  pattern: NOT_BLANK,
+};
+
+/** Which graph a read is for: a task's (in its repo), or a repo's base branch. */
+type Target = { taskId?: string; repo?: string };
+
 type Miss = (lookup: string, query: string, detail?: string) => void;
 
 /**
@@ -31,11 +41,11 @@ async function withView<T>(
   store: Store,
   actor: Actor,
   context: OperationContext,
-  taskId: string | undefined,
+  target: Target,
   read: (view: GraphView, miss: Miss) => T,
   writes = false,
 ): Promise<GraphAnswer<T>> {
-  const view = await openView(context.projectDir, store, taskId === undefined ? {} : { taskId });
+  const view = await openView(context.projectDir, store, target);
   try {
     const misses: Parameters<Miss>[] = [];
     // A write takes the lock up front: a read transaction that later writes fails when another process committed in between.
@@ -56,14 +66,15 @@ export const graphMapSchema: InputSchema = {
     path: { type: "string", description: "The directory to start from, relative to the project; the whole project when left out." },
     depth: { type: "integer", description: "How many directory levels to show, the start included; 2 when left out.", minimum: 1, maximum: 20 },
     task_id: TASK_ID,
+    repo: REPO,
   },
   required: [],
   additionalProperties: false,
 };
 
 export async function graphMap(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<MapResult>> {
-  const { path, depth, task_id } = validateInput<{ path?: string; depth?: number; task_id?: string }>("graph_map", graphMapSchema, input);
-  return withView(store, actor, context, task_id, (view) => projectMap(view.db, view.layer, { path, depth }));
+  const { path, depth, task_id, repo } = validateInput<{ path?: string; depth?: number; task_id?: string; repo?: string }>("graph_map", graphMapSchema, input);
+  return withView(store, actor, context, { taskId: task_id, repo }, (view) => projectMap(view.db, view.layer, { path, depth }));
 }
 
 // --- graph_find ---------------------------------------------------------------------------
@@ -74,14 +85,15 @@ export const graphFindSchema: InputSchema = {
     query: { type: "string", description: "A symbol's name, a path, or words that describe what you look for.", pattern: NOT_BLANK },
     k: { type: "integer", description: `How many hits to return; 10 when left out.`, minimum: 1, maximum: FIND_MAX },
     task_id: TASK_ID,
+    repo: REPO,
   },
   required: ["query"],
   additionalProperties: false,
 };
 
 export async function graphFind(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ hits: Hit[] }>> {
-  const { query, k, task_id } = validateInput<{ query: string; k?: number; task_id?: string }>("graph_find", graphFindSchema, input);
-  return withView(store, actor, context, task_id, (view, miss) => {
+  const { query, k, task_id, repo } = validateInput<{ query: string; k?: number; task_id?: string; repo?: string }>("graph_find", graphFindSchema, input);
+  return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
     const hits = find(view.db, view.layer, query, k);
     if (hits.length === 0) miss("graph_find", query);
     return { hits };
@@ -96,6 +108,7 @@ export const graphSymbolSchema: InputSchema = {
     name: { type: "string", description: "A symbol's name or qualified name (Class.method), or a file's path for what depends on the file.", pattern: NOT_BLANK },
     path: { type: "string", description: "Only the symbol defined in this file, when several share the name." },
     task_id: TASK_ID,
+    repo: REPO,
   },
   required: ["name"],
   additionalProperties: false,
@@ -107,8 +120,8 @@ export async function graphSymbol(
   input: unknown,
   context: OperationContext,
 ): Promise<GraphAnswer<{ cards: SymbolCard[]; more: number }>> {
-  const { name, path, task_id } = validateInput<{ name: string; path?: string; task_id?: string }>("graph_symbol", graphSymbolSchema, input);
-  return withView(store, actor, context, task_id, (view, miss) => {
+  const { name, path, task_id, repo } = validateInput<{ name: string; path?: string; task_id?: string; repo?: string }>("graph_symbol", graphSymbolSchema, input);
+  return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
     const result = lookupSymbol(view.db, view.layer, name, path);
     if (result.cards.length === 0) miss("graph_symbol", path === undefined ? name : `${path}#${name}`);
     return result;
@@ -128,19 +141,20 @@ export const graphScopeSchema: InputSchema = {
     },
     k: { type: "integer", description: "How many search hits to seed from; 8 when left out.", minimum: 1, maximum: FIND_MAX },
     task_id: TASK_ID,
+    repo: REPO,
   },
   required: [],
   additionalProperties: false,
 };
 
 export async function graphScope(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<ScopeResult>> {
-  const { objective = "", anchors = [], k, task_id } = validateInput<{ objective?: string; anchors?: string[]; k?: number; task_id?: string }>(
+  const { objective = "", anchors = [], k, task_id, repo } = validateInput<{ objective?: string; anchors?: string[]; k?: number; task_id?: string; repo?: string }>(
     "graph_scope",
     graphScopeSchema,
     input,
   );
   if (objective.trim() === "" && anchors.length === 0) throw new HandlerError("invalid_input", "graph_scope needs an objective or at least one anchor");
-  return withView(store, actor, context, task_id, (view, miss) => {
+  return withView(store, actor, context, { taskId: task_id, repo }, (view, miss) => {
     const result = scope(view.db, view.layer, { objective, anchors, k });
     for (const anchor of result.unresolvedAnchors) miss("graph_scope", anchor, "anchor not found");
     if (result.files.length === 0 && result.tests.length === 0) miss("graph_scope", objective, "nothing in scope");
@@ -162,18 +176,19 @@ export const graphConceptUpsertSchema: InputSchema = {
       items: { type: "string", pattern: NOT_BLANK },
       minItems: 1,
     },
+    repo: REPO,
   },
   required: ["name", "kind", "body", "anchors"],
   additionalProperties: false,
 };
 
 export async function graphConceptUpsert(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ concept: Concept }>> {
-  const { name, kind, body, anchors } = validateInput<{ name: string; kind: ConceptKind; body: string; anchors: string[] }>(
+  const { name, kind, body, anchors, repo } = validateInput<{ name: string; kind: ConceptKind; body: string; anchors: string[]; repo?: string }>(
     "graph_concept_upsert",
     graphConceptUpsertSchema,
     input,
   );
-  return withView(store, actor, context, undefined, (view) => {
+  return withView(store, actor, context, { repo }, (view) => {
     const result = upsertConcept(view.db, actor, { name, kind, body, anchors: anchors.map(parseAnchor) }, view.freshness.commit);
     if (result.concept === null) {
       throw new HandlerError("refused", `a concept is anchored only to code in the graph, and these are not in the base branch: ${result.missing.join(", ")}`);
@@ -189,14 +204,15 @@ export const graphConceptsSchema: InputSchema = {
   properties: {
     name: { type: "string", description: "One concept by its name or id." },
     query: { type: "string", description: "Only concepts whose name or body holds each of these words." },
+    repo: REPO,
   },
   required: [],
   additionalProperties: false,
 };
 
 export async function graphConcepts(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ concepts: Concept[] }>> {
-  const { name, query } = validateInput<{ name?: string; query?: string }>("graph_concepts", graphConceptsSchema, input);
-  return withView(store, actor, context, undefined, (view) => {
+  const { name, query, repo } = validateInput<{ name?: string; query?: string; repo?: string }>("graph_concepts", graphConceptsSchema, input);
+  return withView(store, actor, context, { repo }, (view) => {
     if (name === undefined) return { concepts: listConcepts(view.db, query) };
     const concept = getConcept(view.db, name);
     if (concept === null) throw new HandlerError("not_found", `no concept ${JSON.stringify(name)} in the code graph`);
@@ -214,14 +230,15 @@ export const graphMissSchema: InputSchema = {
     lookup: { type: "string", description: "The lookup that answered wrong or missed.", enum: GRAPH_LOOKUPS },
     query: { type: "string", description: "What you asked it.", pattern: NOT_BLANK },
     detail: { type: "string", description: "What was wrong or missing, and where the answer really was.", pattern: NOT_BLANK },
+    repo: REPO,
   },
   required: ["lookup", "query", "detail"],
   additionalProperties: false,
 };
 
-export function graphMiss(_store: Store, actor: Actor, input: unknown, context: OperationContext): { recorded: true } {
-  const { lookup, query, detail } = validateInput<{ lookup: string; query: string; detail: string }>("graph_miss", graphMissSchema, input);
-  const db = openGraphDb(context.projectDir);
+export function graphMiss(store: Store, actor: Actor, input: unknown, context: OperationContext): { recorded: true } {
+  const { lookup, query, detail, repo } = validateInput<{ lookup: string; query: string; detail: string; repo?: string }>("graph_miss", graphMissSchema, input);
+  const db = openGraphDb(context.projectDir, resolveRepo(store, context.projectDir, repo).name);
   try {
     recordMiss(db, actor, lookup, query, detail);
   } finally {

@@ -43,8 +43,8 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   discussion: { table: "discussions", columns: ["issue_id", "kind", "body"], updatable: [], hasUpdatedAt: false, searchable: true },
   task: {
     table: "tasks",
-    columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit", "feature_id", "kind", "main_snapshot"],
-    updatable: ["state", "commit_sha", "review_mode", "push_result", "push_detail", "pr_url", "base_commit", "worktree"],
+    columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit", "feature_id", "kind", "main_snapshot", "repo", "replaces"],
+    updatable: ["state", "commit_sha", "review_mode", "push_result", "push_detail", "pr_url", "base_commit", "worktree", "drop_reason"],
     hasUpdatedAt: true,
     searchable: false,
   },
@@ -73,7 +73,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   audit: { table: "audit", columns: ["what", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
   feature: {
     table: "features",
-    columns: ["name", "base_branch", "base_commit"],
+    columns: ["name", "base_branch", "base_commit", "repo"],
     updatable: ["state", "pr_url"],
     initial: { state: "open" },
     hasUpdatedAt: true,

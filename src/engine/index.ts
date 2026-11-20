@@ -40,7 +40,7 @@ export function handleEvent(event: EngineEvent): EngineAnswer {
 export { type Decision, decide, MAIN_AGENT, UNNAMED_AGENT, TMB_EVENT_TYPES, type TmbEvent, type TmbEventType } from "./decide.ts";
 export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
 export { OPERATIONS } from "./handlers/index.ts";
-export { installPushGate, judgePush, parsePushRefs, type PushRef, removePushGate } from "./push-gate.ts";
+export { installPushGate, installPushGates, judgePush, parsePushRefs, type PushRef, removePushGate, removePushGates } from "./push-gate.ts";
 export {
   AWAITING_REVIEW_HEADING,
   EMPTY_SETTINGS_HEADING,

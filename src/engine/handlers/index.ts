@@ -133,9 +133,15 @@ export const OPERATIONS = {
     inputSchema: truest.taskPrSchema,
     run: truest.taskPr,
   },
+  task_drop: {
+    description:
+      "Drop a task whose approach is wrong or that nobody will finish, with the reason: it ends without its work, as an open task or a truest task in review. tmb removes its worktree as at a close, unless it holds work nobody committed, and keeps its branch while that holds commits. A new task can name it in task_start's replaces. For the planner, or the Human (`tmb task drop <id> --reason <text>`).",
+    inputSchema: task.taskDropSchema,
+    run: task.taskDrop,
+  },
   task_list: {
     description:
-      "List the open tasks in the project's tmb record, or the closed ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
+      "List the open tasks in the project's tmb record, or those in review, the closed ones, the dropped ones or all, with each one's state, branch, worktree, files and, once closed, its commit. Use it before starting a task to see which open tasks hold the same files.",
     inputSchema: task.taskListSchema,
     run: task.taskList,
   },

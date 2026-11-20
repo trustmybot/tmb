@@ -129,7 +129,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts). Two open tasks may share a file, which the plugin refused: [shared-files.test.ts](workflow/shared-files.test.ts) folds changes to different lines and stops the later close on the same lines. |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). An issue in tmb's record has no labels, so only the milestone, title and body move. |
-| 14 Repo rename | Not planned: multi-repo workspaces, where a repo's name is recorded, are carried over in intent ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#carried-over-from-the-plugin)) but no level of the build order adds them. |
+| 14 Repo rename | Not planned. A workspace of several repos is built ([WORKFLOW.md](../docs/architecture/WORKFLOW.md)), and no test renames a repo's folder yet. |
 
 ## Level 6 tests
 

@@ -6,6 +6,7 @@
 // keeps a worktree that holds changes (trustmybot/tmb#98).
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { repoOfRow } from "../repos.ts";
 import { gitFailure, runGit } from "../git.ts";
 import type { Actor, Store, Task } from "../store/index.ts";
 import { OPEN } from "./common.ts";
@@ -37,10 +38,12 @@ function commonDir(dir: string): string | null {
  * made it for the worker: another worktree of this repository, clean, with no commit of its own.
  * Anything else is left as it is and the reason says why; adoption never refuses the worker.
  */
-export function adoptWorktree(store: Store, actor: Actor, projectDir: string, taskId: string, folder: string): Adoption {
+export function adoptWorktree(store: Store, actor: Actor, recordDir: string, taskId: string, folder: string): Adoption {
   const keep = (reason: string): Adoption => ({ adopted: false, reason });
   const task = store.getTask(taskId);
   if (!task || task.state !== OPEN || task.branch === null || task.worktree === null) return keep(`task ${taskId} is not an open task with a worktree, so no worktree was adopted`);
+  // The repository is the one the task was cut in: the project folder, or its repo in a workspace.
+  const projectDir = repoOfRow(store, recordDir, task).dir;
   if (!existsSync(folder)) return keep(`the worker's folder ${folder} does not exist, so no worktree was adopted`);
   const top = git(folder, ["rev-parse", "--show-toplevel"]);
   if (top === null) return keep(`the worker's folder ${folder} is not in a git worktree, so no worktree was adopted`);
