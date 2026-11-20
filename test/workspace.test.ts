@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { HostAdapter } from "../src/adapters/index.ts";
 import { graphDbPath } from "../src/engine/graph/db.ts";
-import { featureStart, HandlerError, issueCreate, settingsSet, taskClose, taskStart } from "../src/engine/handlers/index.ts";
+import { featureStart, featureUpdate, HandlerError, issueCreate, settingsSet, taskClose, taskStart } from "../src/engine/handlers/index.ts";
 import { judgePush, openProjectStore, readSettings, removePushGates, TMB_EVENT_TYPES, writeSetting } from "../src/engine/index.ts";
 import { resolveRepo, scanWorkspace } from "../src/engine/repos.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
@@ -251,6 +251,36 @@ describe("features and tasks in a workspace", () => {
     expect(closed.push).toMatchObject({ result: "pushed" });
     expect(git(a, "ls-remote", "origin", "refs/heads/feat/x")).toStartWith(head);
   });
+
+  test("each feature branch is cut from, and takes in, its own repo's base on its own origin (#169)", () => {
+    /** Someone else lands a file on `base` on the repo's origin; returns the commit. */
+    const landOnOrigin = (repo: string, base: string, file: string): string => {
+      const clone = path.join(scratch, `${repo}-clone-${file}`);
+      git(scratch, "clone", "-q", "-b", base, path.join(scratch, `${repo}-origin.git`), clone);
+      git(clone, "config", "user.name", "o");
+      git(clone, "config", "user.email", "o@example.com");
+      writeFileSync(path.join(clone, file), `${file}\n`);
+      git(clone, "add", ".");
+      git(clone, "commit", "-q", "-m", file);
+      git(clone, "push", "-q", "origin", base);
+      return git(clone, "rev-parse", "HEAD");
+    };
+    const aStart = landOnOrigin("a", "dev", "a1.ts");
+    const bStart = landOnOrigin("b", "main", "b1.ts");
+    expect(featureStart(store, PLANNER, { name: "feat/a", repo: "a" }, context()).baseCommit).toBe(aStart);
+    expect(featureStart(store, PLANNER, { name: "feat/b", repo: "b" }, context()).baseCommit).toBe(bStart);
+
+    const aNext = landOnOrigin("a", "dev", "a2.ts");
+    const bNext = landOnOrigin("b", "main", "b2.ts");
+    expect(featureUpdate(store, PLANNER, { feature: "feat/a" }, context())).toMatchObject({ baseBranch: "dev", base: aNext, how: "fast_forward" });
+    expect(featureUpdate(store, PLANNER, { feature: "feat/b" }, context())).toMatchObject({ baseBranch: "main", base: bNext, how: "fast_forward" });
+    expect(git(a, "rev-parse", "feat/a")).toBe(aNext);
+    expect(git(b, "rev-parse", "feat/b")).toBe(bNext);
+    // Each backup push goes to its own origin, through that repo's own gate.
+    expect(git(a, "ls-remote", "origin", "refs/heads/feat/a")).toStartWith(aNext);
+    expect(git(b, "ls-remote", "origin", "refs/heads/feat/b")).toStartWith(bNext);
+    expect(git(a, "branch", "--list", "feat/b")).toBe("");
+  }, 30_000);
 
   test("a truest task names its repo and is cut there from that repo's base branch", () => {
     writeSetting(store, HUMAN, "review_mode", "truest");
