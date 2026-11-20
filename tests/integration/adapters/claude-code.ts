@@ -75,6 +75,13 @@ export const claudeCodeHarness: HostHarness = {
         };
       case "after-agent-stop":
         return { command: wiredCommand(project, "SubagentStop"), input: input(project, "SubagentStop", { agent_type: event.role }), env };
+      case "worker-in-folder":
+        // Inside a worker, Claude Code gives the worker's own folder as cwd and keeps CLAUDE_PROJECT_DIR at the main folder.
+        return {
+          command: wiredCommand(project, "PreToolUse"),
+          input: input(project, "PreToolUse", { ...agentType("worker"), cwd: event.folder, tool_name: "mcp__tmb__task_brief", tool_input: { id: event.task, role: "worker" } }),
+          env,
+        };
     }
   },
 

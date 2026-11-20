@@ -53,9 +53,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(6);
+    expect(SCHEMA_VERSION).toBe(7);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 6 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 7 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;

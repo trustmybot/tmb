@@ -14,7 +14,8 @@ export type ContractEvent =
   /** A shell call by the agent. It is not a tmb event: tmb reads no shell command, and the suite checks it answers none. */
   | { type: "shell-command"; role: string; command: string }
   | { type: "before-agent-start"; role: string; prompt: string }
-  | { type: "after-agent-stop"; role: string };
+  | { type: "after-agent-stop"; role: string }
+  | { type: "worker-in-folder"; task: string; folder: string };
 
 /** One hook run as the host would run it: a shell command from the host's config, its stdin, and the variables the host sets. */
 export type HookCall = { command: string; input: string; env?: Record<string, string> };

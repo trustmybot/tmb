@@ -128,6 +128,7 @@ for (const harness of HARNESSES) {
         "before-file-write": { type: "before-file-write", role: "planner", file: "notes.md" },
         "before-agent-start": { type: "before-agent-start", role: "reviewer", prompt: "review" },
         "after-agent-stop": { type: "after-agent-stop", role: "reviewer" },
+        "worker-in-folder": { type: "worker-in-folder", task: "01ARZ3NDEKTSV4RRFFQ69G5FAV", folder: project },
       };
       for (const type of TMB_EVENT_TYPES) {
         const raised = harness.hookCall(project, samples[type]!) !== null;

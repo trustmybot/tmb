@@ -20,8 +20,10 @@ import {
   type CheckRunOutcome,
   checkCommit,
   closeChecks,
+  closeFindings,
   closeResult,
   committedHead,
+  recordFindings,
   requireHeadAt,
   requireTask,
   type TaskCloseResult,
@@ -191,17 +193,19 @@ export function truestBase(projectDir: string, baseBranch: string, cutting: stri
 /** Runs the checks on the task's commit; on a pass the task waits for the reviewer at that commit, its worktree kept. */
 export async function truestClose(store: Store, actor: Actor, task: Task, context: OperationContext): Promise<TaskCloseResult> {
   const worktree = task.worktree!;
-  const head = committedHead(task);
+  const head = committedHead(task, store);
   const commands = closeChecks(store, task);
   const runs: CheckRunOutcome[] = [await checkCommit(store, actor, task, head, commands, context)];
+  const findings = closeFindings(task, head, context.projectDir);
   const baseCommit = movedBase(store, task, head, context.projectDir);
   store.transaction(() => {
     if (requireTask(store, task.id).state !== OPEN) throw new HandlerError("refused", `task ${task.id} was closed while its checks ran`);
     requireHeadAt(worktree, head);
     store.updateTask(actor, task.id, { state: IN_REVIEW, commitSha: head, ...(baseCommit === null ? {} : { baseCommit }) });
   });
+  recordFindings(task, context.projectDir);
   const next = `task ${task.id} is in review at ${head}: start the reviewer with the ${taskReviewLine(task.id)} line in its prompt; once it passes, open the pull request with task_pr`;
-  return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [] }), next };
+  return { ...closeResult(store, task.id, runs, { fold: null, push: null, cleanupProblems: [], ...findings }), next };
 }
 
 /**
