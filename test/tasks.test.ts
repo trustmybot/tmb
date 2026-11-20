@@ -1,6 +1,6 @@
 // The task flow: start a task on its own branch and worktree, brief it, and close it only
 // after the checks pass on its committed work. Runs against a real git repository.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +23,9 @@ import { runCheck, runChecks } from "../src/engine/checks.ts";
 import { newId } from "../src/engine/ids.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

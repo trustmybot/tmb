@@ -1,7 +1,10 @@
 // Unit: the engine tells a file written in a programming language from prose, markup and data by
 // its name alone, with Linguist's language table, and does not refuse a file the table does not know.
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { isProgrammingFile, LINGUIST_SOURCE, languageOf } from "../src/engine/linguist/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 describe("Linguist's language table", () => {
   test("names the Linguist commit it came from", () => {

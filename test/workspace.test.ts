@@ -3,7 +3,7 @@
 // its own checks. init registers both, gates both and indexes both; a feature or task is cut in
 // the repo it names, from that repo's base branch; a close runs that repo's checks and folds and
 // pushes there; the push gate judges each repo against its own base branch.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +15,9 @@ import { judgePush, openProjectStore, readSettings, removePushGates, TMB_EVENT_T
 import { resolveRepo, scanWorkspace } from "../src/engine/repos.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 import { runInit, runOnboard, type SetupFlags } from "../src/setup.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

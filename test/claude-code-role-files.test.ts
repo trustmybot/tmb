@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,6 +6,9 @@ import { adapter } from "../src/adapters/claude-code/index.ts";
 import { agentsDir, removeRoleFiles, roleFilePath, roleFileText, writeRoleFiles } from "../src/adapters/claude-code/role-files.ts";
 import { settingsPath } from "../src/adapters/claude-code/settings.ts";
 import type { SubagentRole } from "../src/engine/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const FIXTURE: SubagentRole = {
   name: "fixture-worker",

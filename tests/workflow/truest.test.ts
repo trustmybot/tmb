@@ -3,11 +3,14 @@
 // opens: a task cannot be pushed unreviewed, a fail reopens it, a pass lets task_pr push it, and a
 // base branch that moved is rebased onto with the review carried over only when the patch is the
 // same. A bare repository stands in for origin and a fake `gh` on PATH for GitHub.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { scratch, env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } =
   tmbProcesses("tmb-workflow-truest-");

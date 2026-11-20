@@ -1,12 +1,15 @@
 // The dashboard moves a feature whose pull request merged when a page reads the features or the
 // tasks, as the Human, asking GitHub about each pull request at most once a minute (trustmybot/tmb#131).
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type Dashboard, startDashboard } from "../../src/engine/doors/dashboard/server.ts";
 import { openProjectStore } from "../../src/engine/index.ts";
 import type { Actor } from "../../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };

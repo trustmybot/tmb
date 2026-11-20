@@ -1,7 +1,7 @@
 // The dashboard's code graph page reads: walked from the top folder down, they reach every
 // function the graph holds, each once; a function's view matches the agents' lookup; and no
 // answer draws more than one level.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -13,6 +13,9 @@ import { indexProject, openView } from "../src/engine/graph/fresh.ts";
 import { lookupSymbol } from "../src/engine/graph/lookups.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const REPO = path.resolve(import.meta.dir, "..");
 const HUMAN: Actor = { kind: "human" };

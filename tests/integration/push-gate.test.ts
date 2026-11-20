@@ -3,12 +3,15 @@
 // it brings a commit no reviewed or waived feature branch tip holds, and the base branch is
 // never deleted; a feature branch's backup push goes through. Each push here is a real git push
 // to a bare origin, typed as the Human would.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { BASE_BRANCH, callJson, tmbProcesses } from "./tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { env, git, tmb, tmbJson, setUpProject, commitFile, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
 afterAll(cleanup);

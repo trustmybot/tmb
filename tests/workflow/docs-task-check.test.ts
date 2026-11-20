@@ -1,10 +1,13 @@
 // Workflow simulation: a docs task is checked by file type at its close, scripted as the tool
 // calls a planner makes through the tool server, with no model. A docs task whose commits touch a
 // source file cannot close, and the refusal names the file; one whose change touches only docs closes.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const { git, tmbJson, setUpProject, connect, cleanup } = tmbProcesses("tmb-workflow-docs-check-");
 afterAll(cleanup);

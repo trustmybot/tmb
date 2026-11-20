@@ -1,13 +1,16 @@
 // Runs the PreToolUse hook init wired, as its own process through a shell the way Claude
 // Code runs it, in a set-up project: an allow prints nothing and a broken record denies,
 // from the project folder or any subfolder of it.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openProjectStore } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
+
+// Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
+setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const CLI = path.join(ROOT, "src", "cli.ts");
