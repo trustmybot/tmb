@@ -167,4 +167,11 @@ Every record names the role and the host that made it. The role is the one the c
 | Command line | The Human | Init and onboard, indexing, and `tmb doctor`, the health check (trustmybot/tmb#160). |
 | Dashboard | The Human | A local web page over the record. |
 
-All of them call the same engine, with one gap found on 2026-11-20: the command line treats every caller as the Human, so an agent with a shell can run a step only the Human may take, such as a waiver. Planned for v1.0.0 (trustmybot/tmb#179), decided by the Human on 2026-11-20: a step only the Human may take needs a terminal and a typed yes, and the host's guard denies it when an agent's shell runs it.
+All of them call the same engine. The command line records every caller as the Human, so a step only the Human may take has two fences there (trustmybot/tmb#179), decided by the Human on 2026-11-20:
+
+- **The steps:** waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
+- **A terminal and a typed yes.** The command line runs such a step only on a terminal, after the Human types yes. With no terminal it refuses and changes nothing.
+- **The host's guard.** Where the host lets tmb see an agent's shell command before it runs, as Claude Code and Codex do, the guard denies one that takes such a step, says why, and records the deny. Every other shell command passes and nothing is recorded.
+- **One exception, for a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode. Nothing else passes. Found on 2026-11-20, not yet fixed (trustmybot/tmb#223): the exception can also change a mode that is already set, and an agent can turn unattended mode on for its own command.
+- **What the fences are not.** They stop an agent that takes the plain path, and the record shows each deny. They are not proof: an agent that writes a script which opens its own terminal can pass both, and on Codex an agent's shell tool can open a terminal, so only the guard stands there. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Not planned; proposed, for the Human's review, as a v1.x question.
+- A host that cannot show tmb an agent's shell command has the first fence only.
