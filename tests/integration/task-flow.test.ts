@@ -98,9 +98,11 @@ describe("task commands", () => {
     expect(brief).toContain(`task_id=${started.id}`);
     expect(tmbJson(["task", "brief", started.id], project).checks).toEqual([`test -f ${WORK_FILE}`, "true"]);
 
-    const overlapping = run(["task", "start", issue.id, "--kind", "code", "--intent", "Other", "--file", "src", "--criterion", "SC1"], project);
-    expect(overlapping.status).toBe(1);
-    expect(overlapping.stderr).toContain(started.id);
+    // A second task on a file the first holds starts too; the planner is told which open task shares it.
+    const sharing = run(["task", "start", issue.id, "--kind", "code", "--intent", "Other", "--file", "src", "--criterion", "SC1"], project);
+    expect(sharing.status).toBe(0);
+    expect(sharing.stdout).toContain("Shares files with other open tasks");
+    expect(sharing.stdout).toContain(`of open task ${started.id}`);
 
     // The work is committed without the file the check looks for, so the close is refused.
     writeFileSync(path.join(started.worktree, "other.txt"), "x\n");
@@ -117,7 +119,7 @@ describe("task commands", () => {
     expect(closed).toContain(`Folded into ${FEATURE}.`);
     expect(closed).toContain("Push: skipped, the repository has no remote named origin");
     expect(git(project, "rev-parse", FEATURE)).toBe(head);
-    expect(tmb(["task", "list"], project)).toContain("No open tasks.");
+    expect(tmbJson<any[]>(["task", "list"], project).map((task) => task.title)).toEqual(["Other"]);
     expect(tmbJson(["task", "brief", started.id], project)).toMatchObject({ state: "closed", commitSha: head });
     expect(tmbJson<any[]>(["task", "list", "--state", "closed"], project)).toMatchObject([{ id: started.id, state: "closed", commitSha: head }]);
     expect(tmb(["task", "list", "--state", "all"], project)).toContain(`${started.id}  closed  ${started.branch}  Add the work file`);

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { roleFileText as claudeRoleFileText } from "../src/adapters/claude-code/role-files.ts";
 import { registerServer, unregisterServer } from "../src/adapters/codex/config-toml.ts";
-import { answerHook, patchFilesOf, shellCommandOf } from "../src/adapters/codex/hook.ts";
+import { answerHook, patchFilesOf } from "../src/adapters/codex/hook.ts";
 import { hookCommand, installHooks, isTmbHookCommand, removeHooks } from "../src/adapters/codex/hooks-json.ts";
 import { configTomlPath, hooksJsonPath } from "../src/adapters/codex/paths.ts";
 import { roleFileText, writeRoleFiles } from "../src/adapters/codex/role-files.ts";
@@ -166,11 +166,23 @@ describe("trust", () => {
 });
 
 describe("tool calls", () => {
-  test("a shell call's command is its string, or the script of an argv that runs sh -c", () => {
-    expect(shellCommandOf({ command: "git status" })).toBe("git status");
-    expect(shellCommandOf({ command: ["bash", "-lc", "git push --no-verify"] })).toBe("git push --no-verify");
-    expect(shellCommandOf({ command: ["git", "status"] })).toBe("git status");
-    expect(shellCommandOf({})).toBe("");
+  test("reads no shell command: a push that skips git's hook is not refused or recorded by tmb", () => {
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    opened.store.close();
+    for (const command of ["git push --no-verify origin dev", ["bash", "-lc", "git push --no-verify"]]) {
+      for (const agent_type of [undefined, "worker"]) {
+        const input = { hook_event_name: "PreToolUse", cwd: project, tool_name: "Bash", tool_input: { command }, ...(agent_type ? { agent_type } : {}) };
+        expect(answerHook("pre-tool-use", JSON.stringify(input), ATTENDED)).toBe("");
+      }
+    }
+    const reopened = openProjectStore(project, { create: false });
+    if (!reopened.ok) throw reopened.error;
+    try {
+      expect(reopened.store.listGuardDecisions()).toHaveLength(0);
+    } finally {
+      reopened.store.close();
+    }
   });
 
   test("a patch names every file it adds, updates, deletes or moves to", () => {

@@ -65,13 +65,13 @@ describe("decide", () => {
 
   test("with a readable record, allows and records each decision under the role and host", () => {
     createRecord();
-    expect(decide(event({ type: "before-command", role: "worker", task: "T1", action: "bun test" }))).toEqual({ decision: "allow" });
+    expect(decide(event({ type: "before-file-write", role: "reviewer", task: "T1", action: "src/a.ts" }))).toEqual({ decision: "allow" });
     expect(decide(event({ type: "before-file-write", action: "src/b.ts" }))).toEqual({ decision: "allow" });
 
     const recorded = guardDecisions();
     expect(recorded).toHaveLength(2);
-    expect(recorded[0]).toMatchObject({ decision: "allow", reason: "no rule denies it", createdBy: { kind: "agent", role: "worker", host: "host-a" } });
-    expect(JSON.parse(recorded[0]!.event)).toEqual({ type: "before-command", role: "worker", task: "T1", action: "bun test" });
+    expect(recorded[0]).toMatchObject({ decision: "allow", reason: "no rule denies it", createdBy: { kind: "agent", role: "reviewer", host: "host-a" } });
+    expect(JSON.parse(recorded[0]!.event)).toEqual({ type: "before-file-write", role: "reviewer", task: "T1", action: "src/a.ts" });
     expect(recorded[1]!.createdBy).toEqual({ kind: "agent", role: "planner", host: "host-a" });
     expect(JSON.parse(recorded[1]!.event)).toEqual({ type: "before-file-write", role: "planner", action: "src/b.ts" });
   });
@@ -196,62 +196,6 @@ describe("the worker gate", () => {
 
 describe("the guards", () => {
   const PLANNER = { kind: "agent", role: "planner", host: "host-a" } as const;
-
-  function command(action: string, role = "planner"): Decision {
-    return decide(event({ type: "before-command", role, action }));
-  }
-
-  test("no agent turns git's pre-push hook off", () => {
-    createRecord();
-    for (const action of [
-      "git push --no-verify origin main",
-      "git -c core.hooksPath=/dev/null push",
-      "git config core.hooksPath .nohooks",
-      "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=x'\" git push",
-      "cd x && sh -c 'git push --no-verify'",
-    ]) {
-      const answer = command(action);
-      expect(answer.decision).toBe("deny");
-      expect(answer.reason).toMatch(/pre-push hook|core\.hooksPath/);
-    }
-    expect(command("git push origin feat/x").decision).toBe("allow");
-    expect(command("git log --oneline | head").decision).toBe("allow");
-    // Naming the setting where git does not run is not turning it on.
-    expect(command("grep -rn core.hooksPath docs/").decision).toBe("allow");
-  });
-
-  test("no agent defines a git alias, which would hide a push under another name", () => {
-    createRecord();
-    expect(command("git config alias.p 'push --no-verify'").reason).toContain("git alias");
-    expect(command("git -c alias.p=push p origin main").reason).toContain("git alias");
-    expect(command("git config user.name bot").decision).toBe("allow");
-  });
-
-  test("denies a git or gh command whose subcommand is not plain text", () => {
-    createRecord();
-    for (const action of ['git "$SUB" origin', "x=push; git $x", "gh $(echo pr) create", "$(echo git) push", "git $(echo push)", 'git "$X"', "gh pr $cmd", 'eval "git $sub origin"', "eval 'git $(echo push)'"]) {
-      expect(command(action).decision).toBe("deny");
-    }
-    expect(command('git commit -m "$(cat msg)"').decision).toBe("allow");
-  });
-
-  test("a worker and the reviewer never push; any role may push otherwise", () => {
-    createRecord();
-    for (const role of ["worker", "reviewer"]) {
-      const answer = command("git push origin HEAD", role);
-      expect(answer.decision).toBe("deny");
-      expect(answer.reason).toContain(`A ${role} never pushes`);
-    }
-    expect(command("git push origin HEAD", "planner").decision).toBe("allow");
-    expect(command("git status", "worker").decision).toBe("allow");
-  });
-
-  test("no agent opens or merges a pull request by hand", () => {
-    createRecord();
-    expect(command("gh pr create --title x --body y").reason).toContain("feature_pr");
-    expect(command("env GH_TOKEN=x gh pr merge 3", "worker").reason).toContain("merges pull requests");
-    expect(command("gh pr view 3").decision).toBe("allow");
-  });
 
   test("tmb leaves the reviewer's writes to the host; a worker writes in the project only inside an open task's worktree", () => {
     createRecord();
