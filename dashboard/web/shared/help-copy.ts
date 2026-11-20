@@ -1,4 +1,4 @@
-export type HelpKey = 'overview' | 'issues' | 'tasks' | 'runs' | 'audit' | 'issue' | 'task';
+export type HelpKey = 'overview' | 'issues' | 'tasks' | 'runs' | 'audit' | 'code' | 'issue' | 'task';
 
 export interface HelpEntry {
   intro: string;
@@ -36,6 +36,10 @@ export const HELP: Record<HelpKey, HelpEntry> = {
   audit: {
     intro: 'A time-ordered log of what the engine recorded beyond the projections, newest first. Nothing here can be edited.',
     uses: ['Trace what happened, step by step.', 'Check what an agent did while you were away.'],
+  },
+  code: {
+    intro: "The project's code as a graph, read from .tmb/graph.db at the base branch: folders, then a folder's files, then a file's classes and functions, one level at a time. Every function is there, the unnamed ones too, named by where they are used. Links are calls and imports the graph could prove; calls it could not prove are counted on each function.",
+    uses: ['See how the parts of the project call each other.', 'Find a function by name and see who calls it and what it calls.', 'Find the files the graph could not parse.'],
   },
 };
 

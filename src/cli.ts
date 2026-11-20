@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -38,12 +39,12 @@ import { repoOf, workspaceRepos } from "./engine/repos.ts";
 import type { Store } from "./engine/store/index.ts";
 import { judgePush, removePushGates } from "./engine/push-gate.ts";
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
-import { spawnSync } from "node:child_process";
-import { isProcessRunning } from "./builds.ts";
+import { formatBytes, isProcessRunning } from "./builds.ts";
 import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
 import { runningProgram } from "./program.ts";
 import { refreshProject } from "./refresh.ts";
-import { isCompiledEntry, Updater, updaterOptions } from "./update.ts";
+import { runFront } from "./tool-front.ts";
+import { HANDED_OVER_VARIABLE, INSTALLED_FILE_VARIABLE, installedVersionOf, isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 import type { HostAdapter } from "./adapters/host-adapter.ts";
 
@@ -193,8 +194,54 @@ function runHelpCommand(args: string[]): number {
 }
 
 /** The command that runs this tmb: the executable, plus this file when run from source. */
-function tmbCommand(): string[] {
+function ownCommand(): string[] {
   return isCompiledEntry(Bun.main) ? [process.execPath] : [process.execPath, Bun.main];
+}
+
+/**
+ * The command a project's wiring calls: this tmb, or the installed file when this is a kept build
+ * serving a handed-over call, so wiring never names a kept build.
+ */
+function tmbCommand(): string[] {
+  const installed = process.env[HANDED_OVER_VARIABLE] === "1" ? process.env[INSTALLED_FILE_VARIABLE] : undefined;
+  return installed ? [installed] : ownCommand();
+}
+
+/** The processes above this one, nearest first, up to `depth`; empty where they cannot be read. */
+function ancestorsOf(pid: number = process.pid, depth = 6): number[] {
+  if (process.platform === "win32") return [process.ppid];
+  const found: number[] = [];
+  let current = pid;
+  for (let step = 0; step < depth; step++) {
+    const parent = Number.parseInt(spawnSync("ps", ["-o", "ppid=", "-p", String(current)], { encoding: "utf8" }).stdout?.trim() ?? "", 10);
+    if (!Number.isInteger(parent) || parent <= 1) break;
+    found.push(parent);
+    current = parent;
+  }
+  return found;
+}
+
+/**
+ * Names the running session a session start belongs to with the title the Human gave it: the
+ * session whose tool server shares the nearest process above this hook, in the same project.
+ */
+function nameSession(updater: Updater, projectDir: string, title: string): void {
+  const mine = ancestorsOf();
+  const project = path.resolve(projectDir);
+  const leases = updater.leases(-1).filter((lease) => path.resolve(lease.project) === project && (lease.ancestors?.length ?? 0) > 0);
+  for (const ancestor of mine) {
+    const matches = leases.filter((lease) => lease.ancestors!.includes(ancestor));
+    if (matches.length === 1) return updater.updateSession(matches[0]!.pid, { title });
+    if (matches.length > 1) return;
+  }
+}
+
+/** Builds kept for sessions that no running session uses any more, as one line; null when there are none. */
+function unusedBuildsLine(updater: Updater): string | null {
+  const unused = updater.keptBuilds().filter((build) => build.usedBy.length === 0 && build.version !== version);
+  if (unused.length === 0) return null;
+  const size = formatBytes(unused.reduce((sum, build) => sum + build.bytes, 0));
+  return `${unused.length} old ${updater.program.name} build${unused.length === 1 ? "" : "s"} (${size}) no running session uses can be removed with \`${updater.program.name} doctor --fix\`.`;
 }
 
 /** Each host with its version, as `<host> 2.1.0`, for a report; a host that is not installed is left out. */
@@ -284,6 +331,23 @@ function hookRun(): HookRun {
   return { unattended: process.env[UNATTENDED_VARIABLE] === "1" };
 }
 
+/** What a session start says about this tmb's own state: the host files' refresh and old builds; it also names the session. Never throws. */
+function sessionStartLines(projectDir: string, adapter: HostAdapter, stdinText: string): string | null {
+  const lines = [hostFileRefresh(projectDir)];
+  try {
+    const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
+    if (updater.tracksSessions) {
+      const title = adapter.sessionTitle?.(stdinText) ?? null;
+      if (title !== null) nameSession(updater, projectDir, title);
+      lines.push(unusedBuildsLine(updater));
+    }
+  } catch {
+    // Naming the session and counting builds are extras; the session starts without them.
+  }
+  const said = lines.filter((line): line is string => line !== null);
+  return said.length === 0 ? null : said.join("\n");
+}
+
 async function runHook(args: string[]): Promise<number> {
   // A hook must never break the host session: any failure exits 0 with a note on stderr.
   try {
@@ -294,7 +358,7 @@ async function runHook(args: string[]): Promise<number> {
     const adapter = adapterById(values.host ?? DEFAULT_HOST_ID);
     const stdinText = await Bun.stdin.text();
     // Only a session's start may tell the Human about the feedback program, or bring the project's host files to this tmb.
-    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: hostFileRefresh, doctor: doctorLine } : hookRun();
+    const run = event === "session-start" ? { ...hookRun(), feedback: feedbackEnvironment([adapter]), refresh: (projectDir: string) => sessionStartLines(projectDir, adapter, stdinText), doctor: doctorLine } : hookRun();
     const output = adapter.answerHook(event, stdinText, run);
     // An empty answer means nothing to say, such as an allow: the host goes on as it would without tmb.
     if (output !== "") process.stdout.write(output + "\n");
@@ -324,10 +388,30 @@ function toolFeedback(host: string): FeedbackEnv {
   return feedbackEnvironment(adapter === undefined ? [] : [adapter]);
 }
 
+/** An engine that replaced an older build's in a running session: the record keeps it, and the host files catch up. */
+function movedIn(projectDir: string, from: string): void {
+  const program = runningProgram(version).name;
+  try {
+    const opened = openProjectStore(projectDir, { create: false });
+    if (opened.ok) {
+      try {
+        opened.store.recordAudit({ kind: "human" }, { what: "tmb-moved", detail: JSON.stringify({ program, from, to: version }) });
+      } finally {
+        opened.store.close();
+      }
+    }
+  } catch {
+    // The move stands without its entry.
+  }
+  // The host files refresh as at a session start; the line goes to stderr, never into the protocol.
+  const line = hostFileRefresh(projectDir);
+  if (line !== null) process.stderr.write(`tmb: ${line}\n`);
+}
+
 async function runToolServer(args: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { host: { type: "string" }, project: { type: "string" } },
+    options: { host: { type: "string" }, project: { type: "string" }, engine: { type: "boolean" } },
     allowPositionals: true,
     strict: true,
   });
@@ -335,16 +419,24 @@ async function runToolServer(args: string[]): Promise<number> {
   if (values.host === undefined || values.host.trim() === "") throw new Error("mcp needs --host <id>, the host that runs it");
   // A host may start the server in a subfolder; the record is in the project that holds it.
   const projectDir = values.project === undefined ? projectRootOf(process.cwd()) : path.resolve(values.project);
+  const serve = () => serveTools({ projectDir, host: values.host!, version, unattended: hookRun().unattended, feedback: toolFeedback(values.host!) });
+  if (values.engine) {
+    // The engine behind a front: it serves the tools and nothing else.
+    const from = process.env.TMB_MOVED_FROM;
+    if (from) movedIn(projectDir, from);
+    await serve();
+    return 0;
+  }
   const updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
-  if (!updater.active) {
-    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended, feedback: toolFeedback(values.host) });
+  if (!updater.tracksSessions) {
+    await serve();
     return 0;
   }
   // A session start looks for an update in the background; the session's end may apply it.
-  updater.tidy();
-  updater.startSession(projectDir);
+  if (updater.active) updater.tidy();
+  updater.startSession(projectDir, process.pid, { build: version, ancestors: ancestorsOf() });
   const abort = new AbortController();
-  const checking = updater.check({ signal: abort.signal });
+  const checking = updater.active ? updater.check({ signal: abort.signal }) : Promise.resolve();
   let ended = false;
   const end = async () => {
     if (ended) return;
@@ -360,12 +452,26 @@ async function runToolServer(args: string[]): Promise<number> {
   };
   const onSignal = () => void end().finally(() => process.exit(0));
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, onSignal);
+  const engineArgs = ["mcp", "--engine", "--host", values.host, "--project", projectDir];
+  const installed = updater.options.target!;
+  const adapter = HOST_ADAPTERS.find((candidate) => candidate.id === values.host);
   try {
-    await serveTools({ projectDir, host: values.host, version, unattended: hookRun().unattended, feedback: toolFeedback(values.host) });
+    // The engines know they are behind a front, so none hands the call over again.
+    const code = await runFront({
+      ownEngine: [...ownCommand(), ...engineArgs],
+      installedEngine: [installed, ...engineArgs],
+      installedVersion: () => installedVersionOf(installed),
+      hasOpenTask: () => updater.hasOpenTask(projectDir),
+      env: { ...process.env, [HANDED_OVER_VARIABLE]: "1", [INSTALLED_FILE_VARIABLE]: installed },
+      onVersion: (running) => updater.updateSession(process.pid, { build: running, moveError: null }),
+      onMoveFailed: (_installed, reason) => updater.updateSession(process.pid, { moveError: reason }),
+      reconnect: adapter?.reconnectToolServer ?? "restart this session",
+      program: updater.program.name,
+    });
+    return code;
   } finally {
     await end();
   }
-  return 0;
 }
 
 async function runUpdateCommand(args: string[]): Promise<number> {
@@ -406,10 +512,16 @@ async function runUpdateCommand(args: string[]): Promise<number> {
   const applied = updater.apply();
   if (applied.outcome === "applied") {
     console.log(`Updated ${name} from ${version} to ${applied.version}.`);
+    for (const { lease, reason } of updater.waiting(applied.version!)) {
+      const title = lease.title ? `"${lease.title}", ` : "";
+      console.log(`The session in ${lease.project} (${title}started ${new Date(lease.startedAt).toLocaleString()}) stays on ${lease.build}: ${reason}.`);
+    }
+    const unused = unusedBuildsLine(updater);
+    if (unused !== null) console.log(unused);
     return 0;
   }
   if (applied.outcome === "waiting") {
-    console.log(`${name} ${applied.version} is ready and applies once no ${name} session is running and no task is open: ${applied.reason}.`);
+    console.log(`${name} ${applied.version} is ready but not installed yet: ${applied.reason}. Run \`${name} update\` again.`);
     return 0;
   }
   console.error(`${name} update: could not apply ${applied.version}: ${applied.reason}`);
@@ -550,7 +662,7 @@ function printMigration(result: MigrationResult, recordPath: string): void {
       `${counts.reviews} reviews, ${counts.checkRuns} check runs, ${counts.runs} agent runs.`,
   );
   if (counts.openTasks > 0) {
-    console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. tmb holds its own updates while a task is open.`);
+    console.log(`${counts.openTasks} of the tasks are still open, as the plugin left them. While a task is open, a running session stays on the tmb build it started with.`);
   }
   const left = Object.entries(result.leftBehind).sort(([a], [b]) => a.localeCompare(b));
   if (left.length > 0) {
@@ -620,6 +732,50 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
   }
 }
 
+/** The project a call works in: the tool server's `--project`, or the one holding the folder it runs in. */
+function callProject(command: string, rest: string[]): string {
+  const flag = command === "mcp" ? rest.findIndex((arg) => arg === "--project" || arg.startsWith("--project=")) : -1;
+  if (flag >= 0) {
+    const value = rest[flag]!.includes("=") ? rest[flag]!.slice("--project=".length) : rest[flag + 1];
+    if (value) return path.resolve(value);
+  }
+  return projectRootOf(process.cwd());
+}
+
+/**
+ * Hands the call over to the build a running session pinned its project to (trustmybot/tmb#159):
+ * a hook, the tool server, git's push hook or a command typed by hand all run that build while
+ * the session runs. Returns the kept build's exit code, or null to run this build. Only the
+ * installed tmb hands over, once: the kept build never hands over again. `update` and help run here.
+ */
+function handOver(command: string, rest: string[]): number | null {
+  if (process.env[HANDED_OVER_VARIABLE] === "1" || command === "update" || command === "help" || command === "--help" || command === "-h") return null;
+  let updater: Updater;
+  let pinned: string | null;
+  try {
+    updater = new Updater(updaterOptions(version, isCompiledEntry(Bun.main)));
+    if (!updater.active) return null;
+    pinned = updater.pinOf(callProject(command, rest));
+  } catch {
+    return null;
+  }
+  if (pinned === null) return null;
+  const kept = updater.keptFile(pinned);
+  if (!existsSync(kept)) {
+    process.stderr.write(`tmb: a session in this project started on ${updater.program.name} ${pinned}, which is no longer kept; this call runs ${version}.\n`);
+    return null;
+  }
+  const result = spawnSync(kept, [command, ...rest], {
+    stdio: "inherit",
+    env: { ...process.env, [HANDED_OVER_VARIABLE]: "1", [INSTALLED_FILE_VARIABLE]: updater.options.target! },
+  });
+  if (result.error) {
+    process.stderr.write(`tmb: could not run ${updater.program.name} ${pinned} for this project (${result.error.message}); this call runs ${version}.\n`);
+    return null;
+  }
+  return result.status ?? 1;
+}
+
 /** An error node:util's parseArgs throws for a flag or argument a command does not take. */
 function isParseArgsError(error: unknown): error is Error {
   const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
@@ -634,6 +790,8 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
   if (command === "--help" || command === "-h") return runHelpCommand(rest.filter((arg) => arg === "--all"));
+  const handed = handOver(command, rest);
+  if (handed !== null) return handed;
   if (command === "help") return runHelpCommand(rest);
   if (VERSION_WORDS.has(command)) {
     stdout(versionLine(updaterOptions(version, isCompiledEntry(Bun.main)).program!));

@@ -2,6 +2,7 @@ import { decide, handleEvent, MAIN_AGENT, projectRootOf, type TmbEvent, type Tmb
 import type { HookRun } from "../host-adapter.ts";
 import { isObject, type JsonObject } from "../common/json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
+import { usageOfTranscriptFile } from "./usage.ts";
 import { type HookName, TASK_NAMING_TOOLS } from "./settings.ts";
 
 /** The subagent Claude Code starts when the call names no subagent_type. */
@@ -86,7 +87,8 @@ function subagentStop(input: JsonObject): string {
   const agentType = stringField(input, "agent_type");
   // A stop that names no agent cannot be matched to a run; read as the main agent's, it would end the host's own.
   if (agentType === undefined) return "";
-  decide(eventOf(input, "after-agent-stop", agentType));
+  // The subagent's own transcript holds its usage; the input's transcript_path is the main session's.
+  decide({ ...eventOf(input, "after-agent-stop", agentType), cost: usageOfTranscriptFile(stringField(input, "agent_transcript_path")) });
   return "";
 }
 

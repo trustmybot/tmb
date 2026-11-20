@@ -23,7 +23,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 - **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
 - **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump. Agents spend their context on the work.
 - **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
-- **Every record names who made it.** The Human, or the role and host that acted. Two gaps: every call through the command line and every push is recorded as the Human's, an agent's too (trustmybot/tmb#179, trustmybot/tmb#134). Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
+- **Every record names who made it.** The Human, or the role and host that acted. A push tmb makes for an agent is recorded as that agent's, and a push typed by hand as the Human's (trustmybot/tmb#134). One gap: every call through the command line is recorded as the Human's, an agent's too (trustmybot/tmb#179). Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
 - **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering.
 
 ## Where it lives

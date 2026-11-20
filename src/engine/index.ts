@@ -41,7 +41,18 @@ export { type Decision, decide, MAIN_AGENT, UNNAMED_AGENT, TMB_EVENT_TYPES, type
 export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
 export { OPERATIONS } from "./handlers/index.ts";
 export { installPushGate, installPushGates, judgePush, pushGateGaps, parsePushRefs, type PushRef, removePushGate, removePushGates } from "./push-gate.ts";
-export { AWAITING_REVIEW_HEADING, DOCTOR_HEADING, EMPTY_SETTINGS_HEADING, HOST_FILES_HEADING, OPEN_WORK_HEADING, OPEN_WORK_MAX, plannerRole, reviewerRole, UNATTENDED_INSTRUCTION } from "./session-start.ts";
+export {
+  AWAITING_REVIEW_HEADING,
+  DOCTOR_HEADING,
+  EMPTY_SETTINGS_HEADING,
+  HOST_FILES_HEADING,
+  OPEN_WORK_HEADING,
+  OPEN_WORK_MAX,
+  PULL_REQUESTS_ENDED_HEADING,
+  plannerRole,
+  reviewerRole,
+  UNATTENDED_INSTRUCTION,
+} from "./session-start.ts";
 export { NO_VERDICT } from "./host-runs.ts";
 export { type FeedbackEnv, feedbackEnv } from "./feedback/index.ts";
 export { FEEDBACK_HEADING, firstRunAtInit } from "./feedback/first-run.ts";

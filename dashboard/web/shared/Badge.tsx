@@ -12,6 +12,9 @@ export const STATUS_VARIANT: Record<string, LabelVariant> = {
   not_run: 'severe',
   skipped: 'secondary',
   stopped: 'secondary',
+  finished: 'success',
+  pr_open: 'attention',
+  merged: 'done',
   decision: 'done',
   note: 'secondary',
 };

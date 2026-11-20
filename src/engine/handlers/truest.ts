@@ -10,6 +10,7 @@ import { gitFailure, runGit } from "../git.ts";
 import { repoOfRow } from "../repos.ts";
 import type { Actor, Review, Store, Task } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TRUEST } from "./common.ts";
+import { openRunsOf } from "../host-runs.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, noBaseBranch } from "./features.ts";
 import { isAncestor, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
@@ -291,7 +292,9 @@ export function taskReview(store: Store, actor: Actor, input: unknown, context: 
   }
   const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
   const reviewId = store.transaction(() => {
-    const id = store.appendReview(actor, { target: { kind: "commit", ref: task.id }, verdict: given.verdict, findings, commitSha: task.commitSha });
+    // The review names the run that wrote it: this host's oldest open reviewer run, or any open one.
+    const run = openRunsOf(store, actor.host)[0] ?? store.openRuns("reviewer")[0]!;
+    const id = store.appendReview(actor, { target: { kind: "commit", ref: task.id }, verdict: given.verdict, findings, commitSha: task.commitSha, runId: run.id });
     // A fail sends the work back: the task reopens in the same worktree for its worker.
     if (given.verdict === "fail") store.updateTask(actor, task.id, { state: OPEN });
     return id;

@@ -30,7 +30,7 @@ export class MigrationError extends Error {
   override name = "MigrationError";
 }
 
-/** `openTasks` counts the copied tasks left open: tmb waits for them to close before it updates itself. */
+/** `openTasks` counts the copied tasks left open: a running session stays on its tmb build until they close. */
 export type MigrationCounts = { issues: number; discussions: number; tasks: number; openTasks: number; reviews: number; checkRuns: number; runs: number };
 
 export type MigrationResult = {

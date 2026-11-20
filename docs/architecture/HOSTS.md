@@ -121,7 +121,7 @@ flowchart LR
 | After an agent stop | A subagent has ended | Host |
 | Before a push | Commits are about to leave the machine | git |
 
-- An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen. A push carries no role or host: git does not say who pushed (trustmybot/tmb#134).
+- An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen. A push tmb makes for an agent carries that agent's role and host; a push typed by hand is the Human's (trustmybot/tmb#134).
 - A task's start and close are not events. The engine checks them itself when it is asked, and a refusal there goes to the caller without a recorded decision.
 - A rule answers allow or deny, and a deny always says why and what would be allowed.
 - Version 1 ships tmb's own rules only. Users cannot add rules of their own on these events.
@@ -167,4 +167,4 @@ Every record names the role and the host that made it. The role is the one the c
 | Command line | The Human | Init and onboard, indexing, and `tmb doctor`, the health check (trustmybot/tmb#160). |
 | Dashboard | The Human | A local web page over the record. |
 
-All of them call the same engine, with one gap found on 2026-11-20: the command line treats every caller as the Human, so an agent with a shell can run a step only the Human may take, such as a waiver (trustmybot/tmb#179).
+All of them call the same engine, with one gap found on 2026-11-20: the command line treats every caller as the Human, so an agent with a shell can run a step only the Human may take, such as a waiver. Planned for v1.0.0 (trustmybot/tmb#179), decided by the Human on 2026-11-20: a step only the Human may take needs a terminal and a typed yes, and the host's guard denies it when an agent's shell runs it.
