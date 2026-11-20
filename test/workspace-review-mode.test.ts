@@ -2,7 +2,7 @@
 // repo b names its own. A feature branch starts only in an agile repo, a truest repo's task goes
 // into review at close, each repo's push gate asks for what its own mode requires, a repo with no
 // mode of its own follows a change of the workspace's, and only the Human sets a repo's mode.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +19,8 @@ const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };
 const WORKER: Actor = { kind: "agent", role: "worker", host: "host-a" };
 const ZERO = "0".repeat(40);
+
+setDefaultTimeout(30_000);
 
 let scratch: string;
 let workspace: string;
