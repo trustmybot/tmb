@@ -8,7 +8,7 @@ import { gitFailure, runGit } from "../git.ts";
 import { newId } from "../ids.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
-import { readSettings } from "../settings.ts";
+import { NO_REVIEW_MODE, readSettings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, IN_REVIEW, OPEN, type OperationContext, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
@@ -324,6 +324,8 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   const settings = readSettings(store);
   const baseBranch = settings.base_branch;
   if (baseBranch === null) throw new HandlerError("refused", "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first");
+  // The review mode decides how many tokens the project uses, so no task starts until the Human chose it.
+  if (settings.review_mode === null) throw new HandlerError("refused", NO_REVIEW_MODE);
   const truest = settings.review_mode === TRUEST;
   if (truest && request.feature !== undefined) {
     throw new HandlerError(

@@ -53,6 +53,7 @@ beforeEach(() => {
   if (!opened.ok) throw opened.error;
   store = opened.store;
   writeSetting(store, HUMAN, "base_branch", "main");
+  writeSetting(store, HUMAN, "review_mode", "agile");
   writeSetting(store, HUMAN, "checks", ["echo project check"]);
   issueId = issueCreate(store, HUMAN, { title: "The goal" }).id;
   featureStart(store, HUMAN, { name: FEATURE }, context());
@@ -234,6 +235,7 @@ describe("task_start", () => {
     if (!fresh.ok) throw fresh.error;
     try {
       writeSetting(fresh.store, HUMAN, "base_branch", "main");
+      writeSetting(fresh.store, HUMAN, "review_mode", "agile");
       const id = issueCreate(fresh.store, HUMAN, { title: "x" }).id;
       const none = refusal(() => taskStart(fresh.store, PLANNER, spec({ issue_id: id }), context()));
       expect(none.code).toBe("refused");

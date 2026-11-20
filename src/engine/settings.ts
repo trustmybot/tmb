@@ -118,3 +118,46 @@ export function settingLines(settings: Settings): string[] {
     return `${LABELS[name]}: ${shown}`;
   });
 }
+
+// --- the review mode: the Human's choice -------------------------------------------------
+
+/** The ways the Human chooses the review mode: at the end of `tmb init`, with `tmb onboard`, or by answering the planner. */
+export const REVIEW_MODE_CHOOSERS = ["init", "onboard", "planner"] as const;
+export type ReviewModeChooser = (typeof REVIEW_MODE_CHOOSERS)[number];
+
+/** One line on what each mode costs, as the questions show it. */
+export const REVIEW_MODE_COSTS: Record<ReviewMode, string> = {
+  agile: "one review of each feature branch as a whole; the fewer tokens",
+  truest: "a review of every task before its push; more tokens, as every task is reviewed",
+};
+
+/** The mode tmb recommends when it asks, the documented default. */
+export const RECOMMENDED_REVIEW_MODE: ReviewMode = "agile";
+
+const CHOSEN_WHAT = "review_mode_chosen";
+
+/**
+ * Sets the review mode as the Human chose it, and records which way they chose: init, onboard or
+ * the planner. A value equal to the current one records nothing. Returns whether it changed.
+ */
+export function chooseReviewMode(store: Store, actor: Actor, value: unknown, via: ReviewModeChooser): boolean {
+  return store.transaction(() => {
+    if (!writeSetting(store, actor, "review_mode", value)) return false;
+    store.recordAudit(actor, { what: CHOSEN_WHAT, detail: via });
+    return true;
+  });
+}
+
+/** Which way the review mode in force was chosen; null when it is not set, or was set before tmb recorded the way. */
+export function reviewModeChosenVia(store: Store): ReviewModeChooser | null {
+  const setting = store.newestAudit(AUDIT_PREFIX + "review_mode");
+  const chosen = store.newestAudit(CHOSEN_WHAT);
+  if (setting === null || chosen === null || chosen.id < setting.id) return null;
+  return chosen.detail as ReviewModeChooser;
+}
+
+/** The refusal of a task start while no review mode is chosen; it names `tmb onboard`. */
+export const NO_REVIEW_MODE =
+  "no review mode is chosen, and it is the Human's choice, as it decides how many tokens the project uses. " +
+  "Ask the Human which mode they choose (agile or truest) and set their answer with settings_set; " +
+  "with no one to ask, the Human runs `tmb onboard` first (`tmb onboard --review-mode <mode> --yes` sets it without a question)";

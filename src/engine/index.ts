@@ -48,6 +48,7 @@ export { type ProgramTie, tiedProgram, tieProgram } from "./program-tie.ts";
 export { detectChecks } from "./check-detection.ts";
 export {
   AVAILABLE_REVIEW_MODES,
+  chooseReviewMode,
   DEFAULT_HOST_ROLE,
   HOST_ROLES,
   type HostRole,
@@ -55,8 +56,12 @@ export {
   type HostRoles,
   validateHostRole,
   readSettings,
+  RECOMMENDED_REVIEW_MODE,
+  REVIEW_MODE_COSTS,
   REVIEW_MODES,
   type ReviewMode,
+  type ReviewModeChooser,
+  reviewModeChosenVia,
   SETTING_NAMES,
   SettingError,
   type SettingName,
