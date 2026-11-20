@@ -103,14 +103,21 @@ flowchart TD
 Code enforces the workflow; prompts only guide. Three layers, each owned by the engine:
 
 1. **Checks at close.** A task cannot close until the engine has run its checks on the commit and recorded a pass.
-2. **Guards in the host.** The host adapter asks the engine before an agent writes a file or starts a subagent. The engine answers allow or deny from the record ([HOSTS.md](HOSTS.md)). The engine reads no shell command: a push is judged by layer 3, whoever typed it.
+2. **Guards in the host.** The host adapter asks the engine before a subagent starts, and before a file write by a host that was set up as the reviewer. The engine answers allow or deny from the record ([HOSTS.md](HOSTS.md)). The engine reads no shell command: a push is judged by layer 3, whoever typed it.
 3. **Git's own pre-push hook.** A push is refused unless the record holds what the review mode requires for those commits. This layer does not depend on the host, so it also holds for a push typed by hand.
 
 A gate denies when it cannot read the record, and allows in a project tmb has never been set up in.
 
 **A mark on GitHub.** Planned (trustmybot/tmb#101). git's hook on a developer's machine can be skipped, so the gate also has a place on the server. tmb marks the commit a review passed, and the repo's own branch protection can require that mark before a merge. tmb never changes the protection settings: they are the Human's. The mark is a convention among people who can write to the repo, not proof, and GitHub offers the rule on a private repo only on its paid plans.
 
-**Checkpoints, not steps.** Planned (trustmybot/tmb#98). Proposed, for the Human's review. tmb checks what is delivered, like CI, and stops asking before every write and command. Layer 2 shrinks to recording a session and an agent's start and stop. What it did is done by the host's own features: the reviewer has no edit tool, and a worker starts inside its worktree, which the host then keeps it in. At a task's close the engine also checks that the commit stays inside the task's files and that the main folder is as the task found it. A gate that was skipped is found by the sync with the remote and recorded as a finding.
+**Checkpoints, not steps.** tmb checks what is delivered, like CI, and does not watch every step (trustmybot/tmb#98). Decided by the Human on 2026-11-19.
+
+- **Roles are kept in bounds by the host.** Each role's definition takes away only the tools it must never use: the reviewer cannot edit, and the worker loses nothing. The host enforces that list itself.
+- **A worker starts inside its worktree.** The host gives each worker a folder of its own to start in, and keeps its edits out of the main folder. When the worker first reads its brief, the engine makes that folder the task's worktree, on the task's branch. It does so only when the folder is clean and belongs to no other task; otherwise the task keeps the worktree the engine cut.
+- **Two tasks may change the same file.** There is no lock. git settles it when the work is merged, and a clash holds back the later task's close until it is resolved.
+- **A close reports, and refuses only on its checks.** A file the task changed outside its spec is added to the task and named at close. The planner or the reviewer judges whether it belongs. The main folder is compared with how it was when the task started, and anything that changed there since is listed with the command that puts it back. That list can hold the Human's own edits made meanwhile, so nothing is put back without being asked.
+- **The engine reads no shell command.**
+- Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
 
 **Freeze.** Planned (trustmybot/tmb#64). The Human can stop all work in a project with one request to any session, and start it again the same way. A freeze is an entry in the record with its reason, so it holds for every session. While it holds, the gate denies what moves work forward: starting a task, starting a worker or the reviewer, a file write by an agent, closing a task and opening a pull request. Reads stay allowed, the planner is told at session start, and a push typed by hand is not affected.
 
