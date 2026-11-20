@@ -34,7 +34,7 @@ How the host starts workers and the reviewer is in [HOSTS.md](HOSTS.md).
 
 ## Review modes
 
-The review mode decides who reviews a change and when. Only the Human sets it: the planner stores the Human's answer, and never picks one. Not yet enforced on the command line, where an agent with a shell can set it (trustmybot/tmb#179).
+The review mode decides who reviews a change and when. Only the Human sets it: the planner stores the Human's answer, and never picks one. On the command line it is a step only the Human may take ([HOSTS.md](HOSTS.md#ways-into-the-engine), trustmybot/tmb#179).
 
 | Mode | Review | Reaches the base branch as | For |
 |---|---|---|---|
