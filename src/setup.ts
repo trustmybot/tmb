@@ -38,7 +38,7 @@ import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
 import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
-import { addToForeignHook, foreignHooks, installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
+import { addToForeignHook, foreignHooks, handCallLine, installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
 import { runGit } from "./engine/git.ts";
 import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
 import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName } from "./engine/settings.ts";
@@ -607,6 +607,11 @@ async function offerPushGate(options: SetupOptions, repos: RepoPolicies | null):
   const program = tiedProgramName(projectDir) ?? options.program?.name ?? "tmb";
   const ask = flags.yes === true ? null : options.ask;
   for (const hook of hooks) {
+    // A hook in another language is left alone: tmb says how to call the gate from it.
+    if (hook.program !== null) {
+      out(handCallLine(hook, program, projectDir));
+      continue;
+    }
     let yes = flags.addPushGate === true;
     if (!yes && ask !== null) {
       const answer = await ask(`git's pre-push hook ${hook.file} is another tool's, so the push gate is off in ${hook.dir}. Add tmb's one line to it? [y/N]: `);

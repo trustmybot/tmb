@@ -257,6 +257,21 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     return project;
   }
 
+  test("a hook in another language is left alone: the gate stays off, and tmb says how to call it by hand (trustmybot/tmb#218)", () => {
+    const project = setUpWithForeignHook();
+    const node = "#!/usr/bin/env node\nprocess.stdin.resume();\n";
+    writeFileSync(hookFile(project), node, { mode: 0o755 });
+    tmb(["init"], project);
+    const onboarded = human(["onboard", "--base", BASE_BRANCH, "--review-mode", "agile", "--check", "true", "--add-push-gate", "--yes"], project);
+    expect(onboarded).toContain(`git's pre-push hook ${hookFile(project)} is a node script, not a shell one, so tmb does not change it`);
+    expect(onboarded).toContain("'tmb' 'pre-push' '--project' '.'");
+    expect(readFileSync(hookFile(project), "utf8")).toBe(node);
+    expect(sessionStart(project)).toContain(`The push gate is off in ${project}`);
+    const doctor = run(["doctor"], project).stdout;
+    expect(doctor).toContain("is a node script, not a shell one");
+    expect(doctor).not.toContain("onboard --add-push-gate");
+  });
+
   test("init, every session start and doctor say the gate is off; with the yes an unreviewed push is refused; remove takes the line out", () => {
     const project = setUpWithForeignHook();
     expect(tmb(["init"], project)).toContain(`The push gate is off in ${project}`);
