@@ -167,6 +167,33 @@ For more information, try 'tmb --help'.
 - A usage mistake goes to stderr and exits with code 2: an unknown command, a flag a command does not take, or `tmb` with no command, which prints the short help.
 - Help and errors are coloured on a terminal. `NO_COLOR` turns colour off and `FORCE_COLOR` turns it on; with both set, `NO_COLOR` wins. Output sent to a file or a pipe, or a terminal with `TERM=dumb`, has no colour.
 
+## Report a bug in tmb
+
+When tmb itself goes wrong, a bug report can reach tmb's maintainers as a public issue on `trustmybot/tmb`, from your own GitHub account. Nothing is ever sent by itself: you read each report whole and say yes or no to it.
+
+| Command | Does |
+|---|---|
+| `tmb feedback [<text>]` | Drafts a report, shows it whole and asks `[y/N]` before sending. `<text>` says what you were doing; without it tmb asks. The report includes the last error tmb gave on this machine in the past 24 hours. |
+| `tmb feedback on` and `off` | Joins or leaves the feedback program. |
+| `tmb feedback status` | Shows whether the program is on, and why. |
+
+- **On or off only decides whether the planner offers a report.** With the program on, the planner may draft one when tmb breaks, and shows it to you first. `tmb feedback` works either way.
+- **The default follows the channel.** On dev and rc the program is on, and the first run says so once. On stable it is off, and the first run asks once whether to join; no answer means off. The first run is the end of `tmb init` on a terminal, else the planner's first session.
+- **The setting is yours, not the project's.** It is kept once per machine for each channel's program.
+- **How a report is sent.** With GitHub's CLI signed in, tmb files the issue after your yes and prints its link. Otherwise it opens the repo's bug form in your browser, filled in, and you press submit there; with no browser it prints the link. A report too long for a link is saved to a file, and the form asks you to attach it.
+- **Without a terminal** the draft is only saved to a file, and nothing is sent.
+- **What a report holds.** tmb's version, channel and program name, your OS, your agent program and its version, the command that failed, the error and tmb's own stack, the kinds of the last ten events in the record, and your sentence on what you were doing.
+- **What it never holds.** Source code, file contents, prompts, an agent's messages or environment variables. Your home folder is written as `~` and the project's folder as `<project>`, and values that look like tokens or passwords are removed. That cleaning is best effort, which is why you read every report.
+- `tmb feedback` takes no flags; any flag exits with code 2.
+
+| Variable | Does |
+|---|---|
+| `TMB_NO_FEEDBACK=1` | Turns the program off, whatever the setting says. Only `1` or `true` counts. |
+| `DO_NOT_TRACK=1` | The same. |
+| `TMB_FEEDBACK_REPO=owner/name` | Sends reports to another repo, to try the two routes on a fork. |
+
+The planner has two tools for this, `feedback_draft` and `feedback_send`. Both are the planner's alone and are refused while the program is off. `feedback_send` is refused unless it carries your yes to that draft. In an [unattended run](#unattended-runs) a draft is kept as a file and no report is sent.
+
 ## The record from the command line
 
 The planner records work through tmb's tools. You can read and change the same record yourself:
