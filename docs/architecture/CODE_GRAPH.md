@@ -51,6 +51,8 @@ Today the graph holds every named function at the top of a file and every class 
 - **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and is counted.
 - **Agents' answers do not change.** A lookup names the nearest named function, and unnamed functions stay out of search.
 - **The dashboard gets a code graph page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once.
+- **Areas** (trustmybot/tmb#146): the planner groups files into the project's logical parts, such as login or billing, and "tests" is an area from the start. Every file and function names its area, and the page draws each area as a box around its files.
+- **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147), so the links are there to draw.
 - **Python, bash and the other languages follow**, each with its own coverage test (trustmybot/tmb#141, v1.x).
 
 ## Honest limits
