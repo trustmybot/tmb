@@ -5,7 +5,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { gitFailure, runGit } from "../git.ts";
 import type { Task } from "../store/index.ts";
-import { TRUEST } from "./common.ts";
+import { DROPPED, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 
 export const PUSH_RESULTS = ["pushed", "failed", "skipped"] as const;
@@ -233,13 +233,27 @@ export function keptCheckouts(projectDir: string, tasks: readonly Task[]): { tas
   const kept: { task: Task; worktree: string; branch: string | null; listed: boolean }[] = [];
   for (const task of tasks) {
     if (task.worktree === null) continue;
-    // A truest task's branch stays for its pull request; only its worktree goes.
-    const branch = task.reviewMode === TRUEST || task.branch === null || !branches.has(task.branch) ? null : task.branch;
+    // A truest task's branch stays for its pull request, and a dropped task's while it holds commits; only the worktree goes.
+    const keepBranch = task.state === DROPPED ? branchHoldsWork(projectDir, task) : task.reviewMode === TRUEST;
+    const branch = keepBranch || task.branch === null || !branches.has(task.branch) ? null : task.branch;
     const isListed = listed.has(realPath(task.worktree));
     if (!isListed && branch === null) continue;
     kept.push({ task, worktree: task.worktree, branch, listed: isListed });
   }
   return kept;
+}
+
+/**
+ * Whether a task's branch holds commits past the commit it was cut from: a dropped task's work,
+ * which tmb keeps on its branch. A branch whose base tmb cannot tell is kept too.
+ */
+export function branchHoldsWork(projectDir: string, task: Task): boolean {
+  if (task.branch === null) return false;
+  const ref = branchRef(task.branch);
+  if (!runGit(projectDir, ["rev-parse", "--verify", "--quiet", ref]).ok) return false;
+  if (task.baseCommit === null) return true;
+  const ahead = runGit(projectDir, ["rev-list", "--count", `${task.baseCommit}..${ref}`]);
+  return !ahead.ok || ahead.stdout !== "0";
 }
 
 /** Pushes a branch (a feature branch as a backup, or a truest task's branch) to origin, never forced; with no origin, skips. */

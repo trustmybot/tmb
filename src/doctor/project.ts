@@ -253,7 +253,7 @@ function unfinishedCheck(store: Store): Finding {
 
 function checkoutChecks(env: DoctorEnv, projectDir: string, store: Store): Finding[] {
   const byRepo = new Map<string | null, Task[]>();
-  for (const task of store.listTasks("closed")) byRepo.set(task.repo, [...(byRepo.get(task.repo) ?? []), task]);
+  for (const task of [...store.listTasks("closed"), ...store.listTasks("dropped")]) byRepo.set(task.repo, [...(byRepo.get(task.repo) ?? []), task]);
   const findings: Finding[] = [];
   for (const [repo, tasks] of byRepo) {
     const repoDir = repoDirOf(projectDir, repo);
@@ -261,10 +261,10 @@ function checkoutChecks(env: DoctorEnv, projectDir: string, store: Store): Findi
       const what = [kept.listed ? `the worktree ${kept.worktree}` : null, kept.branch === null ? null : `the branch ${kept.branch}`].filter((part) => part !== null).join(" and ");
       findings.push(finding("closed tasks", {
         status: "warn",
-        summary: `task ${kept.task.id} is closed and ${what} ${kept.listed && kept.branch !== null ? "are" : "is"} still on disk`,
+        summary: `task ${kept.task.id} is ${kept.task.state} and ${what} ${kept.listed && kept.branch !== null ? "are" : "is"} still on disk`,
         fix: {
           say: `remove ${kept.listed && kept.branch !== null ? "them" : "it"} with \`${env.program.name} doctor --fix\`; tmb keeps a worktree with work nobody committed`,
-          ask: `Remove ${what} of closed task ${kept.task.id}?`,
+          ask: `Remove ${what} of ${kept.task.state} task ${kept.task.id}?`,
           apply: () => {
             const cleanup = removeTaskCheckout(repoDir, kept.worktree, kept.branch);
             const done = cleanup.problems.length === 0 ? `Removed ${what}.` : `Kept: ${cleanup.problems.join("; ")}.`;
@@ -274,7 +274,7 @@ function checkoutChecks(env: DoctorEnv, projectDir: string, store: Store): Findi
       }));
     }
   }
-  if (findings.length === 0) findings.push(finding("closed tasks", { status: "ok", summary: "no closed task left a worktree or a branch on disk" }));
+  if (findings.length === 0) findings.push(finding("closed tasks", { status: "ok", summary: "no closed or dropped task left a worktree or a branch on disk" }));
   return findings;
 }
 

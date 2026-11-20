@@ -10,7 +10,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 | Discussion | Notes and decisions on an issue. The newest decision is the one in force. |
 | Feature branch | A branch tasks fold into, its base branch and commit, and, in a workspace, its repo. |
 | Task | A spec, its state, its branch and its commit, and, in a workspace, its repo. |
-| Run | One agent working on one task or one review, from start to end, with its cost. |
+| Run | One agent working on one task or one review, from start to end. Its cost is not recorded yet (trustmybot/tmb#133). |
 | Check run | The checks run on a commit and their result. |
 | Review | A reviewer's verdict on a commit or a feature branch, with its findings. |
 | Guard decision | Every allow and deny the gate gave, and why. |
@@ -23,7 +23,7 @@ The record of the work: what was asked, what was decided, what each agent did an
 - **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
 - **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump. Agents spend their context on the work.
 - **History is kept, not overwritten.** A change of state is added as an event; the current state is derived from the events.
-- **Every record names who made it.** The Human, or the role and host that acted. Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
+- **Every record names who made it.** The Human, or the role and host that acted. Two gaps: every call through the command line and every push is recorded as the Human's, an agent's too (trustmybot/tmb#179, trustmybot/tmb#134). Planned: it also names the host session, so the work of two sessions on one project can be told apart, and a session with a start and no end is a finding (trustmybot/tmb#63). tmb still starts no session and assigns no work between them.
 - **Ids never collide across machines.** A record made on one machine can be copied to another without renumbering.
 
 ## Where it lives
