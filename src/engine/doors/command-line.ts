@@ -6,6 +6,7 @@ import {
   type FeatureBrief,
   type FeaturePrResult,
   type FeatureSummary,
+  type FeatureUpdateResult,
   type GraphAnswer,
   HandlerError,
   type IssueDetail,
@@ -56,6 +57,8 @@ ${JSON_NOTE}`,
   feature: `  tmb feature start <name> [--repo <name>]
                             Cut a feature branch from the base branch and record it; in a
                             workspace of several repos, --repo names the repo it is cut in
+  tmb feature update <name> Bring the base branch into the feature branch with a merge commit,
+                            fetched from origin first; a conflict changes nothing and names the files
   tmb feature list          List the feature branches with their base, state and tasks
   tmb feature brief <name>  Show a feature branch's tip, its task groups, reviews and waivers
   tmb feature waive <name> --reason <text>
@@ -101,7 +104,7 @@ ${JSON_NOTE}`,
 /** The actions of the record commands that take one, in the order the help lists them. */
 export const RECORD_ACTIONS: Partial<Record<RecordCommand, readonly string[]>> = {
   issue: ["create", "list", "show", "close", "reopen"],
-  feature: ["start", "list", "brief", "waive", "pr"],
+  feature: ["start", "update", "list", "brief", "waive", "pr"],
   task: ["start", "list", "brief", "close", "drop", "waive", "pr"],
   graph: ["map", "find", "symbol", "scope", "concepts"],
 };
@@ -321,6 +324,7 @@ function featureBriefLines(brief: FeatureBrief): string[] {
   return [
     `Feature branch ${brief.name}  ${brief.state}  into ${brief.baseBranch}`,
     `Tip: ${brief.tip}  (review the diff from ${brief.mergeBase})`,
+    `Holds the base: ${brief.base === null ? "unknown: git cannot read the base branch" : brief.holdsBase ? `yes, ${brief.baseBranch} at ${brief.base}` : `no, ${brief.baseBranch} is at ${brief.base}; bring it in with feature_update before the review`}`,
     `Covered at the tip: ${cover}`,
     ...(brief.prUrl === null ? [] : [`Pull request: ${brief.prUrl}`]),
     "Task groups:",
@@ -346,6 +350,16 @@ function featureRequest(args: string[]): Request {
         `Started feature branch ${feature.name}${feature.repo ? ` in ${feature.repo}` : ""} from ${feature.baseBranch} at ${feature.baseCommit}.`;
       const input = { name: only(positionals, "feature branch name"), ...(values.repo === undefined ? {} : { repo: values.repo }) };
       return { operation: "feature_start", input, json: values.json === true, format };
+    }
+    case "update": {
+      const { values, positionals } = parse(rest, {});
+      const format = (update: FeatureUpdateResult) => {
+        if (update.how === "none") return `${update.feature} already holds ${update.baseBranch} at ${update.base}; nothing changed.`;
+        const how = update.how === "merged" ? `merged into it at ${update.to}` : `fast-forwarded to it`;
+        const push = update.push === null ? "" : ` Backup push: ${update.push.result} (${update.push.detail}).`;
+        return `Brought ${update.baseBranch} at ${update.base} into ${update.feature}: ${how}.${push}`;
+      };
+      return { operation: "feature_update", input: { feature: only(positionals, "feature branch name") }, json: values.json === true, format };
     }
     case "list": {
       const { values, positionals } = parse(rest, {});

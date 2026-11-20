@@ -22,6 +22,7 @@ const TOOLS = [
   "settings_get",
   "settings_set",
   "feature_start",
+  "feature_update",
   "feature_list",
   "feature_brief",
   "review_record",
