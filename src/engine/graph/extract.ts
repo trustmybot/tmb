@@ -100,15 +100,22 @@ export function extractFile(parsers: Parsers | null, relPath: string, lang: Sour
     exported: 0,
   });
   let tree = null;
+  let text = src;
   if (language.grammar) {
     const parser = parsers?.get(lang);
     if (!parser) throw new Error(`no parser loaded for ${lang}`);
-    tree = parser.parse(src);
+    if (language.parse) {
+      const parsed = language.parse(parser, src);
+      tree = parsed?.tree ?? null;
+      text = parsed?.src ?? src;
+    } else {
+      tree = parser.parse(src);
+    }
     if (!tree) throw new Error(`tree-sitter returned no tree for ${relPath}`);
   }
   try {
     const root = tree?.rootNode ?? null;
-    language.extract({ relPath, src, root, module: moduleSymbol }, out);
+    language.extract({ relPath, src: text, root, module: moduleSymbol }, out);
   } finally {
     tree?.delete();
   }

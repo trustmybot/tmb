@@ -3,6 +3,7 @@ import typescriptWasm from 'tree-sitter-typescript/tree-sitter-typescript.wasm' 
 import tsxWasm from 'tree-sitter-typescript/tree-sitter-tsx.wasm' with { type: 'file' };
 import javascriptWasm from 'tree-sitter-javascript/tree-sitter-javascript.wasm' with { type: 'file' };
 import type { LanguageModule } from '../contract.ts';
+import { parseRepaired } from './repair.ts';
 import { extractTs } from './rules.ts';
 
 // GitHub Linguist's test for a minified JavaScript file: its lines average more than 110
@@ -18,6 +19,7 @@ export const typescript: LanguageModule = {
   grammar: typescriptWasm,
   comment: 'slash',
   minified: isMinifiedScript,
+  parse: parseRepaired,
   extract: extractTs,
 };
 
@@ -27,6 +29,7 @@ export const tsx: LanguageModule = {
   grammar: tsxWasm,
   comment: 'slash',
   minified: isMinifiedScript,
+  parse: parseRepaired,
   extract: extractTs,
 };
 

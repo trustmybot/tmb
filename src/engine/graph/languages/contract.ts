@@ -1,7 +1,7 @@
 // The one contract every language of the code graph meets (trustmybot/tmb#157): a file's text
 // in; its definitions, the container of each, and its references out. The build, the lookups
 // and the dashboard know only this contract, never a language's own rules.
-import type { Node } from 'web-tree-sitter';
+import type { Node, Parser, Tree } from 'web-tree-sitter';
 
 export type SymbolKind =
   | 'function'
@@ -156,5 +156,8 @@ export interface LanguageModule {
   // Whether a file's text is machine-minified, so it is kept as a file but not parsed
   // (trustmybot/tmb#232); absent when the language has no minified form.
   minified?(text: string): boolean;
+  // How it parses a file, when not with one plain parse: the tree and the text it was parsed
+  // from, which keeps every line and column of the file's own text.
+  parse?(parser: Parser, src: string): { tree: Tree; src: string } | null;
   extract(file: SourceFile, out: Collector): void;
 }
