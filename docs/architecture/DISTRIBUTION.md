@@ -71,6 +71,7 @@ Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2)
 
 - Each channel is a program of its own name: `tmb` follows stable, `tmb-rc` rc, `tmb-dev` dev, and `tmb-<version>` is one rc or stable release that never updates itself. The name is the installed file's. A `tmb` follows the channel its version names, so a dev build installed as `tmb` before the names were split keeps following dev.
 - Each program updates itself only from its own channel and keeps its machine-wide state in a folder of its own name, so one never swaps another.
+- Every command a program prints for its reader to run names that program: a project set up by `tmb-dev` is told to run `tmb-dev init`, never `tmb init`. Limit: only `tmb doctor` and the next steps of init and onboard do this today; the push gate's refusal and many other messages still say plain `tmb` (trustmybot/tmb#268, v1.0.0). Proposed, for the Human's review.
 - A project is tied to the program whose init last wired it: its hooks, its tool server and git's push hook call that program, and the record's audit trail keeps every move from one program to another.
 - The record's shape is signed with the version and program that wrote it. A tmb that finds a newer shape than it knows refuses the record and names them.
 - The installers take `TMB_CHANNEL` and, to pin one release, `TMB_INSTALL_VERSION`, and install under the matching name.

@@ -1,11 +1,13 @@
 // The chained test: one record, the steps in order, the two checks after every step.
 //
 //   bun tests/chain/run.ts [--work <dir>] [--tmb-file <binary>] [--with-model]
-//                          [--from <step> | --only <step>] [--states <dir>]
+//                          [--tmb-next-file <binary>] [--from <step> | --only <step>] [--states <dir>]
 //
 // --work       the work folder (a new one under the temp folder when not given). It must be
 //              outside any git repo, as a person's project would be.
 // --tmb-file   the tmb binary to release and install; built from this checkout when not given.
+// --tmb-next-file  the newer binary the update step publishes, stamped with the next dev
+//              version; built from this checkout when not given.
 // --with-model run the session steps too; they need the model login in the environment.
 // --from       open the state saved before this step and run the chain on from it.
 // --only       open the state saved before this step and run only this step.
@@ -23,15 +25,17 @@ import { afterStep, Checks, type Step, StepStopped } from "./chain.ts";
 import { buildDemoApp } from "./demo.ts";
 import { assetName, buildTmb, chainVersions, publishDev, startReleaseServer } from "./release.ts";
 import { openState, readIndex, saveState, STATE_PARTS } from "./states.ts";
+import { NO_MODEL_STEPS } from "./steps/no-model.ts";
 import { SETUP_STEPS } from "./steps/setup.ts";
 import { World } from "./world.ts";
 
-export const STEPS: Step[] = [...SETUP_STEPS];
+export const STEPS: Step[] = [...SETUP_STEPS, ...NO_MODEL_STEPS].sort((a, b) => a.n - b.n);
 
 const { values } = parseArgs({
   options: {
     work: { type: "string" },
     "tmb-file": { type: "string" },
+    "tmb-next-file": { type: "string" },
     "with-model": { type: "boolean", default: false },
     from: { type: "string" },
     only: { type: "string" },
@@ -50,7 +54,7 @@ const world = new World(work);
 world.prepare();
 console.log(`The chain's work folder: ${work}`);
 
-const { first } = chainVersions();
+const { first, next } = chainVersions();
 let binary = values["tmb-file"];
 if (!binary) {
   binary = path.join(work, "build", "tmb");
@@ -58,8 +62,18 @@ if (!binary) {
   await buildTmb(first, binary, null);
 }
 if (!existsSync(binary)) throw new Error(`no tmb binary at ${binary}`);
+let nextBinary = values["tmb-next-file"];
+if (!nextBinary) {
+  nextBinary = path.join(work, "build", "tmb-next");
+  console.log(`Building tmb ${next}, the update the chain offers, from this checkout…`);
+  await buildTmb(next, nextBinary, null);
+}
+if (!existsSync(nextBinary)) throw new Error(`no tmb binary at ${nextBinary}`);
 const releaseDir = path.join(work, "release");
-publishDev(releaseDir, binary, first, assetName(process.platform, process.arch));
+const asset = assetName(process.platform, process.arch);
+rmSync(releaseDir, { recursive: true, force: true });
+publishDev(releaseDir, binary, first, asset);
+world.release = { dir: releaseDir, next: nextBinary, asset };
 const server = await startReleaseServer(releaseDir);
 world.releasesUrl = server.url;
 let openedRan: number[] = [];
