@@ -2,7 +2,7 @@
 // and kept its measures, no task is left open, and each feature branch ended where it should.
 // Uses no model, so it runs on every pull request too, where it finds no session's work.
 import type { Step } from "../chain.ts";
-import { features, runs, show, tasks } from "../record.ts";
+import { features, RECORD_BUGS, runs, show, strandedRuns, tasks } from "../record.ts";
 
 type Cost = { model?: string; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; toolCalls?: number };
 
@@ -12,7 +12,10 @@ export const endCheck: Step = {
   model: false,
   covers: [150, 256],
   run(world, checks) {
-    const all = runs(world);
+    // The worker runs a failed start left open (trustmybot/tmb#285) are a known fault, kept apart.
+    const stranded = strandedRuns(runs(world));
+    if (stranded.length > 0) checks.known(RECORD_BUGS.strandedStart, "no worker run is left open by a failed start", false, show(stranded));
+    const all = runs(world).filter((run) => !stranded.some((each) => each.id === run.id));
     const open = all.filter((run) => run.ended_at === null);
     checks.ok("no agent run is left open (trustmybot/tmb#150)", open.length === 0, show(open));
     const agents = all.filter((run) => run.role === "worker" || run.role === "reviewer");

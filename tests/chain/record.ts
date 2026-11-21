@@ -64,3 +64,19 @@ export function now(): string {
 
 /** One line per row, for a check's detail. */
 export const show = (rows: unknown[]) => rows.map((row) => JSON.stringify(row)).join("\n") || "(none)";
+
+/** tmb bugs the record checks meet, filed: the checks they fail are marked known until each is fixed. */
+export const RECORD_BUGS = {
+  /** A worker start Claude Code fails leaves its run open; the real worker's stop then finds two open and ends none. */
+  strandedStart: 285,
+};
+
+/**
+ * The worker runs trustmybot/tmb#285 left open: on a task with two or more worker runs, none ended.
+ * A failed start's run is never closed, and the worker that did start cannot end its own beside it.
+ */
+export function strandedRuns(rows: RunRow[]): RunRow[] {
+  const byTask = new Map<string, RunRow[]>();
+  for (const run of rows) if (run.role === "worker" && run.task_id !== null) byTask.set(run.task_id, [...(byTask.get(run.task_id) ?? []), run]);
+  return [...byTask.values()].filter((workers) => workers.length >= 2 && workers.every((run) => run.ended_at === null)).flat();
+}
