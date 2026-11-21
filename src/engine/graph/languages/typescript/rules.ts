@@ -473,17 +473,22 @@ export function extractTs(file: SourceFile, out: Collector): void {
     if (n?.type === 'identifier' && source !== undefined) imported.set(s!.childForFieldName('alias')?.text ?? n.text, { name: n.text, source });
   }
   const target = (name: string): string => bindings.aliases.get(name) ?? name;
+  // The module an `import { A as B }` alias was imported from: a reference to `B` is looked up
+  // there by `A`, never through the file's other imports of an `A` (trustmybot/tmb#242).
+  const aliasSource = (name: string): string | undefined => (bindings.aliases.has(name) ? imported.get(name)?.source : undefined);
   const referenced = new Set<string>();
   // A bare name as the language looks it up (trustmybot/tmb#246): a binding around the
   // reference first, else the file's own names and imports, an import alias by its original name.
   const reference = (scope: number, kind: EdgeKind, name: string, at: Node): void => {
     const local = localBinding(at, name);
     const dst = local === null ? target(name) : name;
-    const hint = local?.bound === 'function' ? String(local.line) : null;
-    const key = `${scope}\u0000${kind}\u0000${dst}\u0000${local?.bound ?? ''}\u0000${hint ?? ''}`;
+    const spec = local === null ? aliasSource(name) : undefined;
+    const bound: Bound | undefined = spec !== undefined ? 'import' : local?.bound;
+    const hint = spec ?? (local?.bound === 'function' ? String(local.line) : null);
+    const key = `${scope}\u0000${kind}\u0000${dst}\u0000${bound ?? ''}\u0000${hint ?? ''}`;
     if (referenced.has(key)) return;
     referenced.add(key);
-    out.edge(scope, kind, dst, at.startPosition.row + 1, hint, local?.bound);
+    out.edge(scope, kind, dst, at.startPosition.row + 1, hint, bound);
   };
   const boundValue = (node: Node, name: string): boolean => bindings.names.has(name) && localBinding(node, name) === null;
   const definition = (node: Node, kind: SymbolKind, qualifiedName: string, parent: number): number =>
@@ -588,9 +593,11 @@ export function extractTs(file: SourceFile, out: Collector): void {
       let callee: string | undefined;
       let receiver: string | undefined;
       let bound: Bound | undefined;
+      let spec: string | undefined;
       if (fn?.type === 'identifier') {
         const local = localBinding(fn, fn.text);
-        bound = local?.bound;
+        spec = local === null ? aliasSource(fn.text) : undefined;
+        bound = spec !== undefined ? 'import' : local?.bound;
         callee = local === null ? target(fn.text) : fn.text;
         if (local?.bound === 'function') receiver = String(local.line);
       } else if (fn?.type === 'member_expression') {
@@ -614,7 +621,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
           t === 'call_expression' ? 'calls' : 'instantiates',
           callee,
           node.startPosition.row + 1,
-          receiver === undefined ? null : memberHint(receiver),
+          spec ?? (receiver === undefined ? null : memberHint(receiver)),
           bound,
         );
       }
