@@ -71,8 +71,7 @@ What stands in their place, each at a checkpoint:
 - **The close** runs the checks on the committed work and reports what changed outside the spec and in the main folder.
 - **The review** judges the diff.
 - **The push gate** below judges every push.
-- **Two host events stay:** a worker's start is refused without a ready task, and a file write the host names as the reviewer's is denied ([HOSTS.md](HOSTS.md#containment)).
-- **One shell command is read:** where the host shows tmb an agent's shell command, the guard denies one that takes a step only the Human may take, such as a waiver or setting the review mode.
+- **One host event stays:** a worker's start is refused without a ready task ([HOSTS.md](HOSTS.md#containment)).
 
 ## Rebasing a reviewed task
 

@@ -141,7 +141,7 @@ Planned: a consultant is one kind of created agent, recorded and harnessed like 
 |---|---|
 | A push that brings onto the base branch a commit no review or waiver covers is refused, typed by hand too | 2 (push) |
 | Only the Human waives a review | 1 |
-| A step only the Human may take is denied in an agent's shell command | 2 |
+| A step only the Human may take runs only on a terminal, after a typed yes | 1 |
 | The gate denies when it cannot read the record | 2 |
 | Naming conventions, commit subjects, mechanical code-quality patterns | 1 (close) where the project's checks cover them; else 6 only |
 | Specs live in the record: a task starts only through the tool that records its spec | 1 |
@@ -155,7 +155,7 @@ Planned: a consultant is one kind of created agent, recorded and harnessed like 
 1. Identify the failure mode. What's the bad thing if the LLM doesn't comply?
 2. Pick the hardest layer that fits ([The 6 layers](#the-6-layers-hardest--softest)).
 3. Implement it in that layer's source (see above) with a test; a layer 4 change to an existing table also needs its migration.
-4. If the guard covers version-control commands, put it in git's own hook, which holds whatever was typed. tmb parses no shell command for a workflow rule; the one command guard matches a step only the Human may take.
+4. If the guard covers version-control commands, put it in git's own hook, which holds whatever was typed. tmb reads no shell command.
 5. Rules compare tmb's own role names: each adapter turns its host's agent name into one first, and a rule that silently skips a role it cannot name is a disabled safety gate.
 6. Update the coverage matrix. A layer 6 row notes that it may need promotion.
 7. **Moving a rule to a softer layer needs its reason in the PR.**

@@ -127,7 +127,7 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 - **Judges what the diff breaks.** A success criterion, a caller or reader of the changed code, a security property, a stated performance budget. Style, naming and design fit are the planner's call, not findings.
 - **Reviews from the record and its own probes.** It reads the branch's and each task's brief, asks the code graph what calls or reads each changed thing, and probes with read-only commands.
 - **Signs off with a recorded verdict:** pass or fail on the exact commit, each finding marked blocking, not blocking, or already there. A verdict needs the reviewer run the host started; a verdict on a tip that has moved is not taken.
-- **Never edits files,** never pushes and never opens a pull request.
+- **Never edits files,** never pushes and never opens a pull request. Planned: a verdict is taken only when git shows the tree unchanged since the reviewer's run started.
 
 ## Agents a project creates
 
@@ -154,7 +154,7 @@ flowchart TD
     A["Roles: written once, host-neutral<br/>worker: read, edit, run commands<br/>reviewer: read, run commands"] --> B["Host adapter, at init"]
     B --> C["Role files in the host's own format<br/>with the tools each role must never use taken away"]
     C --> D["The host enforces the tool list itself"]
-    B --> E["Event wiring: agent start and stop, reviewer file write, session start"]
+    B --> E["Event wiring: agent start and stop, session start"]
     E --> F["Engine answers allow or deny from the record"]
     D --> G["Whatever got past: checks at close, the review, git's pre-push hook"]
     F --> G
@@ -164,13 +164,7 @@ flowchart TD
 - **The adapter holds no rules.** It turns the neutral role into the host's format, and a host event into the engine's question. An adapter that grows a rule is a defect.
 - **The engine's tools check the role too.** Starting a feature branch or a task, dropping one, asking for a pull request and changing a setting are the planner's. Recording a verdict is the reviewer's. Closing a task is the worker's or the planner's. The Human may always call.
 - **The role is the one the caller gives.** A subagent passes its own role; the main agent defaults to the role its host was set up in, the planner unless init or onboarding named another. tmb cannot prove which agent called, so a verdict also needs an open reviewer run on that host.
-- **What holds differs by host** (trustmybot/tmb#185):
-
-| Host | Reviewer's edit tools | A write that reaches the gate | From the shell |
-|---|---|---|---|
-| Claude Code | Taken away by its role file | Denied: the host names the subagent on each call | Not read by tmb. A push is still judged by git's hook |
-| Codex | Taken away by its role file | A reviewer subagent's write goes through: the host names no agent on a call. A Codex set up as the reviewer is denied on every write | A patch run through the shell is denied for a reviewer host. A push is still judged by git's hook |
-
+- **The reviewer edits nothing, on any host.** Its role file gives it no tool that edits a file, and tmb watches no file write. Planned: a verdict is taken only when git shows the tree unchanged since the reviewer's run started. That covers a write from its shell, and a host that does not name the agent on a call.
 - **A model per role.** The adapter writes a role's model and effort into its role file when one is set; the host runs it.
-- **The Human's steps have two fences** (trustmybot/tmb#179): the command line asks for a terminal and a typed yes, and the gate denies an agent's shell command that takes such a step. They stop an agent on the plain path and record each deny. They are not proof.
+- **The Human's steps have one fence:** the command line runs one only on a terminal, after a typed yes. An agent's shell has no terminal, so the step is refused there. It stops an agent on the plain path. It is not proof ([HOSTS.md](HOSTS.md#ways-into-the-engine)).
 - **When a host cannot deny an action,** the engine's own layers still hold: checks at close and git's pre-push hook.

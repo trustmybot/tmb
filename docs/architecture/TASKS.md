@@ -271,7 +271,7 @@ flowchart LR
 ```
 
 - **Code enforces; prompts guide.** The three checkpoints are the engine's. An agent can ignore a prompt; it cannot skip a checkpoint.
-- **Checkpoints, not steps.** The only things the host is asked before they happen are an agent's start, a file write by the reviewer, and a step only the Human may take. Everything else is judged by what is delivered.
+- **Checkpoints, not steps.** The only thing the host is asked before it happens is an agent's start. Everything else is judged by what is delivered.
 - **Leaks point upstream.** When a later step or CI catches a cheap check, the fix is to move that check into the step that owns it. A leak rate per step as the health metric is Planned.
 - **Failures return to their owner.** A failed check goes back to the author, a review finding to the author, a design misfit to the planner's spec.
 

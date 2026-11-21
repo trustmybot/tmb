@@ -35,7 +35,7 @@ flowchart TD
 - **Project.** The planner asks the Human for the mode among its onboarding questions at the first session, and stores the answer. The Human can also set it with `tmb onboard`. Setup itself asks nothing.
 - **Repo.** In a workspace of several repos, a repo can name its own mode. One that names none follows the workspace's, and follows it when it changes. Onboarding asks for the workspace's mode once, then asks once whether any repo takes its own ([GIT.md](GIT.md#multi-repo-workspaces)).
 - **The task keeps it.** A task records the mode it was started in. A later change of mode applies to tasks started after it.
-- **Two fences keep the choice the Human's.** On the command line the mode is set only on a terminal, after a typed yes. The host's guard also denies an agent's shell command that sets it. One exception: a run with no one to ask, such as CI, may set a mode where none is set, and never changes one.
+- **A fence keeps the choice the Human's.** On the command line the mode is set only on a terminal, after a typed yes. One exception: a run with no one to ask, such as CI, may set a mode where none is set, and never changes one.
 - **tmb keeps it.** The mode lives in tmb's record, and every change is in the audit trail.
 
 ## The feature branch

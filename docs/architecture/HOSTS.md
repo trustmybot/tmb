@@ -130,9 +130,9 @@ flowchart LR
 | A worker writes outside its worktree | Its host keeps a worker's edits in a folder of its own, where the host can. The close names anything that changed in the main folder since the task started, with the command that puts it back. tmb puts nothing back: the list can hold the Human's own edits. |
 | A task changes files outside its spec | The close names each file. It refuses only on its checks. |
 | A docs task changes code | The close refuses, and names the file |
-| The reviewer edits what it judges | Its role has no editing tool, and a write the host names as the reviewer's is denied. A file written from its shell is not seen. |
+| The reviewer edits what it judges | Its role has no editing tool. Planned: a verdict is taken only when git shows the tree unchanged since the reviewer's run started. |
 | Unreviewed commits leave the machine | git's pre-push hook, whoever typed the push |
-| An agent takes a step that is the Human's alone | The terminal's typed yes, and the host's deny of that shell command ([Ways into the engine](#ways-into-the-engine)) |
+| An agent takes a step that is the Human's alone | The command line: it runs the step only on a terminal, after a typed yes ([Ways into the engine](#ways-into-the-engine)) |
 | Two tasks change the same file | No lock. git settles it when the work is merged, and a clash holds back the later task's close. |
 
 - **The engine does the git steps itself.** It, not an agent, cuts branches and worktrees, folds, pushes and opens pull requests, so every step is recorded.
@@ -153,8 +153,6 @@ The few hooks tmb has. Each is one tmb event, whatever raised it.
 | Before an agent start | The host is about to start a subagent | A worker needs an open task with a ready worktree; a reviewer's run is opened | Host |
 | An agent start that failed | The host could not start the subagent | The run that was opened is ended | Host |
 | A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | That folder becomes the task's worktree | Host |
-| Before a file write | An agent is about to write a file | Denied for the reviewer, whether it is a subagent the host names or a host set up as the reviewer | Host |
-| Before a shell command | An agent is about to run a shell command | Denied only when it takes a step that is the Human's alone. Nothing else is read. | Host |
 | After an agent stop | A subagent has ended | Its run is ended, with the tokens it used where the host tells | Host |
 | Session end | A host session closes | A run still open for a host set up as the reviewer is ended, with no verdict | Host |
 | Before a push | Commits are about to leave the machine | Refused while they are not reviewed, as the review mode asks | git |
@@ -178,8 +176,6 @@ The few hooks tmb has. Each is one tmb event, whatever raised it.
 | Before an agent start | Before a call of its agent tool | Before a call of its spawn tool. The call may name no role: it is allowed, and recorded as a finding. |
 | An agent start that failed | After a failed call of its agent tool | Not raised |
 | A worker in its folder | Before a call of tmb's brief or close tool | Not raised |
-| Before a file write | Before a call of one of its edit tools, once per file | Before a patch, once per file it names, and a patch sent through the shell |
-| Before a shell command | Before a call of its shell tool | Before a call of one of its shell tools |
 | After an agent stop | Its subagent stop event, with the subagent's token use | Its subagent stop event |
 | Session end | Its session end event | Its session end event |
 | Before a push | git's pre-push hook, the same on every host | The same |
@@ -187,7 +183,7 @@ The few hooks tmb has. Each is one tmb event, whatever raised it.
 What does not hold on Codex:
 
 - **A worker's folder is not tied to its task**, and the engine does not check where a worker was started from.
-- **A call is judged under the role its host was set up with.** A Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a subagent's write from the planner's, so a reviewer subagent's write goes through. Open, for the Human: whether a reviewer subagent is allowed under a Codex planner.
+- **A call is judged under the role its host was set up with.** The host names no agent on a call, so the engine cannot tell a subagent's call from the main agent's.
 - **Setup cannot tell whether the hooks are trusted**, so it always lists that step. It never trusts a project or its hooks on the Human's behalf.
 
 **What a host cannot raise or deny, a later checkpoint catches.** The adapter reports it and nothing switches over: the close and the push check every change whatever the host raised.
@@ -205,17 +201,12 @@ One host event, answered:
 ```mermaid
 flowchart TD
     A[The host raises an event] --> B[The project's program answers, at the session's build]
-    B --> C{An agent's shell command?}
-    C -- yes --> C1{Does it run a step only the Human may take?}
-    C1 -- yes --> DENY[Deny with the reason, and record it]
-    C1 -- no --> SILENT[Allow, nothing read further, nothing recorded]
-    C -- no --> D{The project's record?}
+    B --> D{The project's record?}
     D -- none here --> SILENT2[Allow, nothing recorded]
     D -- "damaged, empty or a newer tmb's" --> DENY2[Deny with the cause]
     D -- readable --> E{Which checkpoint?}
-    E -- the reviewer writes a file --> DENY
     E -- a worker starts --> F{Open task, worktree ready, started from its repo?}
-    F -- no --> DENY
+    F -- no --> DENY[Deny with the reason, and record it]
     F -- yes --> G
     E -- anything else --> G[Allow]
     G --> H{Decision recorded?}
@@ -227,7 +218,7 @@ flowchart TD
 
 Closed:
 
-- **A record tmb cannot read denies.** A record that is damaged, empty, or reshaped by a newer tmb denies every file write, agent start and push, and the deny names the cause and the way out (trustmybot/tmb#185).
+- **A record tmb cannot read denies.** A record that is damaged, empty, or reshaped by a newer tmb denies every agent start and push, and the deny names the cause and the way out (trustmybot/tmb#185).
 - **A decision tmb cannot record denies.**
 - **A push hook that fails refuses the push.**
 - **A deny always says why**, and what would be allowed.
@@ -321,10 +312,9 @@ flowchart LR
 | Dashboard | The Human | A local web page over the record. |
 | Desktop program | The Human | Planned (trustmybot/tmb#79). |
 
-All of them call the same engine. tmb has no slash commands: each action is a terminal command or a tool the planner calls. The command line records every caller as the Human, so a step only the Human may take has two fences there (trustmybot/tmb#179):
+All of them call the same engine. tmb has no slash commands: each action is a terminal command or a tool the planner calls. The command line records every caller as the Human, so a step only the Human may take is fenced there (trustmybot/tmb#179):
 
 - **The steps:** waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
 - **A terminal and a typed yes.** The command line runs such a step only on a terminal, after the Human types yes. With no terminal it refuses and changes nothing.
-- **The host's guard.** Where the host lets tmb see an agent's shell command before it runs, as Claude Code and Codex do, the guard denies one that takes such a step, says why, and records the deny. Every other shell command passes and nothing is recorded. A host that cannot show tmb a shell command has the first fence only.
 - **One exception, for a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode where none is set, for the workspace or for one repo. It never changes a mode that is set, so an agent that turns unattended mode on for its own command cannot undo the Human's choice (trustmybot/tmb#223). Nothing else passes.
-- **What the fences are not.** They stop an agent that takes the plain path, and the record shows each deny. They are not proof: an agent that writes a script which opens its own terminal can pass both, and on Codex an agent's shell tool can open a terminal, so only the guard stands there. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Open, for the Human: whether tmb builds one.
+- **What the fence is not.** It stops an agent that takes the plain path. It is not proof: an agent that writes a script which opens its own terminal can pass it, and on Codex an agent's shell tool can open a terminal. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Open, for the Human: whether tmb builds one.

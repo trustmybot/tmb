@@ -117,7 +117,7 @@ flowchart TD
     I --> D
 ```
 
-- **What is denied.** File writes, subagent starts and pushes, and every tmb command and tool but the health check. Reading files and running shell commands stay possible, because tmb watches neither, so the agent can see what is wrong and tell the Human.
+- **What is denied.** Subagent starts and pushes, and every tmb command and tool but the health check. Reading files and running shell commands stay possible, because tmb watches neither, so the agent can see what is wrong and tell the Human.
 - **It only reads.** The health check never deletes without the Human's yes and never touches a file tmb did not write. With a terminal, its fix mode asks about each fix, one at a time.
 - **It runs with a broken record.** Every check that does not need the record still runs; the ones that do say why they were skipped.
 - **A start without an end is a finding.** It lists runs and checks with a start and no end, and open tasks no agent run is on ([TRAJECTORY.md](TRAJECTORY.md)).

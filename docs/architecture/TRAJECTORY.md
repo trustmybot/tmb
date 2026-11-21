@@ -98,7 +98,7 @@ stateDiagram-v2
 
 ## Hook runs
 
-In tmb a hook runs only at a checkpoint: a session start, an agent's start or stop, a file write by the reviewer, a step only the Human may take, and git's pre-push hook. Each answer is one guard decision.
+In tmb a hook runs only at a checkpoint: a session start, an agent's start or stop, and git's pre-push hook. Each answer is one guard decision.
 
 ```mermaid
 stateDiagram-v2
@@ -112,7 +112,7 @@ stateDiagram-v2
 
 - **Every decision is recorded,** allow and deny, with the event and the reason.
 - **A gate never fails open on a broken record.** It denies when it cannot read or write the record, and allows only where tmb was never set up.
-- **Not recorded:** a shell command tmb let pass. tmb reads a shell command only for a step only the Human may take, and records only the deny.
+- **Not recorded:** file writes and shell commands. tmb reads neither.
 - **Not events:** a task's start and close. The engine checks them when asked, and a refusal goes to the caller without a guard decision.
 - **A decision is written once, when it is made.** Planned: a start written before the hook's work, so a hook that hangs or crashes leaves a record.
 
