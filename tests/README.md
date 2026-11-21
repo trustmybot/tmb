@@ -80,6 +80,19 @@ Every `bun test` file starts with `setDefaultTimeout(30_000)`. bun's default of 
 
 No test fixes the OS, the model or the machine's setup. Each is a setting of the run, so the same test runs unchanged on another OS, with another model, or on a machine set up differently. A test that only passes with one of them names it and says why.
 
+## The whole chain in a container
+
+Planned (trustmybot/tmb#260, v1.0.0, agreed by the Human on 2026-11-20). Nothing of it is built. Today the agent tests are separate scripts, each with its own small project, run on a developer's machine, and none has run in CI.
+
+- **One empty Linux container.** It holds git, bun and Claude Code, and no tmb. tmb is installed inside by its real install script, so install is the first step. GitHub is not reached: each repo's remote is a bare repo in the container, and the fake `gh` stands in for pull requests. A real pull request on a test repo is planned before the first stable release.
+- **One demo app of three repos, kept with the tests** and built with fixed dates: one in TypeScript in agile mode, one in Python and bash in truest mode, and one with no remote.
+- **One chain of steps on one record,** from install, init, doctor, onboard and index to features asked for in new sessions, a review, a refused push, pull requests, an update and the dashboard. The issue lists the steps and what each covers. The chain stops at the first failed step.
+- **Two checks run after every step:** `tmb doctor` reports no failure, and the record is whole. Whole means every closed task has a run with an end and its tokens, a check and a review, and every push in git is one the record allowed.
+- **A state is saved before every step, by the chain itself.** A step can be run alone from its saved state, or the chain run on from it, with the same prompt and the same checks. The states kept are those of the last passing run on `dev`, stored with that CI run and not in git. A newer tmb opens an older state through its normal upgrade of the record. When a step fails in the chain and passes alone, the fault is in an earlier step's output.
+- **When it runs.** The steps with no model run on every pull request. The whole chain runs on request and before every release, once the Human has set the model login as a repository secret.
+- **A feature is done when the chain covers it.** Each new feature adds a step or a check, or its pull request says why not.
+- Today's agent tests become steps of the chain. Windows, macOS and a second host stay outside it, and migration from a plugin project gets a chain of its own later.
+
 ## Tests each level adds
 
 Each level has one test issue with this list. A later level keeps every earlier level's tests passing.
