@@ -198,12 +198,15 @@ function oneLine(error: unknown): string {
 }
 
 // A question with a recommended answer counts as answered by it: otherwise the role's rule to ask
-// open questions wins and the run stops with nothing started (trustmybot/tmb#281).
+// open questions wins and the run stops with nothing started (trustmybot/tmb#281). It comes first
+// in the answer: a host may show only the head of a long context and keep the rest in a file the
+// agent reads only if it chooses to, so an instruction at the end was seen only some of the time.
 export const UNATTENDED_INSTRUCTION =
   "## Unattended run\n\nNo one can answer in this run, so apply your defaults and name each default you used. " +
   "A question you have a recommended answer for counts as answered by that recommendation: record it as a decision on its issue, name it in your answer, and go on with the work. " +
   "A choice your role leaves to the Human alone is never a default. " +
-  "Stop only when no default is safe, and say why.";
+  "Stop only when no default is safe, and say why. " +
+  "Your role and the project's open work follow: read all of it before you act.";
 
 /**
  * Open feature branches, and those whose pull request is open, with work on them and no review or
@@ -254,19 +257,25 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
 
 /**
  * The role and its work: for the planner the open work, for a host set up as the reviewer the
- * branches waiting for review. Then, when `unattended` says no one can answer in this run, the
- * instruction for it. Nothing about the mode is stored in the project.
+ * branches waiting for review. When `unattended` says no one can answer in this run, the
+ * instruction for it comes first, so it is in the head a host shows of a long answer
+ * (trustmybot/tmb#281). Nothing about the mode is stored in the project.
  */
 export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null, doctor?: (projectDir: string) => string | null): string {
   if (reviewsHere(projectDir, host)) {
     const context = withHostFiles(reviewerContext(projectDir, host!), refreshed, unattended);
-    return unattended ? `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n` : context;
+    return unattended ? withUnattended(context) : context;
   }
   const context = withDoctor(withHostFiles(plannerContext(projectDir, unattended, host), refreshed, unattended), projectDir, doctor, unattended);
-  if (unattended) return `${context.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`;
+  if (unattended) return withUnattended(context);
   // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
   const told = feedback === undefined ? "" : feedbackSection(feedback);
   return told === "" ? context : `${context.trimEnd()}\n\n${told}\n`;
+}
+
+/** The unattended instruction, then the context. */
+function withUnattended(context: string): string {
+  return `${UNATTENDED_INSTRUCTION}\n\n${context}`;
 }
 
 /**

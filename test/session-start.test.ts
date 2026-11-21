@@ -137,18 +137,31 @@ describe("unattended mode", () => {
     return handleEvent({ type: "session-start", projectDir: project, unattended }).context;
   }
 
-  test("when on, the answer is the attended one followed by the unattended instruction", () => {
+  test("when on, the answer is the unattended instruction followed by the attended one", () => {
     withStore((store) => {
       onboarded(store);
       store.createIssue({ kind: "human" }, { title: "Open issue" });
     });
     const attended = contextWith(false);
     const text = contextWith(true);
-    expect(text).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
-    expect(text.indexOf("Open issue")).toBeLessThan(text.indexOf(UNATTENDED_INSTRUCTION));
+    expect(text).toBe(`${UNATTENDED_INSTRUCTION}\n\n${attended}`);
     expect(UNATTENDED_INSTRUCTION).toContain("No one can answer in this run");
     expect(UNATTENDED_INSTRUCTION).toContain("name each default you used");
     expect(UNATTENDED_INSTRUCTION).toContain("Stop only when no default is safe, and say why.");
+  });
+
+  // trustmybot/tmb#281: Claude Code keeps a hook's context over 10KB in a file and shows the agent
+  // only its first 2KB, so an instruction at the end of the planner's long answer was seen only
+  // when bro chose to read that file. It comes first, well inside that head, however long the rest.
+  test("the instruction is at the head of a long answer, inside the first 2KB a host shows", () => {
+    withStore((store) => {
+      onboarded(store);
+      for (let i = 0; i < 40; i++) store.createIssue({ kind: "human" }, { title: `Open issue ${i} ${"x".repeat(80)}` });
+    });
+    const text = contextWith(true);
+    expect(text.length).toBeGreaterThan(10_000);
+    expect(text.indexOf(UNATTENDED_INSTRUCTION)).toBe(0);
+    expect(UNATTENDED_INSTRUCTION.length).toBeLessThan(1_000);
   });
 
   // trustmybot/tmb#281: the role's "ask the open questions" rule won over the instruction, so an
@@ -157,6 +170,7 @@ describe("unattended mode", () => {
     expect(UNATTENDED_INSTRUCTION).toContain("A question you have a recommended answer for counts as answered by that recommendation");
     expect(UNATTENDED_INSTRUCTION).toContain("record it as a decision on its issue, name it in your answer, and go on with the work");
     expect(UNATTENDED_INSTRUCTION).toContain("A choice your role leaves to the Human alone is never a default.");
+    expect(UNATTENDED_INSTRUCTION).toContain("read all of it before you act");
     const statedGoal = plannerRole.split("\n").find((line) => line.startsWith("- **A stated goal.**"))!;
     expect(statedGoal).toContain("then ask them");
     expect(statedGoal).toContain("In an unattended run no one can answer, so a question you have a recommended answer for counts as answered by that recommendation");
@@ -164,8 +178,8 @@ describe("unattended mode", () => {
     expect(statedGoal).toContain("Stop only when no safe default exists, and say why.");
   });
 
-  test("when on and there is no record, the role is followed by the instruction", () => {
-    expect(contextWith(true)).toBe(`${plannerRole.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+  test("when on and there is no record, the instruction is followed by the role", () => {
+    expect(contextWith(true)).toBe(`${UNATTENDED_INSTRUCTION}\n\n${plannerRole}`);
   });
 
   test("when off, the answer is the role and the open work alone", () => {
