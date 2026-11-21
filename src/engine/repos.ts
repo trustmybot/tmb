@@ -73,6 +73,21 @@ export function scanRepos(workspaceDir: string): string[] {
   return scanWorkspace(workspaceDir).repos;
 }
 
+/**
+ * The repos a project folder holds that its record does not name (trustmybot/tmb#258): set up by a
+ * build from before workspaces, the folder is no repo itself and the record treats it as the one
+ * repo. Empty when the record names its repos, or the folder is a repo itself.
+ */
+export function unnamedRepos(projectDir: string, repos: RepoPolicies | null): string[] {
+  if (repos !== null || inGitWorkTree(projectDir)) return [];
+  return scanRepos(projectDir);
+}
+
+/** What fixes unnamed repos, and what it changes at once: said wherever tmb finds them. */
+export function unnamedReposFix(program: string): string {
+  return `\`${program} init\`, run again in the project folder, names them and writes the push hook in each; every session already pushing from one of those repos meets the push gate at its next push`;
+}
+
 /** The workspace's repos as the record holds them, or null in a single-repo project. */
 export function workspaceRepos(store: Store): RepoPolicies | null {
   return readSettings(store).repos;

@@ -14,7 +14,7 @@ import { emptySettings } from "../engine/handlers/settings.ts";
 import { tiedProgram } from "../engine/program-tie.ts";
 import { PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "../engine/project.ts";
 import { addToForeignHook, FOREIGN_GAP, foreignHooks, handCallLine, pushGateGaps } from "../engine/push-gate.ts";
-import { repoDirOf, workingRepos } from "../engine/repos.ts";
+import { repoDirOf, unnamedRepos, unnamedReposFix, workingRepos } from "../engine/repos.ts";
 import { readSettings, reviewModeOf, type Settings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, SHAPE_WRITER_KEY, Store, type Task } from "../engine/store/index.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
@@ -161,6 +161,15 @@ function wiredCommand(env: DoctorEnv, store: Store): readonly string[] {
   return tie !== null && tie.program !== env.program.name ? tie.command : env.tmbCommand;
 }
 
+/** A finding's summary for a project folder that is no repo and holds repos the record does not name. */
+function unnamedSummary(what: string, repos: readonly string[]): string {
+  return `${what}: this folder is not a git repo, and the record names none of the ${repos.length === 1 ? "repo" : `${repos.length} repos`} in it`;
+}
+
+function unnamedFix(env: DoctorEnv): Finding["fix"] {
+  return { say: unnamedReposFix(env.program.name) };
+}
+
 function hostFilesChecks(env: DoctorEnv, projectDir: string, state: { store: Store; settings: Settings }): Finding[] {
   const { settings } = state;
   const command = wiredCommand(env, state.store);
@@ -208,6 +217,12 @@ function hostFilesChecks(env: DoctorEnv, projectDir: string, state: { store: Sto
       }),
     );
   }
+  // A folder of repos the record does not name has no hook of its own to check: the gate is off in each repo (trustmybot/tmb#258).
+  const unnamed = unnamedRepos(projectDir, settings.repos);
+  if (unnamed.length > 0) {
+    findings.push(finding("host files", { status: "warn", summary: unnamedSummary("the push gate is off", unnamed), details: unnamed, fix: unnamedFix(env) }));
+    return findings;
+  }
   findings.push(
     gate.length === 0
       ? finding("host files", { status: "ok", summary: foreign.length === 0 ? "git's pre-push hook runs the push gate" : "every pre-push hook tmb wrote runs the push gate" })
@@ -248,10 +263,12 @@ function repoModes(settings: Settings): string {
   return new Set(working.map((repo) => reviewModeOf(settings, repo))).size > 1 ? `; review mode per repo: ${modes.join(", ")}` : "";
 }
 
-function settingsCheck(env: DoctorEnv, settings: Settings): Finding[] {
+function settingsCheck(env: DoctorEnv, projectDir: string, settings: Settings): Finding[] {
   const empty = emptySettings(settings);
   const onboard = { say: `\`${env.program.name} onboard\`` };
   const findings: Finding[] = [];
+  const unnamed = unnamedRepos(projectDir, settings.repos);
+  if (unnamed.length > 0) findings.push(finding("settings", { status: "warn", summary: unnamedSummary("the repos are not set", unnamed), details: unnamed, fix: unnamedFix(env) }));
   const others = empty.filter((name) => name !== "review_mode");
   if (others.length > 0) findings.push(finding("settings", { status: "warn", summary: `not set yet: ${others.map((name) => SETTING_LABELS[name] ?? name).join(", ")}`, fix: onboard }));
   if (empty.includes("review_mode")) findings.push(finding("settings", { status: "warn", summary: "the review mode is not chosen, so no task starts", fix: onboard }));
@@ -309,6 +326,9 @@ function checkoutChecks(env: DoctorEnv, projectDir: string, store: Store): Findi
 }
 
 function graphChecks(env: DoctorEnv, projectDir: string, settings: Settings): Finding[] {
+  // `tmb index` cannot build a graph of a folder that is no repo: init run again names its repos and builds theirs.
+  const unnamed = unnamedRepos(projectDir, settings.repos);
+  if (unnamed.length > 0) return [finding("code graph", { status: "warn", summary: unnamedSummary("no code graph can be built here", unnamed), details: unnamed, fix: unnamedFix(env) })];
   const index = { say: `\`${env.program.name} index\`` };
   const repos: { name: string | null; dir: string; base: string | null }[] =
     settings.repos === null
@@ -420,7 +440,7 @@ export function projectFindings(env: DoctorEnv, skip: ReadonlySet<string> = new 
       const { store, settings } = current;
       add("host files", () => hostFilesChecks(env, projectDir, { store, settings }));
       add("program tie", () => programTieCheck(env, projectDir, store));
-      add("settings", () => settingsCheck(env, settings));
+      add("settings", () => settingsCheck(env, projectDir, settings));
       add("unfinished work", () => unfinishedCheck(store));
       add("closed tasks", () => checkoutChecks(env, projectDir, store));
       add("code graph", () => graphChecks(env, projectDir, settings));

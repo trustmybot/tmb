@@ -115,7 +115,7 @@ When the folder you run `tmb init` in is a git work tree, or inside one, the pro
 - Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each.
 - Indexes each repo's code graph from its own base branch.
 
-A project set up by a build from before workspaces names no repos, though its folder holds several. Run `tmb init` there again: it finds and stores them as above. Until then `tmb onboard --repo` is refused, `tmb index` fails because the folder itself has no base branch, and no push is gated. Limit: `tmb doctor` does not say this yet (trustmybot/tmb#258). The push hook init writes is shared by every worktree of that repo, so a session already working there meets the gate at its next push.
+A project set up by a build from before workspaces names no repos, though its folder holds several. Run `tmb init` there again: it finds and stores them as above. Until then `tmb onboard --repo` is refused, `tmb index` is refused and names the repos it found, and no push is gated. `tmb doctor` says so: the push gate is off, the repos are not set and no code graph can be built, each naming the repos and init run again as the fix; the planner's session start says the gate is off (trustmybot/tmb#258). The push hook init writes is shared by every worktree of that repo, so a session already working there meets the gate at its next push.
 
 `tmb onboard --repo <name>` sets one repo: `--base <branch>` and `--check <command>` set its base branch and checks, `--exempt` makes tmb do no work in it, and `--review-mode <mode>` gives it a review mode of its own; `--review-mode workspace` takes that away, so the repo follows the workspace's mode again. A repo's review mode is a [step only you may take](#steps-only-you-may-take), as the workspace's is. With one repo tmb works in, `--repo` may be left out. On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. It asks for the workspace's review mode once, then asks once whether any repo takes its own, and asks each repo only on a yes. The planner sets the same with `settings_set` and `repos`; a repo it names keeps no part of its old policy except its review mode, which stays unless the planner names one or `workspace`, and repos it does not name keep theirs. A repo's review mode is refused in unattended mode.
 
@@ -217,6 +217,7 @@ For more information, try 'tmb --help'.
 |---|---|
 | The record: readable, its shape's version, and which program wrote it | Repairs a damaged record on your yes, keeping the damaged file beside it; for a newer shape, the program to use |
 | The host files and git's pre-push hook match what this tmb wires | `tmb init --host <id>` |
+| A project folder that is not a git repo and holds repos the record does not name: the push gate is off there, the repos are not set and no code graph can be built | `tmb init`, run again in the project folder |
 | The program the project is tied to, and any running session that keeps it on an older build | Shown only |
 | Empty settings, and the review mode not chosen | `tmb onboard` |
 | Runs and checks with a start and no end, and open tasks no agent run is on | Shown only: the planner decides |
@@ -228,7 +229,7 @@ For more information, try 'tmb --help'.
 - **It never deletes without your yes**, and never touches a file tmb did not write.
 - **It runs with a broken record.** Every check that does not need the record still runs, and the ones that do say why they were skipped. A record an older tmb wrote is upgraded by the next tmb command, not by doctor.
 - **A check that fails by itself looks like tmb's own bug.** Its line says so and names `tmb feedback`, which can put that error in a report.
-- **The planner's session start names what doctor finds**, in one line: how many findings, and how many runs or tasks have a start and no end. It runs only the quick checks, and says nothing when there is nothing to say.
+- **The planner's session start names what doctor finds**, in one line: how many findings, and how many runs or tasks have a start and no end. When the record names none of the repos in a folder of repos, the line says first that the push gate is off. It runs only the quick checks, and says nothing when there is nothing to say.
 
 ## Report a bug in tmb
 

@@ -14,6 +14,8 @@ import { exitCode, findingsJson, formatFindings, runChecks, runDoctorCommand, se
 import type { DoctorEnv, Finding } from "../src/doctor/types.ts";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { BASE_LAYER, openGraphDb } from "../src/engine/graph/db.ts";
+import { indexProject } from "../src/engine/graph/fresh.ts";
+import { HandlerError } from "../src/engine/handlers/index.ts";
 import { baseCommit } from "../src/engine/graph/git-source.ts";
 import { DOCTOR_HEADING, handleEvent, installPushGate, openProjectStore, projectDbPath, tieProgram, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
@@ -457,6 +459,70 @@ describe("the planner's session start", () => {
     expect(sessionStartLine(env())).toBeNull();
     const answer = handleEvent({ type: "session-start", projectDir: project, unattended: false, doctor: () => null });
     expect(answer.context).not.toContain(DOCTOR_HEADING);
+  });
+});
+
+// trustmybot/tmb#258: a project set up before workspaces, in a folder that is no repo and holds
+// repos, which the record does not name. Its record treats the folder as the one repo.
+describe("a folder of repos the record does not name", () => {
+  let folder: string;
+  beforeEach(() => {
+    folder = path.join(root, "folder");
+    for (const name of ["plugin", "tmb"]) {
+      const dir = path.join(folder, name);
+      mkdirSync(dir, { recursive: true });
+      git(dir, "init", "-q", "-b", "dev");
+      git(dir, "config", "user.email", "t@example.com");
+      git(dir, "config", "user.name", "T");
+      writeFileSync(path.join(dir, "a.ts"), "export const a = 1;\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "first");
+    }
+    const command = env().tmbCommand;
+    claudeCode.setup(folder, command);
+    withStore(folder, (store) => {
+      tieProgram(store, HUMAN, { program: "tmb", version: VERSION, command: [...command] });
+      writeSetting(store, HUMAN, "host", "claude-code");
+      writeSetting(store, HUMAN, "host_roles", { "claude-code": "planner" });
+      writeSetting(store, HUMAN, "base_branch", "dev");
+      writeSetting(store, HUMAN, "review_mode", "agile");
+      writeSetting(store, HUMAN, "checks", ["bun test"]);
+    });
+  });
+
+  test("doctor says the push gate is off and the repos are not set, naming them and init run again", () => {
+    const findings = runChecks(env({ cwd: folder }));
+    const gate = of(findings, "host files").find((finding) => finding.summary.includes("push gate"))!;
+    expect(gate.status).toBe("warn");
+    expect(gate.summary).toBe("the push gate is off: this folder is not a git repo, and the record names none of the 2 repos in it");
+    expect(gate.details).toEqual(["plugin", "tmb"]);
+    expect(gate.fix!.say).toContain("`tmb init`, run again in the project folder, names them and writes the push hook in each");
+    expect(gate.fix!.say).toContain("meets the push gate at its next push");
+    const settings = of(findings, "settings");
+    expect(settings.map((finding) => finding.status)).toEqual(["warn"]);
+    expect(settings[0]!.summary).toContain("the repos are not set");
+    expect(settings[0]!.details).toEqual(["plugin", "tmb"]);
+    expect(findings.some((finding) => finding.summary.includes("every setting is set"))).toBe(false);
+  });
+
+  test("the code graph's fix is init run again, and tmb index says the same", async () => {
+    const [graph] = of(runChecks(env({ cwd: folder })), "code graph");
+    expect(graph!.status).toBe("warn");
+    expect(graph!.summary).toContain("no code graph can be built here");
+    expect(graph!.fix!.say).toContain("`tmb init`, run again");
+    const error = await withStore(folder, (store) => indexProject(folder, store, { rebuild: false })).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(HandlerError);
+    expect((error as HandlerError).message).toContain("holds the repos plugin, tmb, which the record does not name. Run `tmb init` there again");
+  });
+
+  test("the planner's session start says the gate is off in its one line", () => {
+    expect(sessionStartLine(env({ cwd: folder }))).toStartWith("the push gate is off: the record names none of the 2 repos in this folder; ");
+  });
+
+  test("a project that is a repo itself is not such a folder", () => {
+    const findings = runChecks(env());
+    expect(notOk(findings)).toEqual([]);
+    expect(of(findings, "host files").some((finding) => finding.summary === "git's pre-push hook runs the push gate")).toBe(true);
   });
 });
 
