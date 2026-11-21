@@ -8,12 +8,6 @@ import { chainVersions } from "../release.ts";
 import { callTools } from "../tool-server.ts";
 import { PROGRAM, REPOS, type World } from "../world.ts";
 
-/** tmb bugs the chain found, filed: their checks are marked known until each is fixed. */
-const BUGS = {
-  /** onboard says no review mode is chosen when every repo has its own. */
-  onboardLastWord: 263,
-};
-
 const hookOf = (world: World, repo: string) => path.join(world.repo(repo as (typeof REPOS)[number]), ".git", "hooks", "pre-push");
 const readIf = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 const runsPushGate = (hook: string) => /\bpre-push\b/.test(hook) && hook.includes(PROGRAM);
@@ -147,7 +141,7 @@ export const onboard: Step = {
     checks.ok("doctor no longer warns about the review mode", settings.every((finding) => finding.status === "ok"), showFindings(settings));
     const lastWord = shown.split("Settings in the record:").at(-1) ?? "";
     const saysNoMode = /no task starts yet/.test(lastWord);
-    checks.known(BUGS.onboardLastWord, "onboard does not say no task starts once every repo has its own mode", !saysNoMode, lastWord);
+    checks.ok("onboard does not say no task starts once every repo has its own mode (trustmybot/tmb#263)", !saysNoMode, lastWord);
 
     const close = world.tmb(["issue", "close", issueId!]);
     checks.ok("the Human closes the gate's issue", close.status === 0, close.output);
