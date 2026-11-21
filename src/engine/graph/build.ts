@@ -17,7 +17,7 @@ import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 6;
+export const EXTRACTOR_VERSION = 7;
 const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
 export const MINIFIED = "minified; not parsed";
@@ -230,8 +230,10 @@ function applyLayer(
           path: file,
           kind: s.kind,
           qualified_name: s.qualified_name,
+          line: s.start_line,
           ...(s.reach ? { reach: s.reach } : {}),
           ...(parent ? { within: [parent.start_line, parent.end_line] as [number, number] } : {}),
+          ...(s.bases ? { bases: s.bases } : {}),
         });
       }
       symbolRows.push({ file, s, offset });

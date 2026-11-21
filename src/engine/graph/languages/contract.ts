@@ -59,6 +59,10 @@ export interface ExtractedSymbol {
   // function, 'member' when bound as an object's key or an assignment's target,
   // which no bare call names. Absent on a declaration of the file or a class.
   reach?: 'nested' | 'member';
+  // A class's bases as its file names them, through the file's own import aliases (`extends B`,
+  // `class C(B)`); '' for a base that is no plain name, such as `extends mixin(B)`. Absent when
+  // it has none, and on every other kind.
+  bases?: string[];
 }
 
 export interface ParamInfo {
@@ -82,7 +86,22 @@ export interface ExtractedEdge {
   dst_name: string;
   line: number;
   hint: string | null;
+  // Where the language finds the name before the file's own names and imports
+  // (trustmybot/tmb#246); absent when nothing around the reference binds it.
+  bound?: Bound;
 }
+
+// How a name is bound around a reference, the first place the language looks:
+// - function: a function or class declared in a function or block around it,
+//   and `hint` is the line its symbol starts on, the one target it may have;
+// - value: anything else there, such as a parameter, a variable or a class's
+//   field; it is no function of the repo, so it is never linked;
+// - import: an import made inside the function around it, and `hint` is that
+//   import's module. On an 'imports' edge, the import is one made inside a
+//   function, which holds only there;
+// - self: a call on the object itself (`this`, `self`, `cls`), and `hint` is
+//   its class; only that class and its parents are looked in.
+export type Bound = 'function' | 'value' | 'import' | 'self';
 
 // A name a file gives other files without declaring it under that name (trustmybot/tmb#233),
 // which the resolver follows to the declaration. `source` is a module specifier as the file
@@ -123,8 +142,8 @@ export class Collector {
     return this.symbols.length - 1;
   }
 
-  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null): void {
-    this.edges.push({ src, kind, dst_name: dstName, line, hint });
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound): void {
+    this.edges.push({ src, kind, dst_name: dstName, line, hint, ...(bound ? { bound } : {}) });
   }
 
   export(e: ExtractedExport): void {
