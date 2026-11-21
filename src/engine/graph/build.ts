@@ -17,7 +17,7 @@ import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 7;
+export const EXTRACTOR_VERSION = 8;
 const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
 export const MINIFIED = "minified; not parsed";

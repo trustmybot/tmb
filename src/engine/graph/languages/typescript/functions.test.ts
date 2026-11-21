@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { type ExtractedSymbol, extractFile, inSymbolScope } from "../../extract.ts";
 import { loadParsers, type Parsers } from "../../loader.ts";
+import { pinnedHono } from "../../../../../tests/lib/pinned-repo.ts";
+import { parseErrors, parseRepaired } from "./repair.ts";
 import { compilerFunctions, coveredLanguage, graphFunctions, surplus } from "./coverage.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -122,6 +124,39 @@ module.exports.start = function start(port) {
 exports.helper = () => 1;
 `;
 
+// Generic call signatures, each `<` on its own line, as hono's factory helper writes them
+// (trustmybot/tmb#247): tree-sitter-typescript reads the `<` as type arguments of the line
+// before, and lost every function after it.
+const CALL_SIGNATURES = `export interface CreateHandlers<E> {
+  <I>(handler1: I): [I]
+
+  // two handlers
+  <
+    I,
+    I2 = I,
+  >(handler1: I, handler2: I2): [I, I2]
+}
+
+export interface UseState {
+  value: number
+  <T>(initial: T): [T, (t: T) => void]
+  <T = undefined>(): [T | undefined, (t: T) => void]
+}
+
+export class Factory<E> {
+  #options?: E
+  constructor(init?: E) {
+    this.#options = init
+  }
+  createApp = (options?: E): E | undefined => options ?? this.#options
+  createHandlers: CreateHandlers<E> = (...handlers: any) => {
+    return handlers.filter((handler: unknown) => handler !== undefined)
+  }
+}
+
+export const createFactory = <E,>(init?: E): Factory<E> => new Factory<E>(init)
+`;
+
 function symbols(relPath: string, text: string): ExtractedSymbol[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(relPath);
@@ -139,6 +174,7 @@ describe("every function is a node", () => {
     ["src/kinds.ts", KINDS],
     ["src/list.tsx", JSX],
     ["web/server.js", JS],
+    ["src/factory.ts", CALL_SIGNATURES],
   ] as const) {
     test(`${file} matches the TypeScript compiler one to one`, () => {
       const want = compilerFunctions(file, text);
@@ -181,6 +217,31 @@ describe("every function is a node", () => {
     expect(fn(all, "default export").unnamed).toBe(1);
   });
 
+  test("a generic call signature on its own line hides no function after it", () => {
+    const all = symbols("src/factory.ts", CALL_SIGNATURES);
+    for (const name of ["Factory.constructor", "Factory.createApp", "Factory.createHandlers"]) expect(fn(all, name).kind).toBe("method");
+    expect(fn(all, "createFactory").kind).toBe("function");
+    expect(fn(all, "callback of `filter`").unnamed).toBe(1);
+    const iface = all.find((s) => s.kind === "interface" && s.qualified_name === "CreateHandlers");
+    expect([iface?.start_line, iface?.end_line]).toEqual([1, 9]);
+  });
+
+  test("the repair keeps every line and column, and touches a file it cannot improve not at all", () => {
+    const parser = parsers.get("typescript")!;
+    const repaired = parseRepaired(parser, CALL_SIGNATURES)!;
+    expect(repaired.src.length).toBe(CALL_SIGNATURES.length);
+    expect(repaired.src.split("\n").length).toBe(CALL_SIGNATURES.split("\n").length);
+    expect(repaired.tree.rootNode.hasError).toBe(false);
+    repaired.tree.delete();
+    for (const text of [KINDS, "const a = b\n  < c\n", "if (x) {\n  <T>(y: T) => y\n}\n"]) {
+      const plain = parsers.get("typescript")!.parse(text)!;
+      const kept = parseRepaired(parser, text)!;
+      expect(kept.src === text || parseErrors(kept.tree.rootNode) < parseErrors(plain.rootNode)).toBe(true);
+      plain.delete();
+      kept.tree.delete();
+    }
+  });
+
   test("a function assigned to a property takes the property's name", () => {
     const all = symbols("web/server.js", JS);
     expect(fn(all, "start").reach).toBe("member");
@@ -221,27 +282,52 @@ describe("every symbol has a container", () => {
 
 });
 
+/** Each function of a repo's TypeScript and JavaScript the graph misses or adds, and how many the compiler finds. */
+function repoCoverage(repo: string): { total: number; misses: string[] } {
+  const files = spawnSync("git", ["ls-files"], { cwd: repo, encoding: "utf8" })
+    .stdout.split("\n")
+    .filter((file) => file !== "" && inSymbolScope(file) && coveredLanguage(file) !== null);
+  let total = 0;
+  const misses: string[] = [];
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(path.join(repo, file), "utf8");
+    } catch {
+      continue; // deleted in the working folder, not yet committed
+    }
+    const want = compilerFunctions(file, text);
+    const have = graphFunctions(parsers, file, text);
+    total += want.length;
+    for (const lines of surplus(want, have)) misses.push(`missing ${file}:${lines}`);
+    for (const lines of surplus(have, want)) misses.push(`extra ${file}:${lines}`);
+  }
+  return { total, misses };
+}
+
 describe("the coverage test on tmb's own repo", () => {
   test("every TypeScript and JavaScript function of the repo is one node of the graph, and no node is more", () => {
-    const files = spawnSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" })
-      .stdout.split("\n")
-      .filter((file) => file !== "" && inSymbolScope(file) && coveredLanguage(file) !== null);
-    let total = 0;
-    const misses: string[] = [];
-    for (const file of files) {
-      let text: string;
-      try {
-        text = readFileSync(path.join(REPO, file), "utf8");
-      } catch {
-        continue; // deleted in the working folder, not yet committed
-      }
-      const want = compilerFunctions(file, text);
-      const have = graphFunctions(parsers, file, text);
-      total += want.length;
-      for (const lines of surplus(want, have)) misses.push(`missing ${file}:${lines}`);
-      for (const lines of surplus(have, want)) misses.push(`extra ${file}:${lines}`);
-    }
+    const { total, misses } = repoCoverage(REPO);
     expect(misses).toEqual([]);
     expect(total).toBeGreaterThan(3000);
   });
+});
+
+// The same check on one pinned public repo (trustmybot/tmb#247), so a form tmb's own code does
+// not use is still caught. CI fetches it before `bun test`; locally the test runs when the
+// cache folder or TMB_PINNED_HONO holds it, and is skipped, saying why, when not.
+describe("the coverage test on hono, pinned", () => {
+  const pinned = pinnedHono();
+  const name = "every TypeScript and JavaScript function of hono at 75ff8e3 is one node of the graph, and no node is more";
+  if ("skip" in pinned) {
+    console.warn(`skipped: ${name}: ${pinned.skip}`);
+    test.skip(`${name} (skipped: ${pinned.skip})`, () => {});
+  } else {
+    test(name, () => {
+      if ("error" in pinned) throw new Error(pinned.error);
+      const { total, misses } = repoCoverage(pinned.folder);
+      expect(misses).toEqual([]);
+      expect(total).toBeGreaterThan(10_000);
+    });
+  }
 });

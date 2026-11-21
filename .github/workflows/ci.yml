@@ -23,7 +23,16 @@ jobs:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
+      # The code graph's coverage test also runs on hono at one pinned commit (trustmybot/tmb#247):
+      # one shallow fetch of that commit, about 8 MB, kept in the cache after the first run.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pinned/hono
+          key: pinned-hono-75ff8e3ea18485589816881c6278bc9783e56602
+      - run: bun tests/lib/pinned-repo.ts "$RUNNER_TEMP/pinned/hono"
       - run: bun test
+        env:
+          TMB_PINNED_HONO: ${{ runner.temp }}/pinned/hono
       - run: bun tests/lint/links.ts
 
   # The chained test's steps that use no model, in one empty Linux container: tmb installed by
