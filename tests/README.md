@@ -1,14 +1,14 @@
 # tests
 
-How tmb is tested, and which tests each level of the [build order](../docs/architecture/README.md#build-order) must add.
+How tmb is tested, and which tests each level must add. A level is a GitHub milestone.
 
 ## The rule
 
-A level is done only when its tests pass with no manual step. The line "The Human sees it when" in the build order is itself one of those tests: it is automated, so the Human does not have to try each level by hand.
+A level is done only when its tests pass with no manual step.
 
 ## Test layers
 
-tmb keeps the plugin's layers, ordered from cheap to costly. They are named here by what they do, because "level" already means a step of the build order. The plugin's own label is given for reference.
+tmb keeps the plugin's layers, ordered from cheap to costly. They are named here by what they do, because "level" already means a milestone. The plugin's own label is given for reference.
 
 | Layer | Plugin's label | What it runs | Catches |
 |---|---|---|---|
@@ -75,7 +75,7 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 | Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
 | Before `dev` becomes an rc | The whole chain, session steps included, run by the Human on their own machine with their own login. It must pass there first; the run on GitHub comes after ([contributing](../docs/contributing/README.md)). |
-| Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
+| Before an rc or stable release | All of them, for the levels that release holds. |
 
 Every `bun test` file starts with `setDefaultTimeout(30_000)`. bun's default of 5 seconds fails tests that start tmb, git or a server whenever the machine is busy, and bun cannot raise it for the whole run: the call holds only in the file that makes it. A test that needs longer names its own timeout, and a test that hangs still fails. [tests/lint/test-timeout.test.ts](lint/test-timeout.test.ts) names any file that leaves the call out.
 

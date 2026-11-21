@@ -57,7 +57,7 @@ flowchart TD
 | Publish | Uploads the five programs, `install.sh`, `install.ps1`, a `VERSION` file and `SHA256SUMS`. Dev deletes and recreates its one release. A tag's release is never replaced: pushing the same tag again fails. |
 | Install test | Installs the published release with the real installer on macOS, Linux and Windows. |
 | Update test | Checks an install updating itself on the same three systems. |
-| Package managers | Fills the Homebrew cask, the Scoop manifest and the winget manifests from `SHA256SUMS`, only when the release is the newest on its channel. It skips cleanly while the tap, the bucket or their token is missing; the winget manifests are kept with the run. Not supported and not tested before v1.x (trustmybot/tmb#91). |
+| Package managers | Fills the Homebrew cask, the Scoop manifest and the winget manifests from `SHA256SUMS`, only when the release is the newest on its channel. It skips cleanly while the tap, the bucket or their token is missing; the winget manifests are kept with the run. |
 
 Not built: signing the macOS programs with a Developer ID and notarizing them. Until then a Homebrew install on macOS installs and then does not run, and the installer script is the only route there (trustmybot/tmb#91).
 

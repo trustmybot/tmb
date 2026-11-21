@@ -72,7 +72,7 @@ stateDiagram-v2
 - **One stable id** across a compaction, a clear and a resume.
 - **A session with a start and no end is a finding,** like a run.
 - **A session's own tokens** are recorded with the same four counts as a run's, apart from its runs' counts, so a total counts nothing twice.
-- **tmb still starts no session and assigns no work between sessions.** [LANES.md](LANES.md) covers parallel sessions.
+- **tmb still starts no session and assigns no work between sessions.** [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) covers parallel sessions.
 
 ## Agent runs
 

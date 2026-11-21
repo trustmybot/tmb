@@ -135,7 +135,7 @@ flowchart TD
 - **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is not a function in the repo, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
   - A name imported inside a Python function holds only in that function. A name imported under a new name is looked up in the file that import names.
   - Left with no link, to be added as proofs of their own (trustmybot/tmb#249): a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
-  - Limit: four bindings the lookup does not see yet, each of which can give a wrong link; none was found on tmb or hono (trustmybot/tmb#287, v1.0.0).
+  - Limit: four bindings the lookup does not see yet, each of which can give a wrong link; none was found on tmb or hono (trustmybot/tmb#287).
 - **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147). A TypeScript or JavaScript import that is not a relative path is resolved the way the TypeScript compiler does it: through the nearest project settings file above the importing file, read at the indexed commit. An import of a package that lives in the same repo links to that package's entry file. Two packages of the same name are not linked.
 - **A name that reaches a file through a re-export links to where it is declared** (trustmybot/tmb#233). A re-export is proof. The import's link to the re-exporting file stays.
 
@@ -254,11 +254,11 @@ Measured against the TypeScript compiler, on tmb's own repo and on one public re
 | Links right, checked against the compiler on every pull request | Shipped (trustmybot/tmb#242) |
 | The dashboard's Code page | Shipped (trustmybot/tmb#142) |
 | A merge on GitHub seen before it is fetched | Not built: a known limit, with no issue named |
-| Links found, measured for every release as a benchmark | Planned (trustmybot/tmb#244, v1.x) |
-| Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | Planned (trustmybot/tmb#251, v1.x) |
-| A function says how many of its calls are not linked: linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest | Planned (trustmybot/tmb#252, v1.x) |
-| A method call linked when the object's type is written in the same function or class: the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used: where others measured them, they cost much and found little | Planned (trustmybot/tmb#249, v1.x) |
-| Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | Planned (trustmybot/tmb#141, v1.x). Open, for the Human: the form is proposed and not reviewed |
-| A file's language comes from Linguist's list. Today each module names its own file endings, and the unread languages come from a fixed copy of that list | Planned (trustmybot/tmb#154, v1.x) |
-| A same-repo package whose entry is build output links to its source, only where the package's TypeScript settings state both the source and the output folder | Planned (trustmybot/tmb#236, v1.x). Open, for the Human: proposed and not reviewed |
+| Links found, measured for every release as a benchmark | Planned (trustmybot/tmb#244) |
+| Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | Planned (trustmybot/tmb#251) |
+| A function says how many of its calls are not linked: linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest | Planned (trustmybot/tmb#252) |
+| A method call linked when the object's type is written in the same function or class: the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used: where others measured them, they cost much and found little | Planned (trustmybot/tmb#249) |
+| Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | Planned (trustmybot/tmb#141). Open, for the Human: the form is proposed and not reviewed |
+| A file's language comes from Linguist's list. Today each module names its own file endings, and the unread languages come from a fixed copy of that list | Planned (trustmybot/tmb#154) |
+| A same-repo package whose entry is build output links to its source, only where the package's TypeScript settings state both the source and the output folder | Planned (trustmybot/tmb#236). Open, for the Human: proposed and not reviewed |
 | Search by meaning | Not planned: only if measured misses are real ([MEMORY.md](MEMORY.md#search)) |

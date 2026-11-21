@@ -28,11 +28,11 @@ Flows are grouped by when they run, and numbered within their group.
 | 3. Agent task handling | 3.10 | [Truest mode](#310-truest-mode) | A task in a repo the Human set to truest | planner → worker → reviewer, per task | a verdict or waiver per task, and one PR per task |
 | 3. Agent task handling | 3.11 | [Project with no remote](#311-project-with-no-remote) | Reviewed work in a repo that has no remote | planner; the Human merges locally | a branch or task recorded ready, then merged |
 | 3. Agent task handling | 3.12 | [Unattended run](#312-unattended-run) | A session with no one to answer, such as CI | planner | each default it applied, recorded as a decision |
-| 3. Agent task handling | 3.13 | [Several hosts on one record](#313-several-hosts-on-one-record) | `tmb init` once per host, each with a role (built; supported from v2) | a planner on one host, a reviewer on another | every record names the role and the host that made it |
+| 3. Agent task handling | 3.13 | [Several hosts on one record](#313-several-hosts-on-one-record) | `tmb init` once per host, each with a role | a planner on one host, a reviewer on another | every record names the role and the host that made it |
 | 4. Extending the team | 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | A capability gap (planned, trustmybot/tmb#112) | planner (Human approves) | a skill given to a role |
-| 4. Extending the team | 4.2 | [Agent creation](#42-agent-creation) | A role the project has no agent for (open, for the Human) | planner | a project agent |
+| 4. Extending the team | 4.2 | [Agent creation](#42-agent-creation) | A role the project has no agent for (planned) | planner | a project agent, recorded and harnessed like the worker |
 | 4. Extending the team | 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern needs encoding (planned) | planner | a project skill |
-| 4. Extending the team | 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion (open, for the Human) | planner → consultant | the consultant's analysis |
+| 4. Extending the team | 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion (planned) | planner → consultant | the consultant's analysis |
 | 5. Reporting tmb bugs | 5.1 | [Bug report](#51-bug-report) | tmb itself breaks, or `tmb feedback` | planner (Human approves each report) | a record of each report filed and each form opened |
 
 ## 1. Install
@@ -106,7 +106,7 @@ flowchart LR
 
 ### 2.3 Environment profile
 
-tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a workspace, and they run at every task's close. [ENVIRONMENT.md](ENVIRONMENT.md) covers what is read.
+tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a workspace, and they run at every task's close. [ONBOARD.md](ONBOARD.md#the-repos-checks) covers what is read.
 
 ```mermaid
 flowchart LR
@@ -182,7 +182,7 @@ flowchart LR
 
 ### 3.5 PR comment triage
 
-Planned for v1.x (trustmybot/tmb#70): a sync with the remote brings review comments into the record, and the planner sorts them into tasks. Today the planner starts fix tasks on the PR's branch itself. Either way no unreviewed commit reaches an open pull request: the new tip is pushed to the same pull request only after its review or a waiver.
+Planned (trustmybot/tmb#70): a sync with the remote brings review comments into the record, and the planner sorts them into tasks. Today the planner starts fix tasks on the PR's branch itself. Either way no unreviewed commit reaches an open pull request: the new tip is pushed to the same pull request only after its review or a waiver.
 
 ```mermaid
 flowchart LR
@@ -221,7 +221,7 @@ flowchart LR
 
 ### 3.8 Parallel lanes
 
-tmb does not manage lanes and keeps no lane record. Starting sessions and messaging between them are the host's features. tmb gives every session the same footing: one shared record to resume from, a branch and a worktree per task, and a planner that is told which open tasks share a file. Two tasks may change the same file; git settles it at the merge, and a clash holds back the later task's close. Lane PRs merge like any other PR. Planned: guidance for running parallel sessions in the planner's prompt; which session made each entry (trustmybot/tmb#63); a freeze that stops every session at once (trustmybot/tmb#64). [LANES.md](LANES.md) holds every case.
+tmb does not manage lanes and keeps no lane record. Starting sessions and messaging between them are the host's features. tmb gives every session the same footing: one shared record to resume from, a branch and a worktree per task, and a planner that is told which open tasks share a file. Two tasks may change the same file; git settles it at the merge, and a clash holds back the later task's close. Lane PRs merge like any other PR. Planned: guidance for running parallel sessions in the planner's prompt; which session made each entry (trustmybot/tmb#63); a freeze that stops every session at once (trustmybot/tmb#64). [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) holds every case.
 
 ```mermaid
 flowchart LR
@@ -296,7 +296,7 @@ flowchart LR
 
 ### 3.13 Several hosts on one record
 
-Built; not supported or tested before v2. Each host connects to the same record in the same project and takes a role, the planner by default. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's. [HOSTS.md](HOSTS.md) covers hosts, adapters and each host's limits.
+Each host connects to the same record in the same project and takes a role, the planner by default. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's. [HOSTS.md](HOSTS.md) covers hosts, adapters and each host's limits.
 
 ```mermaid
 flowchart LR
@@ -311,11 +311,11 @@ flowchart LR
 
 ## 4. Extending the team
 
-None of group 4 is built. tmb ships three roles: planner, worker and reviewer. [EXTENDING.md](EXTENDING.md) covers 4.2 to 4.4.
+None of group 4 is built. tmb ships three roles: planner, worker and reviewer. [EXTENDING.md](EXTENDING.md) covers all four.
 
 ### 4.1 Cheatcode lifecycle
 
-Planned (trustmybot/tmb#112). The planner acquires a published skill instead of building a capability by hand, and the Human approves each install. In tmb the scope grows: a skill is given to a role once, for every host in that role. [CHEATCODES.md](CHEATCODES.md) covers every stage, the trust design and teardown.
+Planned (trustmybot/tmb#112). The planner acquires a published skill instead of building a capability by hand, and the Human approves each install. A skill is given to a role once, for every host in that role. [EXTENDING.md](EXTENDING.md#cheatcodes) covers every stage, the trust design and teardown.
 
 ```mermaid
 flowchart LR
@@ -328,7 +328,7 @@ flowchart LR
 
 ### 4.2 Agent creation
 
-Open, for the Human: whether tmb carries this over. When routing hits a role the project has no agent for, the planner drafts one and the Human approves it before the agent is written.
+Planned. When routing hits a role the project has no agent for, the planner drafts one and the Human approves it. tmb records the agent and harnesses it like the worker and the reviewer: its runs are recorded, its tool calls are checked against its role, and its work passes the same checkpoints.
 
 ```mermaid
 flowchart LR
@@ -351,7 +351,7 @@ flowchart LR
 
 ### 4.4 Consultant invocation
 
-Open, for the Human: whether tmb carries this over. A consultant answers a second-opinion question; the planner reports its analysis, and the Human decides.
+Planned. A consultant is one kind of created agent: it advises and never writes workflow state. It answers a second-opinion question; the planner reports its analysis, and the Human decides.
 
 ```mermaid
 flowchart LR

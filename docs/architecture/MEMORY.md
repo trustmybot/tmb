@@ -132,7 +132,7 @@ flowchart TD
 | planner | The Human's current ask and the work in flight | Issues, decisions, the project map; investigation goes to a subagent |
 | worker | One task's spec and the files it edits | Its task brief, the code graph |
 | reviewer | One task's or one feature branch's diff and its findings | Its brief, check runs, the code graph |
-| consultant (Open, for the Human) | One question | Notes and decisions, the code graph |
+| consultant (Planned) | One question | Notes and decisions, the code graph |
 
 ## Design test
 

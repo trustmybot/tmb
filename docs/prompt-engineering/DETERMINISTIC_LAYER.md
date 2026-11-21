@@ -30,7 +30,7 @@ Recognizable by the verb. **Anything that is *classifying*, *composing*, or *wei
 | **Classify / decide** | "Is this an architectural change?" "Is this scope creep?" |
 | **Draft / compose** | Spec body, commit messages, issue descriptions, Q+A wording, discussion notes |
 | **Weigh / trade off** | "Should I raise this concern with the human?" "Is the simpler alternative acceptable?" "Should the scope split into multiple tasks?" |
-| **Synthesize from novel context** | Code review qualitative assessment, consultant-style analysis (consultants: Open, for the Human) |
+| **Synthesize from novel context** | Code review qualitative assessment, consultant-style analysis (consultants: Planned) |
 | **Recognize patterns in unfamiliar input** | "Does this diff match the spec?" "Is this a regression in the diff?" |
 
 Code cannot replace these: each needs judgment in context, and the possible inputs are open-ended.
@@ -90,7 +90,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 | No task starts until the review mode is set | 1 |
 | The code graph read before a task starts | 6 only |
 | A decision recorded for every task | 6 only |
-| Project skill and agent files change only with the Human's approval | Planned (skills); Open, for the Human (agent creation) |
+| Project skill and agent files change only with the Human's approval | Planned (skills and agent creation) |
 | A tool call's `role` is one of the three roles, and defaults to the role the host was set up in | 1 |
 | Feature branch, task start and drop, pull request, settings and areas are the planner's tools alone | 1 |
 | A pull request opens only when a pass or a Human waiver covers the tip | 1 + 2 (push) |
@@ -133,7 +133,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 
 ### Consultants
 
-Open, for the Human: whether tmb carries consultants over ([`EXTENDING.md`](../architecture/EXTENDING.md)). No rows until then.
+Planned: a consultant is one kind of created agent, recorded and harnessed like the worker and the reviewer ([`EXTENDING.md`](../architecture/EXTENDING.md)). No rows until it is built.
 
 ### Universal
 

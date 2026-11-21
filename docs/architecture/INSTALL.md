@@ -58,7 +58,7 @@ The installer script is the only supported way to install. It needs no login, ch
 
 ### Package managers
 
-Built. Not supported and not tested before v1.x (trustmybot/tmb#91): tmb's own installer and updater come first, and no v1 release waits for a package-manager test. The installer scripts stay; package managers are added beside them.
+tmb's own installer and updater come first. The installer scripts stay; package managers are added beside them.
 
 | Where | Route | Channels |
 |---|---|---|
@@ -69,7 +69,7 @@ Built. Not supported and not tested before v1.x (trustmybot/tmb#91): tmb's own i
 - **tmb keeps its own updater on every route.** The cask sets `auto_updates`, and the winget package refuses winget's own upgrade.
 - **A manifest is a template in the source repo.** A release fills in its version and checksums, and pushes the cask to the tap and the Scoop manifest to the bucket. A release that is not the newest on its channel leaves them alone. The winget manifests are kept with the workflow run, for a submission.
 - **A cask, not a formula.** A formula would not avoid the quarantine below, and Homebrew allows no formula name such as `tmb@dev`.
-- **Planned for v1.x (trustmybot/tmb#91):** the Human creates the tap, the bucket and their token, and submits to winget. Until they exist the publishing step skips and the release still succeeds.
+- **Planned (trustmybot/tmb#91):** the Human creates the tap, the bucket and their token, and submits to winget. Until they exist the publishing step skips and the release still succeeds.
 
 ## Operating systems
 
@@ -129,7 +129,7 @@ flowchart TD
 ## Session start
 
 - **The role comes from the engine, every time.** The host raises its session start event, and the engine answers with the host's role, the open work from the record and the project's layout from the code graph. A host that raises the event again on resume, clear or compaction gets the same answer, so a session resumes from the record and needs nothing from the conversation before it. tmb never writes the host's own instruction file.
-- **Never blocking.** A session start never fails. With a record it cannot read, it gives the role and one line naming the problem, and the gates deny until it is fixed ([CONTAINMENT.md](CONTAINMENT.md#gates-fail-closed)).
+- **Never blocking.** A session start never fails. With a record it cannot read, it gives the role and one line naming the problem, and the gates deny until it is fixed ([HOSTS.md](HOSTS.md#gates-fail-closed)).
 - **One line per finding.** The planner is told, in one line each: a host-file refresh, what `tmb doctor` would find ("N things need a look"), each pull request that ended since the last session, and a repo whose push gate is off. It runs only doctor's quick checks, asks git and not GitHub, and says nothing when there is nothing to say.
 - **Empty settings start first contact** ([ONBOARD.md](ONBOARD.md)).
 - **It tidies.** With no task open or in review, tmb tries again to remove the worktrees closed and dropped tasks kept.
@@ -140,7 +140,7 @@ flowchart TD
 
 ## Bug reports
 
-Flow 5.1. Built for v1.0.0 (trustmybot/tmb#122). How to use it is in the [reference](../reference/README.md#report-a-bug-in-tmb).
+Flow 5.1. How to use it is in the [reference](../reference/README.md#report-a-bug-in-tmb).
 
 ```mermaid
 flowchart TD
