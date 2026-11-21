@@ -47,6 +47,11 @@ export type DoctorEnv = {
   /** Whether `gh` is installed and signed in to github.com. */
   gh: () => { installed: boolean; signedIn: boolean };
   now: () => Date;
+  /**
+   * The pull requests merged in the repo at `repoDir` since `since`, by number, as GitHub says; `why`
+   * when GitHub cannot be asked. Left out, doctor uses git alone (trustmybot/tmb#257).
+   */
+  mergedPulls?: (repoDir: string, since: string) => { numbers: number[] } | { why: string };
 };
 
 /** Checks a session start skips: they start other programs, or bring themselves up to date anyway. */

@@ -295,7 +295,25 @@ function doctorEnvironment(cwd: string): DoctorEnv {
       return { installed: true, signedIn: GH_FEEDBACK_GITHUB.signedIn() };
     },
     now: () => new Date(),
+    mergedPulls: mergedPullsByGh,
   };
+}
+
+/** The pull requests GitHub says were merged in a repo since a time, through the user's own gh (trustmybot/tmb#257). */
+function mergedPullsByGh(repoDir: string, since: string): { numbers: number[] } | { why: string } {
+  if (Bun.which("gh") === null) return { why: "gh is not installed" };
+  const result = spawnSync("gh", ["pr", "list", "--state", "merged", "--search", `merged:>=${since.slice(0, 10)}`, "--json", "number,mergedAt", "--limit", "1000"], {
+    cwd: repoDir,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  if (result.status !== 0) return { why: `GitHub could not be asked: ${(result.stderr || result.error?.message || "gh failed").trim().split("\n")[0]}` };
+  try {
+    const pulls = JSON.parse(result.stdout) as { number: number; mergedAt: string }[];
+    return { numbers: pulls.filter((pull) => Date.parse(pull.mergedAt) > Date.parse(since)).map((pull) => pull.number) };
+  } catch {
+    return { why: "GitHub's answer could not be read" };
+  }
 }
 
 /** The planner's one line on what doctor finds, at a session start (trustmybot/tmb#160). Never throws. */

@@ -7,7 +7,7 @@ import { unnamedRepos } from "../engine/repos.ts";
 import { readSettings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, Store } from "../engine/store/index.ts";
 import { MACHINE_CHECKS } from "./machine.ts";
-import { guarded, projectFindings, unfinishedWork } from "./project.ts";
+import { guarded, projectFindings } from "./project.ts";
 import { type DoctorEnv, type Finding, SLOW_CHECKS, type Status } from "./types.ts";
 
 export { type DoctorEnv, type Finding, SLOW_CHECKS } from "./types.ts";
@@ -16,7 +16,8 @@ export const DOCTOR_USAGE = `  tmb doctor [--json] [--fix]
                             Check this machine and this project: the program and its old
                             builds, its update, the state folder, the record, the host files,
                             the settings, unfinished work, closed tasks' checkouts, the code
-                            graph and gh. Prints one line per check with its fix, and exits 1
+                            graph, gh, work that went around tmb, plugin history left behind,
+                            runs with no cost, tasks with no repo and unwired worktrees. Prints one line per check with its fix, and exits 1
                             when a check failed. Changes nothing. --json prints the same as
                             data. --fix asks about each fix in turn and does only what you say
                             yes to; with no terminal it changes nothing`;
@@ -130,21 +131,19 @@ export async function runDoctorCommand(args: string[], env: DoctorEnv, io: Docto
 }
 
 /**
- * The line a planner's session start shows: how many findings the quick checks give, and the runs
- * and tasks with a start and no end; null when there is nothing to say. Never throws.
+ * The line a planner's session start shows: at most one, "N things need a look", so its context
+ * stays small; a push gate that is off is said in words first. GitHub is not asked: the quick
+ * checks use git alone (trustmybot/tmb#257). Null when there is nothing to say. Never throws.
  */
 export function sessionStartLine(env: DoctorEnv): string | null {
   try {
-    const findings = runChecks(env, new Set([...SLOW_CHECKS, "unfinished work"])).filter((finding) => finding.status !== "ok");
-    const unfinished = fromRecord(env, 0, (store) => unfinishedWork(store).length);
+    const { mergedPulls: _asked, ...quick } = env;
+    const findings = runChecks(quick, SLOW_CHECKS).filter((finding) => finding.status !== "ok");
+    if (findings.length === 0) return null;
     const unnamed = fromRecord(env, 0, (store) => unnamedRepos(projectRootOf(env.cwd), readSettings(store).repos).length);
-    const parts: string[] = [];
     // The gate being off is said in words, not only counted: the Human may think the project is guarded (trustmybot/tmb#258).
-    if (unnamed > 0) parts.push(`the push gate is off: the record names none of the ${unnamed === 1 ? "repo" : `${unnamed} repos`} in this folder`);
-    if (findings.length > 0) parts.push(`${count(findings.length, "finding")} on this machine or project`);
-    if (unfinished > 0) parts.push(`${unfinished} run${unfinished === 1 ? " or task has" : "s or tasks have"} a start and no end`);
-    if (parts.length === 0) return null;
-    return `${parts.join("; ")}: \`${env.program.name} doctor\` shows ${parts.length === 1 && findings.length === 0 && unnamed === 0 ? "them" : "each"} with its fix.`;
+    const gate = unnamed > 0 ? `the push gate is off: the record names none of the ${unnamed === 1 ? "repo" : `${unnamed} repos`} in this folder; ` : "";
+    return `${gate}${findings.length === 1 ? "1 thing needs" : `${findings.length} things need`} a look: \`${env.program.name} doctor\``;
   } catch {
     return null;
   }

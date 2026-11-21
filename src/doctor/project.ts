@@ -18,6 +18,7 @@ import { repoDirOf, unnamedRepos, unnamedReposFix, workingRepos } from "../engin
 import { readSettings, reviewModeOf, type Settings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, SHAPE_WRITER_KEY, Store, type Task } from "../engine/store/index.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
+import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "./use.ts";
 
 const finding = (check: string, rest: Omit<Finding, "check" | "scope">): Finding => ({ check, scope: "project", ...rest });
 
@@ -444,6 +445,12 @@ export function projectFindings(env: DoctorEnv, skip: ReadonlySet<string> = new 
       add("unfinished work", () => unfinishedCheck(store));
       add("closed tasks", () => checkoutChecks(env, projectDir, store));
       add("code graph", () => graphChecks(env, projectDir, settings));
+      // Whether tmb is used and its record is whole (trustmybot/tmb#257).
+      add("work around tmb", () => workAroundCheck(env, projectDir, store, settings));
+      add("plugin history", () => pluginHistoryCheck(env, projectDir, store, settings));
+      add("run costs", () => costCheck(store));
+      add("task repos", () => repoOfTasksCheck(env, store, settings));
+      add("unwired sessions", () => unwiredWorktreesCheck(env, projectDir, store, settings, wiredCommand(env, store)));
     } else {
       findings.push(finding("record checks", { status: "ok", summary: `the checks that read the record are skipped: ${current.why}` }));
     }

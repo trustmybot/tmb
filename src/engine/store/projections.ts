@@ -44,7 +44,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   task: {
     table: "tasks",
     columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit", "feature_id", "kind", "main_snapshot", "repo", "replaces"],
-    updatable: ["state", "commit_sha", "review_mode", "push_result", "push_detail", "pr_url", "base_commit", "worktree", "drop_reason"],
+    updatable: ["state", "commit_sha", "review_mode", "push_result", "push_detail", "pr_url", "base_commit", "worktree", "drop_reason", "repo"],
     hasUpdatedAt: true,
     searchable: false,
   },
