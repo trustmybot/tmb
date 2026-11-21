@@ -47,6 +47,49 @@ function pyImports(root: Node, out: Collector, moduleSymbol: number): { aliases:
   return { aliases, bound };
 }
 
+// A plain string literal's text: no f-string, no bytes, no implicit concatenation.
+function plainString(node: Node): string | null {
+  if (node.type !== 'string') return null;
+  const parts = named(node);
+  if (parts.some((c) => !['string_start', 'string_content', 'string_end'].includes(c.type))) return null;
+  if (/[fb]/i.test(parts.find((c) => c.type === 'string_start')?.text ?? '')) return null;
+  return parts
+    .filter((c) => c.type === 'string_content')
+    .map((c) => c.text)
+    .join('');
+}
+
+// The names a module gives other modules without declaring them (trustmybot/tmb#233): each
+// name a top-level `from m import f [as g]` binds, each top-level `from m import *`, and its
+// `__all__`. An import under `if` or `try` binds a name only on some runs, so it is not one.
+// `__all__` is followed only when it is assigned once, at the top level, a list or tuple of
+// plain strings, and named nowhere else; else code builds it, and its names are null.
+function pyExports(root: Node, out: Collector): void {
+  for (const stmt of named(root)) {
+    if (stmt.type !== 'import_from_statement') continue;
+    const from = stmt.childForFieldName('module_name')?.text;
+    if (!from) continue;
+    for (const n of stmt.childrenForFieldName('name')) {
+      if (!n) continue;
+      const original = (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text;
+      if (!original || original.includes('.')) continue;
+      const name = n.type === 'aliased_import' ? (n.childForFieldName('alias')?.text ?? original) : original;
+      out.export({ kind: 'name', name, original, source: from });
+    }
+    if (named(stmt).some((c) => c.type === 'wildcard_import')) out.export({ kind: 'star', source: from });
+  }
+  const mentions = root.descendantsOfType('identifier').filter((n): n is Node => n?.text === '__all__');
+  if (mentions.length === 0) return;
+  let names: string[] | null = null;
+  const assignment = mentions.length === 1 ? mentions[0]!.parent : null;
+  const right = assignment?.type === 'assignment' && assignment.parent?.parent?.type === 'module' ? assignment.childForFieldName('right') : null;
+  if (right && assignment!.childForFieldName('left')?.id === mentions[0]!.id && (right.type === 'list' || right.type === 'tuple')) {
+    const items = named(right).filter((c) => c.type !== 'comment').map(plainString);
+    if (items.every((i): i is string => i !== null)) names = items;
+  }
+  out.export({ kind: 'all', names });
+}
+
 // Module-level classes, functions and `NAME = …` constants, methods of those
 // classes, and the calls each makes. A call of a class the file defines, or
 // of an imported CapWords name (PEP 8 class naming), is 'instantiates'; a
@@ -56,6 +99,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
   const moduleRow = out.symbols[moduleSymbol];
   if (moduleRow && moduleDocstring) moduleRow.doc = moduleDocstring;
   const { aliases, bound } = pyImports(root, out, moduleSymbol);
+  pyExports(root, out);
   const classes = new Set(
     root
       .descendantsOfType('class_definition')
