@@ -56,23 +56,27 @@ export type RepoEvidence = { repo: string; from: string };
 
 /**
  * The workspace repo a task with no repo belongs to, and why; null when the evidence names no
- * single repo. In turn: the plugin repo it was migrated from, when the workspace has a repo of
+ * single repo. Its proofs: the plugin repo it was migrated from, when the workspace has a repo of
  * that name; the one repo that holds its branch; the one repo whose origin its pull request is in.
+ * The first proof is the one said; proofs that name different repos give none.
  */
 export function evidenceOf(task: Task, projectDir: string, repos: RepoPolicies, migrated: ReadonlyMap<string, string>): RepoEvidence | null {
   const names = workingRepos(repos);
+  const found: RepoEvidence[] = [];
   const plugin = migrated.get(task.id);
-  if (plugin !== undefined && names.includes(plugin)) return { repo: plugin, from: `it was migrated from the plugin's repo ${plugin}` };
+  if (plugin !== undefined && names.includes(plugin)) found.push({ repo: plugin, from: `it was migrated from the plugin's repo ${plugin}` });
   if (task.branch !== null) {
     const holding = names.filter((name) => hasBranch(repoDirOf(projectDir, name), task.branch!));
-    if (holding.length === 1) return { repo: holding[0]!, from: `its branch ${task.branch} is there` };
+    if (holding.length === 1) found.push({ repo: holding[0]!, from: `its branch ${task.branch} is there` });
   }
   const wanted = task.prUrl === null ? null : pullRequestRepo(task.prUrl);
   if (wanted !== null) {
     const holding = names.filter((name) => originRepo(repoDirOf(projectDir, name)) === wanted);
-    if (holding.length === 1) return { repo: holding[0]!, from: `its pull request is in ${wanted}` };
+    if (holding.length === 1) found.push({ repo: holding[0]!, from: `its pull request is in ${wanted}` });
   }
-  return null;
+  // Two proofs that name different repos settle nothing: the task keeps no repo, and doctor lists it.
+  if (found.length === 0 || new Set(found.map((evidence) => evidence.repo)).size > 1) return null;
+  return found[0]!;
 }
 
 export type RepoGiven = { task: string; repo: string; from: string };

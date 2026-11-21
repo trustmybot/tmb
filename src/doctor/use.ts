@@ -56,55 +56,93 @@ function dayOf(iso: string): string {
   return iso.slice(0, 10);
 }
 
+/** How many base-branch commits check 1 reads per repo, newest first; more is said, not read. */
+export const WALK_CAP = 5000;
+
 /**
- * Commits on each repo's base branch, and pull requests merged where gh is signed in, since the
- * newest task in the record, with no task: a commit or pull request that names one of the record's
- * pull requests is the record's own.
+ * The commits the record holds as its own in a repo: tasks' recorded commits, and what each feature
+ * branch not dropped holds over its base. A project with no remote merges locally (trustmybot/tmb#183),
+ * so a pull request number alone would not prove it.
+ */
+function recordedCommits(store: Store, repoDir: string, repo: string | null): Set<string> {
+  const own = new Set<string>();
+  for (const task of store.listTasks()) if (task.repo === repo && task.commitSha !== null) own.add(task.commitSha);
+  for (const feature of store.listFeatures()) {
+    if (feature.repo !== repo || feature.state === "dropped") continue;
+    const held = runGit(repoDir, ["rev-list", `refs/heads/${feature.name}`, `^${feature.baseCommit}`, "--"]);
+    if (held.ok && held.stdout !== "") for (const sha of held.stdout.split("\n")) own.add(sha);
+  }
+  return own;
+}
+
+/**
+ * Commits on each repo's base branch since the record was made that are not the record's own, as a
+ * count, a share and the newest one's date; and pull requests merged in that time with no task,
+ * where gh is signed in. A commit is the record's own when it, or a parent it merged, is a task's
+ * commit or a feature branch's, or its subject names a pull request the record opened. Counting over
+ * the record's whole life keeps one new task from hiding the work that went around it.
  */
 export function workAroundCheck(env: DoctorEnv, projectDir: string, store: Store, settings: Settings): Finding {
-  const newest = store.newestTaskAt();
-  const since = newest ?? store.firstEntryAt();
+  const since = store.firstEntryAt();
   if (since === null) return finding("work around tmb", { status: "ok", summary: "the record is empty, so there is nothing to compare the repos with" });
-  const from = newest === null ? `since the record was made (${dayOf(since)})` : `since the newest task in the record (${dayOf(since)})`;
+  const after = Date.parse(since);
   const recorded = recordedPulls(store);
   const details: string[] = [];
   const gitAlone: string[] = [];
-  let commits = 0;
+  const capped: string[] = [];
+  let total = 0;
+  let around = 0;
   let pulls = 0;
+  let newest = 0;
   for (const repo of reposOf(projectDir, settings)) {
     const dir = repoDirOf(projectDir, repo);
+    const name = repo ?? path.basename(projectDir);
     const base = baseOf(projectDir, settings, repo);
     if (base === null) continue;
     const origin = originOf(dir);
     const ours = origin === null ? new Set<number>() : (recorded.get(origin) ?? new Set<number>());
+    const own = recordedCommits(store, dir, repo);
     const ref = runGit(dir, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${base}`]).ok ? `origin/${base}` : base;
-    const log = runGit(dir, ["log", "--first-parent", `--since=${since}`, "--format=%ct %s", ref, "--"]);
-    // git's --since is to the second and inclusive: a commit is after the record's newest only when strictly later.
-    const after = Date.parse(since);
-    const subjects = (log.ok && log.stdout !== "" ? log.stdout.split("\n") : [])
-      .map((line) => /^(\d+) (.*)$/.exec(line))
-      .filter((found): found is RegExpExecArray => found !== null && Number(found[1]) * 1000 > after)
-      .map((found) => found[2]!);
-    const named = (subject: string) => [...subject.matchAll(/#(\d+)\b/g)].some((match) => ours.has(Number(match[1])));
-    const repoCommits = subjects.filter((subject) => !named(subject)).length;
+    const log = runGit(dir, ["log", "--first-parent", `--since=${since}`, `--max-count=${WALK_CAP}`, "--format=%H %P%x09%ct%x09%s", ref, "--"]);
+    // git's --since is to the second and inclusive: a commit counts only when strictly after the record was made.
+    const commits = (log.ok && log.stdout !== "" ? log.stdout.split("\n") : [])
+      .map((line) => line.split("\t"))
+      .map(([shas, time, subject]) => ({ shas: (shas ?? "").split(" "), at: Number(time) * 1000, subject: subject ?? "" }))
+      .filter((commit) => commit.at > after);
+    if (commits.length >= WALK_CAP) capped.push(name);
+    const isOwn = (commit: { shas: string[]; subject: string }) =>
+      commit.shas.some((sha) => own.has(sha)) || [...commit.subject.matchAll(/#(\d+)\b/g)].some((match) => ours.has(Number(match[1])));
+    const outside = commits.filter((commit) => !isOwn(commit));
+    total += commits.length;
+    around += outside.length;
+    for (const commit of outside) newest = Math.max(newest, commit.at);
     let repoPulls: number | null = null;
     const merged = env.mergedPulls?.(dir, since);
     if (merged === undefined) gitAlone.push("gh is not signed in");
     else if ("why" in merged) gitAlone.push(merged.why);
     else repoPulls = merged.numbers.filter((number) => !ours.has(number)).length;
-    commits += repoCommits;
     pulls += repoPulls ?? 0;
-    if (repoCommits > 0 || (repoPulls ?? 0) > 0) {
-      const parts = [plural(repoCommits, `commit on ${base}`, `commits on ${base}`), ...(repoPulls === null ? [] : [plural(repoPulls, "pull request merged", "pull requests merged")])];
-      details.push(`${repo ?? path.basename(projectDir)}: ${parts.join(", ")}`);
+    if (outside.length > 0 || (repoPulls ?? 0) > 0) {
+      const parts = [`${outside.length} of ${plural(commits.length, `commit on ${base}`, `commits on ${base}`)}`, ...(repoPulls === null ? [] : [plural(repoPulls, "pull request merged", "pull requests merged")])];
+      details.push(`${name}: ${parts.join(", ")}`);
     }
   }
-  const alone = gitAlone.length === 0 ? "" : ` (git alone: ${[...new Set(gitAlone)].join("; ")})`;
-  if (commits === 0 && pulls === 0) return finding("work around tmb", { status: "ok", summary: `no commit or pull request on a base branch ${from} went around the record${alone}` });
-  const counted = [plural(commits, "commit"), ...(pulls > 0 ? [plural(pulls, "pull request merged", "pull requests merged")] : [])].join(" and ");
+  const notes = [
+    ...(gitAlone.length === 0 ? [] : [`git alone: ${[...new Set(gitAlone)].join("; ")}`]),
+    ...(capped.length === 0 ? [] : [`only the newest ${WALK_CAP} commits read in ${capped.join(", ")}`]),
+  ];
+  const said = notes.length === 0 ? "" : ` (${notes.join("; ")})`;
+  const from = `since the record was made (${dayOf(since)})`;
+  if (around === 0 && pulls === 0) return finding("work around tmb", { status: "ok", summary: `every commit on a base branch ${from} is the record's own${said}` });
+  const share = total === 0 ? 0 : Math.round((around / total) * 100);
+  const counted = [
+    ...(around > 0 ? [`${around} of ${plural(total, "commit")} on base branches (${share}%)`] : []),
+    ...(pulls > 0 ? [plural(pulls, "pull request merged", "pull requests merged")] : []),
+  ].join(" and ");
+  const latest = around > 0 ? `; the newest commit is from ${dayOf(new Date(newest).toISOString())}` : "";
   return finding("work around tmb", {
     status: "warn",
-    summary: `${counted} ${from}, with no task${newest === null ? ": the record holds none" : ""}${alone}`,
+    summary: `${counted} ${from} went around the record, with no task${latest}${said}`,
     details,
     fix: { say: "shown only: work the planner starts gets a task; a push typed by hand is still allowed, and the record does not hold it" },
   });
@@ -205,11 +243,13 @@ export function pluginHistoryCheck(env: DoctorEnv, projectDir: string, store: St
 /** Ended runs that carry no cost, as a count and a share. */
 export function costCheck(store: Store): Finding {
   const { ended, withoutCost } = store.runCostCounts();
+  // Runs brought from the plugin are counted too, so an old share is not read as a new fault.
+  const migrated = store.listAuditAbout(MIGRATION_AUDIT).length > 0 ? ", runs migrated from the plugin included" : "";
   if (withoutCost === 0) return finding("run costs", { status: "ok", summary: ended === 0 ? "no run has ended yet" : `every one of ${plural(ended, "ended run")} carries its cost` });
   const share = Math.round((withoutCost / ended) * 100);
   return finding("run costs", {
     status: "warn",
-    summary: `${withoutCost} of ${plural(ended, "ended run")} (${share}%) carry no cost`,
+    summary: `${withoutCost} of ${plural(ended, "ended run")} (${share}%) carry no cost${migrated}`,
     fix: { say: "shown only: the host reported no cost for those runs, so what the work cost is not whole" },
   });
 }
@@ -237,14 +277,13 @@ function worktreesOf(repoDir: string): string[] {
   return paths.slice(1);
 }
 
-function within(dir: string, parent: string): boolean {
-  const relative = path.relative(parent, dir);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
+/** How many unwired worktrees doctor lists by path; the rest are counted. */
+const LISTED_WORKTREES = 5;
 
 /**
- * Worktrees outside the project folder that the host's files do not wire: a session started in one
- * works with none of tmb's hooks or tool server. Worktrees of the record's tasks are tmb's own.
+ * Worktrees of the project's repos, wherever they sit, that the host's files do not wire: a session
+ * started in one works with none of tmb's hooks or tool server. A repo's main folder and the record's
+ * tasks' worktrees are left out.
  */
 export function unwiredWorktreesCheck(env: DoctorEnv, projectDir: string, store: Store, settings: Settings, command: readonly string[]): Finding {
   const ids = [...new Set([...Object.keys(settings.host_roles ?? {}), ...(settings.host === null ? [] : [settings.host])])];
@@ -254,16 +293,17 @@ export function unwiredWorktreesCheck(env: DoctorEnv, projectDir: string, store:
   const unwired: string[] = [];
   for (const repo of reposOf(projectDir, settings)) {
     for (const dir of worktreesOf(repoDirOf(projectDir, repo))) {
-      if (!existsSync(dir) || within(dir, projectDir) || tasks.has(path.resolve(dir))) continue;
+      if (!existsSync(dir) || tasks.has(path.resolve(dir))) continue;
       const missing = adapters.filter((adapter) => adapter.wiringGaps!(dir, command).length > 0).map((adapter) => adapter.name);
       if (missing.length > 0) unwired.push(`${dir}: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not wired there`);
     }
   }
-  if (unwired.length === 0) return finding("unwired sessions", { status: "ok", summary: "no worktree outside the project folder lacks tmb's wiring" });
+  if (unwired.length === 0) return finding("unwired sessions", { status: "ok", summary: "every worktree of the project's repos is wired, or is a task's own" });
+  const more = unwired.length - LISTED_WORKTREES;
   return finding("unwired sessions", {
     status: "warn",
-    summary: `${plural(unwired.length, "worktree")} outside the project folder ${unwired.length === 1 ? "has" : "have"} none of tmb's wiring: a session started there works without tmb's hooks or tool server`,
-    details: unwired,
+    summary: `${plural(unwired.length, "worktree")} of the project's repos ${unwired.length === 1 ? "has" : "have"} none of tmb's wiring: a session started there works without tmb's hooks or tool server`,
+    details: [...unwired.slice(0, LISTED_WORKTREES), ...(more > 0 ? [`and ${more} more`] : [])],
     fix: { say: "shown only: start sessions in the project folder, or let the planner start tasks, whose worktrees tmb makes" },
   });
 }

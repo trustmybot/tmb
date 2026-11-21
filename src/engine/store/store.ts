@@ -698,11 +698,6 @@ export class Store {
     return { ended: row.ended, withoutCost: row.without };
   }
 
-  /** When the newest task was last changed; null when the record holds no task. */
-  newestTaskAt(): string | null {
-    return (this.db.query("SELECT max(updated_at) AS at FROM tasks").get() as { at: string | null }).at;
-  }
-
   /** When the record's first entry was written; null for an empty record. */
   firstEntryAt(): string | null {
     return (this.db.query("SELECT min(at) AS at FROM events").get() as { at: string | null }).at;

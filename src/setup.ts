@@ -376,9 +376,11 @@ function giveOldTasksRepos(projectDir: string, repos: RepoPolicies, out: (line: 
   if (!opened.ok) return;
   try {
     const { given, left } = giveTasksTheirRepos(opened.store, HUMAN, projectDir, repos);
+    if (given.length + left.length === 0) return;
+    out(`  Tasks made before this was a workspace: ${given.length} given their repo, ${left.length} left with none.`);
     for (const gave of given) out(`  Gave task ${gave.task} its repo ${gave.repo}: ${gave.from}.`);
     if (left.length > 0) {
-      out(`  ${left.length === 1 ? "1 task names" : `${left.length} tasks name`} no repo, and nothing shows which repo ${left.length === 1 ? "it was" : "each was"} cut in: ${left.map((task) => task.id).join(", ")}. \`tmb doctor\` lists ${left.length === 1 ? "it" : "them"}.`);
+      out(`  ${left.length === 1 ? "1 task names" : `${left.length} tasks name`} no repo: nothing shows one repo ${left.length === 1 ? "it was" : "each was"} cut in (${left.map((task) => task.id).join(", ")}). \`tmb doctor\` lists ${left.length === 1 ? "it" : "them"}.`);
     }
   } finally {
     opened.store.close();

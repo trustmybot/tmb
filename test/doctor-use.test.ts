@@ -112,23 +112,39 @@ describe("work that went around tmb", () => {
     });
   });
 
-  test("nothing after the newest task: fine", () => {
+  test("nothing on the base branch since the record was made: fine", () => {
     const finding = withStore(project, (store) => workAroundCheck(env(project), project, store, readSettings(store)));
     expect(finding.status).toBe("ok");
     expect(finding.summary).toContain("git alone: gh is not signed in");
   });
 
-  test("commits and merged pull requests after the newest task are counted with its date; the record's own are not", () => {
+  test("over the record's whole life: count, share and newest date; a task's commit, a feature branch merged locally and a recorded pull request are the record's own", () => {
     commit(project, "by hand", LATER);
     commit(project, "the task's own (#5)", LATER);
     commit(project, "another by hand (#9)", LATER);
+    commit(project, "a task's commit, no pull request", LATER);
+    const taskCommit = git(project, ["rev-parse", "HEAD"]);
+    const base = taskCommit;
+    // A feature branch merged with no remote (trustmybot/tmb#183): only the record's feature proves it.
+    git(project, ["checkout", "-q", "-b", "feat-x"]);
+    commit(project, "on the feature branch", LATER);
+    git(project, ["checkout", "-q", "main"]);
+    git(project, ["merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x"], { GIT_AUTHOR_DATE: LATER, GIT_COMMITTER_DATE: LATER });
+    withStore(project, (store) => {
+      const issue = store.createIssue(HUMAN, { title: "More" });
+      const task = store.appendTask(PLANNER, { issueId: issue, title: "Done" });
+      store.updateTask(PLANNER, task, { commitSha: taskCommit });
+      store.createFeature(PLANNER, { name: "feat-x", baseBranch: "main", baseCommit: base });
+      // A task made after all of it does not hide what went around the record.
+      store.appendTask(PLANNER, { issueId: issue, title: "Newest" });
+    });
     const asked: string[] = [];
     const merged = (dir: string, since: string) => (asked.push(`${dir} ${since}`), { numbers: [5, 9, 11] });
     const finding = withStore(project, (store) => workAroundCheck(env(project, { mergedPulls: merged }), project, store, readSettings(store)));
     const today = new Date().toISOString().slice(0, 10);
     expect(finding.status).toBe("warn");
-    expect(finding.summary).toBe(`2 commits and 2 pull requests merged since the newest task in the record (${today}), with no task`);
-    expect(finding.details).toEqual(["app: 2 commits on main, 2 pull requests merged"]);
+    expect(finding.summary).toBe(`2 of 5 commits on base branches (40%) and 2 pull requests merged since the record was made (${today}) went around the record, with no task; the newest commit is from ${LATER.slice(0, 10)}`);
+    expect(finding.details).toEqual(["app: 2 of 5 commits on main, 2 pull requests merged"]);
     expect(finding.fix!.say).toContain("a push typed by hand is still allowed");
     expect(asked).toHaveLength(1);
   });
@@ -139,7 +155,8 @@ describe("work that went around tmb", () => {
       workAroundCheck(env(project, { mergedPulls: () => ({ why: "GitHub could not be asked: no network" }) }), project, store, readSettings(store)),
     );
     expect(finding.status).toBe("warn");
-    expect(finding.summary).toEndWith("1 commit since the newest task in the record (" + new Date().toISOString().slice(0, 10) + "), with no task (git alone: GitHub could not be asked: no network)");
+    expect(finding.summary).toStartWith("1 of 1 commit on base branches (100%) since the record was made");
+    expect(finding.summary).toEndWith("(git alone: GitHub could not be asked: no network)");
   });
 
   test("the planner's session start carries one line, and does not ask GitHub", () => {
@@ -218,6 +235,8 @@ describe("runs with no cost", () => {
     });
     expect(finding.status).toBe("warn");
     expect(finding.summary).toBe("3 of 4 ended runs (75%) carry no cost");
+    withStore(project, (store) => store.recordAudit(HUMAN, { what: MIGRATION_AUDIT, detail: "{}" }));
+    expect(withStore(project, costCheck).summary).toBe("3 of 4 ended runs (75%) carry no cost, runs migrated from the plugin included");
   });
 });
 
@@ -277,8 +296,22 @@ describe("tasks that name no repo once the project is a workspace", () => {
     };
     const output: string[] = [];
     await runInit({ projectDir: folder, tmbCommand: COMMAND, adapters: [host], supportedHostIds: ["a"], flags: {}, ask: null, out: (line: string) => output.push(line) });
+    expect(output).toContain("  Tasks made before this was a workspace: 1 given their repo, 0 left with none.");
     expect(output).toContain(`  Gave task ${id} its repo api: its branch tmb/task-b is there.`);
     expect(withStore(folder, (store) => store.getTask(id)!.repo)).toBe("api");
+  });
+
+  test("two proofs that name different repos give none: the task stays for doctor to list", () => {
+    const repos = { api: { base_branch: "main" }, web: { base_branch: "main" } };
+    const id = withStore(folder, (store) => {
+      const task = store.appendTask(PLANNER, { issueId: store.createIssue(HUMAN, { title: "x" }), title: "Torn", branch: "tmb/task-b" });
+      store.updateTask(PLANNER, task, { prUrl: "https://github.com/acme/web/pull/3" });
+      writeSetting(store, HUMAN, "repos", repos);
+      return task;
+    });
+    const result = withStore(folder, (store) => giveTasksTheirRepos(store, HUMAN, folder, repos));
+    expect(result.given).toEqual([]);
+    expect(result.left.map((task) => task.id)).toEqual([id]);
   });
 
   test("a project of one repo needs no repo named", () => {
@@ -293,10 +326,9 @@ describe("tasks that name no repo once the project is a workspace", () => {
 });
 
 describe("worktrees with none of tmb's wiring", () => {
-  test("one outside the project folder is named; the record's own task worktree is not", () => {
+  test("every worktree, inside the project folder or not, is named; the main folder and the record's task worktree are not", () => {
     const project = path.join(root, "app");
     repo(project);
-    git(project, ["config", "core.excludesFile", path.join(root, "none")]);
     claudeCode.setup(project, COMMAND);
     withStore(project, (store) => {
       writeSetting(store, HUMAN, "host", "claude-code");
@@ -305,15 +337,28 @@ describe("worktrees with none of tmb's wiring", () => {
     const check = () => withStore(project, (store) => unwiredWorktreesCheck(env(project), project, store, readSettings(store), COMMAND));
     expect(check().status).toBe("ok");
     const outside = path.join(root, "app-side");
+    const inside = path.join(project, "lane-1");
     const tasks = path.join(root, "app-task");
     git(project, ["worktree", "add", "-q", "-b", "side", outside]);
+    git(project, ["worktree", "add", "-q", "-b", "lane", inside]);
     git(project, ["worktree", "add", "-q", "-b", "tmb/t", tasks]);
     withStore(project, (store) => store.appendTask(PLANNER, { issueId: store.createIssue(HUMAN, { title: "x" }), title: "t", worktree: tasks }));
     const finding = check();
     expect(finding.status).toBe("warn");
-    expect(finding.summary).toBe("1 worktree outside the project folder has none of tmb's wiring: a session started there works without tmb's hooks or tool server");
-    expect(finding.details).toHaveLength(1);
-    expect(finding.details![0]).toStartWith(`${outside}: Claude Code is not wired there`);
+    expect(finding.summary).toBe("2 worktrees of the project's repos have none of tmb's wiring: a session started there works without tmb's hooks or tool server");
+    expect(finding.details!.map((line) => line.split(":")[0]).sort()).toEqual([inside, outside].sort());
+  });
+
+  test("many are counted, and only the first few listed", () => {
+    const project = path.join(root, "app");
+    repo(project);
+    claudeCode.setup(project, COMMAND);
+    withStore(project, (store) => writeSetting(store, HUMAN, "host", "claude-code"));
+    for (let i = 0; i < 8; i++) git(project, ["worktree", "add", "-q", "-b", `lane-${i}`, path.join(root, `lane-${i}`)]);
+    const finding = withStore(project, (store) => unwiredWorktreesCheck(env(project), project, store, readSettings(store), COMMAND));
+    expect(finding.summary).toStartWith("8 worktrees");
+    expect(finding.details).toHaveLength(6);
+    expect(finding.details![5]).toBe("and 3 more");
   });
 });
 
