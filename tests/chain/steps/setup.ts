@@ -11,9 +11,9 @@ import { PROGRAM, REPOS, type World } from "../world.ts";
 /** tmb bugs the chain found, filed: their checks are marked known until each is fixed. */
 const BUGS = {
   /** In a workspace, the record commands cannot name a repo, and ignore the record above a repo's folder. */
-  workspaceCli: 0,
+  workspaceCli: 262,
   /** onboard says no review mode is chosen when every repo has its own. */
-  onboardLastWord: 0,
+  onboardLastWord: 263,
 };
 
 const hookOf = (world: World, repo: string) => path.join(world.repo(repo as (typeof REPOS)[number]), ".git", "hooks", "pre-push");
