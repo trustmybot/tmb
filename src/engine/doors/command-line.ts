@@ -31,6 +31,7 @@ import { indexProject } from "../graph/fresh.ts";
 import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
 import type { Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
+import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
 import type { Actor, Discussion, Issue, IssueSummary, SearchHit, StoredEvent } from "../store/index.ts";
@@ -537,8 +538,8 @@ function hitLine(hit: Hit): string {
   return `${hit.kind.padEnd(9)} ${hit.path}${hit.summary ? `  ${hit.summary}` : ""}`;
 }
 
-function formatFind(answer: GraphAnswer<{ hits: Hit[] }>): string {
-  return [freshnessLine(answer), ...(answer.hits.length === 0 ? ["No matches."] : answer.hits.map(hitLine))].join("\n");
+function formatFind(answer: GraphAnswer<{ hits: Hit[] } & NotReadNote>): string {
+  return [freshnessLine(answer), ...(answer.hits.length === 0 ? ["No matches.", ...notReadLines(answer)] : answer.hits.map(hitLine))].join("\n");
 }
 
 /** A row's lines, `12, 15, 20 (+30 more)`, or `?` when none is known. */
@@ -569,17 +570,18 @@ function formatCard(card: SymbolCard): string {
   return lines.join("\n");
 }
 
-function formatSymbol(answer: GraphAnswer<{ cards: SymbolCard[]; more: number }>): string {
-  const lines = [freshnessLine(answer), ...(answer.cards.length === 0 ? ["No such symbol or file."] : answer.cards.map(formatCard))];
+function formatSymbol(answer: GraphAnswer<{ cards: SymbolCard[]; more: number } & NotReadNote>): string {
+  const lines = [freshnessLine(answer), ...(answer.cards.length === 0 ? [answer.unreadFile ? "No symbols." : "No such symbol or file.", ...notReadLines(answer)] : answer.cards.map(formatCard))];
   if (answer.more > 0) lines.push(`…and ${answer.more} more with that name; pass --path.`);
   return lines.join("\n");
 }
 
-function formatScope(answer: GraphAnswer<ScopeResult>): string {
+function formatScope(answer: GraphAnswer<ScopeResult & NotReadNote>): string {
   const lines = [freshnessLine(answer)];
   const fileLine = (f: { path: string; via: string[]; areas: string[] }) => `  ${f.path}  (${f.via.join(", ")})${areasTag(f.areas)}`;
   lines.push(answer.files.length === 0 ? "No files in scope." : "Files:", ...answer.files.map(fileLine));
   if (answer.tests.length > 0) lines.push("Tests:", ...answer.tests.map(fileLine));
+  if (answer.files.length === 0 && answer.tests.length === 0) lines.push(...notReadLines(answer));
   if (answer.unresolvedAnchors.length > 0) lines.push(`Not found: ${answer.unresolvedAnchors.join(", ")}`);
   if (answer.concepts.length > 0) lines.push(`Concepts: ${answer.concepts.map((c) => `${c.name} (${c.status})`).join(", ")}`);
   return lines.join("\n");
@@ -804,7 +806,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
     return 1;
   }
   const line = (stats: Awaited<ReturnType<typeof indexProject>>) =>
-    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved), ${stats.unresolvedImports} ${stats.unresolvedImports === 1 ? "import" : "imports"} of the repo's own code not linked to a file; parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`;
+    `Indexed ${stats.repo ? `${stats.repo} from ` : ""}${stats.baseBranch} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions, ${stats.edges} references (${stats.unresolved} unresolved), ${stats.unresolvedImports} ${stats.unresolvedImports === 1 ? "import" : "imports"} of the repo's own code not linked to a file; parsed ${stats.parsed}, reused ${stats.reused}; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed${notReadSummary(stats.notRead) === "" ? "" : `; ${notReadSummary(stats.notRead)}`}.`;
   try {
     const repos = workspaceRepos(opened.store);
     if (repos !== null) {

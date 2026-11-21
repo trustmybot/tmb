@@ -10,7 +10,7 @@ import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 4;
+export const GRAPH_SCHEMA_VERSION = 5;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS layers (
   unresolved INTEGER NOT NULL,
   unresolved_imports INTEGER NOT NULL DEFAULT 0,
   functions  INTEGER NOT NULL DEFAULT 0,
-  not_parsed INTEGER NOT NULL DEFAULT 0
+  not_parsed INTEGER NOT NULL DEFAULT 0,
+  not_read   TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS dirs (
   layer          TEXT NOT NULL,
@@ -155,6 +156,9 @@ CREATE TABLE IF NOT EXISTS misses (
 );
 `;
 
+/** Schema 5 counts what the graph does not read: unread languages and files left out by rule (trustmybot/tmb#234). */
+const SCHEMA_4_TO_5 = ["ALTER TABLE layers ADD COLUMN not_read TEXT NOT NULL DEFAULT '{}'"];
+
 /** Schema 3 counts the imports of the repo's own code that link no file (trustmybot/tmb#147). */
 const SCHEMA_2_TO_3 = ["ALTER TABLE layers ADD COLUMN unresolved_imports INTEGER NOT NULL DEFAULT 0"];
 
@@ -193,7 +197,9 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         // Schema 1 lacked each symbol's container and the counts of functions and of files not
         // parsed. Its layers were built by an older extractor, so the next read rebuilds them.
         if (version === 1) for (const statement of SCHEMA_1_TO_2) db.run(statement);
-        if (version === 1 || version === 2) for (const statement of SCHEMA_2_TO_3) db.run(statement);
+        if (version >= 1 && version <= 2) for (const statement of SCHEMA_2_TO_3) db.run(statement);
+        const hasNotRead = (db.query("SELECT 1 FROM pragma_table_info('layers') WHERE name = 'not_read'").get() ?? null) !== null;
+        if (version >= 1 && version <= 4 && !hasNotRead) for (const statement of SCHEMA_4_TO_5) db.run(statement);
         db.run(SCHEMA);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
@@ -240,6 +246,7 @@ export type LayerRow = {
   unresolved_imports: number;
   functions: number;
   not_parsed: number;
+  not_read: string;
 };
 
 export function layerRow(db: Database, layer: string): LayerRow | null {
