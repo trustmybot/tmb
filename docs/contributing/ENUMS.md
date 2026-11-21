@@ -1,6 +1,6 @@
 # DB enums
 
-This page lists every set of allowed values in the record and the code graph, and the fixed vocabularies in tmb's code. A value follows an established convention where one exists and is invented only where none applies, the same rule as [`LABELS.md`](./LABELS.md).
+This page lists every set of allowed values in the record and the code graph, and the fixed vocabularies in tmb's code. A value follows an established convention where one exists and is invented only where none applies, the same rule as [`LABELS.md`](LABELS.md).
 
 The engine, the role prompts and the planner decide what to do from these values, so a typo or an unannounced rename breaks them without a compile error.
 
@@ -82,7 +82,7 @@ Schema enforces via `CHECK (kind IN ('note','decision'))`. `tmb migrate` leaves 
 | `closed` | tmb | Done |
 | `dropped` | tmb | Ended by the planner or the Human without its work; `drop_reason` says why |
 
-Owned by the code (`src/engine/handlers/common.ts`); no `CHECK`. [`TASKS.md`](../architecture/TASKS.md) holds the lifecycle. `task_list` also takes `all` as a filter; it is not a state.
+Owned by the code (`src/engine/handlers/common.ts`); no `CHECK`. [`3_TASKS.md`](../flows/3_TASKS.md) holds the lifecycle. `task_list` also takes `all` as a filter; it is not a state.
 
 ### `tasks.kind` — who writes the task
 
@@ -287,5 +287,5 @@ Planned: a lint that compares every table on this page with the code in both dir
 
 ## Related
 
-- [`LABELS.md`](./LABELS.md) — same governance rule for GH issue labels
+- [`LABELS.md`](LABELS.md) — same governance rule for GH issue labels
 - [`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md) — the settings keys

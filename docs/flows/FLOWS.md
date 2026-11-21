@@ -1,6 +1,6 @@
 # tmb Workflows
 
-This file is the starting point for every flow. Each flow gets one chart of its ideal case, a short description, and a link to its detail page. The detail page holds every other case, failures included, and how to debug them. A flow whose chart says everything has no detail page. Who owns each quality check, and how a task hands from one owner to the next, is in [TASKS.md](TASKS.md#quality-layers).
+This file is the starting point for every flow. Each flow gets one chart of its ideal case, a short description, and a link to its detail page. The detail page holds every other case, failures included, and how to debug them. A flow whose chart says everything has no detail page. Who owns each quality check, and how a task hands from one owner to the next, is in [3_TASKS.md](3_TASKS.md#quality-layers).
 
 It is the ground truth for the workflow. Behaviour that is decided but not built is marked Planned, with its GitHub issue. A PR that changes a flow updates its chart here, and its detail page, in the same PR. Neither names an internal function, file or table. The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
 
@@ -39,7 +39,7 @@ Flows are grouped by when they run, and numbered within their group.
 
 ### 1.1 Install and session start
 
-tmb is one compiled program per platform, installed in one step, with nothing to install first. `tmb init` prepares a project once and asks nothing. From then on the host raises its session start, and the engine answers with the role, the rules and the open work from the record. [INSTALL.md](INSTALL.md) covers each case and how to debug it; [HOSTS.md](HOSTS.md) covers what an adapter writes.
+tmb is one compiled program per platform, installed in one step, with nothing to install first. `tmb init` prepares a project once and asks nothing. From then on the host raises its session start, and the engine answers with the role, the rules and the open work from the record. [1_INSTALL.md](1_INSTALL.md) covers each case and how to debug it; [HOSTS.md](../architecture/HOSTS.md) covers what an adapter writes.
 
 ```mermaid
 flowchart LR
@@ -53,7 +53,7 @@ flowchart LR
 
 ### 1.2 Updates and channels
 
-An install follows one channel: stable, rc or dev. Each channel is a program of its own name, side by side with the others, and updates only itself. A running session keeps the build it started with, so a task never meets a new build half way. With no network tmb runs the build it has. [INSTALL.md](INSTALL.md) covers channels, pinned builds and package managers.
+An install follows one channel: stable, rc or dev. Each channel is a program of its own name, side by side with the others, and updates only itself. A running session keeps the build it started with, so a task never meets a new build half way. With no network tmb runs the build it has. [1_INSTALL.md](1_INSTALL.md) covers channels, pinned builds and package managers.
 
 ```mermaid
 flowchart LR
@@ -81,7 +81,7 @@ flowchart LR
 
 ### 2.1 First contact
 
-Onboarding happens by itself. The planner applies the base branch and the checks it recommends, and shows them. The review mode is the Human's alone: it decides how many tokens a project uses, so tmb recommends agile and never picks. No task starts until the Human has chosen. `tmb onboard` sets the same settings from a terminal, at any time. tmb sets up no sandbox. [ONBOARD.md](ONBOARD.md) covers each setting and each way to set it.
+Onboarding happens by itself. The planner applies the base branch and the checks it recommends, and shows them. The review mode is the Human's alone: it decides how many tokens a project uses, so tmb recommends agile and never picks. No task starts until the Human has chosen. `tmb onboard` sets the same settings from a terminal, at any time. tmb sets up no sandbox. [2_ONBOARD.md](2_ONBOARD.md) covers each setting and each way to set it.
 
 ```mermaid
 flowchart LR
@@ -94,7 +94,7 @@ flowchart LR
 
 ### 2.2 Index and code-graph refresh
 
-The code graph is the project map the planner scopes tasks from: files with their summaries, symbols and the links between them. Each repo has its own graph, built from its base branch. Every lookup first brings a graph that is behind forward, so no agent has to ask for a refresh. A lookup for an open task or a feature branch answers from that work's own commit. [WORLD_MODEL.md](WORLD_MODEL.md) covers what the graph holds and how it stays current.
+The code graph is the project map the planner scopes tasks from: files with their summaries, symbols and the links between them. Each repo has its own graph, built from its base branch. Every lookup first brings a graph that is behind forward, so no agent has to ask for a refresh. A lookup for an open task or a feature branch answers from that work's own commit. [2_CODE_GRAPH.md](2_CODE_GRAPH.md) covers what the graph holds and how it stays current.
 
 ```mermaid
 flowchart LR
@@ -106,7 +106,7 @@ flowchart LR
 
 ### 2.3 Environment profile
 
-tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a workspace, and they run at every task's close. [ONBOARD.md](ONBOARD.md#the-repos-checks) covers what is read.
+tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a workspace, and they run at every task's close. [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) covers what is read.
 
 ```mermaid
 flowchart LR
@@ -118,7 +118,7 @@ flowchart LR
 
 ## 3. Agent task handling
 
-[TASKS.md](TASKS.md) holds every case of flows 3.1 to 3.5: what each step guarantees, the failure paths and how to debug a stuck task. The engine, not an agent, creates branches and worktrees, runs checks, folds, pushes and opens pull requests. Agents ask for these through tmb's tools, so every step is recorded.
+[3_TASKS.md](3_TASKS.md) holds every case of flows 3.1 to 3.5: what each step guarantees, the failure paths and how to debug a stuck task. The engine, not an agent, creates branches and worktrees, runs checks, folds, pushes and opens pull requests. Agents ask for these through tmb's tools, so every step is recorded.
 
 ### 3.1 Code task
 
@@ -194,7 +194,7 @@ flowchart LR
 
 ### 3.6 Multi-repo workspaces
 
-A project is a set of repos sharing one record. A project folder that is a git work tree is a project of one repo. A folder that is not one, and holds repos, is a workspace: tmb runs from it and its repos share the record there. Only managed repos get the workflow; an exempt repo and a folder that is no repo are listed and left alone. The repo comes from the work, never from the folder a session runs in. [GIT.md](GIT.md#multi-repo-workspaces) covers how each operation resolves to its repo.
+A project is a set of repos sharing one record. A project folder that is a git work tree is a project of one repo. A folder that is not one, and holds repos, is a workspace: tmb runs from it and its repos share the record there. Only managed repos get the workflow; an exempt repo and a folder that is no repo are listed and left alone. The repo comes from the work, never from the folder a session runs in. [3_GIT.md](3_GIT.md#multi-repo-workspaces) covers how each operation resolves to its repo.
 
 ```mermaid
 flowchart LR
@@ -221,7 +221,7 @@ flowchart LR
 
 ### 3.8 Parallel lanes
 
-tmb does not manage lanes and keeps no lane record. Starting sessions and messaging between them are the host's features. tmb gives every session the same footing: one shared record to resume from, a branch and a worktree per task, and a planner that is told which open tasks share a file. Two tasks may change the same file; git settles it at the merge, and a clash holds back the later task's close. Lane PRs merge like any other PR. Planned: guidance for running parallel sessions in the planner's prompt; which session made each entry (trustmybot/tmb#63); a freeze that stops every session at once (trustmybot/tmb#64). [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) holds every case.
+tmb does not manage lanes and keeps no lane record. Starting sessions and messaging between them are the host's features. tmb gives every session the same footing: one shared record to resume from, a branch and a worktree per task, and a planner that is told which open tasks share a file. Two tasks may change the same file; git settles it at the merge, and a clash holds back the later task's close. Lane PRs merge like any other PR. Planned: guidance for running parallel sessions in the planner's prompt; which session made each entry (trustmybot/tmb#63); a freeze that stops every session at once (trustmybot/tmb#64). [RESPONSIBILITIES.md](../architecture/RESPONSIBILITIES.md#parallel-lanes) holds every case.
 
 ```mermaid
 flowchart LR
@@ -235,7 +235,7 @@ flowchart LR
 
 ### 3.9 Agile mode
 
-The recommended mode. Work builds up on one long-lived feature branch per milestone, cut from the remote's base branch. Each task closes on its checks alone, with no review of its own, folds into the feature branch, and the branch is pushed only as a backup, with no pull request. The Human tries the branch in a separate worktree at any time. At the milestone the base branch is merged in, the reviewer reviews the whole branch once, and only then does it go to the base branch as one pull request, unless the Human waives the review. A workspace has one review mode and a repo can name its own. A task keeps the mode it started in. [AGILE.md](AGILE.md) holds every case, including a branch that ends merged, closed or dropped.
+The recommended mode. Work builds up on one long-lived feature branch per milestone, cut from the remote's base branch. Each task closes on its checks alone, with no review of its own, folds into the feature branch, and the branch is pushed only as a backup, with no pull request. The Human tries the branch in a separate worktree at any time. At the milestone the base branch is merged in, the reviewer reviews the whole branch once, and only then does it go to the base branch as one pull request, unless the Human waives the review. A workspace has one review mode and a repo can name its own. A task keeps the mode it started in. [3_WORKFLOW.md](3_WORKFLOW.md) holds every case, including a branch that ends merged, closed or dropped.
 
 ```mermaid
 flowchart LR
@@ -255,7 +255,7 @@ flowchart LR
 
 ### 3.10 Truest mode
 
-For a repo where nothing may reach the base branch unreviewed. There is no feature branch: each task is cut from the base branch, waits in review after its checks pass, and gets its own pull request after a pass or a per-task Human waiver. Before the first push the engine rebases the reviewed commit when the base branch moved; an open pull request is never rebased. [AGILE.md](AGILE.md) compares the two modes; [TASKS.md](TASKS.md) holds every case.
+For a repo where nothing may reach the base branch unreviewed. There is no feature branch: each task is cut from the base branch, waits in review after its checks pass, and gets its own pull request after a pass or a per-task Human waiver. Before the first push the engine rebases the reviewed commit when the base branch moved; an open pull request is never rebased. [3_WORKFLOW.md](3_WORKFLOW.md) compares the two modes; [3_TASKS.md](3_TASKS.md) holds every case.
 
 ```mermaid
 flowchart LR
@@ -270,7 +270,7 @@ flowchart LR
 
 ### 3.11 Project with no remote
 
-In a repo with no remote nothing is pushed and no pull request is opened. A close skips the backup push and says so. After the review passes, or the Human waives it, the pull request step records the work as ready and gives the Human the command to merge it locally. tmb records the merge once the local base branch holds the work, and looks at session start, when features or tasks are listed, and for the dashboard. A ready branch still takes fix tasks. [GIT.md](GIT.md) covers every case.
+In a repo with no remote nothing is pushed and no pull request is opened. A close skips the backup push and says so. After the review passes, or the Human waives it, the pull request step records the work as ready and gives the Human the command to merge it locally. tmb records the merge once the local base branch holds the work, and looks at session start, when features or tasks are listed, and for the dashboard. A ready branch still takes fix tasks. [3_GIT.md](3_GIT.md) covers every case.
 
 ```mermaid
 flowchart LR
@@ -283,7 +283,7 @@ flowchart LR
 
 ### 3.12 Unattended run
 
-A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode by whoever starts the run, for that run only. It changes guidance only: the checkpoints allow and refuse exactly as in a normal session. A choice the role leaves to the Human alone, such as the review mode, is never a default. [HOSTS.md](HOSTS.md) covers it.
+A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode by whoever starts the run, for that run only. It changes guidance only: the checkpoints allow and refuse exactly as in a normal session. A choice the role leaves to the Human alone, such as the review mode, is never a default. [HOSTS.md](../architecture/HOSTS.md) covers it.
 
 ```mermaid
 flowchart LR
@@ -296,7 +296,7 @@ flowchart LR
 
 ### 3.13 Several hosts on one record
 
-Each host connects to the same record in the same project and takes a role, the planner by default. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's. [HOSTS.md](HOSTS.md) covers hosts, adapters and each host's limits.
+Each host connects to the same record in the same project and takes a role, the planner by default. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's. [HOSTS.md](../architecture/HOSTS.md) covers hosts, adapters and each host's limits.
 
 ```mermaid
 flowchart LR
@@ -311,11 +311,11 @@ flowchart LR
 
 ## 4. Extending the team
 
-All of group 4 is Planned. tmb ships three roles: planner, worker and reviewer. [EXTENDING.md](EXTENDING.md) covers all four flows.
+All of group 4 is Planned. tmb ships three roles: planner, worker and reviewer. [4_EXTENDING.md](4_EXTENDING.md) covers all four flows.
 
 ### 4.1 Cheatcode lifecycle
 
-Planned (trustmybot/tmb#112). The planner acquires a published skill instead of building a capability by hand, and the Human approves each install. A skill is given to a role once, for every host in that role. [EXTENDING.md](EXTENDING.md#cheatcodes) covers every stage, the trust design and teardown.
+Planned (trustmybot/tmb#112). The planner acquires a published skill instead of building a capability by hand, and the Human approves each install. A skill is given to a role once, for every host in that role. [4_EXTENDING.md](4_EXTENDING.md#cheatcodes) covers every stage, the trust design and teardown.
 
 ```mermaid
 flowchart LR

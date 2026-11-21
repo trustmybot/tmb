@@ -133,7 +133,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 
 ### Consultants
 
-Planned: a consultant is one kind of created agent, recorded and harnessed like the worker and the reviewer ([`EXTENDING.md`](../architecture/EXTENDING.md)). No rows until it is built.
+Planned: a consultant is one kind of created agent, recorded and harnessed like the worker and the reviewer ([`4_EXTENDING.md`](../flows/4_EXTENDING.md)). No rows until it is built.
 
 ### Universal
 
@@ -178,6 +178,6 @@ In tmb the session-start hook is the only one that injects context: it puts the 
 
 - [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md) — how to write and grade the layer 6 prompts.
 - [`RESPONSIBILITIES.md`](../architecture/RESPONSIBILITIES.md) — agent roles and boundaries.
-- [`FLOWS.md`](../architecture/FLOWS.md) — workflows: who acts, what each step guarantees, and the state each flow leaves.
+- [`FLOWS.md`](../flows/FLOWS.md) — workflows: who acts, what each step guarantees, and the state each flow leaves.
 - [`ERD.md`](../architecture/ERD.md) — schema.
 - [`common.ts`](../../src/engine/handlers/common.ts) — defines the `requireRole` check behind layer 1; each tool's allowed roles are set at its `requireRole(...)` call in [`handlers/*.ts`](../../src/engine/handlers/).

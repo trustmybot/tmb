@@ -169,7 +169,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts). Two open tasks may share a file, which the plugin refused: [shared-files.test.ts](workflow/shared-files.test.ts) folds changes to different lines and stops the later close on the same lines. |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). An issue in tmb's record has no labels, so only the milestone, title and body move. |
-| 14 Repo rename | Not planned. A workspace of several repos is built ([GIT.md](../docs/architecture/GIT.md#multi-repo-workspaces)), and no test renames a repo's folder yet. |
+| 14 Repo rename | Not planned. A workspace of several repos is built ([3_GIT.md](../docs/flows/3_GIT.md#multi-repo-workspaces)), and no test renames a repo's folder yet. |
 
 ## Level 6 tests
 
@@ -255,7 +255,7 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 
 ## Docs task check
 
-The check of a docs task by file type at its close ([TASKS.md](../docs/architecture/TASKS.md#32-non-code-task)).
+The check of a docs task by file type at its close ([3_TASKS.md](../docs/flows/3_TASKS.md#32-non-code-task)).
 
 | Layer | Test | What it proves |
 |---|---|---|

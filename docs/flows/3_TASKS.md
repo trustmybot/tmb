@@ -1,10 +1,10 @@
 # Agent task handling
 
-Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md). A task is one change that one agent can finish in one run. It is one of two kinds: a **code task**, which a worker implements, and a **docs task**, a docs or prompts change the planner writes itself. Both kinds end in the same push gate, retry paths and pull request comment triage, and the [quality layers](#quality-layers) rules hold for every step. [GIT.md](GIT.md) covers where the task's work sits at each stage.
+Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md). A task is one change that one agent can finish in one run. It is one of two kinds: a **code task**, which a worker implements, and a **docs task**, a docs or prompts change the planner writes itself. Both kinds end in the same push gate, retry paths and pull request comment triage, and the [quality layers](#quality-layers) rules hold for every step. [3_GIT.md](3_GIT.md) covers where the task's work sits at each stage.
 
 **tmb gates the outcome.** It does not watch a task's steps: no guard on each edit, no reading of shell commands, no per-step metering. It checks at three checkpoints, like CI: the checks at close, the review, and the push gate (trustmybot/tmb#98).
 
-Every record a task leaves lives in the record, the cold store [MEMORY.md](MEMORY.md) describes; an agent reads it back from there, never from chat. [TRAJECTORY.md](TRAJECTORY.md) lists what is recorded.
+Every record a task leaves lives in the record, the cold store [MEMORY.md](../architecture/MEMORY.md) describes; an agent reads it back from there, never from chat. [TRAJECTORY.md](../architecture/TRAJECTORY.md) lists what is recorded.
 
 ## Units of work
 
@@ -12,7 +12,7 @@ Every record a task leaves lives in the record, the cold store [MEMORY.md](MEMOR
 - **Task.** One change, with a spec: the intent, the files it may touch, the checks that must pass and the success criteria.
 - **Milestone.** A group of issues the Human wants to judge as a whole, such as a first usable build.
 
-The [review mode](AGILE.md) decides where a task's review happens. It is set per repo, only by the Human, and a task keeps the mode it was started in.
+The [review mode](3_WORKFLOW.md) decides where a task's review happens. It is set per repo, only by the Human, and a task keeps the mode it was started in.
 
 | Mode | Review | Reaches the base branch as |
 |---|---|---|
@@ -159,7 +159,7 @@ stateDiagram-v2
 - **In review keeps its worktree.** Nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
 - **Ready is for a repo with no remote** (trustmybot/tmb#183). Nothing is pushed and no pull request opens; the Human merges locally with the command tmb gives. tmb counts the work as merged when the local base branch holds the tip, or when merging it would change nothing, as after a squash by hand. A ready task the Human will not merge is dropped.
 - **Dropping keeps what holds work.** The worktree goes unless it holds uncommitted work, and the branch stays while it holds commits (trustmybot/tmb#170).
-- **Agile review state is on the branch, not the task.** An agile task closes unreviewed, with its mode recorded. The pass or waiver is recorded for the feature branch's tip ([AGILE.md](AGILE.md)).
+- **Agile review state is on the branch, not the task.** An agile task closes unreviewed, with its mode recorded. The pass or waiver is recorded for the feature branch's tip ([3_WORKFLOW.md](3_WORKFLOW.md)).
 - **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the audit trail. The planner never waives.
 - **A rebase with the same change keeps its pass.** The checks run again; a change that differs needs a fresh review. An open pull request is never rebased.
 - **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
@@ -277,7 +277,7 @@ flowchart LR
 
 ## Debugging a stuck task
 
-tmb has no watcher, so a stuck task is found at the next session start or by `tmb doctor`. [TRAJECTORY.md](TRAJECTORY.md) covers runs with a start and no end.
+tmb has no watcher, so a stuck task is found at the next session start or by `tmb doctor`. [TRAJECTORY.md](../architecture/TRAJECTORY.md) covers runs with a start and no end.
 
 | Symptom | Where to look |
 |---|---|

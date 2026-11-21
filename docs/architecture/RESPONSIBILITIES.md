@@ -31,7 +31,7 @@ Two things decide the split: what each role can be trusted to do without approvi
   3. **Subagents are fragile.** A worker runs with a fresh context, and its run can end at any point. The plan, the spec and the pull request stay with the planner, the most resilient layer.
 - **The reviewer** is an independent third party before the push, with no edit tools. Its verdict, or a Human waiver, is the only thing the push gate accepts.
 
-Each layer owns one level of quality, and no layer repeats another's check: the Human owns intent, the planner the spec and design fit, the worker functionality, and the reviewer the diff. [TASKS.md](TASKS.md#quality-layers) shows how the layers hand off.
+Each layer owns one level of quality, and no layer repeats another's check: the Human owns intent, the planner the spec and design fit, the worker functionality, and the reviewer the diff. [3_TASKS.md](../flows/3_TASKS.md#quality-layers) shows how the layers hand off.
 
 ## Which agents a project has
 
@@ -48,7 +48,7 @@ The persona is not a role file: the engine gives it to the host's main agent at 
 - **Plans and routes.** Records the goal as an issue, scopes the work from the code graph, names the feature branch, writes the task spec, and asks the engine to start the task.
 - **Judges, re-checks nothing.** After the review passes it judges only whether the change fits the design, and whether the files changed outside the spec should have been touched. It runs no check again and reviews no diff again.
 - **Asks for the pull request.** It reads the verdict from the record, never from reply text, and asks the engine to push and open the pull request. It never pushes or opens one by hand.
-- **Writes only docs tasks.** A change to docs or prompts that changes no behaviour is a docs task the planner writes itself in that task's worktree. Nothing stops an edit on the way; the close refuses a docs task whose commit touches a file that is not a docs type, and the reviewer sees it with the rest ([TASKS.md](TASKS.md#32-non-code-task)).
+- **Writes only docs tasks.** A change to docs or prompts that changes no behaviour is a docs task the planner writes itself in that task's worktree. Nothing stops an edit on the way; the close refuses a docs task whose commit touches a file that is not a docs type, and the reviewer sees it with the rest ([3_TASKS.md](../flows/3_TASKS.md#32-non-code-task)).
 - **Keeps the code graph's knowledge.** It records the flows and rules that span files, and proposes the project's areas to the Human. Only the planner writes or removes an area.
 - **Talks to the Human.** Only the planner asks the Human questions and reports to them. It raises main-folder changes as a report and never puts a file back itself.
 - **Never takes the Human's steps.** Setting the review mode, waiving a review and removing tmb are the Human's alone. The planner stores the Human's answer and never picks one.
@@ -56,7 +56,7 @@ The persona is not a role file: the engine gives it to the host's main agent at 
 
 ### Parallel lanes
 
-Flow 3.8 in [FLOWS.md](FLOWS.md): several sessions working in one project at once. A lane is one such session with the work it took.
+Flow 3.8 in [FLOWS.md](../flows/FLOWS.md): several sessions working in one project at once. A lane is one such session with the work it took.
 
 tmb keeps no lane record and manages no lanes. The host starts sessions, carries messages between them and lists them. tmb gives every session the same record, and its tools tell the planner what it needs to stay out of another session's way.
 
@@ -103,7 +103,7 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 - **No merge queue, lane priority or merge order of its own.** The Human decides what merges first by merging it first.
 - **No file leases and no dependency between sessions.** Two sessions that changed the same file meet as an ordinary rebase or merge conflict.
 - **No hub.** No session holds the state of the others.
-- **No review mode per lane.** A mode belongs to the project or to a repo ([AGILE.md](AGILE.md#where-the-review-mode-is-set)).
+- **No review mode per lane.** A mode belongs to the project or to a repo ([3_WORKFLOW.md](../flows/3_WORKFLOW.md#where-the-review-mode-is-set)).
 
 #### Planned for lanes
 
@@ -122,7 +122,7 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 
 ## Reviewer
 
-- **Agile: once per feature branch.** Tasks close and fold without a verdict of their own, code and docs alike, and the reviewer judges the whole branch at its tip before its pull request opens ([AGILE.md](AGILE.md)).
+- **Agile: once per feature branch.** Tasks close and fold without a verdict of their own, code and docs alike, and the reviewer judges the whole branch at its tip before its pull request opens ([3_WORKFLOW.md](../flows/3_WORKFLOW.md)).
 - **Truest: once per task,** on the task's commit, before that task's pull request opens.
 - **Judges what the diff breaks.** A success criterion, a caller or reader of the changed code, a security property, a stated performance budget. Style, naming and design fit are the planner's call, not findings.
 - **Reviews from the record and its own probes.** It reads the branch's and each task's brief, asks the code graph what calls or reads each changed thing, and probes with read-only commands.
@@ -131,7 +131,7 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 
 ## Agents a project creates
 
-**Planned.** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer. A consultant is one kind. How one is created and invoked is in [EXTENDING.md](EXTENDING.md).
+**Planned.** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer. A consultant is one kind. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md).
 
 - **Recorded.** Creating an agent is an entry in the record.
 - **Written per host.** The adapter writes the agent's file in each host's own format.

@@ -76,15 +76,15 @@ On tmb's own board, a bug report tmb drafts and the web form share one field lis
 - **A project starts with labels that work.** tmb ships a ready environment, and labels are part of it: with no knowledge of a project, the planner cannot invent good ones. So every group has a shipped default, and a new project can file and find issues from its first session.
 - **Four groups mean the same everywhere:** the types, the priorities, the triage status and the two decision values.
 - **Themes start from a shipped list of four** problems common to software projects: a design gap, docs that have drifted from the code, a regression, and technical debt. The project drops what it does not use and adds its own.
-- **Areas come from the project, once tmb knows it.** The planner proposes areas only after the first index, from the code graph: the project's main parts, what their READMEs say they are, and the paths each one covers, so an area can later be inferred from the paths an issue names. The Human edits the list ([ONBOARD.md](ONBOARD.md)). In a repo with no code yet, the planner proposes none and asks again when an index first finds some. The code graph holds these areas as named groups of files ([WORLD_MODEL.md](WORLD_MODEL.md#areas)). Planned: using them as the area labels of an issue.
+- **Areas come from the project, once tmb knows it.** The planner proposes areas only after the first index, from the code graph: the project's main parts, what their READMEs say they are, and the paths each one covers, so an area can later be inferred from the paths an issue names. The Human edits the list ([2_ONBOARD.md](../flows/2_ONBOARD.md)). In a repo with no code yet, the planner proposes none and asks again when an index first finds some. The code graph holds these areas as named groups of files ([2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md#areas)). Planned: using them as the area labels of an issue.
 - **Everything can be changed.** The Human can rename, add or drop any label, in any group, per project. The per-issue rules follow the project's own list.
 - **A project that already has labels keeps them.** The planner offers a mapping from the existing labels to the groups, and nothing on GitHub or GitLab is renamed, created or removed without the Human's yes. A label the mapping leaves out stays on its issues and is ignored by the rules.
 - **The local record is the source.** Labels are kept in the record and mirrored to GitHub or GitLab. When that host does not let the user apply labels, the local record still holds them, and a search through tmb still finds the issue.
 
 ## What the scheme does not do
 
-- **It does not replace the milestone.** A milestone says which body of work an issue belongs to, and a feature branch collects a milestone's tasks ([AGILE.md](AGILE.md)).
-- **It does not carry state tmb already records.** A task's lifecycle and its review mode live in the record, not in labels ([TASKS.md](TASKS.md), [AGILE.md](AGILE.md)).
+- **It does not replace the milestone.** A milestone says which body of work an issue belongs to, and a feature branch collects a milestone's tasks ([3_WORKFLOW.md](../flows/3_WORKFLOW.md)).
+- **It does not carry state tmb already records.** A task's lifecycle and its review mode live in the record, not in labels ([3_TASKS.md](../flows/3_TASKS.md), [3_WORKFLOW.md](../flows/3_WORKFLOW.md)).
 - **It does not replace the issue host's own fields.** A host such as GitHub or GitLab that has a native issue type or priority field enforces one value itself. Whether tmb should use those in place of the type and priority groups is open: their behaviour differs by account and by tool version.
 
 ## Planned

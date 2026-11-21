@@ -46,7 +46,7 @@ When a design is replaced, delete the old one outright. Code, prompts and docs d
 
 ## 7. Memory is hot and cold
 
-The record is the only source of truth. Context is a disposable cache of it: everything is written to the record as it happens, so context is never the only copy. That is what lets a new session, or another host, carry on. Every agent loads the smallest page it needs and ends at a task boundary. [MEMORY.md](./MEMORY.md) covers the tiers, what each costs, and how to tell which tier a fact belongs in.
+The record is the only source of truth. Context is a disposable cache of it: everything is written to the record as it happens, so context is never the only copy. That is what lets a new session, or another host, carry on. Every agent loads the smallest page it needs and ends at a task boundary. [MEMORY.md](MEMORY.md) covers the tiers, what each costs, and how to tell which tier a fact belongs in.
 
 ## 8. Any host, through adapters
 

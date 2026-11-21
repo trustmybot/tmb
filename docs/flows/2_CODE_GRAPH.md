@@ -2,7 +2,7 @@
 
 The planner is the architect of every project it works on. The code graph is the stable, queryable picture of the project it reasons from: its directories, files and symbols, and the links between them. It is built by `tmb init` and `tmb index`, kept fresh on read, and consulted at every cold start. Agents ask it where something lives and what depends on it, instead of reading whole files.
 
-The code graph is the middle of the three knowledge layers tmb develops itself by ([README.md](README.md)): it holds the relationships these docs leave out and the code leaves implicit.
+The code graph is the middle of the three knowledge layers tmb develops itself by ([README.md](../architecture/README.md)): it holds the relationships these docs leave out and the code leaves implicit.
 
 This page covers purpose, boundaries and the reasons behind the design. Its tables, tools and parsers are in the code; ask the code graph itself where.
 
@@ -42,7 +42,7 @@ The code graph is not part of the record. It lives in its own file beside it, on
 - **Built from git, never from the working folder.** Each repo is indexed at the commit of its base branch, so every session and worktree reads the same graph. One limit: the base branch is the local one, so a merge on GitHub is not seen until it is fetched.
 - **One snapshot per repo, not history.** The graph holds each repo at one commit. On top sit layers: one per open feature branch and one per open task ([Task overlay](#task-overlay)). Git is the history store: what changed between two commits is a diff, and the graph can be rebuilt at any commit.
 - **One step per write.** An index reads and parses first, then applies the whole layer at once, so a reader sees the old graph or the new one, never a mix.
-- **It works offline.** Indexing needs no network. Search is by name and by the words in a name; search by meaning is left out ([MEMORY.md](MEMORY.md#search)).
+- **It works offline.** Indexing needs no network. Search is by name and by the words in a name; search by meaning is left out ([MEMORY.md](../architecture/MEMORY.md#search)).
 - **Answers stay shallow.** Search by name first, callers before callees, one step by default.
 - **Honest limits.** Agents do not always use a graph when one is offered, and a symbol lookup can cost more than a plain text search for a simple question. So the graph is used where it earns its cost: scoping a task, and finding what a change may break. Plain search stays available for everything else, and an agent records every miss or wrong answer of the graph so its value can be measured.
 
@@ -165,7 +165,7 @@ flowchart TD
 ```
 
 - **An area is a named group of files**, with a one-line purpose. It is defined by path patterns to include and to leave out. A path rule cannot tell login from billing, so the planner names the areas and tmb stores and checks them. A function takes its file's area.
-- **Only the planner writes or removes an area.** It proposes the areas to the Human at onboarding ([ONBOARD.md](ONBOARD.md)). Every role can list them, and so can the Human from the command line.
+- **Only the planner writes or removes an area.** It proposes the areas to the Human at onboarding ([2_ONBOARD.md](2_ONBOARD.md)). Every role can list them, and so can the Human from the command line.
 - **"tests" is there from the start**, and holds every file the built-in test rule matches. The planner changes that rule on the area itself, with patterns to add and to leave out. It cannot be removed.
 - **One level of nesting.** An area may have a parent.
 - **A file can be in several areas, and has one main area**, by the order in the chart. A test file inside billing has billing as its main area and is also in tests.

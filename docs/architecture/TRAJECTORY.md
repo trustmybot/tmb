@@ -1,6 +1,6 @@
 # Trajectories
 
-The record of the work: what was asked, what was decided, what each agent did and how it ended. Any session can resume from it without the conversation that came before. This page covers what the record holds and how it answers "why is this still running?" and "why did this stop?" from records, not guesses. A task's own trajectory is in [TASKS.md](TASKS.md#task-lifecycle); this page covers the things a task runs inside: sessions, agent runs, gate decisions and check runs.
+The record of the work: what was asked, what was decided, what each agent did and how it ended. Any session can resume from it without the conversation that came before. This page covers what the record holds and how it answers "why is this still running?" and "why did this stop?" from records, not guesses. A task's own trajectory is in [3_TASKS.md](../flows/3_TASKS.md#task-lifecycle); this page covers the things a task runs inside: sessions, agent runs, gate decisions and check runs.
 
 tmb records outcomes at checkpoints. It does not record each tool call or each step of an agent.
 
@@ -156,7 +156,7 @@ A step that did not run is recorded as not run, with the reason: a check that co
 
 ## Where it lives
 
-One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one, in the workspace folder ([GIT.md](GIT.md#multi-repo-workspaces)). Each feature branch and task names its repo; one with none belongs to the project folder itself. The engine creates the file at init and is the only program that migrates it.
+One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one, in the workspace folder ([3_GIT.md](../flows/3_GIT.md#multi-repo-workspaces)). Each feature branch and task names its repo; one with none belongs to the project folder itself. The engine creates the file at init and is the only program that migrates it.
 
 | State | Gate | Other commands |
 |---|---|---|
@@ -164,7 +164,7 @@ One database file per project, inside the project's folder and left out of git. 
 | Readable | Decides normally | Run normally |
 | Unreadable, empty, or made by a newer tmb | Denies, naming the cause, and for a newer one the version that wrote it | None runs. `tmb doctor` still runs and reads the record read-only |
 
-- **The code graph is separate.** It can be rebuilt from git at any time and lives in its own file, one per repo. Indexing is not recorded in the trajectory ([WORLD_MODEL.md](WORLD_MODEL.md)).
+- **The code graph is separate.** It can be rebuilt from git at any time and lives in its own file, one per repo. Indexing is not recorded in the trajectory ([2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md)).
 - **Plugin projects.** A one-way migration carries a plugin project's records into a new tmb database and leaves the plugin's database untouched. A kind of record tmb does not have is left behind, not folded into another kind.
 
 ## Debugging with it
@@ -178,5 +178,5 @@ One database file per project, inside the project's folder and left out of git. 
 | Why did the gate let this push through? | The guard decision: covered by a pass or waiver, or an exempt repo. With no record in the project nothing is recorded, and the hook says so in one line |
 | Who waived this review? | The audit trail |
 | What did this task cost? | The cost on its runs, in tokens per model |
-| Why three re-runs of this task? | The task's events in order, with its runs and reviews ([TASKS.md](TASKS.md#task-lifecycle)) |
+| Why three re-runs of this task? | The task's events in order, with its runs and reviews ([3_TASKS.md](../flows/3_TASKS.md#task-lifecycle)) |
 | Why does this session never end? | Planned, with the session record |

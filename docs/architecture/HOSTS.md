@@ -104,7 +104,7 @@ flowchart TD
 
 - **The role prompts guide.** They tell the planner to plan, write a spec and ask the engine to start a task. An agent can ignore a prompt.
 - **The gate holds.** The host itself asks the engine at a checkpoint, and the engine answers from the record. An agent cannot skip that.
-- **The answer carries more than the role:** the open work, what onboarding left empty ([ONBOARD.md](ONBOARD.md)), and a map of the project from the code graph.
+- **The answer carries more than the role:** the open work, what onboarding left empty ([2_ONBOARD.md](../flows/2_ONBOARD.md)), and a map of the project from the code graph.
 - A session resumes from the record, so a new session needs nothing from the conversation before it.
 
 ## Containment
@@ -186,7 +186,7 @@ The few hooks tmb has. Each is one tmb event, whatever raised it.
 Several things could answer for one project: two channels' programs, an old build beside a new one, two hosts. Three rules keep a checkpoint from running twice or at two versions:
 
 1. **One program per project.** The project is tied to the program whose init last wired it. Its host events, its tool server and git's push hook all call that program.
-2. **One build per session.** While a session runs, every tmb call in its project runs the build the session started with. The host files are refreshed only at a session start with no task open ([INSTALL.md](INSTALL.md#upgrade)).
+2. **One build per session.** While a session runs, every tmb call in its project runs the build the session started with. The host files are refreshed only at a session start with no task open ([1_INSTALL.md](../flows/1_INSTALL.md#upgrade)).
 3. **One engine.** Every way in asks the same engine.
 
 One host event, answered:
@@ -226,9 +226,9 @@ Open:
 
 - **A project's data stays in the project.** The record, one code graph per repo, the task worktrees and small notes on which host files init created sit in tmb's own folder there. Nothing about a project is kept anywhere else on the machine.
 - **tmb writes only where the Human ran it.** A project gets tmb's files when the Human runs init in it, never because a session opened there.
-- **tmb changes only what it wrote.** In a host file or a hook it shares with the Human or another tool, tmb adds its own marked entries and leaves the rest. Remove takes out exactly those ([INSTALL.md](INSTALL.md#upgrade)).
+- **tmb changes only what it wrote.** In a host file or a hook it shares with the Human or another tool, tmb adds its own marked entries and leaves the rest. Remove takes out exactly those ([1_INSTALL.md](../flows/1_INSTALL.md#upgrade)).
 - **Reads outside the project are read-only and named.** tmb looks for the host's program on the machine, reads a plugin project's database when the Human migrates it, and reads GitHub through the Human's own command line.
-- **The host's own instruction file is never written.** The role reaches a session as the engine's answer to its session start. Planned (trustmybot/tmb#112): a cheatcode may add one reference line and take it out again ([EXTENDING.md](EXTENDING.md#cheatcodes)).
+- **The host's own instruction file is never written.** The role reaches a session as the engine's answer to its session start. Planned (trustmybot/tmb#112): a cheatcode may add one reference line and take it out again ([4_EXTENDING.md](../flows/4_EXTENDING.md#cheatcodes)).
 - **No login, no trust, no host settings.** tmb never changes a repo's branch protection, and changes no host setting beyond its own entries.
 
 Outside its own folder, init writes only these in a project:
@@ -239,7 +239,7 @@ Outside its own folder, init writes only these in a project:
 - `git init`, once, in a folder that is in no repo and holds none;
 - feature and task branches in git, which tmb never deletes while they hold work.
 
-Planned: the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([EXTENDING.md](EXTENDING.md)).
+Planned: the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([4_EXTENDING.md](../flows/4_EXTENDING.md)).
 
 On the machine, tmb is one program for every project, so two things live outside any project. Each channel's program has its own, and one never touches another's.
 
@@ -248,7 +248,7 @@ On the machine, tmb is one program for every project, so two things live outside
 | The user's program folder | The program, under its channel's name. The installer adds the folder to PATH unless told not to. |
 | The program's state folder | Kept builds, the time of the last look for an update, a marker per running session, the person's feedback setting, drafts of bug reports and the last error |
 
-- **Nothing is deleted by itself.** An old build goes only on the Human's yes ([INSTALL.md](INSTALL.md#upgrade)).
+- **Nothing is deleted by itself.** An old build goes only on the Human's yes ([1_INSTALL.md](../flows/1_INSTALL.md#upgrade)).
 - **Scratch files go to the system's temp folder** and are removed when the step ends.
 
 ### Tests never touch the live record

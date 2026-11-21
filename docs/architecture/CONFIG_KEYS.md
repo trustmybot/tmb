@@ -40,7 +40,7 @@ A repo is named by its path inside the workspace, relative and with forward slas
 
 ## Reading the settings
 
-Every key is null until it is first set, and readers treat null as "not set", never as a silent default. The one fallback is a host's role: a host with no entry in `host_roles` is the planner. When a session starts as the planner and `base_branch`, `review_mode` or `checks` is empty, the session start says so, and the planner applies the base branch and checks it recommends ([`ONBOARD.md`](ONBOARD.md)).
+Every key is null until it is first set, and readers treat null as "not set", never as a silent default. The one fallback is a host's role: a host with no entry in `host_roles` is the planner. When a session starts as the planner and `base_branch`, `review_mode` or `checks` is empty, the session start says so, and the planner applies the base branch and checks it recommends ([`2_ONBOARD.md`](../flows/2_ONBOARD.md)).
 
 Two more audit entries record how a review mode was chosen, beside the setting itself:
 
@@ -51,7 +51,7 @@ Two more audit entries record how a review mode was chosen, beside the setting i
 
 ## Branch policy is per repo in a workspace
 
-In a single-repo project the branch policy is the two project keys, `base_branch` and `checks`. In a workspace they are not used: each repo has its own in `repos`, and `settings_set` refuses the project keys there. There is no branching model key: a repo has one base branch, and feature branches are cut from it ([`GIT.md`](GIT.md)).
+In a single-repo project the branch policy is the two project keys, `base_branch` and `checks`. In a workspace they are not used: each repo has its own in `repos`, and `settings_set` refuses the project keys there. There is no branching model key: a repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
 
 ## Kept per machine, not in the record
 

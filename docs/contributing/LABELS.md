@@ -98,5 +98,5 @@ No label marks an issue as stale. Such a label would only repeat the issue's las
 
 ## Related
 
-- [`ENUMS.md`](./ENUMS.md) — same rule for the DB vocabularies: adopt an established convention, invent only where none applies
-- [`README.md`](./README.md#issues) — filing an issue
+- [`ENUMS.md`](ENUMS.md) — same rule for the DB vocabularies: adopt an established convention, invent only where none applies
+- [`README.md`](README.md#issues) — filing an issue

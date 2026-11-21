@@ -1,6 +1,6 @@
 # Extending the team
 
-How a project extends its team: published capabilities (cheatcodes), created agents, skills and consultants. This page holds every case of flows 4.1 to 4.4 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [RESPONSIBILITIES.md](RESPONSIBILITIES.md).
+How a project extends its team: published capabilities (cheatcodes), created agents, skills and consultants. This page holds every case of flows 4.1 to 4.4 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [RESPONSIBILITIES.md](../architecture/RESPONSIBILITIES.md).
 
 tmb ships three roles: planner, worker and reviewer. Everything else on this page is **Planned** ([Planned](#planned)).
 

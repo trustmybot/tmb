@@ -5,7 +5,7 @@ Two SQLite files per project, both in the project's `.tmb/` folder and gitignore
 | File | Holds | Schema | Version |
 |---|---|---|---|
 | `.tmb/trajectory.db` | The record: every event and the current state derived from them | `src/engine/store/schema.ts` | `SCHEMA_VERSION = 11` (`PRAGMA user_version`) |
-| `.tmb/graph.db` | The code graph ([`WORLD_MODEL.md`](./WORLD_MODEL.md)) | `src/engine/graph/db.ts` | `GRAPH_SCHEMA_VERSION = 5` |
+| `.tmb/graph.db` | The code graph ([`2_CODE_GRAPH.md`](../flows/2_CODE_GRAPH.md)) | `src/engine/graph/db.ts` | `GRAPH_SCHEMA_VERSION = 5` |
 
 In a workspace of several repos, the repos share one record, and each repo has its own graph file at `.tmb/graphs/<repo>.db`.
 
@@ -13,7 +13,7 @@ In a workspace of several repos, the repos share one record, and each repo has i
 
 ## Overview
 
-The record is tmb's cold memory ([`MEMORY.md`](./MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups, and the code graph is a fifth, in its own file:
+The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups, and the code graph is a fifth, in its own file:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
 - **Projections** — `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `audit`. Each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`.
@@ -701,7 +701,7 @@ There are no embedding tables: search is ranked word search plus the code graph.
 
 ## The code graph file
 
-The code graph lives in its own file, apart from the record, so a build never holds the record's write lock. [`WORLD_MODEL.md`](./WORLD_MODEL.md) holds the design these tables carry.
+The code graph lives in its own file, apart from the record, so a build never holds the record's write lock. [`2_CODE_GRAPH.md`](../flows/2_CODE_GRAPH.md) holds the design these tables carry.
 
 | Group | Tables | Rebuilt from |
 |---|---|---|
@@ -735,7 +735,7 @@ The code graph lives in its own file, apart from the record, so a build never ho
 - **Checks are recorded, not re-run.** Each run of a task's checks is a `check_runs` row with each command it ran and the commit it ran at.
 - **Cost is metered, not stored as totals.** A run's `cost` holds the tokens it used per model, filled when the run ends.
 - **Nothing is dropped silently.** A dropped task or feature branch keeps its row and its `drop_reason`.
-- **Roles are enforced by the engine, not the schema.** Each operation checks which role may call it ([`RESPONSIBILITIES.md`](./RESPONSIBILITIES.md)).
+- **Roles are enforced by the engine, not the schema.** Each operation checks which role may call it ([`RESPONSIBILITIES.md`](RESPONSIBILITIES.md)).
 
 ## Schema migration policy
 

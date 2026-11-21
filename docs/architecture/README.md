@@ -8,9 +8,10 @@ A rule that is decided but not built carries **Planned**. A rule the Human has n
 
 | Kind | Pages | For |
 |---|---|---|
-| **High-level design** | This page, [PHILOSOPHY.md](PHILOSOPHY.md), [FLOWS.md](FLOWS.md), [RESPONSIBILITIES.md](RESPONSIBILITIES.md) | What tmb is and how work flows. Short, one chart per flow. The Human reviews these. |
+| **High-level design** | This page, [PHILOSOPHY.md](PHILOSOPHY.md), [FLOWS.md](../flows/FLOWS.md), [RESPONSIBILITIES.md](RESPONSIBILITIES.md) | What tmb is and how work flows. Short, one chart per flow. The Human reviews these. |
 | **Low-level design** | Every other page | The detail under a high-level flow: every other case, failures, and how to debug them. For building and debugging tmb. |
 
+- **Two folders.** `docs/flows/` holds the design in time: how tmb takes work through its steps. [FLOWS.md](../flows/FLOWS.md) is its index, and each detail page there starts with the number of its flow group, as `3_TASKS.md` details group 3. `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. Its pages carry no number.
 - A detail page follows the high-level pages. Where they disagree, the high-level page wins and the detail page is fixed.
 - **No schedule here.** Versions, milestones and the state of the work live on the GitHub board and in the record. These pages hold the design only, so they do not go stale when work moves.
 
@@ -44,7 +45,7 @@ flowchart TD
 tmb's own repo keeps each fact in exactly one of three layers, at the level of detail that layer holds best:
 
 - **High-level design: these docs.** Components, boundaries, flows, invariants and the reasons behind them. They name no functions, files, tables or tool parameters, so a refactor does not make them stale.
-- **Mid-level relationships: the code graph.** What lives where and what depends on what, derived from the code so it cannot drift from it. [WORLD_MODEL.md](WORLD_MODEL.md) covers it.
+- **Mid-level relationships: the code graph.** What lives where and what depends on what, derived from the code so it cannot drift from it. [2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md) covers it.
 - **Low-level logic: the code.** How a step is done, in self-explaining names and tests.
 
 A fact belongs in the lowest layer that can hold it. A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay here. When a page here starts naming symbols, the detail has drifted into the wrong layer: move it down, don't copy it. Two exceptions: a generated page guarded by a freshness test, such as [ERD.md](ERD.md) and [CONFIG_KEYS.md](CONFIG_KEYS.md); and the install and debugging sections of a detail page, which may name what a user types or sees (commands, settings, environment variables, messages and file locations), never internal functions or tables.
@@ -56,37 +57,37 @@ This rule is how tmb develops itself. It comes from our experience of design and
 New to tmb? Read in this order:
 
 1. [PHILOSOPHY.md](PHILOSOPHY.md) — why tmb is built the way it is.
-2. [FLOWS.md](FLOWS.md) — the starting point for every flow: what happens, one ideal-case chart each, and a link to its detail page.
+2. [FLOWS.md](../flows/FLOWS.md) — the starting point for every flow: what happens, one ideal-case chart each, and a link to its detail page.
 3. [HOSTS.md](HOSTS.md) — how tmb works with any host through an adapter.
 4. [RESPONSIBILITIES.md](RESPONSIBILITIES.md) — who does each step.
-5. [TASKS.md](TASKS.md) — every case of a code task and a docs task from ask to merge, who owns each quality check, and why a task gets stuck.
-6. [MEMORY.md](MEMORY.md) and [WORLD_MODEL.md](WORLD_MODEL.md) — what agents remember and how they find their way around a project.
-7. [GIT.md](GIT.md) — where the work sits at every stage of a task.
-8. [EXTENDING.md](EXTENDING.md) — how a project adds agents, skills and cheatcodes.
+5. [3_TASKS.md](../flows/3_TASKS.md) — every case of a code task and a docs task from ask to merge, who owns each quality check, and why a task gets stuck.
+6. [MEMORY.md](MEMORY.md) and [2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md) — what agents remember and how they find their way around a project.
+7. [3_GIT.md](../flows/3_GIT.md) — where the work sits at every stage of a task.
+8. [4_EXTENDING.md](../flows/4_EXTENDING.md) — how a project adds agents, skills and cheatcodes.
 
 Looking for one answer instead?
 
 | Question | Read |
 |---|---|
 | Why does tmb do X at all? | [PHILOSOPHY.md](PHILOSOPHY.md) |
-| What happens when the Human asks for Y? | [FLOWS.md](FLOWS.md) |
+| What happens when the Human asks for Y? | [FLOWS.md](../flows/FLOWS.md) |
 | How does tmb work with a host such as Claude Code without being built for it? | [HOSTS.md](HOSTS.md) |
-| How is tmb installed and updated, and what do I check when it is missing or degraded? | [INSTALL.md](INSTALL.md) |
-| What does first contact ask, and what does it record? | [ONBOARD.md](ONBOARD.md) |
-| How does the planner learn a repo's checks? | [ONBOARD.md](ONBOARD.md#the-repos-checks) |
-| Who owns which quality check? | [TASKS.md](TASKS.md#quality-layers) |
-| Why is my task stuck? | [TASKS.md](TASKS.md) |
+| How is tmb installed and updated, and what do I check when it is missing or degraded? | [1_INSTALL.md](../flows/1_INSTALL.md) |
+| What does first contact ask, and what does it record? | [2_ONBOARD.md](../flows/2_ONBOARD.md) |
+| How does the planner learn a repo's checks? | [2_ONBOARD.md](../flows/2_ONBOARD.md#the-repos-checks) |
+| Who owns which quality check? | [3_TASKS.md](../flows/3_TASKS.md#quality-layers) |
+| Why is my task stuck? | [3_TASKS.md](../flows/3_TASKS.md) |
 | What is recorded, and how is work resumed from it? | [TRAJECTORY.md](TRAJECTORY.md) |
-| What does agile review mode skip, and when is the skipped review done? | [AGILE.md](AGILE.md) |
-| How does a project gain an agent, a skill or a second opinion? | [EXTENDING.md](EXTENDING.md) |
+| What does agile review mode skip, and when is the skipped review done? | [3_WORKFLOW.md](../flows/3_WORKFLOW.md) |
+| How does a project gain an agent, a skill or a second opinion? | [4_EXTENDING.md](../flows/4_EXTENDING.md) |
 | How are issues labelled, and how do I find what waits on me? | [ISSUES.md](ISSUES.md) |
 | Which agent may do Z? | [RESPONSIBILITIES.md](RESPONSIBILITIES.md) |
 | What does an agent see at the start of a turn? | [MEMORY.md](MEMORY.md) |
-| How does the planner know where code lives? | [WORLD_MODEL.md](WORLD_MODEL.md) |
+| How does the planner know where code lives? | [2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md) |
 | How do several sessions work in parallel? | [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) |
-| Which branch is the work on, and which repo? | [GIT.md](GIT.md) |
+| Which branch is the work on, and which repo? | [3_GIT.md](../flows/3_GIT.md) |
 | May tmb write to this path? | [HOSTS.md](HOSTS.md#containment) |
-| How will the planner add a published skill? | [EXTENDING.md](EXTENDING.md#cheatcodes) |
+| How will the planner add a published skill? | [4_EXTENDING.md](../flows/4_EXTENDING.md#cheatcodes) |
 | What does the record store? | [ERD.md](ERD.md) |
 | Which project settings exist? | [CONFIG_KEYS.md](CONFIG_KEYS.md) |
 | What do I type? | The [reference](../reference/README.md) |
@@ -96,19 +97,19 @@ Looking for one answer instead?
 ## Index
 
 - [PHILOSOPHY.md](PHILOSOPHY.md) — The principles behind the design: how an idea becomes tasks, the dev-vs-user-runtime boundary, one owner per quality check, code over prompts for enforcement, clean removal, hot and cold memory, any host, gating the outcome, and git before a new wheel.
-- [FLOWS.md](FLOWS.md) — The starting point for every flow: the index of all flows from install to bug reports, and one ideal-case chart each linking to its detail page.
+- [FLOWS.md](../flows/FLOWS.md) — The starting point for every flow: the index of all flows from install to bug reports, and one ideal-case chart each linking to its detail page.
 - [HOSTS.md](HOSTS.md) — How tmb works with an agent program without being built for one: the engine, the adapter, what each host can and cannot do, containment (what tmb writes and where, and how its gates fail), and several hosts on one record.
-- [INSTALL.md](INSTALL.md) — Install, channels, updates and session start in every case, and what to check when tmb is missing or degraded.
-- [ONBOARD.md](ONBOARD.md) — First contact: the settings, who sets each, and how a re-run keeps what still stands.
-- [TASKS.md](TASKS.md) — Every case of a task from ask to merge: the code task and the docs task with each step's owner, the push gate both share, retry and escalation, PR comment triage, the quality-layer rules, and debugging a stuck task.
+- [1_INSTALL.md](../flows/1_INSTALL.md) — Install, channels, updates and session start in every case, and what to check when tmb is missing or degraded.
+- [2_ONBOARD.md](../flows/2_ONBOARD.md) — First contact: the settings, who sets each, and how a re-run keeps what still stands.
+- [3_TASKS.md](../flows/3_TASKS.md) — Every case of a task from ask to merge: the code task and the docs task with each step's owner, the push gate both share, retry and escalation, PR comment triage, the quality-layer rules, and debugging a stuck task.
 - [TRAJECTORY.md](TRAJECTORY.md) — The record: what is kept of sessions, agent runs and checks, and how a hang or a dead run is found from it.
-- [AGILE.md](AGILE.md) — The review modes: where the mode is set, the long-lived feature branch agile tasks fold into without a per-task review, the one review of that branch, the gate on its one PR into the base branch, and how a mode switch treats tasks already started.
+- [3_WORKFLOW.md](../flows/3_WORKFLOW.md) — The workflow modes, agile and truest: where the mode is set, how each takes a task to the base branch, and how the mode is switched.
 - [ISSUES.md](ISSUES.md) — The groups of issue labels, the rules for each, and how a project makes the scheme its own.
-- [EXTENDING.md](EXTENDING.md) — How a project gains agents, skills and consultants, and what each path refuses.
+- [4_EXTENDING.md](../flows/4_EXTENDING.md) — How a project gains agents, skills and consultants, and what each path refuses.
 - [RESPONSIBILITIES.md](RESPONSIBILITIES.md) — What each shipped role is for, what it may and may not do, and why the roles are split this way.
 - [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold storage in the record, hot session context, and pinned prompts, with the cost of each tier.
-- [WORLD_MODEL.md](WORLD_MODEL.md) — The code graph the planner reasons from: its purpose, its boundaries, and why it is a derived cache rebuilt by indexing.
-- [GIT.md](GIT.md) — Where each actor's git state lives at every stage of a task, and how a multi-repo workspace resolves each operation to its repo.
+- [2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md) — The code graph the planner reasons from: its purpose, its boundaries, and why it is a derived cache rebuilt by indexing.
+- [3_GIT.md](../flows/3_GIT.md) — Where each actor's git state lives at every stage of a task, and how a multi-repo workspace resolves each operation to its repo.
 - [ERD.md](ERD.md) — The record's schema as an entity relationship diagram. Generated from the schema.
 - [CONFIG_KEYS.md](CONFIG_KEYS.md) — Every project setting tmb reads, with its default and what it changes. Generated from the code.
 - [The reference](../reference/README.md) — What a user types: install, channels, setup, every command, and the steps only the Human may take.
@@ -137,7 +138,7 @@ Looking for one answer instead?
 | Dashboard | A local web page that reads the engine's record. A desktop program with the dashboard built in is Planned (trustmybot/tmb#79). |
 | Remote | GitHub only. |
 | Sync with the remote | Planned (trustmybot/tmb#70). It brings pull request comments into the record and syncs issues both ways; issues that exist only on GitHub are not all copied in. |
-| Created agents | Planned. An agent a project creates is recorded and harnessed like the worker and the reviewer ([EXTENDING.md](EXTENDING.md)). |
+| Created agents | Planned. An agent a project creates is recorded and harnessed like the worker and the reviewer ([4_EXTENDING.md](../flows/4_EXTENDING.md)). |
 | License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
 | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
 

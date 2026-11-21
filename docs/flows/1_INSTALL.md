@@ -2,7 +2,7 @@
 
 Every case of flow 1.1 in [FLOWS.md](FLOWS.md): how tmb gets onto a machine and into a project, how an update lands, what each session start does, and how to tell what broke. The commands a user types are in the [reference](../reference/README.md).
 
-tmb is one compiled program per platform, not a plugin of any host. It holds the engine, the command line, the tool server, the dashboard's pages and every host adapter ([HOSTS.md](HOSTS.md)). Nothing else has to be installed first: no Node, no package install. tmb is one program for the whole machine; only the record and the host wiring are per project.
+tmb is one compiled program per platform, not a plugin of any host. It holds the engine, the command line, the tool server, the dashboard's pages and every host adapter ([HOSTS.md](../architecture/HOSTS.md)). Nothing else has to be installed first: no Node, no package install. tmb is one program for the whole machine; only the record and the host wiring are per project.
 
 ```mermaid
 flowchart TD
@@ -42,12 +42,12 @@ The installer script is the only supported way to install. It needs no login, ch
 
 ### What init writes
 
-`tmb init` asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162). It finds the installed host and has its adapter wire tmb in. It leaves tmb's settings empty and ends by saying so and how they get filled ([ONBOARD.md](ONBOARD.md)).
+`tmb init` asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162). It finds the installed host and has its adapter wire tmb in. It leaves tmb's settings empty and ends by saying so and how they get filled ([2_ONBOARD.md](2_ONBOARD.md)).
 
 | Init writes | Where |
 |---|---|
 | The record | `.tmb/` in the project |
-| The tool server's registration, the event wiring and the role files | The host's own project files, through its adapter ([HOSTS.md](HOSTS.md)) |
+| The tool server's registration, the event wiring and the role files | The host's own project files, through its adapter ([HOSTS.md](../architecture/HOSTS.md)) |
 | git's pre-push hook | Each repo tmb works in |
 | The code graph | `.tmb/`, one graph per repo |
 | Ignore lines for the above | `.gitignore` |
@@ -129,11 +129,11 @@ flowchart TD
 ## Session start
 
 - **The role comes from the engine, every time.** The host raises its session start event, and the engine answers with the host's role, the open work from the record and the project's layout from the code graph. A host that raises the event again on resume, clear or compaction gets the same answer, so a session resumes from the record and needs nothing from the conversation before it. tmb never writes the host's own instruction file.
-- **Never blocking.** A session start never fails. With a record it cannot read, it gives the role and one line naming the problem, and the gates deny until it is fixed ([HOSTS.md](HOSTS.md#gates-fail-closed)).
+- **Never blocking.** A session start never fails. With a record it cannot read, it gives the role and one line naming the problem, and the gates deny until it is fixed ([HOSTS.md](../architecture/HOSTS.md#gates-fail-closed)).
 - **One line per finding.** The planner is told, in one line each: a host-file refresh, what `tmb doctor` would find ("N things need a look"), each pull request that ended since the last session, and a repo whose push gate is off. It runs only doctor's quick checks, asks git and not GitHub, and says nothing when there is nothing to say.
-- **Empty settings start first contact** ([ONBOARD.md](ONBOARD.md)).
+- **Empty settings start first contact** ([2_ONBOARD.md](2_ONBOARD.md)).
 - **It tidies.** With no task open or in review, tmb tries again to remove the worktrees closed and dropped tasks kept.
-- **Unattended runs.** A run with no one to answer is told so first ([HOSTS.md](HOSTS.md#unattended-mode)).
+- **Unattended runs.** A run with no one to answer is told so first ([HOSTS.md](../architecture/HOSTS.md#unattended-mode)).
 - **The push gate.** Init installs git's pre-push hook, not session start. There is no switch that turns it off; a repo marked exempt gets none. A repo whose pre-push hook is another tool's keeps that hook, and the gate is off there until the Human says yes to tmb's one line in it; init, every session start and `tmb doctor` name the repo until then (trustmybot/tmb#184).
 - **Which record.** The nearest record in the session's folder or a folder above it.
 

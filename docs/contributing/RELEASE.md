@@ -1,6 +1,6 @@
 # Releasing
 
-This page is for maintainers only. It covers the three channels, dev builds, the checks a tag runs, and how to cut rc (release candidate) and stable releases. It states only what the workflows in `.github/workflows` do. Contributors need none of this; see [`README.md`](./README.md).
+This page is for maintainers only. It covers the three channels, dev builds, the checks a tag runs, and how to cut rc (release candidate) and stable releases. It states only what the workflows in `.github/workflows` do. Contributors need none of this; see [`README.md`](README.md).
 
 ## Channels
 
@@ -23,7 +23,7 @@ flowchart TD
     RW --> SC["stable channel"]
 ```
 
-Release files go to one public repo, `trustmybot/tmb-releases`, separate from the source repo, so an install or an update is a plain download that needs no login. Nothing publishes on a merge to any branch but `dev`; an rc or a stable release is published only by its tag. The channels install side by side, and each updates only itself ([INSTALL.md](../architecture/INSTALL.md)).
+Release files go to one public repo, `trustmybot/tmb-releases`, separate from the source repo, so an install or an update is a plain download that needs no login. Nothing publishes on a merge to any branch but `dev`; an rc or a stable release is published only by its tag. The channels install side by side, and each updates only itself ([1_INSTALL.md](../flows/1_INSTALL.md)).
 
 ## Dev builds
 
@@ -98,6 +98,6 @@ Planned: a gate on GitHub that an rc must pass before it publishes.
 Open, for the Human:
 
 - **Where the version is bumped.** A tag's version comes from the tag alone. `package.json` gives only the `X.Y.Z` of dev builds, and no script or workflow changes it.
-- **What reaches `main`, and how.** `main` holds releases only ([README.md](./README.md#branches)), but no workflow moves it, and none checks which branch a tag is on.
+- **What reaches `main`, and how.** `main` holds releases only ([README.md](README.md#branches)), but no workflow moves it, and none checks which branch a tag is on.
 - **Whether a stable tag must sit on the commit of a passed rc.** Nothing checks it.
 - **Whether tmb keeps a changelog.**

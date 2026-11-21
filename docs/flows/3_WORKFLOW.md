@@ -1,21 +1,31 @@
-# Agile review mode
+# Workflow modes
 
-Every case of flow 3.9 in [FLOWS.md](FLOWS.md): how agile work builds up on a long-lived feature branch, how its tasks close without a review of their own, how the branch is reviewed once before its pull request opens, and how the review mode is set and changed.
+Every case of flows 3.9 and 3.10 in [FLOWS.md](FLOWS.md): the two review modes, how each takes a task from its start to the base branch, and how the mode is set and changed.
 
 The review mode decides who reviews a change and when. Who merges is a separate question: the Human does.
 
-## Why a feature branch
+## The two modes
 
-Agility is agile mode's one goal: the feature reaches a state the Human can try, change or drop sooner, with fewer reviews and CI runs on the way.
+```mermaid
+flowchart TD
+    S["A task closes on its checks"] --> M{"The mode the task started in"}
+    M -- agile --> A1["Folds into the feature branch, no review of its own"]
+    A1 --> A2["Milestone reached: one review of the whole branch"]
+    A2 --> A3["One pull request per milestone"]
+    M -- truest --> T1["Waits in review at its commit"]
+    T1 --> T2["One review of the task"]
+    T2 --> T3["One pull request per task"]
+    A3 --> H["Human merges"]
+    T3 --> H
+```
 
 | Mode | Review | Reaches the base branch as | For |
 |---|---|---|---|
 | **Agile** (recommended; the Human chooses) | Once, on the whole feature branch | One pull request per milestone | A feature built in many small tasks and judged as a whole |
 | **Truest** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed |
 
-- **One feature branch per milestone.** Each task closes on its checks alone and folds into the branch locally, with no pull request and no CI run of its own. The Human can try the branch at any time.
 - **Only the Human chooses the mode,** because it decides how many tokens the project uses. tmb marks agile as recommended and shows what each mode costs. It never picks: until a mode is chosen, no task starts.
-- **Truest has no feature branch.** Each task is cut from the base branch and gets its own review and pull request ([GIT.md](GIT.md#rebasing-a-reviewed-task)).
+- **A mode per repo.** Every flow in group 3 runs under the mode its task started in.
 
 ## Where the review mode is set
 
@@ -33,12 +43,32 @@ flowchart TD
 ```
 
 - **Project.** The planner asks the Human for the mode among its onboarding questions at the first session, and stores the answer. The Human can also set it with `tmb onboard`. Setup itself asks nothing.
-- **Repo.** In a workspace of several repos, a repo can name its own mode. One that names none follows the workspace's, and follows it when it changes. Onboarding asks for the workspace's mode once, then asks once whether any repo takes its own ([GIT.md](GIT.md#multi-repo-workspaces)).
+- **Repo.** In a workspace of several repos, a repo can name its own mode. One that names none follows the workspace's, and follows it when it changes. Onboarding asks for the workspace's mode once, then asks once whether any repo takes its own ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
 - **The task keeps it.** A task records the mode it was started in. A later change of mode applies to tasks started after it.
 - **A fence keeps the choice the Human's.** On the command line the mode is set only on a terminal, after a typed yes. One exception: a run with no one to ask, such as CI, may set a mode where none is set, and never changes one.
 - **tmb keeps it.** The mode lives in tmb's record, and every change is in the audit trail.
 
-## The feature branch
+## Switching review modes
+
+```mermaid
+flowchart TD
+    A["Human changes the project's mode"] --> B[Tasks started later use it, in every repo that names no mode of its own]
+    C["Human changes one repo's mode"] --> D[Tasks started later in that repo use it]
+    B --> K[Tasks already started keep theirs]
+    D --> K
+```
+
+- **Only the Human switches,** by the same fences as the first choice. The planner stores the Human's answer and never picks one.
+- **The start decides.** A task opened under one mode finishes under it.
+- **A truest repo starts no feature branch.** A task there is cut from the base branch and goes into review at its close.
+
+## Agile mode
+
+Agility is the one goal: the feature reaches a state the Human can try, change or drop sooner, with fewer reviews and CI runs on the way.
+
+- **One feature branch per milestone.** Each task closes on its checks alone and folds into the branch locally, with no pull request and no CI run of its own. The Human can try the branch at any time.
+
+### The feature branch
 
 ```mermaid
 flowchart TD
@@ -65,7 +95,7 @@ flowchart TD
 - **The base branch is brought in before the review.** On the planner's request the engine merges the base branch in, with a merge commit and never a rebase, since the branch is already pushed. The planner asks at the milestone, and earlier whenever the base moved. A conflict changes nothing and names the files: the planner settles it in a task on the branch, or raises it to the Human.
 - **How it ends.** Merged, closed or dropped; see [Merge gate](#merge-gate). tmb never deletes the branch.
 
-## Review state
+### Review state
 
 tmb keeps no review state per task. An agile task is open, closed or dropped, and review is a fact about one commit: the feature branch's tip.
 
@@ -88,7 +118,7 @@ flowchart LR
 - **A moved tip is uncovered.** Any new commit on the branch needs a new pass or waiver before it reaches the pull request.
 - **A fail sends the work back.** The planner starts a task for each blocking finding, and the new tip is reviewed again.
 
-## Task flow
+### Task flow
 
 ```mermaid
 flowchart TD
@@ -111,7 +141,7 @@ flowchart TD
 - **The planner judges the design fit once,** on the whole branch after the reviewer, not at each close.
 - **A task that will not close is dropped,** with a reason, by the planner or the Human. Nothing of it reaches the feature branch, and a new task can name the one it replaces.
 
-## Safe close
+### Safe close
 
 Dropping the per-task review removes one gate and nothing else.
 
@@ -139,7 +169,7 @@ flowchart TD
 - **Two tasks may change the same file.** There is no lock. A concurrent fold is never lost: the later task is rebased, and a clash holds back its close until it is settled.
 - **The backup push is never forced,** and a failed push does not reopen the task. It is skipped when there is no remote, and while the branch's pull request is open.
 
-## Feature branch review
+### Feature branch review
 
 ```mermaid
 flowchart TD
@@ -164,9 +194,9 @@ flowchart TD
 - **Docs tasks are in the same review.** A docs task that changed behaviour is a blocking finding, and that part is redone as a code task.
 - **The brief says whether the branch holds the base.** Nothing refuses a review of a branch that does not; the brief is how the planner and the reviewer know.
 - **The verdict is on one commit.** tmb takes it only on the branch's current tip.
-- **A second host can be the reviewer.** A host set up as the project's reviewer is told at session start which branches wait for a review ([HOSTS.md](HOSTS.md)).
+- **A second host can be the reviewer.** A host set up as the project's reviewer is told at session start which branches wait for a review ([HOSTS.md](../architecture/HOSTS.md)).
 
-## Merge gate
+### Merge gate
 
 The feature branch reaches the base branch only through one gated pull request.
 
@@ -184,17 +214,17 @@ flowchart TD
     RD --> M
 ```
 
-- **The push gate backs it.** A push that brings onto the base branch a commit no covered tip holds is refused, whoever typed it ([GIT.md](GIT.md#the-push-gate-at-gits-own-hook)).
+- **The push gate backs it.** A push that brings onto the base branch a commit no covered tip holds is refused, whoever typed it ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)).
 - **Waivers.** Only the Human waives a review: on a terminal, after a typed yes, with a reason. The waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The audit trail keeps it, and the commit's mark on GitHub says the review was waived.
 - **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line: at the planner's session start, when the branches are listed, and for the dashboard. A read that fails changes nothing. The session start names each pull request that ended since the last session.
 - **Dropped work.** The planner or the Human drops a branch nobody will merge, with a reason. Dropped is final, and the branch is kept in git. A drop is refused while a task on the branch is open or in review, and while its pull request is open: the Human closes the pull request first.
 
-### New work on a branch whose pull request is open
+#### New work on a branch whose pull request is open
 
 - **The branch takes more tasks:** fixes for a failing check or a review comment, and new work that builds on what the branch holds. The base branch does not hold that work yet, so a new branch could not build on it. The planner says in its reply that the pull request grows, and does not stop to ask.
 - **No unreviewed commit reaches an open pull request.** While it is open, a fold or a merge of the base is not pushed, and the answer says so. The new commits stay in the local branch until the new tip is passed or waived. The pull request step then pushes the tip to the same pull request and opens no second one.
 
-### A project with no remote
+#### A project with no remote
 
 Nothing is pushed and no pull request opens. A close skips the backup push and says so. Once the tip is covered, the pull request step records the branch ready and gives the Human the command to merge it locally.
 
@@ -202,7 +232,7 @@ Nothing is pushed and no pull request opens. A close skips the backup push and s
 - **One limit.** When the base changed the same lines again after the merge, tmb cannot tell. The branch stays ready until it is dropped with a reason that says where the work went.
 - **A ready branch takes fix tasks.** The first one opens it again, and its new tip needs a new pass or waiver.
 
-### A closed feature branch taken up again
+#### A closed feature branch taken up again
 
 A branch whose pull request closed without a merge is recorded as closed, and the planner's session start says so.
 
@@ -210,19 +240,34 @@ A branch whose pull request closed without a merge is recorded as closed, and th
 - **A task that names the branch** opens it again for rework.
 - **A pull request the Human reopened on GitHub** is recorded, and tmb opens none. The record keeps the earlier pull request's link.
 
-## Switching review modes
+## Truest mode
+
+Nothing reaches the base branch unreviewed. There is no feature branch: every task is cut from the base branch and gets its own review and its own pull request.
 
 ```mermaid
 flowchart TD
-    A["Human changes the project's mode"] --> B[Tasks started later use it, in every repo that names no mode of its own]
-    C["Human changes one repo's mode"] --> D[Tasks started later in that repo use it]
-    B --> K[Tasks already started keep theirs]
-    D --> K
+    A["Engine cuts the task branch from the base branch"] --> B["Worker implements, or the planner writes docs"]
+    B --> C{"Checks pass at close?"}
+    C -- no --> B
+    C -- yes --> D["Task in review at its commit<br/>worktree kept, nothing pushed"]
+    D --> E{"Reviewer's verdict on that commit"}
+    E -- fail --> F["Task open again in the same worktree"]
+    F --> B
+    E -- "pass, or the Human waives this task" --> G{"Base branch moved?"}
+    G -- no --> P["Engine pushes the task branch, opens its pull request, closes the task"]
+    G -- yes --> R["Engine rebases the reviewed commit, runs the checks again"]
+    R -- "conflict, or checks fail" --> F
+    R -- "same change" --> P
+    R -- "change differs" --> D
+    P --> H["Human merges"]
 ```
 
-- **Only the Human switches,** by the same fences as the first choice. The planner stores the Human's answer and never picks one.
-- **The start decides.** A task opened under one mode finishes under it.
-- **A truest repo starts no feature branch.** A task there is cut from the base branch and goes into review at its close.
+- **A review per task.** The reviewer judges the task's commit, and the verdict is recorded for that exact commit.
+- **A waiver per task.** Only the Human waives a review, with a reason, on a terminal.
+- **Nothing is pushed before the review.** The task waits at its commit, in its own worktree.
+- **The rebase runs once, before the first push.** An open pull request is never rebased. A pass carries over when the rebased change is the same; a change that differs gets one new review ([3_GIT.md](3_GIT.md#rebasing-a-reviewed-task)).
+- **The push gate holds here too:** a push that carries a task's commit no pass or waiver covers is refused ([3_TASKS.md](3_TASKS.md#33-push-gate)).
+- **Every other case,** failures included: [3_TASKS.md](3_TASKS.md).
 
 ## Planned
 

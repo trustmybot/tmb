@@ -1,6 +1,6 @@
 # Git workflow
 
-Where the work sits at every stage of a tmb task, what the engine does in git, what the push gate lets leave the machine, and how a workspace of several repos decides which repo a step belongs to. [FLOWS.md](./FLOWS.md) shows the task chain this serves, from the Human's ask to the merge.
+Where the work sits at every stage of a tmb task, what the engine does in git, what the push gate lets leave the machine, and how a workspace of several repos decides which repo a step belongs to. [FLOWS.md](FLOWS.md) shows the task chain this serves, from the Human's ask to the merge.
 
 ## Core principle: local is canonical, origin is downstream
 
@@ -25,13 +25,13 @@ Agile mode, the recommended one:
 | **Feature branch** | cut from the base branch | unchanged | unchanged | moved to the task's commit | base branch merged in, then reviewed | kept; recorded as merged |
 | **Origin** | base branch | same | same | feature branch pushed as a backup | reviewed tip pushed; one pull request | base branch advanced |
 
-Truest mode has no feature branch: the task branch is cut from the base branch, waits in review at its commit with its worktree kept, and is pushed only for its own pull request, after a pass or a waiver. [AGILE.md](AGILE.md) covers every agile case.
+Truest mode has no feature branch: the task branch is cut from the base branch, waits in review at its commit with its worktree kept, and is pushed only for its own pull request, after a pass or a waiver. [3_WORKFLOW.md](3_WORKFLOW.md) covers both modes.
 
 ## Key handoffs
 
 - **The engine provisions.** Starting a task cuts its branch and adds its worktree in one step. When git cannot add the worktree, nothing is recorded and what was made is removed. The main folder never switches branches.
 - **A worker starts only on a ready task.** The gate refuses a worker start that names no open task with its worktree on disk.
-- **A worker's own folder is adopted.** A host may start each worker in a worktree of the host's making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([HOSTS.md](HOSTS.md)).
+- **A worker's own folder is adopted.** A host may start each worker in a worktree of the host's making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([HOSTS.md](../architecture/HOSTS.md)).
 - **No planner-side merge.** A fold moves the feature branch to the task's commit. When another task folded first, the engine rebases the later task onto the new tip and runs every check again.
 - **Cleanup.** A close removes the task's worktree and branch. Both stay when the worktree holds uncommitted changes, untracked files git does not ignore, or a lock set by the host; the close names them. Files git ignores go with the worktree. tmb tries a kept worktree again at the planner's session start, when no task is open or in review. A truest task's branch stays for its pull request, and a dropped task's branch stays while it holds commits.
 - **tmb deletes no feature branch.**
@@ -71,7 +71,7 @@ What stands in their place, each at a checkpoint:
 - **The close** runs the checks on the committed work and reports what changed outside the spec and in the main folder.
 - **The review** judges the diff.
 - **The push gate** below judges every push.
-- **One host event stays:** a worker's start is refused without a ready task ([HOSTS.md](HOSTS.md#containment)).
+- **One host event stays:** a worker's start is refused without a ready task ([HOSTS.md](../architecture/HOSTS.md#containment)).
 
 ## Rebasing a reviewed task
 
@@ -156,7 +156,7 @@ The health check counts the commits on each base branch that went around tmb. Pl
 
 ## Agile feature branches
 
-In agile mode a long-lived feature branch stands between the task branches and the base branch. Each task branch is cut from its tip and folds back into it locally, with no pull request. The engine pushes it as a backup and merges the base branch into it before the review. Only the feature branch reaches the base branch, as one pull request after a pass or a Human waiver. [AGILE.md](AGILE.md) covers every case.
+In agile mode a long-lived feature branch stands between the task branches and the base branch. Each task branch is cut from its tip and folds back into it locally, with no pull request. The engine pushes it as a backup and merges the base branch into it before the review. Only the feature branch reaches the base branch, as one pull request after a pass or a Human waiver. [3_WORKFLOW.md](3_WORKFLOW.md) covers every case.
 
 ## Multi-repo workspaces
 
@@ -191,11 +191,11 @@ tmb then resolves "which repo does this step belong to" from the work, never fro
 
    | Repo mode | What applies in the repo |
    |---|---|
-   | Agile | Feature branches, tasks, the review of the whole branch, the push gate ([AGILE.md](AGILE.md)) |
+   | Agile | Feature branches, tasks, the review of the whole branch, the push gate ([3_WORKFLOW.md](3_WORKFLOW.md)) |
    | Truest | Tasks cut from the base branch, a review of every task before its push, the push gate |
    | Exempt | Listed in the record and left untouched: no task, no hook, no code graph, no push gate. For a repo tmb does no work in, such as fixtures that never ship |
 
-   - **The workspace has one review mode, and a repo can name its own.** One that names none follows the workspace's ([AGILE.md](AGILE.md#where-the-review-mode-is-set)). Everything that reads the mode reads the repo's: starting work, the push gate, the session start and the health check.
+   - **The workspace has one review mode, and a repo can name its own.** One that names none follows the workspace's ([3_WORKFLOW.md](3_WORKFLOW.md#where-the-review-mode-is-set)). Everything that reads the mode reads the repo's: starting work, the push gate, the session start and the health check.
    - **Only the Human chooses a repo's mode,** as for the workspace's. In unattended mode a repo's mode is not changed.
    - **Its mode shows.** The settings and the planner's session start list each repo with its base branch and its mode.
 5. **The gate in each repo.** Setup writes the pre-push hook into every managed repo. The hook names the workspace's folder: the gate reads the record there and judges the push against that repo's base branch and mode. A push from a repo the record does not register, or registers as exempt, is allowed, and the recorded reason says why.
