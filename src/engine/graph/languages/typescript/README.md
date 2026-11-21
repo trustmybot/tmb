@@ -14,6 +14,10 @@ A signature with no body (an overload, an abstract method, a declaration in a `.
 
 A function with no name of its own is still one node. It is named by where it is used, such as "callback of `map`", and its owner is the nearest named symbol around it.
 
+## A repair of one parser misreading
+
+tree-sitter-typescript 0.23 reads a `<` that starts a line as type arguments of the type on the line before. A generic call signature on its own line in an interface then breaks the parse to the end of the file, and every function after it is lost (trustmybot/tmb#247). [repair.ts](repair.ts) writes a `;` over the space before each such `<`, so every line and column stays where it was, and keeps the repaired tree only when it has fewer errors. It runs for TypeScript and TSX only. It goes when the parser is fixed upstream.
+
 ## How a call's name is looked up
 
 As the language looks it up (trustmybot/tmb#246): the function's own names and parameters, the functions and blocks around it, then the file and its imports. The first place that has the name decides. A parameter or a variable there is no function of the repo, so the call is not linked. A function declared there is linked.

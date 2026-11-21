@@ -49,7 +49,7 @@ Decided by the Human on 2026-11-20: the code graph shows code as a graph, at fun
 Built:
 
 - **Every function is a node, unnamed ones included** (trustmybot/tmb#140). TypeScript and JavaScript so far. Each symbol links to what contains it: a function, a class or the file. An unnamed function is named by where it is used, such as the callback of the call it is passed to, or else by its line.
-- **A coverage test holds it at 100%.** A second, independent parser, the TypeScript compiler, lists every function, and the graph must match it one to one. On tmb's own repo on 2026-11-20: 3,340 of 3,340. Before, it was 1,250 of 3,256.
+- **A coverage test holds it at 100%.** A second, independent parser, the TypeScript compiler, lists every function, and the graph must match it one to one. On tmb's own repo on 2026-11-20: 3,340 of 3,340. Before, it was 1,250 of 3,256. The same test runs on one public repo, hono at a fixed commit: 10,267 of 10,267 (trustmybot/tmb#247).
 - **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and indexing prints how many there are.
 - **What the graph does not read is named and counted** (trustmybot/tmb#234). Indexing counts the files in programming languages tmb has no module for, by language, and the files it leaves out by rule, by rule. A lookup that finds nothing names the unread languages, so "not there" is never mistaken for "not read". A lookup of a file in an unread language says the file is there and its language is not read.
   - Left out by rule: folders named `dist`, `node_modules` or `vendor`, as on GitHub Linguist's list of vendored paths, and source maps, files named as minified, and lockfiles. A folder named `build` is read: the graph is built from git, so build output that git ignores is never in it.
@@ -66,7 +66,12 @@ Built:
   - Python: a top-level `from .a import f`, with or without a new name, and `from .a import *`, which follows `__all__` when it is a plain list of names and otherwise the public top-level names.
   - A chain is followed step by step. A file seen twice, or a step that cannot be proven, leaves the name unresolved.
   - Not followed: CommonJS, a re-export of a default export, a Python import under `if` or `try`, an `__all__` built by code, and `import pkg` followed by `pkg.f()`, which is not a re-export. On flask, 42 of its 102 `Flask(...)` calls link now; the other 60 are of that last form.
-  - Not checked yet: the links against the TypeScript compiler's own answers (trustmybot/tmb#242). A sample was checked by hand.
+  - Checked against the TypeScript compiler's own answers (trustmybot/tmb#242): 883 links through a re-export on tmb's own repo and 746 on hono, none wrong.
+- **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python: from the call outward through the function's own names and parameters, the functions around it, the file, then what the file imports. The first place that has the name decides. If what is found there is not a function in the repo, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
+  - A name imported inside a Python function holds only in that function. A name imported under a new name is looked up in the file that import names.
+  - Left with no link, to be added as proofs of their own (trustmybot/tmb#249): a call on the parent (`super`), the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
+  - Limit: four bindings the lookup does not see yet, each of which can give a wrong link; none was found on tmb or hono (trustmybot/tmb#287, v1.0.0).
+- **Every link between files is checked against the TypeScript compiler** (trustmybot/tmb#242), in TypeScript and JavaScript, on tmb's own repo and on hono at a fixed commit, on every pull request. A link is right when it names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
 - **Misses are counted.** Each build counts the imports that name the repo's own code and link to no file, and indexing prints the count. A package installed from outside is not a miss.
 - **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a workspace of several repos the page opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
 
@@ -79,8 +84,8 @@ Planned:
 Planned, the design for links (trustmybot/tmb#250, agreed by the Human on 2026-11-20). It follows a study of CodeGraph, other code navigation tools and the research on call graphs and coding agents; the issue names what was read and what was not. Built in this order:
 
 - **A link is made only on proof, and that stays the one promise.** There is no second set of less-sure links, marked or not. Studies of agents show wrong links cost more than missing ones, and none shows that marking a link as less sure helps.
-- **A name is looked up the way the language looks it up** (trustmybot/tmb#246, v1.0.0): from the call outward through the function's own names and parameters, the functions around it, the file, then what the file imports. The first place that has the name decides. If what is found there is not a function in the repo, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
-- **The scores are measured before and after each step** against the language's own compiler (trustmybot/tmb#242, trustmybot/tmb#244). Links right has the target, 100%. Links found is tracked and has no target, so that nothing pushes the graph to guess.
+- **A name is looked up the way the language looks it up.** Built (trustmybot/tmb#246): see above.
+- **The scores are measured before and after each step** against the language's own compiler. Links right is built as a test (trustmybot/tmb#242) and has the target, 100%. Links found is planned (trustmybot/tmb#244, v1.x), is tracked and has no target, so that nothing pushes the graph to guess.
 - **Every link records the proof it was made on** (trustmybot/tmb#251, v1.x), for a score per proof and for the dashboard. It is not added to an agent's answer.
 - **A function says how many of its calls are not linked** (trustmybot/tmb#252, v1.x): linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest.
 - **A method call is linked when the object's type is written in the same function or class** (trustmybot/tmb#249, v1.x): the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used, by decision: where others measured them, they cost much and found little.
@@ -107,7 +112,7 @@ Agents do not always use a graph when one is offered, and a symbol lookup can co
 
 Measured on 2026-11-20 against the TypeScript compiler, on one public repo (hono, 2,033 functions, 11,093 links between files; trustmybot/tmb#245):
 
-- **Functions found:** 2,016 of 2,033. The 17 missing are a bug (trustmybot/tmb#247).
-- **Links right:** 98.4% of the links the graph made. "It never guesses" is the rule, and 87 links broke it; three causes are known (trustmybot/tmb#246).
-- **Links found:** 50.6% of the compiler's links. The graph leaves a call unlinked when proving it needs the type of the thing it is called on. On two Python repos a sample of 120 links each was 118 and 120 right, but far fewer links are found there than in TypeScript.
+- **Functions found:** 2,016 of 2,033 then. The misses were one parsing fault, fixed (trustmybot/tmb#247): now every function, 10,267 of 10,267 counted line for line.
+- **Links right:** 98.4% of the links the graph made then; 87 broke "it never guesses". After the lookup fix (trustmybot/tmb#246) and the check (trustmybot/tmb#242), measured on 2026-11-21: 6,110 links between files on hono, 6,109 right, 0 wrong, 1 the compiler could not answer for; on tmb's own repo 4,547, 4,543 right, 0 wrong, 4 not answered.
+- **Links found:** 50.6% of the compiler's links then; not measured again since the fixes. The graph leaves a call unlinked when proving it needs the type of the thing it is called on. On two Python repos a sample of 120 links each was 118 and 120 right, but far fewer links are found there than in TypeScript.
 - A benchmark that repeats these scores for every release is planned (trustmybot/tmb#244, v1.x).

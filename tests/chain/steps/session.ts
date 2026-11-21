@@ -11,7 +11,7 @@ import path from "node:path";
 import { type Checks, remoteBase, type Step } from "../chain.ts";
 import { FOREIGN_HOOK_REFS } from "../demo.ts";
 import { Github } from "../github.ts";
-import { actorOf, audit, type FeatureRow, features, guardDecisions, issues, now, reviews, runs, show, since, type TaskRow, tasks } from "../record.ts";
+import { actorOf, audit, type FeatureRow, features, guardDecisions, issues, now, RECORD_BUGS, reviews, runs, show, since, strandedRuns, type TaskRow, tasks } from "../record.ts";
 import { askBro, prompt, type Turn } from "../session.ts";
 import { callTools } from "../tool-server.ts";
 import { BASE, PROGRAM, type RepoName, type World } from "../world.ts";
@@ -21,25 +21,13 @@ function turnRan(checks: Checks, turn: Turn, what: string): void {
   checks.must(`${what}: the session ran to its end`, turn.status === 0 && !turn.isError, turn.shown);
 }
 
-/** tmb bugs the session steps found, filed: their checks are marked known until each is fixed. */
-const BUGS = {
-  /** In unattended mode bro stops to ask a question it has a default for, and starts no work. */
-  unattendedAsks: 281,
-};
-
 /**
- * With no one to answer, bro should apply its defaults and start the work (unattended mode). When
- * it stops to ask instead, that is marked known and the step answers it once, in the same session,
- * with the Human's "go" (tests/README.md: scripted replies), so the chain goes on. Returns the turn
- * the work started in.
+ * With no one to answer, bro applies its defaults and starts the work (unattended mode,
+ * trustmybot/tmb#281). A step that needs the work goes on only when it started.
  */
-function goOnIfAsked(world: World, checks: Checks, turn: Turn, repo: RepoName, at: string, log: string): Turn {
-  const started = () => since(tasks(world), at).some((task) => task.repo === repo);
-  checks.known(BUGS.unattendedAsks, `with no one to answer, bro starts the work in ${repo} on its defaults, without stopping to ask`, started(), turn.answer);
-  if (started()) return turn;
-  const go = askBro(world, prompt("go"), `${log}-go`, { resume: turn.sessionId });
-  turnRan(checks, go, "the scripted go");
-  return go;
+function startsWork(world: World, checks: Checks, turn: Turn, repo: RepoName, at: string): void {
+  const started = since(tasks(world), at).some((task) => task.repo === repo);
+  checks.must(`with no one to answer, bro starts the work in ${repo} on its defaults, without stopping to ask (trustmybot/tmb#281)`, started, turn.answer);
 }
 
 /** The one open feature branch in `repo`; stops the step when there is not exactly one. */
@@ -79,11 +67,15 @@ function passesAt(world: World, repo: RepoName, commit: string, command: string[
 /** A closed task's worker run: one that ended, finished, with its tokens (trustmybot/tmb#150). */
 function workerRanFor(world: World, checks: Checks, task: TaskRow): void {
   const ran = runs(world).filter((run) => run.task_id === task.id && run.role === "worker");
-  checks.ok(`task ${task.id} (${task.title}) was written by a worker run that finished and kept its tokens (trustmybot/tmb#150)`, ran.some((run) => run.ended_at !== null && run.outcome === "finished" && run.cost !== null), show(ran));
+  const name = `task ${task.id} (${task.title}) was written by a worker run that finished and kept its tokens (trustmybot/tmb#150)`;
+  const ok = ran.some((run) => run.ended_at !== null && run.outcome === "finished" && run.cost !== null);
+  // A failed worker start left its run open beside the real one, so neither ended (trustmybot/tmb#285).
+  if (!ok && strandedRuns(ran).length > 0) checks.known(RECORD_BUGS.strandedStart, name, false, show(ran));
+  else checks.ok(name, ok, show(ran));
 }
 
 /** Pushes tmb made for an agent are recorded as that agent's, not the Human's (trustmybot/tmb#134). */
-function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoName): void {
+function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoName, needed = true): void {
   const pushes = since(guardDecisions(world), at).filter((row) => {
     try {
       const event = JSON.parse(row.event) as { type?: string; repo?: string };
@@ -92,7 +84,8 @@ function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoNam
       return false;
     }
   });
-  checks.ok(`${repo}: tmb pushed for the agents in this step, and the record names an agent for each push, not the Human (trustmybot/tmb#134)`, pushes.length > 0 && pushes.every((row) => actorOf(row.created_by).kind === "agent"), show(pushes.map((row) => ({ by: row.created_by, event: row.event.slice(0, 200) }))));
+  const what = needed ? "tmb pushed for the agents in this step, and the record names" : "the record names";
+  checks.ok(`${repo}: ${what} an agent for each push in this step, not the Human (trustmybot/tmb#134)`, (pushes.length > 0 || !needed) && pushes.every((row) => actorOf(row.created_by).kind === "agent"), show(pushes.map((row) => ({ by: row.created_by, event: row.event.slice(0, 200) }))));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -131,7 +124,7 @@ export const feature: Step = {
     const at = now();
     const asked = askBro(world, prompt("06-feature"), "06-feature");
     turnRan(checks, asked, "the feature request");
-    goOnIfAsked(world, checks, asked, "api", at, "06-feature");
+    startsWork(world, checks, asked, "api", at);
     const opened = since(issues(world), at);
     checks.ok("bro records the goal as an issue", opened.length >= 1 && opened.every((issue) => actorOf(issue.created_by).role === "planner"), show(opened));
     const branch = openFeature(world, checks, "api");
@@ -212,7 +205,8 @@ export const drop: Step = {
     checks.ok("its worktree is gone: it held no work", task.worktree === null || !existsSync(task.worktree), task.worktree ?? "");
     const others = tasksOf(world, branch).filter((each) => each.id !== id && each.state === "dropped");
     checks.ok("no other task is dropped", others.length === 0, show(others));
-    checks.ok(`${branch.name} is still open`, features(world).find((each) => each.id === branch.id)?.state === "open", show(features(world)));
+    // Open, or with its pull request open: bro may open it once the first task reaches the milestone (roles/planner.md).
+    checks.ok(`${branch.name} is still open`, ["open", "pr_open"].includes(features(world).find((each) => each.id === branch.id)?.state ?? ""), show(features(world)));
   },
 };
 
@@ -226,6 +220,10 @@ export const reviewAndPr: Step = {
     const github = new Github(world);
     const branch = openFeature(world, checks, "api");
     const baseBefore = remoteBase(world, "api");
+    // bro opens the pull request once the branch reaches its milestone (roles/planner.md), which may be
+    // in step 6 already. Then this step reviews the new tip and the push updates the same pull request.
+    const openedEarly = branch.state === "pr_open";
+    if (openedEarly) console.log(`   bro opened ${branch.name}'s pull request before this step: ${branch.pr_url}`);
     const at = now();
     const turn = askBro(world, prompt("10-review-and-pr"), "10-review-and-pr");
     turnRan(checks, turn, "review and pull request");
@@ -237,10 +235,11 @@ export const reviewAndPr: Step = {
     checks.ok("the pass came from a reviewer run that finished and kept its tokens (trustmybot/tmb#150)", byRun.some((run) => run.role === "reviewer" && run.outcome === "finished" && run.cost !== null), show(byRun));
     const pulls = github.pulls("api");
     checks.ok(`one pull request is open, from ${branch.name} into ${BASE}`, pulls.length === 1 && pulls[0]!.state === "OPEN" && pulls[0]!.head === branch.name && pulls[0]!.base === BASE, JSON.stringify(pulls));
-    checks.ok("the record holds the feature branch as pr_open, with that pull request", after.state === "pr_open" && after.pr_url === pulls[0]?.url, show([after]));
+    checks.ok("the record holds the feature branch as pr_open, with that pull request", after.state === "pr_open" && after.pr_url === pulls[0]?.url && (!openedEarly || after.pr_url === branch.pr_url), show([after]));
     checks.ok(`origin holds ${branch.name} at the reviewed tip`, remoteTipOf(world, "api", branch.name) === tip);
     checks.ok(`origin's ${BASE} did not move: only the Human merges`, remoteBase(world, "api") === baseBefore);
-    pushesAreAgents(world, checks, at, "api");
+    // A pull request opened early may already hold the reviewed tip, so this step need not push.
+    pushesAreAgents(world, checks, at, "api", !openedEarly);
   },
 };
 
@@ -294,7 +293,7 @@ export const truestTask: Step = {
     rmSync(refs, { force: true });
     const asked = askBro(world, prompt("12-truest-task"), "12-truest-task");
     turnRan(checks, asked, "the tools task");
-    goOnIfAsked(world, checks, asked, "tools", at, "12-truest-task");
+    startsWork(world, checks, asked, "tools", at);
     checks.ok("truest mode has no feature branches: none in tools", features(world).every((feature) => feature.repo !== "tools"), show(features(world)));
     const made = since(tasks(world), at).filter((task) => task.repo === "tools");
     checks.must("a task in tools", made.length >= 1, show(since(tasks(world), at)));
@@ -346,7 +345,7 @@ export const notesTask: Step = {
     const at = now();
     const asked = askBro(world, prompt("14-notes-task"), "14-notes-task");
     turnRan(checks, asked, "the notes task");
-    goOnIfAsked(world, checks, asked, "notes", at, "14-notes-task");
+    startsWork(world, checks, asked, "notes", at);
     const made = since(features(world), at).filter((feature) => feature.repo === "notes");
     checks.must("a feature branch in notes", made.length === 1, show(features(world)));
     const branch = made[0]!;

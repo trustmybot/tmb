@@ -43,7 +43,7 @@ tmb is a product for users, so an agent run tests what a user would really type,
 
 An agent run has no one to answer a question, so it runs tmb in unattended mode ([HOSTS.md](../docs/architecture/HOSTS.md#unattended-mode)): the engine tells bro at session start to apply its defaults and name the ones it used. The test sets the mode; the prompt never mentions it.
 
-Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. The whole chain has one: when bro stops to ask before it starts the work in steps 6, 12 or 14, which unattended mode should prevent, the check is marked known and the step answers once with `@bro go` ([tests/chain/prompts/go.txt](chain/prompts/go.txt)) in the same session, so the chain goes on.
+Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. The whole chain holds none: in steps 6, 12 and 14 bro must start the work on its defaults without stopping to ask (trustmybot/tmb#281).
 
 ## Test drivers
 
@@ -141,6 +141,8 @@ Each level has one test issue with this list. A later level keeps every earlier 
 | Unit | [test/graph.test.ts](../test/graph.test.ts) | Each language is parsed and looked up from the base branch commit, never the working folder; a reference links only on proof; a concept whose code is gone is marked broken and kept; a task's commit is laid on top for its reads and dropped once it closes; misses are recorded. |
 | Integration | [tests/integration/code-graph.test.ts](integration/code-graph.test.ts) | Through `tmb index`, `tmb graph` and the tool server, the graph is current after a change lands on the base branch, with no index run. |
 | Agent run | [tests/agent-run/scope.ts](agent-run/scope.ts) (`bun run test:scope`) | Asked to change the loyalty discount, bro looks the code up in the code graph before it starts the task, and the task's files hold the file that defines the discount. |
+
+Two of the code graph's tests read a public repo, hono, at a fixed commit: that no function is left out (trustmybot/tmb#247) and that every link between files agrees with the TypeScript compiler (trustmybot/tmb#242). The tests never use the network. On a developer's machine run `bun tests/lib/pinned-repo.ts` once to fetch that commit (about 8 MB); until then the two tests are skipped and say so. CI fetches it before `bun test`, and there a missing folder or another commit fails.
 
 ## Level 4 tests
 
