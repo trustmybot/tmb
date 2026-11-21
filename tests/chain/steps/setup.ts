@@ -10,8 +10,6 @@ import { PROGRAM, REPOS, type World } from "../world.ts";
 
 /** tmb bugs the chain found, filed: their checks are marked known until each is fixed. */
 const BUGS = {
-  /** In a workspace, the record commands cannot name a repo, and ignore the record above a repo's folder. */
-  workspaceCli: 262,
   /** onboard says no review mode is chosen when every repo has its own. */
   onboardLastWord: 263,
 };
@@ -205,7 +203,7 @@ export const index: Step = {
     const atRoot = world.tmb(["graph", "symbol", "handle", "--repo", "api"]);
     const inRepo = world.tmb(["graph", "symbol", "handle"], { cwd: world.repo("api") });
     const works = atRoot.status === 0 && inRepo.status === 0 && /src\/server\.ts/.test(atRoot.stdout + inRepo.stdout);
-    checks.known(BUGS.workspaceCli, "tmb graph names a repo in a workspace, typed at its root or in the repo", works, `${atRoot.output}${inRepo.output}`);
+    checks.ok("tmb graph names a repo in a workspace, typed at its root or in the repo (trustmybot/tmb#262)", works, `${atRoot.output}${inRepo.output}`);
   },
 };
 

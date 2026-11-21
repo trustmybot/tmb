@@ -31,6 +31,8 @@ export class World {
   readonly logs: string;
   /** Set once the release server is up: tmb's release repo on this machine. */
   releasesUrl = "";
+  /** tmb's release repo on disk, the newer build the update step publishes, and its asset name. */
+  release = { dir: "", next: "", asset: "" };
 
   constructor(readonly work: string) {
     this.home = path.join(work, "home");
@@ -108,7 +110,7 @@ export class World {
   }
 
   /** Runs the installed tmb, as a command the Human types with no terminal. */
-  tmb(args: string[], options: { cwd?: string; env?: Record<string, string | undefined> } = {}): Result {
+  tmb(args: string[], options: { cwd?: string; env?: Record<string, string | undefined>; input?: string } = {}): Result {
     return this.run(PROGRAM, args, options);
   }
 
