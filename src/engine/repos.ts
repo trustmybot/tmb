@@ -2,6 +2,7 @@
 // one record (trustmybot/tmb#163). The record keeps each repo's policy in the repos setting, so no
 // call scans or guesses: a repo comes from the task or feature that names it, then from the repo a
 // call names, then from the git top level of the folder a command acts in, never from cwd alone.
+import { runningName } from "../program.ts";
 import { readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { runGit } from "./git.ts";
@@ -73,6 +74,21 @@ export function scanRepos(workspaceDir: string): string[] {
   return scanWorkspace(workspaceDir).repos;
 }
 
+/**
+ * The repos a project folder holds that its record does not name (trustmybot/tmb#258): set up by a
+ * build from before workspaces, the folder is no repo itself and the record treats it as the one
+ * repo. Empty when the record names its repos, or the folder is a repo itself.
+ */
+export function unnamedRepos(projectDir: string, repos: RepoPolicies | null): string[] {
+  if (repos !== null || inGitWorkTree(projectDir)) return [];
+  return scanRepos(projectDir);
+}
+
+/** What fixes unnamed repos, and what it changes at once: said wherever tmb finds them. */
+export function unnamedReposFix(program: string): string {
+  return `\`${program} init\`, run again in the project folder, names them and writes the push hook in each; every session already pushing from one of those repos meets the push gate at its next push`;
+}
+
 /** The workspace's repos as the record holds them, or null in a single-repo project. */
 export function workspaceRepos(store: Store): RepoPolicies | null {
   return readSettings(store).repos;
@@ -134,7 +150,7 @@ export function resolveRepo(store: Store, projectDir: string, named: string | un
     return repoFrom(projectDir, name, policy);
   }
   if (working.length === 1) return repoFrom(projectDir, working[0]!, repos[working[0]!]!);
-  if (working.length === 0) throw new HandlerError("refused", "this workspace has no repo tmb works in; run `tmb init` in it to find its repos");
+  if (working.length === 0) throw new HandlerError("refused", `this workspace has no repo tmb works in; run \`${runningName()} init\` in it to find its repos`);
   throw new HandlerError("refused", `this workspace has ${working.length} repos (${working.join(", ")}); name the one this works in with repo`);
 }
 

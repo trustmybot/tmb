@@ -32,6 +32,7 @@ import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
 import type { Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
 import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
+import { runningName } from "../../program.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
 import type { Actor, Discussion, Issue, IssueSummary, SearchHit, Store, StoredEvent } from "../store/index.ts";
@@ -708,7 +709,7 @@ export type Output = { out: (text: string) => void; err: (text: string) => void;
 /** Writes a usage error of `tmb <command>`: the closest actions on a typo, else the error and where to read more. */
 function writeUsageError(command: string, error: UsageError, output: Output): void {
   const paint = new Paint(output.colour === true);
-  const program = `tmb ${command}`;
+  const program = `${runningName()} ${command}`;
   const text =
     error instanceof UnknownActionError
       ? unknownCommandText(program, error.action, RECORD_ACTIONS[error.command] ?? [], paint)
@@ -745,7 +746,7 @@ export async function runRecordCommand(command: RecordCommand, args: string[], p
   if (!opened.ok) {
     output.err(
       opened.error.failure === "missing"
-        ? `tmb: no tmb record in ${projectDir}; run \`tmb init\` there first.`
+        ? `tmb: no tmb record in ${projectDir}; run \`${runningName()} init\` there first.`
         : `tmb: cannot use the record: ${opened.error.message}`,
     );
     return 1;
@@ -785,7 +786,7 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
   if (!opened.ok) {
     output.err(
       opened.error.failure === "missing"
-        ? `tmb: tmb init has not run in ${projectDir}, so it has no settings; run \`tmb init\` there first.`
+        ? `tmb: ${runningName()} init has not run in ${projectDir}, so it has no settings; run \`${runningName()} init\` there first.`
         : `tmb: cannot use the record: ${opened.error.message}`,
     );
     return 1;
@@ -823,7 +824,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     output.err(
-      opened.error.failure === "missing" ? `tmb: no tmb record in ${projectDir}; run \`tmb init\` there first.` : `tmb: cannot use the record: ${opened.error.message}`,
+      opened.error.failure === "missing" ? `tmb: no tmb record in ${projectDir}; run \`${runningName()} init\` there first.` : `tmb: cannot use the record: ${opened.error.message}`,
     );
     return 1;
   }
@@ -848,7 +849,7 @@ export async function runIndexCommand(args: string[], projectDir: string, output
         }
       }
       if (json) output.out(JSON.stringify(all, null, 2));
-      else if (all.length === 0) output.out("This workspace has no repo tmb works in; `tmb init` finds its repos.");
+      else if (all.length === 0) output.out(`This workspace has no repo tmb works in; \`${runningName()} init\` finds its repos.`);
       return failed ? 1 : 0;
     }
     const stats = await indexProject(projectDir, opened.store, { rebuild });

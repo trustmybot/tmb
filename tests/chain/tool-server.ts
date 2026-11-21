@@ -56,5 +56,7 @@ export async function callTools(world: World, calls: { name: string; args: Recor
     child.kill();
     await child.exited;
   }
-  return calls.map((call, index) => answers.get(index + 1) ?? { ok: false, text: `the tool server gave no answer to ${call.name}`, json: null });
+  const all = calls.map((call, index) => answers.get(index + 1) ?? { ok: false, text: `the tool server gave no answer to ${call.name}`, json: null });
+  calls.forEach((call, index) => world.printed.push({ run: `tool ${call.name}`, text: all[index]!.text }));
+  return all;
 }

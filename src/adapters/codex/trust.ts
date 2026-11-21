@@ -4,6 +4,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { isObject } from "../common/json-file.ts";
+import { runningName } from "../../program.ts";
 
 function codexHome(): string {
   const home = process.env.CODEX_HOME;
@@ -38,7 +39,7 @@ export function pendingSteps(projectDir: string): string[] {
     steps.push("Trust this project in Codex: start codex here and accept its prompt to trust the folder. Codex reads .codex/ only in a project you trust.");
   }
   steps.push(
-    "Review and trust tmb's hooks: run /hooks in Codex. Codex runs a project hook only after you trust it, and asks again whenever tmb init changes one.",
+    `Review and trust tmb's hooks: run /hooks in Codex. Codex runs a project hook only after you trust it, and asks again whenever ${runningName()} init changes one.`,
   );
   return steps;
 }

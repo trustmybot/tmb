@@ -3,7 +3,10 @@
 import { parseArgs } from "node:util";
 import { Database } from "bun:sqlite";
 import { projectDbPath, projectRootOf } from "../engine/project.ts";
+import { unnamedRepos } from "../engine/repos.ts";
+import { readSettings } from "../engine/settings.ts";
 import { SCHEMA_VERSION, Store } from "../engine/store/index.ts";
+import { runningName } from "../program.ts";
 import { MACHINE_CHECKS } from "./machine.ts";
 import { guarded, projectFindings, unfinishedWork } from "./project.ts";
 import { type DoctorEnv, type Finding, SLOW_CHECKS, type Status } from "./types.ts";
@@ -33,7 +36,7 @@ export function exitCode(findings: readonly Finding[]): number {
 const MARKS: Record<Status, string> = { ok: "✓", warn: "!", fail: "✗" };
 
 /** The findings as the Human reads them: a heading per scope, one line per finding, its details and its fix under it. */
-export function formatFindings(findings: readonly Finding[]): string {
+export function formatFindings(findings: readonly Finding[], program: string = runningName()): string {
   const lines: string[] = [];
   for (const scope of ["machine", "project"] as const) {
     const ofScope = findings.filter((finding) => finding.scope === scope);
@@ -52,7 +55,7 @@ export function formatFindings(findings: readonly Finding[]): string {
   lines.push(
     warnings + failures === 0
       ? "Everything is fine."
-      : `${count(failures, "failure")} and ${count(warnings, "warning")}.${findings.some((finding) => finding.fix?.apply !== undefined && finding.status !== "ok") ? " `tmb doctor --fix` asks about each fix it can do." : ""}`,
+      : `${count(failures, "failure")} and ${count(warnings, "warning")}.${findings.some((finding) => finding.fix?.apply !== undefined && finding.status !== "ok") ? ` \`${program} doctor --fix\` asks about each fix it can do.` : ""}`,
   );
   return lines.join("\n");
 }
@@ -110,7 +113,7 @@ export async function runDoctorCommand(args: string[], env: DoctorEnv, io: Docto
   const { values } = parseArgs({ args, options: { json: { type: "boolean" }, fix: { type: "boolean" } }, allowPositionals: false, strict: true });
   const findings = runChecks(env);
   for (const finding of findings.filter((candidate) => candidate.bug === true)) io.keepBug?.(finding);
-  io.out(values.json === true ? findingsJson(findings) : formatFindings(findings));
+  io.out(values.json === true ? findingsJson(findings) : formatFindings(findings, env.program.name));
   if (values.fix !== true) return exitCode(findings);
   const fixable = findings.filter((finding) => finding.status !== "ok" && finding.fix?.apply !== undefined);
   if (fixable.length === 0) {
@@ -134,31 +137,35 @@ export async function runDoctorCommand(args: string[], env: DoctorEnv, io: Docto
 export function sessionStartLine(env: DoctorEnv): string | null {
   try {
     const findings = runChecks(env, new Set([...SLOW_CHECKS, "unfinished work"])).filter((finding) => finding.status !== "ok");
-    const unfinished = unfinishedCount(env);
+    const unfinished = fromRecord(env, 0, (store) => unfinishedWork(store).length);
+    const unnamed = fromRecord(env, 0, (store) => unnamedRepos(projectRootOf(env.cwd), readSettings(store).repos).length);
     const parts: string[] = [];
+    // The gate being off is said in words, not only counted: the Human may think the project is guarded (trustmybot/tmb#258).
+    if (unnamed > 0) parts.push(`the push gate is off: the record names none of the ${unnamed === 1 ? "repo" : `${unnamed} repos`} in this folder`);
     if (findings.length > 0) parts.push(`${count(findings.length, "finding")} on this machine or project`);
     if (unfinished > 0) parts.push(`${unfinished} run${unfinished === 1 ? " or task has" : "s or tasks have"} a start and no end`);
     if (parts.length === 0) return null;
-    return `${parts.join("; ")}: \`${env.program.name} doctor\` shows ${parts.length === 1 && findings.length === 0 ? "them" : "each"} with its fix.`;
+    return `${parts.join("; ")}: \`${env.program.name} doctor\` shows ${parts.length === 1 && findings.length === 0 && unnamed === 0 ? "them" : "each"} with its fix.`;
   } catch {
     return null;
   }
 }
 
-function unfinishedCount(env: DoctorEnv): number {
+/** What `read` makes of the project's record, read only; `none` when the record cannot be read at this shape. */
+function fromRecord<T>(env: DoctorEnv, none: T, read: (store: Store) => T): T {
   const projectDir = projectRootOf(env.cwd);
   let db: Database;
   try {
     db = new Database(projectDbPath(projectDir), { readonly: true });
   } catch {
-    return 0;
+    return none;
   }
   try {
     const version = (db.query("PRAGMA user_version").get() as { user_version: number }).user_version;
-    if (version !== SCHEMA_VERSION) return 0;
-    return unfinishedWork(new Store(db)).length;
+    if (version !== SCHEMA_VERSION) return none;
+    return read(new Store(db));
   } catch {
-    return 0;
+    return none;
   } finally {
     db.close();
   }

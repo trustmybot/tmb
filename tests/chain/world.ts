@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { asHuman, type HumanRun } from "../lib/as-human.ts";
+import { Github } from "./github.ts";
 
 export type Result = { status: number; stdout: string; stderr: string; output: string };
 
@@ -33,6 +34,8 @@ export class World {
   releasesUrl = "";
   /** tmb's release repo on disk, the newer build the update step publishes, and its asset name. */
   release = { dir: "", next: "", asset: "" };
+  /** What tmb printed since the last after-step check, by the command that printed it (trustmybot/tmb#268). */
+  printed: { run: string; text: string }[] = [];
 
   constructor(readonly work: string) {
     this.home = path.join(work, "home");
@@ -52,6 +55,8 @@ export class World {
       if (found && !existsSync(link) && !SYSTEM_PATH.includes(path.dirname(found))) symlinkSync(found, link);
     }
     // A person who uses git has told it who they are; tmb's commits use that identity.
+    // GitHub's stand-in: a fake gh, with its pull requests kept beside the bare remotes.
+    new Github(this).install();
     const gitconfig = path.join(this.home, ".gitconfig");
     if (!existsSync(gitconfig)) writeFileSync(gitconfig, "[user]\n\tname = Demo Human\n\temail = human@example.com\n[init]\n\tdefaultBranch = main\n");
   }
@@ -73,7 +78,7 @@ export class World {
 
   /** The environment of every command; `installedOnPath` false is a shell opened before the install. */
   env(extra: Record<string, string | undefined> = {}, installedOnPath = true): Record<string, string> {
-    const keep = ["LANG", "LC_ALL", "TERM", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"];
+    const keep = ["LANG", "LC_ALL", "TERM", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "TMB_CHAIN_MODEL"];
     const env: Record<string, string> = {};
     for (const name of keep) if (process.env[name]) env[name] = process.env[name]!;
     Object.assign(env, {
@@ -106,6 +111,8 @@ export class World {
     });
     const stdout = result.stdout ?? "";
     const stderr = result.error ? `${result.stderr ?? ""}${result.error.message}\n` : (result.stderr ?? "");
+    // tmb's own output, and a push's, which carries the push gate's words.
+    if (command === PROGRAM || (command === "git" && args.includes("push"))) this.printed.push({ run: `${command} ${args.join(" ")}`, text: stdout + stderr });
     return { status: result.status ?? -1, stdout, stderr, output: stdout + stderr };
   }
 
@@ -126,7 +133,9 @@ export class World {
 
   /** Runs a step only the Human may take, on a terminal, typing each answer (yes by default). */
   human(args: string[], options: { cwd?: string; answers?: string[] } = {}): HumanRun {
-    return asHuman(PROGRAM, args, { cwd: options.cwd ?? this.project, env: this.env(), answers: options.answers });
+    const result = asHuman(PROGRAM, args, { cwd: options.cwd ?? this.project, env: this.env(), answers: options.answers });
+    this.printed.push({ run: `${PROGRAM} ${args.join(" ")}`, text: result.output });
+    return result;
   }
 
   /** git in `cwd`; returns its trimmed stdout and throws with its output on an error. */

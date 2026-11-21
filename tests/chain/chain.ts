@@ -1,8 +1,8 @@
-// The chain's steps, their checks, and the two checks that run after every step.
+// The chain's steps, their checks, and the checks that run after every step.
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { BASE, REMOTE_REPOS, type World } from "./world.ts";
+import { BASE, PROGRAM, REMOTE_REPOS, type World } from "./world.ts";
 
 export type Step = {
   n: number;
@@ -11,6 +11,8 @@ export type Step = {
   model: boolean;
   /** The issues the step covers, as trustmybot/tmb#N. */
   covers: number[];
+  /** A session step's token budget, all its runs together: a step over it is reported, not failed. */
+  budget?: number;
   run(world: World, checks: Checks): Promise<void> | void;
 };
 
@@ -73,8 +75,26 @@ export function showFindings(findings: Finding[]): string {
     .join("\n");
 }
 
-/** The two checks that run after every step, once tmb is set up in the project. */
+/**
+ * A printed command of plain tmb: `tmb`, not part of a longer name or a path, then a command or a
+ * flag. The same pattern as test/program-name.test.ts.
+ */
+const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "dashboard", "update", "feedback", "doctor", "help", "mcp", "hook", "pre-push"];
+const PLAIN = new RegExp(`(?<![\\w./-])tmb (?:(?:${COMMANDS.join("|")})\\b|--)`);
+
+/** The lines tmb printed since the last call that tell their reader to run plain tmb. */
+export function plainCommands(world: World): string[] {
+  const printed = world.printed.splice(0, world.printed.length);
+  return printed.flatMap(({ run, text }) => text.split(/\r?\n/).filter((line) => PLAIN.test(line)).map((line) => `${run}: ${line.trim()}`));
+}
+
+/**
+ * The checks that run after every step: every command tmb printed names the program that runs
+ * (the chain runs it as tmb-dev), then, once tmb is set up in the project, doctor and the record.
+ */
 export function afterStep(world: World, checks: Checks): void {
+  const plain = plainCommands(world);
+  checks.ok(`every command tmb printed names ${PROGRAM}, the program that ran (trustmybot/tmb#268)`, plain.length === 0, plain.join("\n"));
   if (!existsSync(path.join(world.project, ".tmb", "trajectory.db"))) return;
   const findings = doctor(world);
   const failed = findings.filter((finding) => finding.status === "fail");
@@ -83,23 +103,43 @@ export function afterStep(world: World, checks: Checks): void {
   checks.ok("the record is whole", holes.length === 0, holes.join("\n"));
 }
 
-type TaskRow = { id: string; state: string; commit_sha: string | null; repo: string | null; title: string };
+type TaskRow = { id: string; state: string; commit_sha: string | null; repo: string | null; title: string; kind: string | null; feature_id: string | null; review_mode: string | null };
+
+/** Feature states past the review: the branch was passed, so its tasks must be covered. */
+const REVIEWED_STATES = ["pr_open", "ready", "merged"];
 
 /**
- * What keeps the record from being whole: a closed task with no run that ended and kept its
- * tokens, or no check that ran; and any change to a remote's branch that no push the gate
- * allowed made. The review of a closed task is checked once the session steps make one.
+ * What keeps the record from being whole:
+ * - a closed code task with no run that ended and kept its tokens (a docs task is written by the
+ *   planner itself, whose runs the record does not keep yet: trustmybot/tmb#254);
+ * - a closed task with no check that ran, in a repo that has checks;
+ * - a closed task with no review: in truest mode its own pass, in agile mode a pass of its feature
+ *   branch once that branch is past its review;
+ * - any change to a remote's branch that no push the gate allowed made.
  */
 export function recordHoles(world: World): string[] {
   const holes: string[] = [];
+  const config = world.tmbJson<{ repos: Record<string, { checks?: string[] }> | null }>(["config"]);
   const db = new Database(path.join(world.project, ".tmb", "trajectory.db"), { readonly: true });
   try {
-    const tasks = db.query("SELECT id, state, commit_sha, repo, title FROM tasks WHERE state = 'closed'").all() as TaskRow[];
+    const tasks = db.query("SELECT id, state, commit_sha, repo, title, kind, feature_id, review_mode FROM tasks WHERE state = 'closed'").all() as TaskRow[];
     for (const task of tasks) {
+      const name = `closed task ${task.id} (${task.title})`;
       const runs = db.query("SELECT ended_at, cost FROM runs WHERE task_id = ?").all(task.id) as { ended_at: string | null; cost: string | null }[];
-      if (!runs.some((run) => run.ended_at !== null && run.cost !== null)) holes.push(`closed task ${task.id} (${task.title}) has no run that ended with its tokens`);
+      if (task.kind !== "docs" && !runs.some((run) => run.ended_at !== null && run.cost !== null)) holes.push(`${name} has no run that ended with its tokens`);
+      const hasChecks = (config.repos?.[task.repo ?? "."]?.checks ?? ["?"]).length > 0;
       const ran = db.query("SELECT count(*) AS n FROM check_runs WHERE task_id = ? AND result IS NOT NULL").get(task.id) as { n: number };
-      if (ran.n === 0) holes.push(`closed task ${task.id} (${task.title}) has no check that ran`);
+      if (hasChecks && ran.n === 0) holes.push(`${name} has no check that ran`);
+      if (task.feature_id === null) {
+        const passed = db.query("SELECT count(*) AS n FROM reviews WHERE target_kind = 'commit' AND target = ? AND verdict = 'pass'").get(task.id) as { n: number };
+        if (passed.n === 0) holes.push(`${name} has no review that passed it`);
+      } else {
+        const feature = db.query("SELECT name, state FROM features WHERE id = ?").get(task.feature_id) as { name: string; state: string } | null;
+        if (feature && REVIEWED_STATES.includes(feature.state)) {
+          const passed = db.query("SELECT count(*) AS n FROM reviews WHERE feature_id = ? AND verdict = 'pass'").get(task.feature_id) as { n: number };
+          if (passed.n === 0) holes.push(`${name} is on ${feature.name}, which is ${feature.state} with no review that passed it`);
+        }
+      }
     }
     holes.push(...unallowedPushes(world, db));
   } finally {

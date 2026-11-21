@@ -6,7 +6,7 @@ import type { Database } from "bun:sqlite";
 import { detectBaseBranch } from "../base-branch.ts";
 import { CLOSED, MERGED, OPEN } from "../handlers/common.ts";
 import { HandlerError } from "../handlers/errors.ts";
-import { type Repo, repoOfRow, resolveRepo } from "../repos.ts";
+import { inGitWorkTree, type Repo, repoOfRow, resolveRepo, scanRepos } from "../repos.ts";
 import type { Feature, Store } from "../store/index.ts";
 import { buildLayer, type BuildStats, EXTRACTOR_VERSION } from "./build.ts";
 import { BASE_LAYER, dropLayer, featureLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
@@ -31,6 +31,7 @@ export type GraphView = { db: Database; layer: string; freshness: Freshness };
 
 /** The branch a repo's graph is built from: its base branch, else, in a single-repo project, the one tmb detects. */
 export function baseBranchOf(repo: Repo): string {
+  refuseFolderOfRepos(repo);
   const branch = repo.baseBranch ?? (repo.name === null ? detectBaseBranch(repo.dir) : null);
   if (branch === null) {
     throw new HandlerError(
@@ -39,6 +40,21 @@ export function baseBranchOf(repo: Repo): string {
     );
   }
   return branch;
+}
+
+/**
+ * A project folder that is no repo but holds repos the record does not name has no graph of its
+ * own: the way on is init run again, which names them (trustmybot/tmb#258), never an index here.
+ */
+function refuseFolderOfRepos(repo: Repo): void {
+  if (repo.name !== null || inGitWorkTree(repo.dir)) return;
+  const found = scanRepos(repo.dir);
+  if (found.length === 0) return;
+  throw new HandlerError(
+    "refused",
+    `${repo.dir} is not a git repo, so it has no code graph of its own; it holds the repos ${found.join(", ")}, which the record does not name. ` +
+      "Run `tmb init` there again: it names them, writes the push hook in each and builds each repo's graph",
+  );
 }
 
 function currentBaseCommit(projectDir: string, baseBranch: string): string {

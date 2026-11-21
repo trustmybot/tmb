@@ -8,6 +8,7 @@ import { languageNamed, languageOfExtension, languageOfShebang } from './languag
 import type { Parsers } from './loader.ts';
 
 export type {
+  Bound,
   EdgeKind,
   ExtractedEdge,
   ExtractedExport,

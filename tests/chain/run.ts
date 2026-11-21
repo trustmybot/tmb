@@ -1,4 +1,4 @@
-// The chained test: one record, the steps in order, the two checks after every step.
+// The chained test: one record, the steps in order, the checks after every step.
 //
 //   bun tests/chain/run.ts [--work <dir>] [--tmb-file <binary>] [--with-model]
 //                          [--tmb-next-file <binary>] [--from <step> | --only <step>] [--states <dir>]
@@ -25,11 +25,15 @@ import { afterStep, Checks, type Step, StepStopped } from "./chain.ts";
 import { buildDemoApp } from "./demo.ts";
 import { assetName, buildTmb, chainVersions, publishDev, startReleaseServer } from "./release.ts";
 import { openState, readIndex, saveState, STATE_PARTS } from "./states.ts";
+import { now } from "./record.ts";
+import { runsSince, takeTurns, totalOf, turnTokens } from "./session.ts";
+import { endCheck } from "./steps/end.ts";
 import { NO_MODEL_STEPS } from "./steps/no-model.ts";
+import { SESSION_STEPS } from "./steps/session.ts";
 import { SETUP_STEPS } from "./steps/setup.ts";
 import { World } from "./world.ts";
 
-export const STEPS: Step[] = [...SETUP_STEPS, ...NO_MODEL_STEPS].sort((a, b) => a.n - b.n);
+export const STEPS: Step[] = [...SETUP_STEPS, ...SESSION_STEPS, ...NO_MODEL_STEPS, endCheck].sort((a, b) => a.n - b.n);
 
 const { values } = parseArgs({
   options: {
@@ -94,6 +98,7 @@ if (startAt === null) {
 }
 
 const withModel = values["with-model"];
+const overBudget: string[] = [];
 let failed = 0;
 let fixed = 0;
 let ran = 0;
@@ -110,6 +115,7 @@ for (const step of chosen) {
   console.log(`\n== ${label}: ${step.name}${step.covers.length ? ` (covers ${step.covers.map((n) => `trustmybot/tmb#${n}`).join(", ")})` : ""}`);
   const checks = new Checks(label);
   const started = performance.now();
+  const startedAt = now();
   try {
     await step.run(world, checks);
   } catch (error) {
@@ -120,6 +126,7 @@ for (const step of chosen) {
   } catch (error) {
     checks.ok("the checks after the step ran", false, error instanceof Error ? error.message : String(error));
   }
+  if (step.model) showTokens(label, step, startedAt);
   ran++;
   done.push(step.n);
   fixed += checks.fixed;
@@ -131,5 +138,34 @@ for (const step of chosen) {
   }
 }
 server.stop();
+if (overBudget.length > 0) console.log(`\nOver their token budget (reported, not failed): ${overBudget.join("; ")}.`);
 console.log(`\n${ran} step(s) ran, ${failed === 0 ? "all passed" : "one failed"}${fixed ? `; ${fixed} known check(s) now pass` : ""}.`);
 process.exit(failed === 0 ? 0 : 1);
+
+/**
+ * Prints the step's tokens: bro's session turns, as Claude Code counted them, and each agent run
+ * the step made, from tmb's own record. A step over its budget is reported, not failed.
+ */
+function showTokens(label: string, step: Step, startedAt: string): void {
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  let total = 0;
+  for (const turn of takeTurns()) {
+    const tokens = turnTokens(turn);
+    total += totalOf(tokens);
+    console.log(`   tokens, bro's turn: ${fmt(tokens.input)} in, ${fmt(tokens.output)} out, ${fmt(tokens.cacheRead)} cache read, ${fmt(tokens.cacheWrite)} cache write`);
+  }
+  let records: ReturnType<typeof runsSince> = [];
+  try {
+    records = runsSince(world, startedAt);
+  } catch {}
+  for (const run of records) {
+    total += totalOf(run);
+    console.log(`   tokens, ${run.role} run ${run.id} (${run.model}, ${run.outcome ?? "not ended"}): ${fmt(run.input)} in, ${fmt(run.output)} out, ${fmt(run.cacheRead)} cache read, ${fmt(run.cacheWrite)} cache write`);
+  }
+  const budget = step.budget;
+  console.log(`   tokens, ${label} in all: ${fmt(total)}${budget ? ` of a budget of ${fmt(budget)}` : ""}`);
+  if (budget && total > budget) {
+    console.log(`OVER ${label}: ${fmt(total)} tokens, over its budget of ${fmt(budget)} (reported, not failed)`);
+    overBudget.push(`${label} ${fmt(total)} of ${fmt(budget)}`);
+  }
+}

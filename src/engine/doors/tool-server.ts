@@ -3,6 +3,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, type CallToolResult, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
+import { runningName } from "../../program.ts";
 import type { FeedbackEnv } from "../feedback/index.ts";
 import { HandlerError, isOperationName, OPERATIONS } from "../handlers/index.ts";
 import { openProjectStore } from "../project.ts";
@@ -57,7 +58,7 @@ export class ToolSession {
     const opened = openProjectStore(this.projectDir, { create: false });
     if (!opened.ok) {
       if (opened.error.failure === "missing") {
-        throw new Error(`There is no tmb record in ${this.projectDir}: run \`tmb init\` in the project first, then try again.`);
+        throw new Error(`There is no tmb record in ${this.projectDir}: run \`${runningName()} init\` in the project first, then try again.`);
       }
       throw new Error(`tmb cannot use the record: ${opened.error.message}`);
     }

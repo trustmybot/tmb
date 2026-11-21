@@ -21,10 +21,21 @@ const PY_RECEIVERS_OF_CLASS = new Set(['self', 'cls']);
 
 type PyPlace = 'module' | 'class' | 'nested';
 
+// Python's own scopes, each with names of its own: a function, a lambda and a comprehension.
+// A class body is none for the functions inside it.
+const PY_SCOPES = new Set(['function_definition', 'lambda', 'list_comprehension', 'set_comprehension', 'dictionary_comprehension', 'generator_expression']);
+
+/** Whether a node sits inside a function or a class, where an import binds no name of the module. */
+const insideDefinition = (node: Node): boolean => {
+  for (let a = node.parent; a; a = a.parent) if (PY_SCOPES.has(a.type) || a.type === 'class_definition') return true;
+  return false;
+};
+
 // Imports become module-level 'imports' edges whose hint is the dotted module
 // ('.a', '..', 'pkg.mod') and whose dst_name is the imported name, or the
-// module itself for `import pkg.mod`. Returns each `as` alias's original name
-// and every name the imports bind.
+// module itself for `import pkg.mod`. One made inside a function or class is
+// marked so, since it holds only there (trustmybot/tmb#246). Returns each
+// module-level `as` alias's original name and every name those imports bind.
 function pyImports(root: Node, out: Collector, moduleSymbol: number): { aliases: Map<string, string>; bound: Set<string> } {
   const aliases = new Map<string, string>();
   const bound = new Set<string>();
@@ -33,18 +44,139 @@ function pyImports(root: Node, out: Collector, moduleSymbol: number): { aliases:
     const line = stmt.startPosition.row + 1;
     const from = stmt.type === 'import_from_statement' ? stmt.childForFieldName('module_name')?.text : undefined;
     if (stmt.type === 'import_from_statement' && !from) continue;
+    const local = insideDefinition(stmt);
     for (const n of stmt.childrenForFieldName('name')) {
       if (!n) continue;
       const original = (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text;
       if (!original) continue;
       const alias = n.type === 'aliased_import' ? n.childForFieldName('alias')?.text : undefined;
-      if (alias) aliases.set(alias, original);
-      bound.add(alias ?? original);
-      out.edge(moduleSymbol, 'imports', original, line, from ?? original);
+      if (!local) {
+        if (alias) aliases.set(alias, original);
+        bound.add(alias ?? original);
+      }
+      out.edge(moduleSymbol, 'imports', original, line, from ?? original, local ? 'import' : undefined);
     }
-    if (from && named(stmt).some((c) => c.type === 'wildcard_import')) out.edge(moduleSymbol, 'imports', '*', line, from);
+    if (from && named(stmt).some((c) => c.type === 'wildcard_import')) out.edge(moduleSymbol, 'imports', '*', line, from, local ? 'import' : undefined);
   }
   return { aliases, bound };
+}
+
+/** How a scope binds a name: an import of `name` from `module`, a function defined there, or any other value. */
+type PyBinding = { kind: 'import'; name: string; module: string } | { kind: 'function'; line: number } | { kind: 'value' };
+
+// The names a target binds: a plain name, or each name of a tuple or list of targets; an
+// attribute or a subscript binds none.
+function targetNames(node: Node | null, into: string[]): void {
+  if (!node || node.type === 'attribute' || node.type === 'subscript') return;
+  if (node.type === 'identifier') into.push(node.text);
+  else for (const c of named(node)) targetNames(c, into);
+}
+
+// A parameter's name: plain, defaulted, typed, or `*args` and `**kwargs`.
+function paramName(p: Node): string | null {
+  if (p.type === 'identifier') return p.text;
+  if (p.type === 'default_parameter' || p.type === 'typed_default_parameter') return p.childForFieldName('name')?.text ?? null;
+  if (p.type === 'typed_parameter' || p.type === 'list_splat_pattern' || p.type === 'dictionary_splat_pattern') {
+    const inner = named(p)[0];
+    return inner ? paramName(inner) : null;
+  }
+  return null;
+}
+
+// Every name a scope binds, and how (trustmybot/tmb#246): its parameters, and in its body each
+// assignment, loop, `with … as`, `except … as`, `:=`, import, and function or class defined
+// there. Scopes inside it are not entered. A name declared `global` or `nonlocal` is not its
+// own. A name bound more than once is a value, unless each time by the same import: no one
+// place proves it.
+function pyScopeBindings(scope: Node): Map<string, PyBinding> {
+  const found = new Map<string, PyBinding[]>();
+  const add = (name: string, b: PyBinding): void => {
+    const list = found.get(name);
+    if (list) list.push(b);
+    else found.set(name, [b]);
+  };
+  const notOwn = new Set<string>();
+  const params = scope.childForFieldName('parameters');
+  for (const p of params ? named(params) : []) {
+    const n = paramName(p);
+    if (n) add(n, { kind: 'value' });
+  }
+  const walk = (node: Node): void => {
+    for (const c of named(node)) {
+      switch (c.type) {
+        case 'function_definition':
+        case 'class_definition': {
+          const n = c.childForFieldName('name')?.text;
+          if (n) add(n, c.type === 'function_definition' ? { kind: 'function', line: (c.parent?.type === 'decorated_definition' ? c.parent : c).startPosition.row + 1 } : { kind: 'value' });
+          continue;
+        }
+        case 'lambda':
+        case 'list_comprehension':
+        case 'set_comprehension':
+        case 'dictionary_comprehension':
+        case 'generator_expression':
+          continue;
+        case 'assignment':
+        case 'augmented_assignment':
+        case 'for_statement': {
+          const names: string[] = [];
+          targetNames(c.childForFieldName('left'), names);
+          for (const n of names) add(n, { kind: 'value' });
+          break;
+        }
+        case 'as_pattern_target':
+        case 'named_expression': {
+          const names: string[] = [];
+          targetNames(c.type === 'named_expression' ? c.childForFieldName('name') : c, names);
+          for (const n of names) add(n, { kind: 'value' });
+          break;
+        }
+        case 'global_statement':
+        case 'nonlocal_statement':
+          for (const n of named(c)) if (n.type === 'identifier') notOwn.add(n.text);
+          continue;
+        case 'import_statement':
+          for (const n of c.childrenForFieldName('name')) {
+            if (!n) continue;
+            const alias = n.type === 'aliased_import' ? n.childForFieldName('alias')?.text : undefined;
+            const name = alias ?? (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text.split('.')[0];
+            if (name) add(name, { kind: 'value' });
+          }
+          continue;
+        case 'import_from_statement': {
+          const module = c.childForFieldName('module_name')?.text;
+          for (const n of c.childrenForFieldName('name')) {
+            if (!n) continue;
+            const original = (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text;
+            const alias = n.type === 'aliased_import' ? n.childForFieldName('alias')?.text : undefined;
+            if (original && module) add(alias ?? original, { kind: 'import', name: original, module });
+          }
+          continue;
+        }
+      }
+      walk(c);
+    }
+  };
+  if (scope.type === 'function_definition') {
+    const body = scope.childForFieldName('body');
+    if (body) walk(body);
+  } else if (scope.type === 'lambda') {
+    // A lambda binds only its parameters.
+  } else {
+    for (const clause of named(scope).filter((c) => c.type === 'for_in_clause')) {
+      const names: string[] = [];
+      targetNames(clause.childForFieldName('left'), names);
+      for (const n of names) add(n, { kind: 'value' });
+    }
+  }
+  const bindings = new Map<string, PyBinding>();
+  for (const [name, list] of found) {
+    if (notOwn.has(name)) continue;
+    const first = list[0]!;
+    const same = list.length === 1 || list.every((b) => b.kind === 'import' && first.kind === 'import' && b.name === first.name && b.module === first.module);
+    bindings.set(name, same ? first : { kind: 'value' });
+  }
+  return bindings;
 }
 
 // A plain string literal's text: no f-string, no bytes, no implicit concatenation.
@@ -90,6 +222,19 @@ function pyExports(root: Node, out: Collector): void {
   out.export({ kind: 'all', names });
 }
 
+// A class's bases as the module names them; '' for one that is no plain name, such as
+// `mod.Base` or `Generic[T]`. A keyword such as `metaclass=` is no base, nor is `object`.
+function pyBases(superclasses: Node | null, target: (name: string) => string): string[] {
+  const bases: string[] = [];
+  for (const c of superclasses ? named(superclasses) : []) {
+    if (c.type === 'keyword_argument' || c.type === 'comment') continue;
+    if (c.type === 'identifier') {
+      if (c.text !== 'object') bases.push(target(c.text));
+    } else bases.push('');
+  }
+  return bases;
+}
+
 // Module-level classes, functions and `NAME = …` constants, methods of those
 // classes, and the calls each makes. A call of a class the file defines, or
 // of an imported CapWords name (PEP 8 class naming), is 'instantiates'; a
@@ -108,6 +253,22 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
   );
   const target = (name: string): string => aliases.get(name) ?? name;
   const isClass = (name: string): boolean => classes.has(name) || (bound.has(name) && /^[A-Z]/.test(target(name)));
+  // How the scopes around a node bind a name, the innermost first (trustmybot/tmb#246); undefined
+  // when none does, so the module's own names and imports answer for it.
+  const scopes = new Map<number, Map<string, PyBinding>>();
+  const localBinding = (node: Node, name: string): PyBinding | undefined => {
+    for (let a = node.parent; a; a = a.parent) {
+      if (!PY_SCOPES.has(a.type)) continue;
+      let bindings = scopes.get(a.id);
+      if (!bindings) {
+        bindings = pyScopeBindings(a);
+        scopes.set(a.id, bindings);
+      }
+      const b = bindings.get(name);
+      if (b) return b;
+    }
+    return undefined;
+  };
   const exportedName = (name: string): number => (name.startsWith('_') ? 0 : 1);
   const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number, parent: number): number => {
     const anchor = node.parent?.type === 'decorated_definition' ? node.parent : node;
@@ -138,9 +299,12 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
         inner = definition(node, 'class', n, exportedName(n), scope);
         innerCls = n;
         innerPlace = 'class';
-        for (const base of named(node.childForFieldName('superclasses') ?? node).filter((c) => c.type === 'identifier')) {
+        const superclasses = node.childForFieldName('superclasses');
+        for (const base of superclasses ? named(superclasses).filter((c) => c.type === 'identifier') : []) {
           out.edge(inner, 'instantiates', target(base.text), base.startPosition.row + 1);
         }
+        const bases = pyBases(superclasses, target);
+        if (bases.length > 0) out.symbols[inner]!.bases = bases;
       }
     } else if (t === 'function_definition') {
       const n = node.childForFieldName('name')?.text;
@@ -167,13 +331,19 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       const fn = node.childForFieldName('function');
       const line = node.startPosition.row + 1;
       if (fn?.type === 'identifier') {
-        out.edge(scope, isClass(fn.text) ? 'instantiates' : 'calls', target(fn.text), line);
+        const b = localBinding(fn, fn.text);
+        if (b === undefined) out.edge(scope, isClass(fn.text) ? 'instantiates' : 'calls', target(fn.text), line);
+        else if (b.kind === 'import') out.edge(scope, /^[A-Z]/.test(b.name) ? 'instantiates' : 'calls', b.name, line, b.module, 'import');
+        else out.edge(scope, 'calls', fn.text, line, b.kind === 'function' ? String(b.line) : null, b.kind);
       } else if (fn?.type === 'attribute') {
         const callee = fn.childForFieldName('attribute')?.text;
         const object = fn.childForFieldName('object');
         if (callee && object) {
           const ofClass = object.type === 'identifier' && PY_RECEIVERS_OF_CLASS.has(object.text) && cls;
-          out.edge(scope, 'calls', callee, line, ofClass ? cls : memberHint(target(object.text)));
+          // A receiver bound in the function around the call is no class or module the file names.
+          const local = !ofClass && object.type === 'identifier' && localBinding(object, object.text) !== undefined;
+          if (ofClass) out.edge(scope, 'calls', callee, line, cls, 'self');
+          else out.edge(scope, 'calls', callee, line, memberHint(local ? object.text : target(object.text)), local ? 'value' : undefined);
         }
       }
     }

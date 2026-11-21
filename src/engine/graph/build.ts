@@ -230,8 +230,10 @@ function applyLayer(
           path: file,
           kind: s.kind,
           qualified_name: s.qualified_name,
+          line: s.start_line,
           ...(s.reach ? { reach: s.reach } : {}),
           ...(parent ? { within: [parent.start_line, parent.end_line] as [number, number] } : {}),
+          ...(s.bases ? { bases: s.bases } : {}),
         });
       }
       symbolRows.push({ file, s, offset });
