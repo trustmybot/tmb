@@ -138,6 +138,7 @@ for (const harness of HARNESSES) {
         "session-start": { type: "session-start" },
         "before-file-write": { type: "before-file-write", role: "planner", file: "notes.md" },
         "before-agent-start": { type: "before-agent-start", role: "reviewer", prompt: "review" },
+        "agent-start-failed": { type: "agent-start-failed", role: "reviewer", prompt: "review" },
         "after-agent-stop": { type: "after-agent-stop", role: "reviewer" },
         "worker-in-folder": { type: "worker-in-folder", task: "01ARZ3NDEKTSV4RRFFQ69G5FAV", folder: project },
         "before-shell-command": { type: "before-shell-command", role: "planner", command: "ls" },

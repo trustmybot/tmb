@@ -5,6 +5,7 @@
 // reviewer host's main agent writes nothing. tmb reads a shell command only for a step only the
 // Human may take (trustmybot/tmb#179): git's pre-push hook holds every push, whatever was typed.
 // A record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
+import { realpathSync } from "node:fs";
 import { runningName } from "../program.ts";
 import { adoptWorktree } from "./handlers/adopt.ts";
 import { humanOnlyInShell, shellDenyReason } from "./human-only.ts";
@@ -13,9 +14,19 @@ import { openProjectStore } from "./project.ts";
 import { hostRole } from "./settings.ts";
 import { FINISHED, STOPPED } from "./host-runs.ts";
 import { OPEN } from "./handlers/common.ts";
+import { runGit } from "./git.ts";
+import { inGitWorkTree, repoDirOf } from "./repos.ts";
 import { type Actor, type ModelUsage, ROLES, type Role, type Run, type Store, type StoreOpenError } from "./store/index.ts";
 
-export const TMB_EVENT_TYPES = ["session-start", "before-file-write", "before-agent-start", "after-agent-stop", "worker-in-folder", "before-shell-command"] as const;
+export const TMB_EVENT_TYPES = [
+  "session-start",
+  "before-file-write",
+  "before-agent-start",
+  "agent-start-failed",
+  "after-agent-stop",
+  "worker-in-folder",
+  "before-shell-command",
+] as const;
 export type TmbEventType = (typeof TMB_EVENT_TYPES)[number];
 
 /**
@@ -39,11 +50,17 @@ export type TmbEvent = {
   /** The role of the agent starting or stopping; for any other event, MAIN_AGENT or the subagent the event came from. */
   role: string;
   task?: string;
+  /**
+   * For a worker starting, on a host that cuts the worker's own worktree from the folder the start
+   * is made in: that folder. The worker starts only from inside its task's repo (trustmybot/tmb#285).
+   */
+  startFolder?: string;
   /** For an agent stopping: the tokens it used, per model, when its host gives them (trustmybot/tmb#133). */
   cost?: ModelUsage[] | null;
   /**
-   * What is about to happen: the file path, the start prompt of an agent starting, or the role of
-   * one stopping; for a worker naming its task, the folder it works in; for a shell command, its text.
+   * What is about to happen: the file path, the start prompt of an agent starting or of one whose
+   * start failed, or the role of one stopping; for a worker naming its task, the folder it works in;
+   * for a shell command, its text.
    */
   action: string;
 };
@@ -95,8 +112,59 @@ function workerStart(store: Store, event: TmbEvent): Decision {
   if (!task) return deny(`No task ${taskId} is in the record.`);
   if (task.state !== "open") return deny(`Task ${taskId} is ${task.state}.`);
   if (!worktreeReady(task)) return deny(`Task ${taskId}'s worktree ${task.worktree ?? "(none)"} is missing.`);
+  if (event.startFolder !== undefined) {
+    const repoDir = repoDirOf(event.projectDir, task.repo);
+    if (!sameFolder(gitTopOf(event.startFolder), repoDir)) {
+      if (!inGitWorkTree(repoDir)) {
+        return {
+          decision: "deny",
+          reason: `Task ${taskId} names no repo, and its folder ${repoDir} is no git repo, so the host cannot cut the worker's own worktree there. Start the worker on a task that names its repo.`,
+        };
+      }
+      return {
+        decision: "deny",
+        reason:
+          `Task ${taskId} works in ${task.repo === null ? "the project's repo" : `the repo ${task.repo}`} at ${repoDir}, but this start is made from ${event.startFolder}, ` +
+          `which is not inside it, so the host cannot cut the worker's own worktree from that repo. Change into ${repoDir}, then start the worker again with the same prompt.`,
+      };
+    }
+  }
   const runId = store.appendRun(actorOf(event), { taskId, role: WORKER });
   return { decision: "allow", reason: `worker run ${runId} started on open task ${taskId}` };
+}
+
+/** The top of the git work tree holding `folder`, or null when it is in none. */
+function gitTopOf(folder: string): string | null {
+  const result = runGit(folder, ["rev-parse", "--show-toplevel"]);
+  return result.ok && result.stdout !== "" ? result.stdout : null;
+}
+
+function sameFolder(a: string | null, b: string): boolean {
+  if (a === null) return false;
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * An agent's start failed after the gate allowed it (trustmybot/tmb#285): the host made no
+ * subagent, so no stop will come. The run its allowed start opened ends as stopped with no cost:
+ * the newest open run of the role this host started, on the task the start prompt names for a
+ * worker. Never denies.
+ */
+function startFailed(store: Store, event: TmbEvent, role: Role): Decision {
+  const taskId = role === WORKER ? taskIdInPrompt(event.action) : null;
+  if (role === WORKER && taskId === null) return { decision: "allow", reason: "a worker start whose prompt names no task failed; it opened no run" };
+  const open = store
+    .openRuns(role, taskId ?? undefined)
+    .filter((run) => run.createdBy.kind === "agent" && run.createdBy.host === event.host && (role !== REVIEWER || run.taskId === null));
+  const run = open.at(-1);
+  const which = taskId === null ? "" : ` on task ${taskId}`;
+  if (run === undefined) return { decision: "allow", reason: `a ${role} start${which} failed, and no ${role} run${which} was open to end` };
+  store.endRun(actorOf(event), run.id, { outcome: STOPPED, cost: null });
+  return { decision: "allow", reason: `${role} run ${run.id} ended, stopped: its start failed, so no ${role} ran` };
 }
 
 /** The reviewer may start on any change; its start is recorded as a run, which a review needs. */
@@ -168,6 +236,7 @@ function rule(store: Store, event: TmbEvent): Decision {
   if (event.role === WORKER && event.type === "before-agent-start") return workerStart(store, event);
   if (event.role === REVIEWER && event.type === "before-agent-start") return reviewerStart(store, event);
   if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return runStop(store, event, event.role);
+  if ((event.role === WORKER || event.role === REVIEWER) && event.type === "agent-start-failed") return startFailed(store, event, event.role);
   if (event.type === "before-file-write") return fileWriteRule(event) ?? { decision: "allow" };
   if (event.role === WORKER && event.type === "worker-in-folder") return workerInFolder(store, event);
   return { decision: "allow" };

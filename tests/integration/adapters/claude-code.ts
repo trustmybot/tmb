@@ -73,6 +73,17 @@ export const claudeCodeHarness: HostHarness = {
           input: input(project, "PreToolUse", { tool_name: "Agent", tool_input: { subagent_type: event.role, prompt: event.prompt } }),
           env,
         };
+      case "agent-start-failed":
+        return {
+          command: wiredCommand(project, "PostToolUseFailure"),
+          input: input(project, "PostToolUseFailure", {
+            tool_name: "Agent",
+            tool_input: { subagent_type: event.role, prompt: event.prompt },
+            error: "Cannot create agent worktree: not in a git repository",
+            is_interrupt: false,
+          }),
+          env,
+        };
       case "after-agent-stop":
         return { command: wiredCommand(project, "SubagentStop"), input: input(project, "SubagentStop", { agent_type: event.role }), env };
       case "worker-in-folder":

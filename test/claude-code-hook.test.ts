@@ -1,5 +1,6 @@
 // Claude Code's PreToolUse and SubagentStop hooks, translated into tmb events and answered.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -176,6 +177,66 @@ describe("hook pre-tool-use", () => {
 
   test("still throws on input that is not JSON", () => {
     expect(() => answerHook("pre-tool-use", "{ not json", ATTENDED)).toThrow();
+  });
+});
+
+describe("hook post-tool-use-failure (trustmybot/tmb#285)", () => {
+  const PLANNER = { kind: "agent", role: "planner", host: "claude-code" } as const;
+
+  /** A workspace task in the repo api, whose worktree folder exists. */
+  function openTask(): string {
+    const repo = path.join(project, "api");
+    mkdirSync(repo, { recursive: true });
+    expect(spawnSync("git", ["init", "-q"], { cwd: repo, timeout: 10_000 }).status).toBe(0);
+    const worktree = mkdtempSync(path.join(project, "wt-"));
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    try {
+      const issueId = opened.store.createIssue(PLANNER, { title: "goal" });
+      return opened.store.appendTask(PLANNER, { issueId, title: "task", spec: "{}", state: "open", worktree, repo: "api" });
+    } finally {
+      opened.store.close();
+    }
+  }
+
+  function openWorkerRuns(): number {
+    const opened = openProjectStore(project, { create: false });
+    if (!opened.ok) throw opened.error;
+    try {
+      return opened.store.openRuns("worker").length;
+    } finally {
+      opened.store.close();
+    }
+  }
+
+  function failure(extra: Record<string, unknown>): string {
+    return answerHook("post-tool-use-failure", JSON.stringify({ hook_event_name: "PostToolUseFailure", cwd: project, error: "Cannot create agent worktree: not in a git repository", ...extra }), ATTENDED);
+  }
+
+  test("a worker start from the workspace folder is denied before any run opens, telling bro where to start it", () => {
+    const taskId = openTask();
+    const output = JSON.parse(preToolUse("Agent", { subagent_type: "worker", prompt: `task_id=${taskId}` }));
+    expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(output.hookSpecificOutput.permissionDecisionReason).toContain(`Change into ${path.join(project, "api")}`);
+    expect(openWorkerRuns()).toBe(0);
+  });
+
+  test("an Agent call that failed after its start was allowed ends the run the start opened", () => {
+    const taskId = openTask();
+    const prompt = `task_id=${taskId}`;
+    expect(preToolUse("Agent", { subagent_type: "worker", prompt }, { cwd: path.join(project, "api") })).toBe("");
+    expect(openWorkerRuns()).toBe(1);
+
+    // A call the user stopped may have started its worker, whose stop ends the run.
+    expect(failure({ tool_name: "Agent", tool_input: { subagent_type: "worker", prompt }, is_interrupt: true })).toBe("");
+    expect(openWorkerRuns()).toBe(1);
+    // Another tool's failure is not a start.
+    expect(failure({ tool_name: "Bash", tool_input: { command: prompt }, is_interrupt: false })).toBe("");
+    expect(openWorkerRuns()).toBe(1);
+
+    expect(failure({ tool_name: "Agent", tool_input: { subagent_type: "worker", prompt }, is_interrupt: false })).toBe("");
+    expect(openWorkerRuns()).toBe(0);
+    expect(JSON.parse(guardDecisions().at(-1)!.event)).toEqual({ type: "agent-start-failed", role: "worker", action: prompt });
   });
 });
 
