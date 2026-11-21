@@ -43,15 +43,19 @@ import { judgePush, NO_RECORD, pushGateOffLine, removePushGates, repoTopOf } fro
 import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
 import { formatBytes, isProcessRunning } from "./builds.ts";
 import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
-import { runningProgram } from "./program.ts";
+import { runningName, runningProgram } from "./program.ts";
 import { refreshProject } from "./refresh.ts";
 import { runFront } from "./tool-front.ts";
 import { HANDED_OVER_VARIABLE, INSTALLED_FILE_VARIABLE, installedVersionOf, isCompiledEntry, Updater, updaterOptions } from "./update.ts";
 import { version, versionLine } from "./version.ts";
 import type { HostAdapter } from "./adapters/host-adapter.ts";
 
-/** Each command's detail, as `tmb help <command>` and `tmb <command> --help` show it. */
-const USAGE: Record<string, string> = {
+/**
+ * Each command's detail, as `tmb help <command>` and `tmb <command> --help` show it. Built when
+ * printed, so the prose names the running program; each entry's head stays `tmb <command>`, the
+ * form the help's layout reads.
+ */
+const usage = (): Record<string, string> => ({
   ...RECORD_USAGE,
   config: CONFIG_USAGE,
   index: INDEX_USAGE,
@@ -74,8 +78,8 @@ const USAGE: Record<string, string> = {
   remove: `  tmb remove [--host <id>]  Undo what init added for one host, or for every host and the
                             push gate when none is named; the record is kept`,
   migrate: `  tmb migrate [--from <plugin db>] [--repo <name> [--into <repo>]] [--json]
-                            Copy a tmb plugin project's records into the new record tmb init
-                            made for this project; run tmb init first. In a workspace, each
+                            Copy a tmb plugin project's records into the new record ${runningName()} init
+                            made for this project; run ${runningName()} init first. In a workspace, each
                             plugin repo goes to the repo of the same name, or --into's. The
                             plugin's database is left untouched`,
   dashboard: `  tmb dashboard [--port <n>] [--project <dir>]
@@ -97,7 +101,7 @@ const USAGE: Record<string, string> = {
                             with no host, the event is the first host's tmb wired`,
   "pre-push": `  tmb pre-push [--project <path>] <remote> [<url>]
                             Judge a push (git's pre-push hook runs this; reads its ref lines on stdin)`,
-};
+});
 
 /** The short help's groups, most used first. */
 const GROUPS: HelpGroup[] = [
@@ -173,15 +177,15 @@ function shortHelp(paint: Paint, all: boolean): string {
  */
 function writeCommandHelp(command: string, action: string | undefined): number {
   if (!KNOWN.has(command)) {
-    process.stderr.write(unknownCommandText("tmb", command, LISTED, errPaint(), OTHER_NAMES));
+    process.stderr.write(unknownCommandText(runningName(), command, LISTED, errPaint(), OTHER_NAMES));
     return 2;
   }
   const actions = isRecordCommand(command) ? RECORD_ACTIONS[command] : undefined;
   if (actions !== undefined && action !== undefined && !actions.includes(action)) {
-    process.stderr.write(unknownCommandText(`tmb ${command}`, action, actions, errPaint()));
+    process.stderr.write(unknownCommandText(`${runningName()} ${command}`, action, actions, errPaint()));
     return 2;
   }
-  process.stdout.write(detailHelpText(actionUsage(USAGE[command]!, command, actions === undefined ? undefined : action), outPaint()));
+  process.stdout.write(detailHelpText(actionUsage(usage()[command]!, command, actions === undefined ? undefined : action), outPaint()));
   return 0;
 }
 
@@ -664,7 +668,7 @@ function runMigrateCommand(args: string[]): number {
   // The records go only into a record init made for this project; migrate never creates one (trustmybot/tmb#161).
   const recordPath = projectDbPath(projectDir);
   if (!existsSync(recordPath)) {
-    throw new Error(`there is no tmb record in ${process.cwd()} or a folder above it; run tmb init here first, then tmb migrate`);
+    throw new Error(`there is no tmb record in ${process.cwd()} or a folder above it; run ${runningName()} init here first, then ${runningName()} migrate`);
   }
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) throw opened.error;
@@ -722,7 +726,7 @@ function refuseRecordOfAnotherProject(store: Store, projectDir: string, cwd: str
   if (workspaceRepos(store) !== null && repoOf(store, projectDir, cwd) !== null) return;
   throw new Error(
     `the nearest tmb record, ${projectDbPath(projectDir)}, belongs to a folder above this repo and does not serve it; ` +
-      `run tmb init in ${repoTop} first, then tmb migrate there`,
+      `run ${runningName()} init in ${repoTop} first, then ${runningName()} migrate there`,
   );
 }
 
@@ -836,7 +840,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (!KNOWN.has(command)) {
-    process.stderr.write(unknownCommandText("tmb", command, LISTED, errPaint(), OTHER_NAMES));
+    process.stderr.write(unknownCommandText(runningName(), command, LISTED, errPaint(), OTHER_NAMES));
     return 2;
   }
   if (asksHelp(rest)) return writeCommandHelp(command, rest[0]?.startsWith("-") ? undefined : rest[0]);
@@ -845,7 +849,7 @@ async function main(argv: string[]): Promise<number> {
     return await dispatch(command, rest);
   } catch (error) {
     if (!isParseArgsError(error)) throw error;
-    process.stderr.write(usageErrorText(`tmb ${command}`, error.message, errPaint()));
+    process.stderr.write(usageErrorText(`${runningName()} ${command}`, error.message, errPaint()));
     return 2;
   }
 }

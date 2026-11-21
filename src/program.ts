@@ -4,6 +4,7 @@
 // file's, so the same build installed under two names is two programs.
 import { homedir } from "node:os";
 import path from "node:path";
+import { version } from "./version.ts";
 
 export const CHANNELS = ["dev", "rc", "stable"] as const;
 export type Channel = (typeof CHANNELS)[number];
@@ -56,6 +57,23 @@ export function isCompiledEntry(main: string): boolean {
 /** The program that is running: the installed file's, or plain tmb when run from source. */
 export function runningProgram(version: string): Program {
   return programOf(isCompiledEntry(Bun.main) ? process.execPath : null, version);
+}
+
+let runningNameCache: string | null = null;
+
+/**
+ * The running program's name, for every command tmb prints for its reader to run: `tmb-dev init`
+ * under tmb-dev, never plain `tmb init` (trustmybot/tmb#268). The product's name in a sentence, and
+ * the markers tmb writes into host files, stay plain tmb.
+ */
+export function runningName(): string {
+  runningNameCache ??= runningProgram(version).name;
+  return runningNameCache;
+}
+
+/** Text written with `tmb <command>` in backticks, such as a role prompt, naming the running program instead. */
+export function namingProgram(text: string, name: string = runningName()): string {
+  return name === "tmb" ? text : text.replace(/`tmb (?=[a-z])/g, `\`${name} `);
 }
 
 const INSTALLER_BASE = "https://github.com/trustmybot/tmb-releases/releases/download/dev";

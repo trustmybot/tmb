@@ -5,6 +5,7 @@
 // request into the base branch. When the base branch moved since the task was cut, the engine
 // rebases the reviewed commit first: an unchanged patch keeps its review once the checks pass
 // again, a changed one needs a new review, and a conflict reopens the task.
+import { runningName } from "../../program.ts";
 import { spawnSync } from "node:child_process";
 import { gitFailure, runGit } from "../git.ts";
 import { repoOfRow } from "../repos.ts";
@@ -270,7 +271,7 @@ type TaskReviewInput = { id: string; commit: string; verdict: Verdict; blocking?
 export function taskReview(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskReviewResult {
   const given = validateInput<TaskReviewInput>("task_review", taskReviewSchema, input);
   if (actor.kind === "human") {
-    throw new HandlerError("refused", "only the reviewer records a review; the Human waives one instead, with `tmb task waive <id> --reason <text>`");
+    throw new HandlerError("refused", `only the reviewer records a review; the Human waives one instead, with \`${runningName()} task waive <id> --reason <text>\``);
   }
   requireRole(actor, "task_review", ["reviewer"]);
   if (store.openRuns("reviewer").length === 0) {
@@ -525,7 +526,7 @@ export async function taskPr(store: Store, actor: Actor, input: unknown, context
           : `its newest review at ${task.commitSha} is a ${newest.verdict}`;
     throw new HandlerError(
       "refused",
-      `the pull request of task ${task.id} opens only after the reviewer passes it at ${task.commitSha}, or the Human waives the review: ${why}. Start the reviewer with the ${taskReviewLine(task.id)} line in its prompt, or ask the Human to run \`tmb task waive ${task.id} --reason <text>\`.`,
+      `the pull request of task ${task.id} opens only after the reviewer passes it at ${task.commitSha}, or the Human waives the review: ${why}. Start the reviewer with the ${taskReviewLine(task.id)} line in its prompt, or ask the Human to run \`${runningName()} task waive ${task.id} --reason <text>\`.`,
     );
   }
   if (!hasOrigin(dir)) {

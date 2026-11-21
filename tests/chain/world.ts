@@ -34,6 +34,8 @@ export class World {
   releasesUrl = "";
   /** tmb's release repo on disk, the newer build the update step publishes, and its asset name. */
   release = { dir: "", next: "", asset: "" };
+  /** What tmb printed since the last after-step check, by the command that printed it (trustmybot/tmb#268). */
+  printed: { run: string; text: string }[] = [];
 
   constructor(readonly work: string) {
     this.home = path.join(work, "home");
@@ -109,6 +111,8 @@ export class World {
     });
     const stdout = result.stdout ?? "";
     const stderr = result.error ? `${result.stderr ?? ""}${result.error.message}\n` : (result.stderr ?? "");
+    // tmb's own output, and a push's, which carries the push gate's words.
+    if (command === PROGRAM || (command === "git" && args.includes("push"))) this.printed.push({ run: `${command} ${args.join(" ")}`, text: stdout + stderr });
     return { status: result.status ?? -1, stdout, stderr, output: stdout + stderr };
   }
 
@@ -129,7 +133,9 @@ export class World {
 
   /** Runs a step only the Human may take, on a terminal, typing each answer (yes by default). */
   human(args: string[], options: { cwd?: string; answers?: string[] } = {}): HumanRun {
-    return asHuman(PROGRAM, args, { cwd: options.cwd ?? this.project, env: this.env(), answers: options.answers });
+    const result = asHuman(PROGRAM, args, { cwd: options.cwd ?? this.project, env: this.env(), answers: options.answers });
+    this.printed.push({ run: `${PROGRAM} ${args.join(" ")}`, text: result.output });
+    return result;
   }
 
   /** git in `cwd`; returns its trimmed stdout and throws with its output on an error. */

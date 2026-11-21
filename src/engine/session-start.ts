@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
 import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
+import { namingProgram, runningName } from "../program.ts";
 import { firstRunSection } from "./feedback/first-run.ts";
 import type { FeedbackEnv } from "./feedback/index.ts";
 import { retryKeptCheckouts } from "./handlers/fold.ts";
@@ -141,7 +142,7 @@ function workspaceSection(projectDir: string, repos: RepoPolicies, workspaceMode
     `\n\n${PROJECT_MAP_HEADING}\n\nThis project is a workspace of ${names.length} repo${names.length === 1 ? "" : "s"} sharing one record. ` +
     "feature_start, task_start and the graph tools take repo, the repo's name below; with several repos they refuse a call that names none. " +
     "Each repo follows its own review mode, below: a truest repo has no feature branches. " +
-    `A task works in its feature branch's repo. ${UNTRUSTED_NOTE}\n\n${lines.length === 0 ? "- none found; `tmb init` finds them" : lines.join("\n")}`
+    `A task works in its feature branch's repo. ${UNTRUSTED_NOTE}\n\n${lines.length === 0 ? `- none found; \`${runningName()} init\` finds them` : lines.join("\n")}`
   );
 }
 
@@ -172,14 +173,14 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
       `Before other work, work out the ${others.map((name) => SETTING_LABELS[name]).join(" and ")} you recommend for this project, reading what you need of it, and apply them with settings_set.`,
       unattended
         ? "Name each value you applied in your answer."
-        : "Then show the Human what you applied, and remind them that `tmb onboard` can be run again at any time to change the settings, and that you can change a value when they ask.",
+        : `Then show the Human what you applied, and remind them that \`${runningName()} onboard\` can be run again at any time to change the settings, and that you can change a value when they ask.`,
     );
   }
   if (empty.includes("review_mode")) {
     parts.push(
       unattended
         ? "The review mode is the Human's choice, as it decides how many tokens the project uses, and no one can answer in this run: do not set it. " +
-            "task_start is refused until the Human runs `tmb onboard`; say so in your answer."
+            `task_start is refused until the Human runs \`${runningName()} onboard\`; say so in your answer.`
         : "The review mode is the Human's choice, as it decides how many tokens the project uses: do not set it yourself. " +
             `Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, ${RECOMMENDED_REVIEW_MODE} marked as recommended. ` +
             "Set their answer with settings_set. task_start is refused until it is set.",
@@ -189,7 +190,7 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
 }
 
 function withRole(section: string): string {
-  return `${plannerRole.trimEnd()}\n\n${section}\n`;
+  return `${namingProgram(plannerRole).trimEnd()}\n\n${section}\n`;
 }
 
 function oneLine(error: unknown): string {
@@ -219,14 +220,14 @@ function awaitingReview(store: Store, projectDir: string): string {
 /** The reviewer host's context; opens its run, so the verdict it records has one. Never throws. */
 function reviewerContext(projectDir: string, host: string): string {
   const opened = openProjectStore(projectDir, { create: false });
-  if (!opened.ok) return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(opened.error)}\n`;
+  if (!opened.ok) return `${namingProgram(reviewerRole).trimEnd()}\n\ntmb could not read the record: ${oneLine(opened.error)}\n`;
   try {
-    const context = `${reviewerRole.trimEnd()}\n\n${awaitingReview(opened.store, projectDir)}\n`;
+    const context = `${namingProgram(reviewerRole).trimEnd()}\n\n${awaitingReview(opened.store, projectDir)}\n`;
     // A host may raise a session start again on resume, clear or compact: one run per session.
     ensureHostReviewerRun(opened.store, host);
     return context;
   } catch (error) {
-    return `${reviewerRole.trimEnd()}\n\ntmb could not read the record: ${oneLine(error)}\n`;
+    return `${namingProgram(reviewerRole).trimEnd()}\n\ntmb could not read the record: ${oneLine(error)}\n`;
   } finally {
     opened.store.close();
   }
@@ -328,7 +329,7 @@ function endedPullRequests(store: Store, projectDir: string, host?: string): str
 function plannerContext(projectDir: string, unattended: boolean, host?: string): string {
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
-    return opened.error.failure === "missing" ? plannerRole : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
+    return opened.error.failure === "missing" ? namingProgram(plannerRole) : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
   }
   try {
     tidyClosedTasks(opened.store, projectDir);

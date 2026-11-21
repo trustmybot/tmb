@@ -1,6 +1,7 @@
 // The task flow: the engine starts a task on its own branch and worktree, cut from its feature
 // branch, briefs whoever works on it, and closes it only after the checks pass on its committed
 // work, folding it into the feature branch and pushing that as a backup.
+import { runningName } from "../../program.ts";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";
@@ -10,7 +11,7 @@ import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../docs-files.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 import { repoChecks, repoDirOf, repoOfRow, resolveRepo, workingRepos } from "../repos.ts";
-import { NO_REVIEW_MODE, readSettings, type ReviewMode, reviewModeOf, type Settings } from "../settings.ts";
+import { noReviewMode, readSettings, type ReviewMode, reviewModeOf, type Settings } from "../settings.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
@@ -434,7 +435,7 @@ export function taskStart(store: Store, actor: Actor, input: unknown, context: O
   }
   const baseBranch = repo.baseBranch;
   if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
-  if (mode.reviewMode === null) throw new HandlerError("refused", NO_REVIEW_MODE);
+  if (mode.reviewMode === null) throw new HandlerError("refused", noReviewMode());
   const dir = repo.dir;
 
   const id = newId();
@@ -712,8 +713,8 @@ export function closeChecks(store: Store, task: Task): string[] {
     throw new HandlerError(
       "refused",
       task.repo === null
-        ? "no checks are set, neither the project's nor the task's, and a task never closes unchecked; add the project's with `tmb onboard --check <command>`"
-        : `no checks are set, neither the repo ${task.repo}'s nor the task's, and a task never closes unchecked; add the repo's with \`tmb onboard --repo ${task.repo} --check <command>\``,
+        ? `no checks are set, neither the project's nor the task's, and a task never closes unchecked; add the project's with \`${runningName()} onboard --check <command>\``
+        : `no checks are set, neither the repo ${task.repo}'s nor the task's, and a task never closes unchecked; add the repo's with \`${runningName()} onboard --repo ${task.repo} --check <command>\``,
     );
   }
   return commands;
