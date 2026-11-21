@@ -82,7 +82,7 @@ No test fixes the OS, the model or the machine's setup. Each is a setting of the
 
 ## The whole chain in a container
 
-Agreed by the Human on 2026-11-20 (trustmybot/tmb#260, v1.0.0) and being built in five pull requests. Built so far: the container, the demo app, the runner, steps 0 to 4 (install, init, doctor, onboard, index) with the two checks after every step, and the saved states. These run in CI on every pull request. Not built yet: the other steps, and moving today's agent tests into the chain. Until then the agent tests are separate scripts, each with its own small project, run on a developer's machine.
+Agreed by the Human on 2026-11-20 (trustmybot/tmb#260, v1.0.0) and being built in five pull requests. Built so far: the container, the demo app, the runner, the saved states, and every step that uses no model, with the two checks after every step: 0 to 4 (install, init, doctor, onboard, index), 9 (a push typed by hand), 15 (update) and 16 (the dashboard's Code page). These run in CI on every pull request. Not built yet: the session steps 5 to 8 and 10 to 14, the end check, and moving today's agent tests into the chain. Until then the agent tests are separate scripts, each with its own small project, run on a developer's machine.
 
 | Run | Command |
 |---|---|

@@ -46,9 +46,10 @@ function must(command: string, args: string[]): void {
 }
 
 const target = `linux-${process.arch === "arm64" ? "arm64" : "x64"}`;
-const binary = path.join(out, "tmb-linux");
-console.log(`Building tmb ${chainVersions().first} for ${target}…`);
-await buildTmb(chainVersions().first, binary, target);
+const { first, next } = chainVersions();
+console.log(`Building tmb ${first}, and ${next} for the update step, for ${target}…`);
+await buildTmb(first, path.join(out, "tmb-linux"), target);
+await buildTmb(next, path.join(out, "tmb-linux-next"), target);
 
 must(engine, ["build", "--tag", IMAGE, "--file", path.join(import.meta.dir, "Dockerfile"), import.meta.dir]);
 
@@ -75,6 +76,8 @@ const run = [
   "/out/work",
   "--tmb-file",
   "/out/tmb-linux",
+  "--tmb-next-file",
+  "/out/tmb-linux-next",
   ...(withModel ? ["--with-model"] : []),
   ...(values.from !== undefined ? ["--from", values.from] : []),
   ...(values.only !== undefined ? ["--only", values.only] : []),

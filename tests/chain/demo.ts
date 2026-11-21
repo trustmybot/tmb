@@ -13,7 +13,10 @@ export const DEMO_APP = path.join(import.meta.dir, "demo-app");
 const FIXED = "2026-01-01T09:00:00Z";
 
 /** The pre-push hook another tool wrote in tools before tmb came. */
-export const FOREIGN_HOOK = '#!/bin/sh\n# Written by the lint tool: lints before every push.\necho "lint: ok"\n';
+export const FOREIGN_HOOK = '#!/bin/sh\n# Written by the lint tool: lints the commits of every push.\ncat > "$(git rev-parse --git-dir)/lint-refs"\necho "lint: ok"\n';
+
+/** Where the other tool's hook keeps the ref lines git gave it, so the chain can see it got them. */
+export const FOREIGN_HOOK_REFS = "lint-refs";
 
 /** Lays the demo app out in the world's project folder; returns each repo's first commit. */
 export function buildDemoApp(world: World): Record<string, string> {
