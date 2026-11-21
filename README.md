@@ -45,7 +45,9 @@ The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the fi
 
 | Folder | Holds |
 |---|---|
-| [docs/architecture](docs/architecture/README.md) | The design: what the engine does and why. |
+| [docs/architecture](docs/architecture/README.md) | The design in space: the parts, what each owns and why. |
+| [docs/flows](docs/flows/README.md) | The design in time: what tmb does, step by step. |
+| [docs/prompt-engineering](docs/prompt-engineering/README.md) | The rules every prompt, role and skill follows. |
 | [docs/contributing](docs/contributing/README.md) | How work on this repo is done. See also [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). |
 | [docs/reference](docs/reference/README.md) | Install, set up and remove tmb. |
 

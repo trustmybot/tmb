@@ -1,14 +1,14 @@
 # tests
 
-How tmb is tested, and which tests each level of the [build order](../docs/architecture/README.md#build-order) must add.
+How tmb is tested, and which tests each level must add. A level is a GitHub milestone.
 
 ## The rule
 
-A level is done only when its tests pass with no manual step. The line "The Human sees it when" in the build order is itself one of those tests: it is automated, so the Human does not have to try each level by hand.
+A level is done only when its tests pass with no manual step.
 
 ## Test layers
 
-tmb keeps the plugin's layers, ordered from cheap to costly. They are named here by what they do, because "level" already means a step of the build order. The plugin's own label is given for reference.
+tmb keeps the plugin's layers, ordered from cheap to costly. They are named here by what they do, because "level" already means a milestone. The plugin's own label is given for reference.
 
 | Layer | Plugin's label | What it runs | Catches |
 |---|---|---|---|
@@ -75,7 +75,7 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 | Every build published to the dev channel, and every rc or stable release | Install |
 | On request, and before a level is called done | Agent run, Agent chain |
 | Before `dev` becomes an rc | The whole chain, session steps included, run by the Human on their own machine with their own login. It must pass there first; the run on GitHub comes after ([contributing](../docs/contributing/README.md)). |
-| Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
+| Before an rc or stable release | All of them, for the levels that release holds. |
 
 Every `bun test` file starts with `setDefaultTimeout(30_000)`. bun's default of 5 seconds fails tests that start tmb, git or a server whenever the machine is busy, and bun cannot raise it for the whole run: the call holds only in the file that makes it. A test that needs longer names its own timeout, and a test that hangs still fails. [tests/lint/test-timeout.test.ts](lint/test-timeout.test.ts) names any file that leaves the call out.
 
@@ -165,11 +165,11 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 06 Push gate | [push-gate.test.ts](integration/push-gate.test.ts). git's own pre-push hook judges every push, one typed by hand too, so it runs as an integration test with a real origin. |
 | 08 Retry and escalation | [review-gate.test.ts](workflow/review-gate.test.ts) ports review, fail and rework. tmb keeps no retry count, so escalation is the planner's call, not a rule. |
 | 09 Cold restart | [flow-09-cold-restart.test.ts](workflow/flow-09-cold-restart.test.ts). Its checks that only the reviewer records a verdict are in [review-gate.test.ts](workflow/review-gate.test.ts). |
-| 10 Roundtable | Not planned: the roundtable is not carried over ([GLOSSARY.md](../docs/architecture/GLOSSARY.md#not-carried-over)). |
+| 10 Roundtable | Not planned: tmb has no roundtable. |
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts). Two open tasks may share a file, which the plugin refused: [shared-files.test.ts](workflow/shared-files.test.ts) folds changes to different lines and stops the later close on the same lines. |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). An issue in tmb's record has no labels, so only the milestone, title and body move. |
-| 14 Repo rename | Not planned. A workspace of several repos is built ([WORKFLOW.md](../docs/architecture/WORKFLOW.md)), and no test renames a repo's folder yet. |
+| 14 Repo rename | Not planned. A workspace of several repos is built ([3_GIT.md](../docs/flows/3_GIT.md#multi-repo-workspaces)), and no test renames a repo's folder yet. |
 
 ## Level 6 tests
 
@@ -255,7 +255,7 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 
 ## Docs task check
 
-The check of a docs task by file type at its close ([WORKFLOW.md](../docs/architecture/WORKFLOW.md#two-kinds-of-task)).
+The check of a docs task by file type at its close ([3_TASKS.md](../docs/flows/3_TASKS.md#32-non-code-task)).
 
 | Layer | Test | What it proves |
 |---|---|---|
