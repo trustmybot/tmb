@@ -127,6 +127,32 @@ function oldBuildChecks(env: DoctorEnv): Finding[] {
 type Staged = { version?: unknown; from?: unknown; file?: unknown };
 type LastCheck = { at?: unknown; outcome?: unknown; error?: unknown };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A build's number on its channel: the N of 0.1.0-dev.N, with the version before it. */
+function buildNumber(version: string): { line: string; n: number } | null {
+  const found = /^(.*-[0-9A-Za-z]+)\.(\d+)$/.exec(version);
+  return found === null ? null : { line: found[1]!, n: Number(found[2]) };
+}
+
+/**
+ * How far the installed build is behind the newer one, in builds when both are numbered on one
+ * line, and in days between the two files' arrival (trustmybot/tmb#257); null when neither is known.
+ */
+export function howFarBehind(installed: string, newer: string, installedFile: string, newerFile: string): string | null {
+  const parts: string[] = [];
+  const from = buildNumber(installed);
+  const to = buildNumber(newer);
+  if (from !== null && to !== null && from.line === to.line && to.n > from.n) parts.push(`${to.n - from.n} build${to.n - from.n === 1 ? "" : "s"}`);
+  try {
+    const days = Math.floor((statSync(newerFile).mtimeMs - statSync(installedFile).mtimeMs) / DAY_MS);
+    if (days >= 1) parts.push(`${days} day${days === 1 ? "" : "s"}`);
+  } catch {
+    // A file that cannot be read gives no days.
+  }
+  return parts.length === 0 ? null : `${parts.join(" and ")} behind`;
+}
+
 function updateCheck(env: DoctorEnv): Finding[] {
   const name = env.program.name;
   if (env.installed === null || env.program.channel === null) {
@@ -145,9 +171,11 @@ function updateCheck(env: DoctorEnv): Finding[] {
     } else {
       const others = sessionEntries(env.stateDir).filter((entry) => entry.pid !== process.pid && env.isRunning(entry.pid));
       const why = others.length > 0 ? `${sessionsNamed(others.map((entry) => entry.project))} is running` : "no session has ended since it was downloaded";
+      const behind = howFarBehind(env.version, staged.version, env.installed, file);
       findings.push(finding("update", {
         status: "warn",
-        summary: `${name} ${staged.version} is downloaded and not applied yet: ${why}`,
+        summary: `${name} ${staged.version} is downloaded and not applied yet${behind === null ? "" : `; the installed ${env.version} is ${behind}`}: ${why}`,
+        ...(others.length > 0 ? { details: others.map((entry) => `held by process ${entry.pid}, in ${entry.project}${entry.startedAt ? `, started ${entry.startedAt}` : ""}`) } : {}),
         fix: { say: `\`${name} update\`` },
       }));
     }

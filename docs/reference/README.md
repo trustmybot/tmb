@@ -207,7 +207,7 @@ For more information, try 'tmb --help'.
 |---|---|
 | The program: its name, version, channel, where it is installed, and whether it is the one on the PATH | The install step |
 | Old builds kept on disk, each with its version, its size and the sessions that use it | Deletes each one no running session uses, on your yes. One a session uses is never offered |
-| A downloaded update that has not applied, and why; a look for an update that failed | `tmb update` |
+| A downloaded update that has not applied, and why: how far behind the installed build is, in builds and in days, and which sessions hold it; a look for an update that failed | `tmb update` |
 | Entries of sessions whose process ended | Removes them, on your yes |
 | Files an update left when it stopped half-way | Removes them, on your yes |
 | Other channels' programs installed side by side, each with its version | Shown only |
@@ -225,11 +225,16 @@ For more information, try 'tmb --help'.
 | The code graph behind its base branch, built by an older indexer, or with files not parsed | `tmb index` |
 | GitHub's CLI installed and signed in | `gh auth login` |
 | Other records in a folder above the project or below it | Shown only |
+| Work that went around tmb: since the record was made, the commits on each base branch that are not the record's own, as a count, a share and the newest one's date, and pull requests merged with no task where `gh` is signed in. A commit is the record's own when it, or a branch it merged, is a task's commit or a feature branch's, or it names a pull request the record opened. With no GitHub to ask it counts with git alone and says so; it reads at most 5000 commits per repo and says when it stopped | Shown only: a push typed by hand stays allowed |
+| A plugin record beside this one that holds repos no migration brought here, with what each holds | `tmb migrate --repo <name>`; in a folder whose repos are not named yet, `tmb init` again first |
+| Ended runs that carry no cost, as a count and a share; runs migrated from the plugin are included, and the line says so | Shown only |
+| Tasks that name no repo in a workspace, made before the project became one | `tmb init` again |
+| Worktrees of the project's repos, wherever they sit, that the host's files do not wire, so a session there runs without tmb's hooks or tool server: a count and the first few. A repo's main folder and a task's worktree are left out | Shown only |
 
 - **It never deletes without your yes**, and never touches a file tmb did not write.
 - **It runs with a broken record.** Every check that does not need the record still runs, and the ones that do say why they were skipped. A record an older tmb wrote is upgraded by the next tmb command, not by doctor.
 - **A check that fails by itself looks like tmb's own bug.** Its line says so and names `tmb feedback`, which can put that error in a report.
-- **The planner's session start names what doctor finds**, in one line: how many findings, and how many runs or tasks have a start and no end. When the record names none of the repos in a folder of repos, the line says first that the push gate is off. It runs only the quick checks, and says nothing when there is nothing to say.
+- **The planner's session start names what doctor finds**, in one line: "N things need a look: `tmb doctor`", so its context stays small. When the record names none of the repos in a folder of repos, the line says first that the push gate is off. It runs only the quick checks, asks git and not GitHub, and says nothing when there is nothing to say.
 
 ## Report a bug in tmb
 
@@ -335,7 +340,9 @@ tmb migrate
 
 tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into the new record `tmb init` made for this project, and names that record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
 
-In a workspace of several repos ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)), run `tmb migrate` in the workspace folder after `tmb init` there. Each plugin repo goes into the workspace's one record, to the workspace repo of the same name, and each copied task names that repo; issues name no repo. With no `--repo`, every plugin repo that maps is copied in one go, and tmb names each one it left out with the flag that maps it. `--repo <name>` copies one plugin repo, and `--repo <name> --into <workspace repo>` sends it to a repo of another name. tmb never guesses a repo, and refuses an exempt repo or a folder that is not a repo as the target. A plugin repo already migrated into the record is refused, so a re-run copies nothing twice, and the plugin's issues of no repo are copied once, with the first migration.
+In a workspace of several repos ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)), run `tmb migrate` in the workspace folder after `tmb init` there. Each plugin repo goes into the workspace's one record, to the workspace repo of the same name, and each copied task names that repo; issues name no repo. With no `--repo`, every plugin repo that maps is copied in one go, and tmb names each one it left out with the flag that maps it. `--repo <name>` copies one plugin repo, and `--repo <name> --into <workspace repo>` sends it to a repo of another name. tmb never guesses a repo, and refuses an exempt repo or a folder that is not a repo as the target. A plugin repo already migrated into the record is refused, so a re-run copies nothing twice, and the plugin's issues of no repo are copied once, with the first migration. `tmb doctor` names each plugin repo no migration brought here, with what it holds, and the step that brings it.
+
+A project of one repo whose folder later becomes a workspace keeps its tasks: `tmb init` run again gives each task that names no repo the one its migration from the plugin, its branch or its pull request shows, and says how many it gave and left, and each one given; proofs that name different repos give none; the task's runs and checks follow it. A task nothing points to keeps no repo, and `tmb doctor` lists it.
 
 The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and, in a single-repo project, a record that already holds issues or tasks, so it runs once. It also refuses before `tmb init` has made the project's record, and a record in a folder above a repo that the record does not serve, naming that record; it never creates a record itself.
 

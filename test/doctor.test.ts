@@ -444,15 +444,16 @@ describe("--fix", () => {
 });
 
 describe("the planner's session start", () => {
-  test("names the count of findings and the runs with no end, in one line", () => {
+  test("says only how many things need a look, in one line", () => {
     withStore(project, (store) => store.appendRun(PLANNER, { role: "worker" }));
     mkdirSync(path.join(stateDir, "sessions"));
     writeFileSync(path.join(stateDir, "sessions", "999999.json"), JSON.stringify({ pid: 999999, project }));
     const line = sessionStartLine(env());
-    expect(line).toBe("1 finding on this machine or project; 1 run or task has a start and no end: `tmb doctor` shows each with its fix.");
+    // The ended session's entry and the run with no end: two findings, counted, not listed.
+    expect(line).toBe("2 things need a look: `tmb doctor`");
     const answer = handleEvent({ type: "session-start", projectDir: project, unattended: false, doctor: () => line });
     expect(answer.context).toContain(DOCTOR_HEADING);
-    expect(answer.context).toContain("`tmb doctor` shows each");
+    expect(answer.context).toContain("2 things need a look");
   });
 
   test("says nothing when doctor finds nothing", () => {

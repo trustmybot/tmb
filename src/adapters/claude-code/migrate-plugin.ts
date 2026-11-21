@@ -9,6 +9,7 @@ import { createIdFactory } from "../../engine/ids.ts";
 import { isManaged } from "../../engine/repos.ts";
 import type { RepoPolicies } from "../../engine/settings.ts";
 import type { Actor, Role, Store } from "../../engine/store/index.ts";
+import { MIGRATION_AUDIT } from "../../engine/task-repos.ts";
 import { HOST_ID } from "./mcp-json.ts";
 
 /** The plugin schema this tool reads: the last one the plugin shipped before tmb. */
@@ -18,7 +19,7 @@ export const PLUGIN_SCHEMA_VERSION = 76;
 export const PLUGIN_DB_RELATIVE = path.join(".claude", "tmb", "trajectory.db");
 
 /** The audit entry that records a migration: the source, the counts and the id map. */
-export const MIGRATION_AUDIT = "migration.plugin";
+export { MIGRATION_AUDIT };
 
 /** The plugin ran its agents on Claude Code. */
 const PLUGIN_HOST = HOST_ID;

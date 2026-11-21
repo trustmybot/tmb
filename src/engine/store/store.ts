@@ -117,6 +117,8 @@ export type TaskChanges = {
   worktree?: string | null;
   /** Why the planner or the Human dropped the task. */
   dropReason?: string | null;
+  /** The workspace repo of a task made before its project became a workspace (trustmybot/tmb#257). */
+  repo?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string; repo?: string | null };
 export type FeatureChanges = { state?: string; prUrl?: string | null; dropReason?: string | null };
@@ -549,6 +551,7 @@ export class Store {
       base_commit: changes.baseCommit,
       worktree: changes.worktree,
       drop_reason: changes.dropReason,
+      repo: changes.repo,
     });
   }
 
@@ -687,6 +690,23 @@ export class Store {
   /** Check runs that have a start and no end, oldest first. */
   unendedCheckRuns(): CheckRun[] {
     return (this.db.query("SELECT * FROM check_runs WHERE ended_at IS NULL ORDER BY id").all() as CheckRunRow[]).map(toCheckRun);
+  }
+
+  /** How many runs ended, and how many of those carry no cost (trustmybot/tmb#257). */
+  runCostCounts(): { ended: number; withoutCost: number } {
+    const row = this.db.query("SELECT count(*) AS ended, coalesce(sum(cost IS NULL), 0) AS without FROM runs WHERE ended_at IS NOT NULL").get() as { ended: number; without: number };
+    return { ended: row.ended, withoutCost: row.without };
+  }
+
+  /** When the record's first entry was written; null for an empty record. */
+  firstEntryAt(): string | null {
+    return (this.db.query("SELECT min(at) AS at FROM events").get() as { at: string | null }).at;
+  }
+
+  /** The pull requests tasks and feature branches opened, by their URLs. */
+  pullRequestUrls(): string[] {
+    const rows = this.db.query("SELECT pr_url FROM tasks WHERE pr_url IS NOT NULL UNION SELECT pr_url FROM features WHERE pr_url IS NOT NULL").all() as { pr_url: string }[];
+    return rows.map((row) => row.pr_url);
   }
 
   /** The tasks any agent run names. */

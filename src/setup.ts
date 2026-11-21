@@ -44,6 +44,7 @@ import { runGit } from "./engine/git.ts";
 import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
 import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./engine/settings.ts";
 import type { Actor } from "./engine/store/index.ts";
+import { giveTasksTheirRepos } from "./engine/task-repos.ts";
 import { runningName } from "./program.ts";
 import { version as packageVersion } from "./version.ts";
 import { Paint } from "./engine/doors/help.ts";
@@ -368,6 +369,26 @@ function registerRepos(projectDir: string, stored: RepoPolicies | null, scan: Sc
 }
 
 /**
+ * Gives each task made before the project became a workspace the repo the evidence names, and says
+ * each; its runs and checks follow it. A task the evidence leaves open is named for the Human (trustmybot/tmb#257).
+ */
+function giveOldTasksRepos(projectDir: string, repos: RepoPolicies, out: (line: string) => void): void {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return;
+  try {
+    const { given, left } = giveTasksTheirRepos(opened.store, HUMAN, projectDir, repos);
+    if (given.length + left.length === 0) return;
+    out(`  Tasks made before this was a workspace: ${given.length} given their repo, ${left.length} left with none.`);
+    for (const gave of given) out(`  Gave task ${gave.task} its repo ${gave.repo}: ${gave.from}.`);
+    if (left.length > 0) {
+      out(`  ${left.length === 1 ? "1 task names" : `${left.length} tasks name`} no repo: nothing shows one repo ${left.length === 1 ? "it was" : "each was"} cut in (${left.map((task) => task.id).join(", ")}). \`tmb doctor\` lists ${left.length === 1 ? "it" : "them"}.`);
+    }
+  } finally {
+    opened.store.close();
+  }
+}
+
+/**
  * Makes a folder that holds no repo into one, so the project is a single repo. Only called when the
  * folder is in no git work tree, holds no repo below it and the record registers none: init never
  * runs git init over repos it found.
@@ -423,6 +444,7 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
   // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
   for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
   const repos = workspace && scan !== null ? registerRepos(projectDir, stored.repos, scan, out) : null;
+  if (repos !== null) giveOldTasksRepos(projectDir, repos, out);
   for (const line of installPushGates(projectDir, repos, options.tmbCommand)) out(line);
   tieToProgram(projectDir, options.program ?? { name: "tmb", version: packageVersion }, options.tmbCommand, out);
 
