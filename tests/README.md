@@ -142,6 +142,8 @@ Each level has one test issue with this list. A later level keeps every earlier 
 | Integration | [tests/integration/code-graph.test.ts](integration/code-graph.test.ts) | Through `tmb index`, `tmb graph` and the tool server, the graph is current after a change lands on the base branch, with no index run. |
 | Agent run | [tests/agent-run/scope.ts](agent-run/scope.ts) (`bun run test:scope`) | Asked to change the loyalty discount, bro looks the code up in the code graph before it starts the task, and the task's files hold the file that defines the discount. |
 
+Two of the code graph's tests read a public repo, hono, at a fixed commit: that no function is left out (trustmybot/tmb#247) and that every link between files agrees with the TypeScript compiler (trustmybot/tmb#242). The tests never use the network. On a developer's machine run `bun tests/lib/pinned-repo.ts` once to fetch that commit (about 8 MB); until then the two tests are skipped and say so. CI fetches it before `bun test`, and there a missing folder or another commit fails.
+
 ## Level 4 tests
 
 | Layer | Test | What it proves |
