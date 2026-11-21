@@ -3,7 +3,7 @@
 // definition of a table or script. A bare name that matches a symbol elsewhere is never
 // proof, so such a reference stays unresolved rather than risk a wrong link.
 import { basename, posix } from "node:path";
-import type { EdgeKind, ExtractedEdge, SymbolKind } from "./extract.ts";
+import type { EdgeKind, ExtractedEdge, ExtractedExport, SymbolKind } from "./extract.ts";
 import { fileCandidates, ImportConfig } from "./import-config.ts";
 import { isTestPath } from "./test-paths.ts";
 
@@ -61,6 +61,13 @@ export function resolvePythonImport(fromFile: string, spec: string | null, fileS
   return null;
 }
 
+/** Where a name a file exports comes from: a declaration, or a whole module (`export * as ns from`). */
+type Origin = { path: string; name: string } | { namespace: string };
+/** An origin, and whether a cycle was cut on the way, so the answer depends on the chain that asked. */
+type Followed = { origin: Origin | null; cut: boolean };
+
+const originKey = (o: Origin): string => ("namespace" in o ? `*\u0000${o.namespace}` : `${o.path}\u0000${o.name}`);
+
 function push<V>(map: Map<string, V[]>, key: string, value: V): void {
   const list = map.get(key);
   if (list) list.push(value);
@@ -74,6 +81,9 @@ export class Resolver {
   private readonly fileSet = new Set<string>();
   private readonly importMap = new Map<string, Map<string, string>>();
   private readonly sourced = new Map<string, string[]>();
+  /** The names each file declares at its top level. */
+  private readonly topLevel = new Map<string, Set<string>>();
+  private readonly followed = new Map<string, Origin | null>();
 
   /** Imports that name the repo's own code (a relative path, a `paths` alias, a package of the repo) and link no file. */
   unresolvedImports = 0;
@@ -82,6 +92,7 @@ export class Resolver {
     candidates: Iterable<Candidate>,
     pending: Iterable<{ from: string; edge: ExtractedEdge }>,
     private readonly config: ImportConfig = new ImportConfig(new Map()),
+    private readonly exports: ReadonlyMap<string, readonly ExtractedExport[]> = new Map(),
   ) {
     for (const c of candidates) {
       if (c.kind === "module") {
@@ -90,6 +101,11 @@ export class Resolver {
         push(this.byBase, basename(c.path), c);
       } else {
         push(this.byName, shortName(c.kind, c.qualified_name), c);
+        if (c.kind !== "method" && c.reach === undefined) {
+          const names = this.topLevel.get(c.path) ?? new Set<string>();
+          names.add(c.qualified_name);
+          this.topLevel.set(c.path, names);
+        }
       }
     }
     for (const { from, edge } of pending) {
@@ -134,12 +150,96 @@ export class Resolver {
     return { file: resolvePythonImport(from, submodule, this.fileSet) ?? module, local };
   }
 
-  /** The file that defines the class named `name` as `from` sees it: its own file, or the file it imports the name from. */
-  private classFile(from: string, name: string): string | null {
-    const isClass = (path: string) => (this.byName.get(name) ?? []).some((c) => c.path === path && c.kind === "class");
-    if (isClass(from)) return from;
+  /** The repo file a module specifier written in `from` names, or null when it names none. */
+  private moduleFile(from: string, spec: string): string | null {
+    if (from.endsWith(".py")) return resolvePythonImport(from, spec, this.fileSet);
+    if (spec.startsWith(".")) return resolveImport(from, spec, this.fileSet);
+    return this.config.resolve(from, spec, this.fileSet).file;
+  }
+
+  /**
+   * Where `name`, as `path` exports it, is declared (trustmybot/tmb#233): the file itself, or
+   * the end of its re-exports, followed step by step. Null when a step cannot be proven, when
+   * a file comes twice in one chain, or when two stars give the name from two declarations.
+   */
+  private originOf(path: string, name: string): Origin | null {
+    return this.follow(path, name, new Set()).origin;
+  }
+
+  private follow(path: string, name: string, seen: ReadonlySet<string>): Followed {
+    if (this.topLevel.get(path)?.has(name)) return { origin: { path, name }, cut: false };
+    if (seen.has(path)) return { origin: null, cut: true };
+    const key = `${path}\u0000${name}`;
+    const known = this.followed.get(key);
+    if (known !== undefined) return { origin: known, cut: false };
+    const result = this.followExports(path, name, new Set(seen).add(path));
+    // An answer cut short by a cycle holds only for the chain that asked.
+    if (!result.cut) this.followed.set(key, result.origin);
+    return result;
+  }
+
+  private followExports(path: string, name: string, seen: ReadonlySet<string>): Followed {
+    const entries = this.exports.get(path) ?? [];
+    // A name the file exports by name wins over every star.
+    const byName = entries.filter((e) => (e.kind === "name" || e.kind === "namespace") && e.name === name);
+    if (byName.length > 1) return { origin: null, cut: false };
+    const own = byName[0];
+    if (own?.kind === "namespace") {
+      const file = this.moduleFile(path, own.source);
+      return { origin: file === null ? null : { namespace: file }, cut: false };
+    }
+    if (own?.kind === "name") {
+      if (own.source === null) return { origin: this.topLevel.get(path)?.has(own.original) ? { path, name: own.original } : null, cut: false };
+      const file = this.moduleFile(path, own.source);
+      return file === null ? { origin: null, cut: false } : this.follow(file, own.original, seen);
+    }
+    const python = path.endsWith(".py");
+    // A star never gives a default export.
+    if (!python && name === "default") return { origin: null, cut: false };
+    let origin: Origin | null = null;
+    let cut = false;
+    let unproven = false;
+    for (const star of entries) {
+      if (star.kind !== "star") continue;
+      const file = this.moduleFile(path, star.source);
+      if (file === null) {
+        unproven = true;
+        continue;
+      }
+      if (python) {
+        // Python's star gives the names of `__all__`, else every name not starting with `_`.
+        const all = this.exports.get(file)?.find((e) => e.kind === "all");
+        if (all?.kind === "all" && all.names === null) {
+          unproven = true;
+          continue;
+        }
+        if (all?.kind === "all" ? !all.names!.includes(name) : name.startsWith("_")) continue;
+      }
+      const step = this.follow(file, name, seen);
+      cut ||= step.cut;
+      if (step.origin === null) continue;
+      if (origin !== null && originKey(origin) !== originKey(step.origin)) return { origin: null, cut };
+      origin = step.origin;
+    }
+    // A star that cannot be followed may give the name too: no star's answer is then proof.
+    return { origin: unproven ? null : origin, cut };
+  }
+
+  /** The top-level callable `name` declared in `origin`, when it is a declaration. */
+  private callableAt(origin: Origin | null): number | undefined {
+    if (origin === null || "namespace" in origin) return undefined;
+    return (this.byName.get(origin.name) ?? []).find((c) => c.path === origin.path && c.reach === undefined && CALLABLE.has(c.kind))?.id;
+  }
+
+  /** The class named `name` as `from` sees it: its own, or the one its import of the name leads to. */
+  private classOf(from: string, name: string): { path: string; name: string } | null {
+    const isClass = (path: string, n: string) => (this.byName.get(n) ?? []).some((c) => c.path === path && c.kind === "class");
+    if (isClass(from, name)) return { path: from, name };
     const imported = this.importMap.get(from)?.get(name);
-    return imported !== undefined && isClass(imported) ? imported : null;
+    if (imported === undefined) return null;
+    if (isClass(imported, name)) return { path: imported, name };
+    const origin = this.originOf(imported, name);
+    return origin !== null && "path" in origin && isClass(origin.path, origin.name) ? origin : null;
   }
 
   resolve(from: string, edge: ExtractedEdge): Link | null {
@@ -160,12 +260,16 @@ export class Resolver {
     }
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
     if (edge.hint !== null && edge.hint !== "this") {
+      // `ns.f()` on a name imported from a file that exports it as `export * as ns from`.
+      const imported = this.importMap.get(from)?.get(edge.hint);
+      const namespace = imported === undefined ? null : this.originOf(imported, edge.hint);
+      if (namespace !== null && "namespace" in namespace) return link(this.callableAt(this.originOf(namespace.namespace, edge.dst_name)), "exact");
       // A receiver's type is only a name: the call links only when that name is proven to be a
       // class of this repo, defined in this file or imported from a file of it.
-      const classFile = this.classFile(from, edge.hint);
-      if (classFile === null) return null;
-      const qualified = `${edge.hint}.${edge.dst_name}`;
-      return link(cands.find((c) => c.kind === "method" && c.path === classFile && c.qualified_name === qualified)?.id, "exact");
+      const cls = this.classOf(from, edge.hint);
+      if (cls === null) return null;
+      const qualified = `${cls.name}.${edge.dst_name}`;
+      return link(cands.find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified)?.id, "exact");
     }
     const declared = cands.filter((c) => c.reach === undefined);
     const same = declared.find((c) => c.path === from);
@@ -175,7 +279,11 @@ export class Resolver {
     const nested = cands.filter((c) => c.reach === "nested" && c.path === from && c.within && edge.line >= c.within[0] && edge.line <= c.within[1]);
     if (nested.length === 1) return link(nested[0]!.id, "exact");
     const viaImport = this.importMap.get(from)?.get(edge.dst_name);
-    if (viaImport) return link(declared.find((c) => c.path === viaImport)?.id, "exact");
+    if (viaImport) {
+      const direct = declared.find((c) => c.path === viaImport);
+      // A name the imported file re-exports is linked where it is declared (trustmybot/tmb#233).
+      return link(direct?.id ?? this.callableAt(this.originOf(viaImport, edge.dst_name)), "exact");
+    }
     const viaSource = (this.sourced.get(from) ?? []).map((p) => declared.find((c) => c.path === p)).find(Boolean);
     return link(viaSource?.id, "exact");
   }

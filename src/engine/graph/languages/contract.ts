@@ -84,15 +84,32 @@ export interface ExtractedEdge {
   hint: string | null;
 }
 
+// A name a file gives other files without declaring it under that name (trustmybot/tmb#233),
+// which the resolver follows to the declaration. `source` is a module specifier as the file
+// writes it.
+// - name: `name` is `original` from `source`, or the file's own `original` when `source` is null;
+// - star: every name of `source` that the language's star rule gives;
+// - namespace: `name` is the whole module `source`, as `export * as name from` makes it;
+// - all: a Python module's `__all__`, its names when it is a plain list or tuple of strings,
+//   null when code builds it.
+export type ExtractedExport =
+  | { kind: 'name'; name: string; original: string; source: string | null }
+  | { kind: 'star'; source: string }
+  | { kind: 'namespace'; name: string; source: string }
+  | { kind: 'all'; names: string[] | null };
+
 export interface Extraction {
   symbols: ExtractedSymbol[];
   edges: ExtractedEdge[];
+  // Absent when the file re-exports nothing.
+  exports?: ExtractedExport[];
 }
 
 // Gathers one file's symbols and references as a language's rules find them.
 export class Collector {
   readonly symbols: ExtractedSymbol[] = [];
   readonly edges: ExtractedEdge[] = [];
+  readonly exports: ExtractedExport[] = [];
   private readonly byKey = new Map<string, number>();
 
   // A symbol seen again under the same key is the same row: by default its
@@ -108,6 +125,10 @@ export class Collector {
 
   edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null): void {
     this.edges.push({ src, kind, dst_name: dstName, line, hint });
+  }
+
+  export(e: ExtractedExport): void {
+    this.exports.push(e);
   }
 }
 

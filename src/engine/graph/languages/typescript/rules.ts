@@ -326,6 +326,40 @@ function functionName(fn: Node, cls: string | null): FunctionName {
   return unnamed(`function at line ${fn.startPosition.row + 1}`);
 }
 
+// The names an export statement gives other files without declaring them (trustmybot/tmb#233):
+// `export { f as g } from`, `export * from`, `export * as ns from`, and `export { g }` of a
+// name the file imports or declares under another name. `imported` is each named import's
+// local name to the name and module it comes from.
+function reexports(stmt: Node, imported: Map<string, { name: string; source: string }>, out: Collector): void {
+  const source = stmt.childForFieldName('source');
+  const spec = source ? literalText(source) : null;
+  if (source && spec === null) return;
+  const namespace = named(stmt).find((c) => c.type === 'namespace_export');
+  if (spec !== null && namespace) {
+    const name = named(namespace).find((c) => c.type === 'identifier')?.text;
+    if (name) out.export({ kind: 'namespace', name, source: spec });
+    return;
+  }
+  const clause = named(stmt).find((c) => c.type === 'export_clause');
+  if (spec !== null && !clause) {
+    if (stmt.children.some((c) => c?.type === '*')) out.export({ kind: 'star', source: spec });
+    return;
+  }
+  for (const s of clause ? named(clause) : []) {
+    if (s.type !== 'export_specifier') continue;
+    const original = s.childForFieldName('name');
+    if (original?.type !== 'identifier') continue;
+    const name = s.childForFieldName('alias')?.text ?? original.text;
+    if (spec !== null) {
+      out.export({ kind: 'name', name, original: original.text, source: spec });
+      continue;
+    }
+    const from = imported.get(original.text);
+    if (from) out.export({ kind: 'name', name, original: from.name, source: from.source });
+    else if (name !== original.text) out.export({ kind: 'name', name, original: original.text, source: null });
+  }
+}
+
 // TS/JS, in one walk. `scope` is the symbol a reference made here starts at:
 // the innermost function, unnamed ones included, or a class or module-level
 // const. `container` is what contains a symbol defined here (a function, a
@@ -337,6 +371,12 @@ export function extractTs(file: SourceFile, out: Collector): void {
   if (!root) throw new Error(`no syntax tree for ${file.relPath}`);
   const types = receiverTypes(root);
   const bindings = moduleBindings(root);
+  const imported = new Map<string, { name: string; source: string }>();
+  for (const s of root.descendantsOfType('import_specifier')) {
+    const n = s?.childForFieldName('name');
+    const source = s ? importSource(s) : undefined;
+    if (n?.type === 'identifier' && source !== undefined) imported.set(s!.childForFieldName('alias')?.text ?? n.text, { name: n.text, source });
+  }
   const target = (name: string): string => bindings.aliases.get(name) ?? name;
   const referenced = new Set<string>();
   const reference = (scope: number, kind: EdgeKind, name: string, at: Node): void => {
@@ -465,6 +505,8 @@ export function extractTs(file: SourceFile, out: Collector): void {
           receiver === undefined ? null : memberHint(receiver),
         );
       }
+    } else if (t === 'export_statement' && node.parent?.type === 'program') {
+      reexports(node, imported, out);
     } else if (t === 'import_statement') {
       const spec = node.childForFieldName('source')?.text.slice(1, -1) ?? null;
       for (const s of node.descendantsOfType('import_specifier')) {

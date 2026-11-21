@@ -10,6 +10,7 @@ import type { Parsers } from './loader.ts';
 export type {
   EdgeKind,
   ExtractedEdge,
+  ExtractedExport,
   ExtractedSymbol,
   Extraction,
   FunctionParams,

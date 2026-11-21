@@ -3,7 +3,7 @@
 // per blob: a later commit reparses only the files it changed.
 import type { Database } from "bun:sqlite";
 import { basename, posix } from "node:path";
-import { type Extraction, extractFile, languageOf, leftOutRule, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import { languageNamed } from "./languages/registry.ts";
@@ -17,7 +17,7 @@ import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 5;
+export const EXTRACTOR_VERSION = 6;
 const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
 export const MINIFIED = "minified; not parsed";
@@ -93,8 +93,8 @@ function cachedParse(db: Database, blob: string, lang: string): { extraction: Ex
 
 function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text: string): { extraction: Extraction | null; error: string | null } {
   try {
-    const { symbols, edges } = extractFile(parsers, entry.path, lang, text);
-    return { extraction: { symbols, edges }, error: null };
+    const { symbols, edges, exports } = extractFile(parsers, entry.path, lang, text);
+    return { extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}) }, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { extraction: null, error: message.slice(0, MAX_ERROR_CHARS) };
@@ -212,12 +212,14 @@ function applyLayer(
   const candidates: Candidate[] = [];
   const pending: Pending[] = [];
   const symbolRows: { file: string; s: Extraction["symbols"][number]; offset: number }[] = [];
+  const exports = new Map<string, ExtractedExport[]>();
   for (const plan of plans) {
     const file = plan.entry.path;
     const source = plan.summary === "" ? "none" : plan.extraction ? "header" : "heading";
     insertFile.run(layer, file, dirOf(file), plan.lang, plan.entry.blob, plan.entry.size, laneOf(file), plan.summary, source, plan.error);
     insertFileFts.run(layer, file, `${splitWords(file)} ${splitWords(basename(file))}`, plan.summary);
     if (!plan.extraction) continue;
+    if (plan.extraction.exports) exports.set(file, plan.extraction.exports);
     const offset = symbolRows.length;
     for (const s of plan.extraction.symbols) {
       // An unnamed function is no reference's target: nothing names it.
@@ -271,7 +273,7 @@ function applyLayer(
   }
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
-  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs));
+  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
   const insertEdge = db.prepare("INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
   let unresolved = 0;
   for (const { file, symbolIndex, edge } of pending) {
