@@ -96,7 +96,8 @@ export interface ExtractedEdge {
 //   and `hint` is the line its symbol starts on, the one target it may have;
 // - value: anything else there, such as a parameter, a variable or a class's
 //   field; it is no function of the repo, so it is never linked;
-// - import: an import made inside the function around it, and `hint` is that
+// - import: an import made inside the function around it, or a TypeScript
+//   `import { A as B }` alias (trustmybot/tmb#242), and `hint` is that
 //   import's module. On an 'imports' edge, the import is one made inside a
 //   function, which holds only there;
 // - self: a call on the object itself (`this`, `self`, `cls`), and `hint` is

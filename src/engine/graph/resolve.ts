@@ -237,10 +237,10 @@ export class Resolver {
     return { origin: unproven ? null : origin, cut };
   }
 
-  /** The top-level callable `name` declared in `origin`, when it is a declaration. */
+  /** The top-level callable `name` declared in `origin`, when it is a declaration: never a class's method of that name. */
   private callableAt(origin: Origin | null): number | undefined {
     if (origin === null || "namespace" in origin) return undefined;
-    return (this.byName.get(origin.name) ?? []).find((c) => c.path === origin.path && c.reach === undefined && CALLABLE.has(c.kind))?.id;
+    return (this.byName.get(origin.name) ?? []).find((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && CALLABLE.has(c.kind))?.id;
   }
 
   /** The class named `name` as `from` sees it: its own, or the one its import of the name leads to. */
@@ -294,7 +294,8 @@ export class Resolver {
       return link(only?.id, "exact");
     }
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
-    const declared = cands.filter((c) => c.reach === undefined);
+    // A bare or imported name is never a class's method of that name (trustmybot/tmb#242).
+    const declared = cands.filter((c) => c.reach === undefined && c.kind !== "method");
     // A name bound around the reference is looked up there first, and only there (trustmybot/tmb#246).
     if (edge.bound === "value") return null;
     if (edge.bound === "self") {
