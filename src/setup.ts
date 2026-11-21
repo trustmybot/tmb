@@ -564,8 +564,18 @@ const NO_REVIEW_MODE_LINE =
   "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. " +
   `Run tmb onboard, or tmb onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}>, on a terminal.`;
 
-function sayNoReviewMode(reviewMode: ReviewMode | null, out: (line: string) => void): void {
-  if (reviewMode === null) out(NO_REVIEW_MODE_LINE);
+/**
+ * Whether some repo tmb works in has no review mode: none for the project, and in a workspace,
+ * a repo that is not exempt with no mode of its own either (trustmybot/tmb#263).
+ */
+function reviewModeMissing(reviewMode: ReviewMode | null, repos: RepoPolicies | null | undefined): boolean {
+  if (reviewMode !== null) return false;
+  if (repos === null || repos === undefined) return true;
+  return workingRepoNames(repos).some((name) => repos[name]!.review_mode === undefined);
+}
+
+function sayNoReviewMode(reviewMode: ReviewMode | null, repos: RepoPolicies | undefined, out: (line: string) => void): void {
+  if (reviewModeMissing(reviewMode, repos)) out(NO_REVIEW_MODE_LINE);
 }
 
 /** init's one question: the review mode, asked on a terminal when none is chosen. Returns how many changes it recorded. */
@@ -629,7 +639,7 @@ export async function runInit(options: SetupOptions): Promise<void> {
   } else {
     out(`The settings are still empty: ${listed(empty)}; ${howEmptySettingsFill(init.role)}. To set them yourself, run ${onboard}.`);
   }
-  if (settings.review_mode === null) out(howReviewModeIsChosen(init.role, onboard));
+  if (reviewModeMissing(settings.review_mode, settings.repos)) out(howReviewModeIsChosen(init.role, onboard));
   // The feedback program's notice, once per program on this machine, only on a terminal; its question is the planner's.
   if (options.feedback !== undefined) firstRunAtInit(options.feedback, out);
   // Said again last, so it is not lost above init's other lines.
@@ -642,7 +652,7 @@ export async function runOnboard(options: SetupOptions): Promise<void> {
   const onboarded = await onboardProject(options);
   printSettings(projectDir, onboarded.recorded, out);
   if (onboarded.repos === undefined) sayNoBase(onboarded.base, out);
-  sayNoReviewMode(onboarded.reviewMode, out);
+  sayNoReviewMode(onboarded.reviewMode, onboarded.repos, out);
   if (onboarded.repos === undefined) sayMarkRule(projectDir, onboarded.base, out);
   else for (const name of workingRepoNames(onboarded.repos)) sayMarkRule(repoDirOf(projectDir, name), onboarded.repos[name]!.base_branch ?? null, out);
   await offerPushGate(options, onboarded.repos ?? null);
