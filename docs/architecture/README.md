@@ -11,7 +11,7 @@ A rule that is decided but not built carries **Planned**. A rule the Human has n
 | **High-level design** | This page, [PHILOSOPHY.md](PHILOSOPHY.md), [FLOWS.md](../flows/FLOWS.md), [RESPONSIBILITIES.md](RESPONSIBILITIES.md) | What tmb is and how work flows. Short, one chart per flow. The Human reviews these. |
 | **Low-level design** | Every other page | The detail under a high-level flow: every other case, failures, and how to debug them. For building and debugging tmb. |
 
-- **Two folders.** `docs/flows/` holds the design in time: how tmb takes work through its steps. [FLOWS.md](../flows/FLOWS.md) is its index, and each detail page there starts with the number of its flow group, as `3_TASKS.md` details group 3. `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. Its pages carry no number.
+- **Two folders.** [`docs/flows/`](../flows/README.md) holds the design in time: how tmb takes work through its steps. [FLOWS.md](../flows/FLOWS.md) is its index, and each detail page there starts with the number of its flow group, as `3_TASKS.md` details group 3. `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. Its pages carry no number.
 - A detail page follows the high-level pages. Where they disagree, the high-level page wins and the detail page is fixed.
 - **No schedule here.** Versions, milestones and the state of the work live on the GitHub board and in the record. These pages hold the design only, so they do not go stale when work moves.
 
