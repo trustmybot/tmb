@@ -1,6 +1,7 @@
-# The agent runs' fixture projects carry their own tests, which fail as shipped on purpose.
+# The agent runs' fixture projects carry their own tests, which fail as shipped on purpose; the
+# chain's demo app carries its own, run by the chain in its own repo.
 [test]
-pathIgnorePatterns = ["tests/agent-run/fixtures/**"]
+pathIgnorePatterns = ["tests/agent-run/fixtures/**", "tests/chain/demo-app/**"]
 # Every tmb the tests run keeps its machine-wide state in a scratch folder, not the person's.
 preload = ["./tests/lib/isolate-state.ts"]
 

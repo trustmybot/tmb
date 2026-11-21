@@ -82,7 +82,15 @@ No test fixes the OS, the model or the machine's setup. Each is a setting of the
 
 ## The whole chain in a container
 
-Planned (trustmybot/tmb#260, v1.0.0, agreed by the Human on 2026-11-20). Nothing of it is built. Today the agent tests are separate scripts, each with its own small project, run on a developer's machine, and none has run in CI.
+Agreed by the Human on 2026-11-20 (trustmybot/tmb#260, v1.0.0) and being built in five pull requests. Built so far: the container, the demo app, the runner, and steps 0 to 4 (install, init, doctor, onboard, index) with the two checks after every step. These run in CI on every pull request. Not built yet: saved states, the other steps, and moving today's agent tests into the chain. Until then the agent tests are separate scripts, each with its own small project, run on a developer's machine.
+
+| Run | Command |
+|---|---|
+| In the container, under Docker or Podman, as CI runs it | `bun run test:whole-chain:container` |
+| On this machine, with no container, in a temp folder | `bun run test:whole-chain` |
+| Either, with the session steps too, once they are built | add `--with-model`; the model login comes from the environment |
+
+The runner is [tests/chain/run.ts](chain/run.ts); the steps are in [tests/chain/steps/](chain/steps/), the demo app in [tests/chain/demo-app/](chain/demo-app/), with the graph counts it should index in `expected.json`. Each check prints PASS or FAIL. A check that fails because of a tmb bug already filed prints KNOWN with the issue and does not fail the step; once the bug is fixed it prints FIXED, and its mark is taken out. Logs of every step stay in the work folder's `logs`.
 
 - **One empty Linux container.** It holds git, bun and Claude Code, and no tmb. tmb is installed inside by its real install script, so install is the first step. GitHub is not reached: each repo's remote is a bare repo in the container, and the fake `gh` stands in for pull requests. A real pull request on a test repo is planned before the first stable release.
 - **One demo app of three repos, kept with the tests** and built with fixed dates: one in TypeScript in agile mode, one in Python and bash in truest mode, and one with no remote.

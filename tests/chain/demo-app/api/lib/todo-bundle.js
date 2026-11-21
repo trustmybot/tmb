@@ -1,0 +1,1 @@
+!function(){"use strict";function e(e){return e.trim()}function t(t,n){return t.concat([{id:t.length+1,title:e(n),done:!1}])}function n(e){return e.filter(function(e){return!e.done}).length}var r={add:t,open:n};"undefined"!=typeof window&&(window.todoBundle=r)}();

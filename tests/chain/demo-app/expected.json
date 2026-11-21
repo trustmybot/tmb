@@ -1,0 +1,7 @@
+{
+  "index": {
+    "api": { "files": 12, "functions": 12, "notParsed": 1, "notRead": "" },
+    "tools": { "files": 8, "functions": 8, "notParsed": 0, "notRead": "Ruby 1 file" },
+    "notes": { "files": 2, "functions": 0, "notParsed": 0, "notRead": "" }
+  }
+}
