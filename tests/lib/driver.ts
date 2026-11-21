@@ -1,5 +1,5 @@
-// Shared helpers for the test drivers run by bun: the agent runs and chains under
-// tests/agent-run and tests/agent-chain, and the install smoke test. Each driver is a plain
+// Shared helpers for the test drivers run by bun: the second-host agent chain in
+// tests/agent-chain, and the install smoke test. Each driver is a plain
 // script that prints PASS or FAIL lines and exits 0 when it passes, 1 when it fails and 2 when
 // it cannot run (no claude, no tmb, no git or bun). Every temp folder a driver makes is removed
 // when it exits. Uses only node built-ins and bun, so the install smoke test can run on a

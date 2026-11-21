@@ -1,13 +1,9 @@
 name: agent run
 
-# Real Claude Code sessions in a project set up with tmb. agent-run greets a session set up
-# with the dev build and checks bro answers, then has sessions built from this checkout fix a
-# small bun project through a task, scope a task from the code graph and have a finished
-# feature branch reviewed; agent-chain builds tmb from this checkout, has one session record a
-# goal and checks a new session finds it, then has two sessions add two functions and checks
-# one feature branch collected both.
-# whole-chain runs the chained test with its session steps (tests/chain).
-# Runs only on request, and each job only does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
+# The whole chained test, its session steps included, with real Claude Code sessions
+# (tests/chain, trustmybot/tmb#260). Its steps replaced the agent runs and agent chains that
+# lived in tests/agent-run and tests/agent-chain; the second-host chain stays a script of its own.
+# Runs only on request, and only does anything when CLAUDE_CODE_OAUTH_TOKEN is set.
 
 on:
   workflow_dispatch:
@@ -16,80 +12,6 @@ permissions:
   contents: read
 
 jobs:
-  agent-run:
-    runs-on: ubuntu-latest
-    env:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-    steps:
-      - name: Skip without the token
-        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
-        run: echo "::notice title=agent run skipped::Set the CLAUDE_CODE_OAUTH_TOKEN repository secret to run the agent test."
-      - uses: actions/checkout@v4
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-      - name: Install Claude Code
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: npm install -g @anthropic-ai/claude-code
-      - name: Install tmb from the dev channel
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: |
-          curl -fsSL https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh -o "$RUNNER_TEMP/install.sh"
-          TMB_NO_MODIFY_PATH=1 sh "$RUNNER_TEMP/install.sh"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          # The dev channel installs as tmb-dev; the drivers run the tmb TMB_BIN names.
-          echo "TMB_BIN=tmb-dev" >> "$GITHUB_ENV"
-      # The drivers run under bun, and the worker run needs it for its fixture's tests and the task
-      # commands of this checkout.
-      - uses: oven-sh/setup-bun@v2
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        with:
-          bun-version: "1.4"
-      - name: Run the agent test
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: bun tests/agent-run/run.ts
-      - name: Build tmb from this checkout
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: |
-          bun install --frozen-lockfile
-          bun run build:local
-      - name: Run the worker agent run
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-run/worker.ts
-      - name: Run the scope agent run
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-run/scope.ts
-      - name: Run the reviewer agent run
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-run/reviewer.ts
-
-  agent-chain:
-    runs-on: ubuntu-latest
-    env:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-    steps:
-      - name: Skip without the token
-        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
-        run: echo "::notice title=agent chain skipped::Set the CLAUDE_CODE_OAUTH_TOKEN repository secret to run the agent chain."
-      - uses: actions/checkout@v4
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-      - uses: oven-sh/setup-bun@v2
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        with:
-          bun-version: "1.4"
-      - name: Build tmb from this checkout
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: |
-          bun install --frozen-lockfile
-          bun run build:local
-      - name: Install Claude Code
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: npm install -g @anthropic-ai/claude-code
-      - name: Run the agent chain
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-chain/run.ts
-      - name: Run the feature branch agent chain
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        run: TMB_BIN="$GITHUB_WORKSPACE/dist/tmb" bun tests/agent-chain/feature.ts
-
   # The whole chained test, the session steps included, in one empty Linux container
   # (trustmybot/tmb#260). The login is passed into the container by name only.
   whole-chain:

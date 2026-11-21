@@ -49,23 +49,16 @@ Unattended mode does not test whether bro asks a good question when a person is 
 
 Every test is TypeScript run by bun, the same on every OS. Only the installers ([scripts/install.sh](../scripts/install.sh), [scripts/install.ps1](../scripts/install.ps1)) stay shell, because they run before tmb or bun is on the machine.
 
-The Install, Agent run and Agent chain layers are plain scripts rather than `bun test` files: each prints `PASS` or `FAIL` lines and exits 0 when it passes, 1 when it fails and 2 when it cannot run (no claude, tmb, git or bun). They share one module, [tests/lib/driver.ts](lib/driver.ts): temp folders removed on exit, a fixture copied into a fresh git project, `claude -p` in unattended mode with its answer saved, `tmb ... --json` read back, and git checks.
+The Install layer and the second-host agent chain are plain scripts rather than `bun test` files: each prints `PASS` or `FAIL` lines and exits 0 when it passes, 1 when it fails and 2 when it cannot run (no claude, tmb, git or bun). They share one module, [tests/lib/driver.ts](lib/driver.ts): temp folders removed on exit, a fixture copied into a fresh git project, `claude -p` in unattended mode with its answer saved, `tmb ... --json` read back, and git checks.
 
 | Driver | Script | Layer |
 |---|---|---|
 | [tests/install/smoke.ts](install/smoke.ts) | `bun run test:install` | Install |
 | [tests/install/update.ts](install/update.ts) | `bun run test:install:update` | Install |
 | [tests/install/channels.ts](install/channels.ts) | `bun run test:install:channels` | Install |
-| [tests/agent-run/run.ts](agent-run/run.ts) | `bun run test:agent` | Agent run |
-| [tests/agent-run/worker.ts](agent-run/worker.ts) | `bun run test:worker` | Agent run |
-| [tests/agent-run/scope.ts](agent-run/scope.ts) | `bun run test:scope` | Agent run |
-| [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) | `bun run test:reviewer` | Agent run |
-| [tests/agent-run/truest.ts](agent-run/truest.ts) | `bun run test:truest` | Agent run |
-| [tests/agent-chain/run.ts](agent-chain/run.ts) | `bun run test:chain` | Agent chain |
-| [tests/agent-chain/feature.ts](agent-chain/feature.ts) | `bun run test:chain:feature` | Agent chain |
 | [tests/agent-chain/second-host.ts](agent-chain/second-host.ts) | `bun run test:chain:second-host` | Agent chain |
 
-The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH), `TMB_AGENT_MODEL` (by default haiku) and, for one session, `TMB_AGENT_LOG` (where its answer is saved).
+The agent runs and agent chains of levels 0 to 6 and 10 are steps of [the whole chain](#the-whole-chain-in-a-container); the second-host chain of level 9 stays a driver of its own, outside the chain. It reads `TMB_BIN` (the tmb to set up with, by default tmb on PATH), `TMB_AGENT_MODEL` (by default haiku) and, for one session, `TMB_AGENT_LOG` (where its answer is saved).
 
 ## When each layer runs
 
@@ -73,7 +66,7 @@ The agent drivers read `TMB_BIN` (the tmb to set up with, by default tmb on PATH
 |---|---|
 | Every pull request | Lint, Unit, Integration, Workflow simulation |
 | Every build published to the dev channel, and every rc or stable release | Install |
-| On request, and before a level is called done | Agent run, Agent chain |
+| On request, and before a level is called done | Agent run, Agent chain: the whole chain with its session steps, and the second-host chain |
 | Before an rc or stable release | All of them, for the levels of that release's [version](../docs/architecture/README.md#versions). A v1 release runs no test that needs a second host. |
 
 Every `bun test` file starts with `setDefaultTimeout(30_000)`. bun's default of 5 seconds fails tests that start tmb, git or a server whenever the machine is busy, and bun cannot raise it for the whole run: the call holds only in the file that makes it. A test that needs longer names its own timeout, and a test that hangs still fails. [tests/lint/test-timeout.test.ts](lint/test-timeout.test.ts) names any file that leaves the call out.
@@ -82,7 +75,7 @@ No test fixes the OS, the model or the machine's setup. Each is a setting of the
 
 ## The whole chain in a container
 
-Agreed by the Human on 2026-11-20 (trustmybot/tmb#260, v1.0.0) and being built in five pull requests. Built so far: the container, the demo app, the runner, the saved states, every step, and the three checks after every step. The steps that use no model are 0 to 4 (install, init, doctor, onboard, index), 9 (a push typed by hand), 15 (update), 16 (the dashboard's Code page) and 17 (the end check), and they run in CI on every pull request. The session steps 5 to 8 and 10 to 14 run with `--with-model`: on request in the `agent run` workflow once the Human has set the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, or on a developer's machine with that login in the environment. Not done yet: moving today's agent tests into the chain. Until then they stay separate scripts, each with its own small project.
+Agreed by the Human on 2026-11-20 (trustmybot/tmb#260, v1.0.0) and built in five pull requests: the container, the demo app, the runner, the saved states, every step, and the three checks after every step. The steps that use no model are 0 to 4 (install, init, doctor, onboard, index), 9 (a push typed by hand), 15 (update), 16 (the dashboard's Code page) and 17 (the end check), and they run in CI on every pull request. The session steps 5 to 8 and 10 to 14 run with `--with-model`: on request in the `agent run` workflow once the Human has set the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, or on a developer's machine with that login in the environment. Its session steps replaced the agent runs and agent chains of levels 0 to 6 and 10, which were separate scripts, each with its own small project.
 
 | Run | Command |
 |---|---|
@@ -112,7 +105,7 @@ bun tests/chain/container.ts --out ~/.cache/tmb-chain/ci --only N
 - **The session steps** are real `claude -p` sessions as bro, each a new session or the next turn of one, in tmb's unattended mode. Each prompt is in [tests/chain/prompts/](chain/prompts/), in a user's words. The fake `gh` ([tests/chain/github.ts](chain/github.ts)) opens and reads pull requests, keeping them beside the bare remotes, and the Human's squash merge on "the site" is made in the bare repo with a `github:` reflog message, so the record check knows no push made it. After each session step the chain prints its tokens: bro's turns as Claude Code counted them, and each agent run from tmb's record. A step over its budget is reported, not failed.
 - **When it runs.** The steps with no model run on every pull request. The whole chain runs on request and before every release, once the Human has set the model login as a repository secret.
 - **A feature is done when the chain covers it.** Each new feature adds a step or a check, or its pull request says why not.
-- Today's agent tests become steps of the chain. Windows, macOS and a second host stay outside it, and migration from a plugin project gets a chain of its own later.
+- The agent tests are steps of the chain, all but the second-host chain. Windows, macOS and a second host stay outside it, and migration from a plugin project gets a chain of its own later.
 
 ## Tests each level adds
 
@@ -139,7 +132,7 @@ Each level has one test issue with this list. A later level keeps every earlier 
 |---|---|---|
 | Unit | [test/graph.test.ts](../test/graph.test.ts) | Each language is parsed and looked up from the base branch commit, never the working folder; a reference links only on proof; a concept whose code is gone is marked broken and kept; a task's commit is laid on top for its reads and dropped once it closes; misses are recorded. |
 | Integration | [tests/integration/code-graph.test.ts](integration/code-graph.test.ts) | Through `tmb index`, `tmb graph` and the tool server, the graph is current after a change lands on the base branch, with no index run. |
-| Agent run | [tests/agent-run/scope.ts](agent-run/scope.ts) (`bun run test:scope`) | Asked to change the loyalty discount, bro looks the code up in the code graph before it starts the task, and the task's files hold the file that defines the discount. |
+| Agent run | [the whole chain](chain/steps/session.ts), step 6 | Asked for a feature, bro scopes it from the code graph, and the task's spec names the files that hold the change. |
 
 ## Level 4 tests
 
@@ -149,7 +142,7 @@ Each level has one test issue with this list. A later level keeps every earlier 
 | Unit | [test/feature-update.test.ts](../test/feature-update.test.ts) | feature_start cuts from origin's base, fetched first, unless the local base is ahead or origin is out of reach; feature_update merges the base into the feature branch without rewriting it, fast-forwards a branch with no commit of its own, refuses a conflict changing nothing and naming the files, and the brief says whether the tip holds the base and groups no base change under a task (trustmybot/tmb#169). |
 | Workflow simulation | [tests/workflow/feature-fold.test.ts](workflow/feature-fold.test.ts) | A code task and then a docs task fold into one feature branch in order. |
 | Workflow simulation | The ported plugin flows, below. | Each flow's steps, refusals and record, through the tool server. |
-| Agent chain | [tests/agent-chain/feature.ts](agent-chain/feature.ts) (`bun run test:chain:feature`) | Two sessions each ask for one more function; one feature branch collects both tasks, passes its tests and is backed up on origin. |
+| Agent chain | [the whole chain](chain/steps/session.ts), steps 6 and 7 | Two sessions each ask for part of a feature; one feature branch collects both tasks, passes its tests and is backed up on origin. |
 
 ### The plugin's workflow flows
 
@@ -178,7 +171,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | Integration | [tests/integration/push-gate.test.ts](integration/push-gate.test.ts) | Init writes git's pre-push hook and remove deletes it. A push typed by hand that brings unreviewed commits onto the base branch is refused, and so is deleting it; a feature branch's backup push goes through; the base branch takes the branch once the reviewer passed its tip. |
 | Workflow simulation | [tests/workflow/review-gate.test.ts](workflow/review-gate.test.ts) | Review, fail, rework, pass and the pull request on one feature branch, and a Human waiver on a second; only a reviewer run records a verdict, and only on the branch's tip. |
 | Workflow simulation | [tests/workflow/feature-after-pr.test.ts](workflow/feature-after-pr.test.ts) | A feature branch after its pull request: while it is open the branch takes fix tasks, a fold does not push the unreviewed tip, and `feature_pr` pushes the reviewed tip to the same pull request, a task open before the pull request opened included (trustmybot/tmb#168, trustmybot/tmb#181); closed without a merge, it takes a new pull request or a rework task that reopens it; a pull request already open from the branch is recorded, not opened twice; merged, it takes neither (trustmybot/tmb#152). |
-| Agent run | [tests/agent-run/reviewer.ts](agent-run/reviewer.ts) (`bun run test:reviewer`) | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
+| Agent run | [the whole chain](chain/steps/session.ts), step 10 | bro starts the reviewer on a finished feature branch, and the reviewer records a pass at its tip. |
 
 ## Level 7 tests
 
@@ -236,7 +229,7 @@ Level 9 is in v2: mixed agent support is out of v1 (the Human's call on trustmyb
 |---|---|---|
 | Unit | [test/truest.test.ts](../test/truest.test.ts) | In truest mode a task is cut from the base branch and feature_start is refused; close runs the checks and leaves the task in review with its worktree, folding nothing; a fail reopens the task and a pass covers only the commit it names; only a reviewer run reviews and only the Human waives; task_pr is the planner's and needs a pass or a waiver and an origin; a task keeps the review mode of its start. |
 | Workflow simulation | [tests/workflow/truest.test.ts](workflow/truest.test.ts) | A task cannot be pushed unreviewed: task_pr and a push typed by hand through git's pre-push hook are refused. Review, fail, rework and pass on one task, then task_pr rebases onto a base branch that moved, carries the review over the unchanged patch, pushes the task branch and opens its pull request. A rebase that changes the patch needs a new review, a conflict reopens the task, and a Human waiver lets a task through. |
-| Agent run | [tests/agent-run/truest.ts](agent-run/truest.ts) (`bun run test:truest`) | One task from request to its pull request: bro has a worker fix add, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |
+| Agent run | [the whole chain](chain/steps/session.ts), step 12 | One task from request to its pull request: bro has a worker make the change, the reviewer pass it, and opens its pull request, with a fake `gh` standing in for GitHub. |
 
 ## Init and onboard
 

@@ -12,16 +12,9 @@
     "test:install": "bun tests/install/smoke.ts",
     "test:install:update": "bun tests/install/update.ts",
     "test:install:channels": "bun tests/install/channels.ts",
-    "test:agent": "bun tests/agent-run/run.ts",
-    "test:chain": "bun tests/agent-chain/run.ts",
-    "test:chain:feature": "bun tests/agent-chain/feature.ts",
     "test:chain:second-host": "bun tests/agent-chain/second-host.ts",
     "test:whole-chain": "bun tests/chain/run.ts",
-    "test:whole-chain:container": "bun tests/chain/container.ts",
-    "test:worker": "bun tests/agent-run/worker.ts",
-    "test:scope": "bun tests/agent-run/scope.ts",
-    "test:reviewer": "bun tests/agent-run/reviewer.ts",
-    "test:truest": "bun tests/agent-run/truest.ts"
+    "test:whole-chain:container": "bun tests/chain/container.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",

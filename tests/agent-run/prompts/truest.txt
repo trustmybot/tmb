@@ -1,1 +1,0 @@
-@bro the add function in src/math.ts returns the wrong sum; fix it and open the pull request.
