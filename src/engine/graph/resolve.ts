@@ -13,7 +13,18 @@ import { isTestPath } from "./test-paths.ts";
  * key or an assignment's target, which no bare call names. `within` is a nested function's
  * parent's lines: the only lines whose bare call may name it.
  */
-export type Candidate = { id: number; path: string; kind: SymbolKind; qualified_name: string; reach?: "nested" | "member"; within?: [number, number] };
+export type Candidate = {
+  id: number;
+  path: string;
+  kind: SymbolKind;
+  qualified_name: string;
+  reach?: "nested" | "member";
+  within?: [number, number];
+  /** The line it starts on. */
+  line?: number;
+  /** A class's bases as its file names them; '' for one that is no plain name. */
+  bases?: readonly string[];
+};
 
 /** Why a reference was linked: `exact` on a proof that names the definition, `name` on a receiver's declared type. */
 export type Link = { dst: number; how: "exact" | "name" };
@@ -112,7 +123,8 @@ export class Resolver {
       if (edge.kind === "imports") {
         const { file: target, local } = this.importTarget(from, edge);
         if (target === null && local) this.unresolvedImports++;
-        if (target) {
+        // An import made inside a function holds only there: its calls carry it themselves.
+        if (target && edge.bound === undefined) {
           const map = this.importMap.get(from) ?? new Map<string, string>();
           map.set(edge.dst_name, target);
           this.importMap.set(from, map);
@@ -242,6 +254,29 @@ export class Resolver {
     return origin !== null && "path" in origin && isClass(origin.path, origin.name) ? origin : null;
   }
 
+  /**
+   * The method `name` of a class as the language finds it on the object itself (trustmybot/tmb#246):
+   * the class's own, else its parents', in the repo. Undefined when there is none; null when a
+   * parent is not a class of the repo or two parents give two methods, so no answer is proof.
+   */
+  private methodOf(cls: { path: string; name: string }, name: string, seen: ReadonlySet<string>): number | undefined | null {
+    const key = `${cls.path}\u0000${cls.name}`;
+    if (seen.has(key)) return null;
+    const qualified = `${cls.name}.${name}`;
+    const own = (this.byName.get(name) ?? []).find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified);
+    if (own) return own.id;
+    const bases = (this.byName.get(cls.name) ?? []).find((c) => c.kind === "class" && c.path === cls.path)?.bases ?? [];
+    const found = new Set<number>();
+    for (const base of bases) {
+      const parent = base === "" ? null : this.classOf(cls.path, base);
+      if (parent === null) return null;
+      const hit = this.methodOf(parent, name, new Set(seen).add(key));
+      if (hit === null) return null;
+      if (hit !== undefined) found.add(hit);
+    }
+    return found.size > 1 ? null : [...found][0];
+  }
+
   resolve(from: string, edge: ExtractedEdge): Link | null {
     if (NAME_ONLY_EDGES.has(edge.kind)) return null;
     if (edge.kind === "imports") {
@@ -259,7 +294,25 @@ export class Resolver {
       return link(only?.id, "exact");
     }
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
-    if (edge.hint !== null && edge.hint !== "this") {
+    const declared = cands.filter((c) => c.reach === undefined);
+    // A name bound around the reference is looked up there first, and only there (trustmybot/tmb#246).
+    if (edge.bound === "value") return null;
+    if (edge.bound === "self") {
+      const cls = edge.hint === null ? null : this.classOf(from, edge.hint);
+      return cls === null ? null : link(this.methodOf(cls, edge.dst_name, new Set()) ?? undefined, "exact");
+    }
+    if (edge.bound === "import") {
+      const file = this.importTarget(from, { ...edge, kind: "imports" }).file;
+      if (file === null) return null;
+      return link(declared.find((c) => c.path === file)?.id ?? this.callableAt(this.originOf(file, edge.dst_name)), "exact");
+    }
+    if (edge.bound === "function") {
+      const at = cands.filter((c) => c.path === from && c.reach !== "member" && String(c.line) === edge.hint);
+      return link(at.length === 1 ? at[0]!.id : undefined, "exact");
+    }
+    // A call on `this` outside a class it can name has nothing to look in.
+    if (edge.hint === "this") return null;
+    if (edge.hint !== null) {
       // `ns.f()` on a name imported from a file that exports it as `export * as ns from`.
       const imported = this.importMap.get(from)?.get(edge.hint);
       const namespace = imported === undefined ? null : this.originOf(imported, edge.hint);
@@ -271,7 +324,6 @@ export class Resolver {
       const qualified = `${cls.name}.${edge.dst_name}`;
       return link(cands.find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified)?.id, "exact");
     }
-    const declared = cands.filter((c) => c.reach === undefined);
     const same = declared.find((c) => c.path === from);
     if (same) return link(same.id, "exact");
     // A function nested in another is linked by its bare name from inside its parent, and only when
