@@ -9,7 +9,10 @@ import { type Concept, conceptsOn } from "./concepts.ts";
 
 export const MAP_MAX_NODES = 500;
 export const FIND_MAX = 50;
-const CARD_LIST_MAX = 50;
+/** The most rows of distinct callers, importers or callees a card lists; the rest are counted. */
+export const CARD_LIST_MAX = 50;
+/** The most lines one row lists; the rest are counted. */
+export const ROW_LINES_MAX = 10;
 const SYMBOL_MATCHES_MAX = 10;
 const MIN_AND_HITS = 3;
 const CALL_EDGES = ["calls", "instantiates", "runs", "sources"];
@@ -29,14 +32,29 @@ export type Hit =
 
 export type SymbolRef = { qualifiedName: string; kind: string; path: string; line: number | null };
 
+/** One caller or importer, listed once with the lines it refers from: the first few, and a count of the rest. */
+export type RefRow = { qualifiedName: string; kind: string; path: string; lines: number[]; moreLines: number };
+
+/** One thing a symbol refers to, listed once with the lines it is referred to on. */
+export type CalleeRow = {
+  name: string;
+  edge: string;
+  resolution: string;
+  target: { qualifiedName: string; path: string } | null;
+  lines: number[];
+  moreLines: number;
+};
+
 export type SymbolCard = {
   symbol: { kind: string; qualifiedName: string; path: string; startLine: number | null; endLine: number | null; signature: string; doc: string; exported: boolean };
-  /** Proven references that call, construct, run or source it. */
-  callers: SymbolRef[];
-  /** Proven imports of it, or of its file when it is a file. */
-  importers: SymbolRef[];
-  /** What it references, each linked to its definition only on proof. */
-  callees: { name: string; edge: string; line: number | null; resolution: string; target: { qualifiedName: string; path: string } | null }[];
+  /** Proven references that call, construct, run or source it, one row per caller. */
+  callers: RefRow[];
+  /** Proven imports of it, or of its file when it is a file, one row per importer. */
+  importers: RefRow[];
+  /** What it references, one row each, linked to its definition only on proof. */
+  callees: CalleeRow[];
+  /** How many distinct callers, importers and callees were left out past the cap. */
+  more: { callers: number; importers: number; callees: number };
   /** Test files that reach it through a proven reference, directly or through one caller. */
   tests: string[];
   /** References that name it but could not be proven to mean it: possible callers, not facts. */
@@ -236,7 +254,33 @@ function refsInto(db: Database, ids: readonly number[], kinds: readonly string[]
   return rows.map((r) => ({ id: r.id, qualifiedName: r.qualified_name, kind: r.kind, path: r.path, line: r.line }));
 }
 
-const strip = ({ id: _id, ...ref }: SymbolRef & { id: number }): SymbolRef => ref;
+/** Groups rows by key, keeping first-seen order, each group with its distinct lines in order. */
+function grouped<T>(rows: readonly T[], key: (row: T) => string, line: (row: T) => number | null): { first: T; lines: number[] }[] {
+  const groups = new Map<string, { first: T; lines: Set<number> }>();
+  for (const row of rows) {
+    const k = key(row);
+    let group = groups.get(k);
+    if (group === undefined) {
+      group = { first: row, lines: new Set() };
+      groups.set(k, group);
+    }
+    const at = line(row);
+    if (at !== null) group.lines.add(at);
+  }
+  return [...groups.values()].map((g) => ({ first: g.first, lines: [...g.lines].sort((a, b) => a - b) }));
+}
+
+const cutLines = (lines: number[]): { lines: number[]; moreLines: number } => ({ lines: lines.slice(0, ROW_LINES_MAX), moreLines: Math.max(0, lines.length - ROW_LINES_MAX) });
+
+/** One row per referring symbol (or file), with its lines. */
+function refRows(refs: readonly (SymbolRef & { id: number })[]): RefRow[] {
+  return grouped(refs, (r) => String(r.id), (r) => r.line).map(({ first, lines }) => ({
+    qualifiedName: first.qualifiedName,
+    kind: first.kind,
+    path: first.path,
+    ...cutLines(lines),
+  }));
+}
 
 function isTestFile(db: Database, layer: string, path: string): boolean {
   return fileRow(db, layer, path)?.lane === "test";
@@ -247,21 +291,26 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
   const targetIds = isModule ? (db.query("SELECT id FROM symbols WHERE layer = ? AND path = ?").all(layer, row.path) as { id: number }[]).map((r) => r.id) : [row.id];
   const callers = refsInto(db, isModule ? [row.id] : targetIds, CALL_EDGES).filter((r) => !targetIds.includes(r.id) || !isModule);
   const importers = refsInto(db, targetIds, ["imports"]).filter((r) => r.path !== row.path);
-  const callees = (
-    db
-      .query(
-        `SELECT e.dst_name, e.kind, e.line, e.resolution, d.qualified_name AS target_name, d.path AS target_path
-           FROM edges e LEFT JOIN symbols d ON d.id = e.dst_id
-          WHERE e.src_id = ? OR e.src_id IN (SELECT id FROM symbols WHERE named_id = ?) ORDER BY e.line LIMIT ?`,
-      )
-      .all(row.id, row.id, CARD_LIST_MAX) as { dst_name: string; kind: string; line: number | null; resolution: string; target_name: string | null; target_path: string | null }[]
-  ).map((e) => ({
+  const calleeEdges = db
+    .query(
+      `SELECT e.dst_name, e.kind, e.line, e.resolution, e.dst_id, d.qualified_name AS target_name, d.path AS target_path
+         FROM edges e LEFT JOIN symbols d ON d.id = e.dst_id
+        WHERE e.src_id = ? OR e.src_id IN (SELECT id FROM symbols WHERE named_id = ?) ORDER BY e.line`,
+    )
+    .all(row.id, row.id) as { dst_name: string; kind: string; line: number | null; resolution: string; dst_id: number | null; target_name: string | null; target_path: string | null }[];
+  const callees = grouped(
+    calleeEdges,
+    (e) => JSON.stringify([e.dst_name, e.kind, e.resolution, e.dst_id]),
+    (e) => e.line,
+  ).map(({ first: e, lines }): CalleeRow => ({
     name: e.dst_name,
     edge: e.kind,
-    line: e.line,
     resolution: e.resolution,
     target: e.target_name === null ? null : { qualifiedName: e.target_name, path: e.target_path! },
+    ...cutLines(lines),
   }));
+  const callerRows = refRows(callers);
+  const importerRows = refRows(importers);
 
   const tests = new Set<string>();
   const direct = [...callers, ...importers];
@@ -289,9 +338,14 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
       doc: row.doc,
       exported: row.exported === 1,
     },
-    callers: callers.slice(0, CARD_LIST_MAX).map(strip),
-    importers: importers.slice(0, CARD_LIST_MAX).map(strip),
-    callees,
+    callers: callerRows.slice(0, CARD_LIST_MAX),
+    importers: importerRows.slice(0, CARD_LIST_MAX),
+    callees: callees.slice(0, CARD_LIST_MAX),
+    more: {
+      callers: Math.max(0, callerRows.length - CARD_LIST_MAX),
+      importers: Math.max(0, importerRows.length - CARD_LIST_MAX),
+      callees: Math.max(0, callees.length - CARD_LIST_MAX),
+    },
     tests: [...tests].sort(),
     unresolved: {
       count: unresolvedRows.length,

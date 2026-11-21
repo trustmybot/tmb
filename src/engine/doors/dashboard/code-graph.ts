@@ -59,7 +59,8 @@ export type FileResult = {
   links: { from: number; to: number; count: number }[];
 };
 
-export type NodeRef = { id: number | null; qualifiedName: string; kind: string; path: string; line: number | null };
+/** One caller or callee, listed once with its lines (the first few, and a count of the rest), and the id to open it by. */
+export type NodeRef = { id: number | null; qualifiedName: string; kind: string; path: string; lines: number[]; moreLines: number };
 
 export type FunctionResult = {
   id: number;
@@ -71,6 +72,8 @@ export type FunctionResult = {
   callers: NodeRef[];
   /** The card's proven callees, each with its id. */
   callees: NodeRef[];
+  /** How many distinct callers and callees the card left out past its cap. */
+  more: { callers: number; callees: number };
   /** References made inside it that could not be proven. */
   unresolved: number;
 };
@@ -270,7 +273,14 @@ export function functionView(db: Database, layer: string, id: number): FunctionR
   const callers = card.callers.map((c): NodeRef => ({ ...c, id: c.kind === "module" ? null : idOf(db, layer, c.path, c.qualifiedName, c.kind) }));
   const callees = card.callees
     .filter((c) => c.target !== null)
-    .map((c): NodeRef => ({ id: idOf(db, layer, c.target!.path, c.target!.qualifiedName), qualifiedName: c.target!.qualifiedName, kind: c.edge, path: c.target!.path, line: c.line }));
+    .map((c): NodeRef => ({
+      id: idOf(db, layer, c.target!.path, c.target!.qualifiedName),
+      qualifiedName: c.target!.qualifiedName,
+      kind: c.edge,
+      path: c.target!.path,
+      lines: c.lines,
+      moreLines: c.moreLines,
+    }));
   const parentRow = row.parent_id === null ? null : (db.query("SELECT kind FROM symbols WHERE id = ?").get(row.parent_id) as { kind: string } | null);
   return {
     id: row.id,
@@ -280,6 +290,7 @@ export function functionView(db: Database, layer: string, id: number): FunctionR
     card,
     callers,
     callees,
+    more: { callers: card.more.callers, callees: card.more.callees },
     unresolved: card.callees.filter((c) => c.resolution === "unresolved" && c.edge !== "imports").length,
   };
 }

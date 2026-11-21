@@ -46,7 +46,8 @@ export type FileData = Base & {
   links: { from: number; to: number; count: number }[];
 };
 
-export type NodeRef = { id: number | null; qualifiedName: string; kind: string; path: string; line: number | null };
+/** One caller or callee, listed once with its lines: the first few, and a count of the rest. */
+export type NodeRef = { id: number | null; qualifiedName: string; kind: string; path: string; lines: number[]; moreLines: number };
 export type FunctionData = Base & {
   id: number;
   name: string;
@@ -55,6 +56,8 @@ export type FunctionData = Base & {
   card: { symbol: { kind: string; qualifiedName: string; path: string; startLine: number | null; endLine: number | null; signature: string; doc: string } };
   callers: NodeRef[];
   callees: NodeRef[];
+  /** How many distinct callers and callees were left out past the cap. */
+  more: { callers: number; callees: number };
   unresolved: number;
 };
 
@@ -354,8 +357,18 @@ function FileLevel({ data }: { data: FileData }) {
   );
 }
 
-function refLabel(ref: NodeRef) {
-  return `${ref.kind === 'module' ? ref.path : ref.qualifiedName}\n${ref.path.slice(ref.path.lastIndexOf('/') + 1)}${ref.line === null ? '' : `:${ref.line}`}`;
+/** A row's lines, `12, 15, 20 (+30 more)`, or '' when none is known. */
+function linesText(ref: NodeRef) {
+  return ref.lines.length === 0 ? '' : `${ref.lines.join(', ')}${ref.moreLines > 0 ? ` (+${ref.moreLines} more)` : ''}`;
+}
+
+/** A node's label: a caller's lines are in its own file; a callee's are where it is called. */
+function refLabel(ref: NodeRef, side: string) {
+  const name = ref.kind === 'module' ? ref.path : ref.qualifiedName;
+  const file = ref.path.slice(ref.path.lastIndexOf('/') + 1);
+  const at = linesText(ref);
+  if (side === 'callee') return `${name}\n${file}${at === '' ? '' : `\ncalled at ${ref.lines.length + ref.moreLines > 1 ? 'lines' : 'line'} ${at}`}`;
+  return `${name}\n${file}${at === '' ? '' : `:${at}`}`;
 }
 
 function FunctionLevel({ data }: { data: FunctionData }) {
@@ -365,7 +378,7 @@ function FunctionLevel({ data }: { data: FunctionData }) {
   const elements = useMemo<ElementDefinition[]>(() => {
     const column = (refs: NodeRef[], x: number, side: string) =>
       refs.map((r, i) => ({
-        data: { id: `${side}:${i}`, kind: r.kind === 'module' ? 'file' : 'function', label: refLabel(r) },
+        data: { id: `${side}:${i}`, kind: r.kind === 'module' ? 'file' : 'function', label: refLabel(r, side) },
         position: { x, y: (i - (refs.length - 1) / 2) * 56 },
       }));
     return [
@@ -413,24 +426,30 @@ function FunctionLevel({ data }: { data: FunctionData }) {
       </div>
       <GraphCanvas label={`Callers and callees of ${data.name}`} elements={elements} layout={PRESET} onTap={goTo} />
       <div className="grid gap-4 md:grid-cols-2">
-        <RefList title="Callers" refs={callers} />
-        <RefList title="Calls" refs={callees} />
+        <RefList title="Callers" side="caller" refs={callers} more={data.more.callers} />
+        <RefList title="Calls" side="callee" refs={callees} more={data.more.callees} />
       </div>
     </>
   );
 }
 
+/** One node per target: a callee reached by two kinds of edge (a call and a construction, say) is drawn once, its lines merged. */
 function dedupe(refs: NodeRef[]): NodeRef[] {
-  const seen = new Set<string>();
-  return refs.filter((r) => {
+  const seen = new Map<string, NodeRef>();
+  for (const r of refs) {
     const key = r.id === null ? `file:${r.path}` : String(r.id);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const had = seen.get(key);
+    if (had === undefined) seen.set(key, r);
+    else {
+      const lines = [...new Set([...had.lines, ...r.lines])].sort((a, b) => a - b);
+      const shown = Math.max(had.lines.length, r.lines.length);
+      seen.set(key, { ...had, lines: lines.slice(0, shown), moreLines: had.moreLines + r.moreLines + Math.max(0, lines.length - shown) });
+    }
+  }
+  return [...seen.values()];
 }
 
-function RefList({ title, refs }: { title: string; refs: NodeRef[] }) {
+function RefList({ title, side, refs, more }: { title: string; side: 'caller' | 'callee'; refs: NodeRef[]; more: number }) {
   return (
     <section aria-label={title} className="rounded-md border border-border-default p-3 text-sm">
       <h3 className="mb-2 font-semibold">{title}</h3>
@@ -443,11 +462,12 @@ function RefList({ title, refs }: { title: string; refs: NodeRef[] }) {
             </a>
             <span className="ml-2 text-xs text-fg-muted">
               {r.path}
-              {r.line === null ? '' : `:${r.line}`}
+              {linesText(r) === '' ? '' : side === 'caller' ? `:${linesText(r)}` : ` · called at ${linesText(r)}`}
             </span>
           </li>
         ))}
       </ul>
+      {more > 0 && <p className="mt-2 text-fg-muted">…and {more} more not listed.</p>}
     </section>
   );
 }

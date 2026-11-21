@@ -30,7 +30,7 @@ import type { Concept } from "../graph/concepts.ts";
 import { indexProject } from "../graph/fresh.ts";
 import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
-import type { Hit, MapResult, ScopeResult, SymbolCard } from "../graph/lookups.ts";
+import type { Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
 import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
@@ -542,8 +542,17 @@ function formatFind(answer: GraphAnswer<{ hits: Hit[] } & NotReadNote>): string 
   return [freshnessLine(answer), ...(answer.hits.length === 0 ? ["No matches.", ...notReadLines(answer)] : answer.hits.map(hitLine))].join("\n");
 }
 
-function refLines(title: string, refs: { qualifiedName: string; path: string; line: number | null }[]): string[] {
-  return refs.length === 0 ? [] : [`  ${title}:`, ...refs.map((r) => `    ${r.qualifiedName}  ${r.path}:${r.line ?? "?"}`)];
+/** A row's lines, `12, 15, 20 (+30 more)`, or `?` when none is known. */
+function linesText(row: { lines: number[]; moreLines: number }): string {
+  if (row.lines.length === 0) return "?";
+  return `${row.lines.join(", ")}${row.moreLines > 0 ? ` (+${row.moreLines} more)` : ""}`;
+}
+
+function refLines(title: string, refs: RefRow[], more: number): string[] {
+  if (refs.length === 0) return [];
+  const lines = [`  ${title}:`, ...refs.map((r) => `    ${r.qualifiedName}  ${r.path}:${linesText(r)}`)];
+  if (more > 0) lines.push(`    …and ${more} more`);
+  return lines;
 }
 
 function formatCard(card: SymbolCard): string {
@@ -551,9 +560,10 @@ function formatCard(card: SymbolCard): string {
   const lines = [`${s.kind} ${s.qualifiedName}  ${s.path}:${s.startLine ?? "?"}-${s.endLine ?? "?"}`];
   if (s.signature && s.kind !== "module") lines.push(`  ${s.signature}`);
   if (card.areas.length > 0) lines.push(`  areas: ${card.areas.join(", ")}`);
-  lines.push(...refLines("called by", card.callers), ...refLines("imported by", card.importers));
+  lines.push(...refLines("called by", card.callers, card.more.callers), ...refLines("imported by", card.importers, card.more.importers));
   const calls = card.callees.filter((c) => c.edge !== "imports");
-  if (calls.length > 0) lines.push("  calls:", ...calls.map((c) => `    ${c.name}  ${c.target ? `${c.target.path}` : "unresolved"}`));
+  if (calls.length > 0) lines.push("  calls:", ...calls.map((c) => `    ${c.name}  ${c.target ? `${c.target.path}` : "unresolved"}  at ${linesText(c)}`));
+  if (card.more.callees > 0) lines.push(`    …and ${card.more.callees} more`);
   if (card.tests.length > 0) lines.push("  tests:", ...card.tests.map((t) => `    ${t}`));
   if (card.unresolved.count > 0) lines.push(`  ${card.unresolved.count} unresolved references name it but are not proven to mean it.`);
   if (card.concepts.length > 0) lines.push(`  concepts: ${card.concepts.map((c) => `${c.name} (${c.status})`).join(", ")}`);
