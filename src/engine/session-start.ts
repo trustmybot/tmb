@@ -197,8 +197,13 @@ function oneLine(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
 }
 
+// A question with a recommended answer counts as answered by it: otherwise the role's rule to ask
+// open questions wins and the run stops with nothing started (trustmybot/tmb#281).
 export const UNATTENDED_INSTRUCTION =
-  "## Unattended run\n\nNo one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.";
+  "## Unattended run\n\nNo one can answer in this run, so apply your defaults and name each default you used. " +
+  "A question you have a recommended answer for counts as answered by that recommendation: record it as a decision on its issue, name it in your answer, and go on with the work. " +
+  "A choice your role leaves to the Human alone is never a default. " +
+  "Stop only when no default is safe, and say why.";
 
 /**
  * Open feature branches, and those whose pull request is open, with work on them and no review or

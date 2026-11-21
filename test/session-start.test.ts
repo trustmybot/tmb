@@ -148,7 +148,20 @@ describe("unattended mode", () => {
     expect(text.indexOf("Open issue")).toBeLessThan(text.indexOf(UNATTENDED_INSTRUCTION));
     expect(UNATTENDED_INSTRUCTION).toContain("No one can answer in this run");
     expect(UNATTENDED_INSTRUCTION).toContain("name each default you used");
-    expect(UNATTENDED_INSTRUCTION).toContain("stop with the reason when a default is not safe");
+    expect(UNATTENDED_INSTRUCTION).toContain("Stop only when no default is safe, and say why.");
+  });
+
+  // trustmybot/tmb#281: the role's "ask the open questions" rule won over the instruction, so an
+  // unattended run stopped on a question it had already answered with a recommendation.
+  test("the instruction and the planner role agree: a recommended answer answers the question", () => {
+    expect(UNATTENDED_INSTRUCTION).toContain("A question you have a recommended answer for counts as answered by that recommendation");
+    expect(UNATTENDED_INSTRUCTION).toContain("record it as a decision on its issue, name it in your answer, and go on with the work");
+    expect(UNATTENDED_INSTRUCTION).toContain("A choice your role leaves to the Human alone is never a default.");
+    const statedGoal = plannerRole.split("\n").find((line) => line.startsWith("- **A stated goal.**"))!;
+    expect(statedGoal).toContain("then ask them");
+    expect(statedGoal).toContain("In an unattended run no one can answer, so a question you have a recommended answer for counts as answered by that recommendation");
+    expect(statedGoal).toContain("record it as a decision on the issue, name it in your reply, and go on to `feature_start` and the first task");
+    expect(statedGoal).toContain("Stop only when no safe default exists, and say why.");
   });
 
   test("when on and there is no record, the role is followed by the instruction", () => {

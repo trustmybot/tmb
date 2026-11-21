@@ -92,7 +92,7 @@ flowchart TD
 
 ## Unattended mode
 
-A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults, name each default you used, and stop with the reason when a default is not safe.
+A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode. At session start the engine adds one instruction to its answer: no one can answer in this run, so apply your defaults and name each default you used. A question the agent has a recommended answer for counts as answered by that recommendation: it records it as a decision on its issue, names it in its answer, and goes on with the work (trustmybot/tmb#281). A choice its role leaves to the Human alone is never a default. It stops only when no default is safe, and says why.
 
 - Whoever starts the run sets the mode, for that run only. It is not stored in the project, so the next session the Human opens is a normal one.
 - It comes from the engine, so it works the same on every host and the Human's prompt needs no special wording.
