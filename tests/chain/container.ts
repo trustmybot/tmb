@@ -64,7 +64,7 @@ const run = [
   ...(engine.endsWith("podman") ? ["--userns=keep-id"] : []),
   "--env",
   "HOME=/tmp",
-  ...(withModel ? LOGINS.filter((name) => process.env[name]).flatMap((name) => ["--env", name]) : []),
+  ...(withModel ? [...LOGINS, "TMB_CHAIN_MODEL"].filter((name) => process.env[name]).flatMap((name) => ["--env", name]) : []),
   "--volume",
   `${ROOT}:/src:ro`,
   "--volume",

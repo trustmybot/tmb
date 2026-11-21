@@ -11,6 +11,8 @@ export type Step = {
   model: boolean;
   /** The issues the step covers, as trustmybot/tmb#N. */
   covers: number[];
+  /** A session step's token budget, all its runs together: a step over it is reported, not failed. */
+  budget?: number;
   run(world: World, checks: Checks): Promise<void> | void;
 };
 
@@ -83,23 +85,43 @@ export function afterStep(world: World, checks: Checks): void {
   checks.ok("the record is whole", holes.length === 0, holes.join("\n"));
 }
 
-type TaskRow = { id: string; state: string; commit_sha: string | null; repo: string | null; title: string };
+type TaskRow = { id: string; state: string; commit_sha: string | null; repo: string | null; title: string; kind: string | null; feature_id: string | null; review_mode: string | null };
+
+/** Feature states past the review: the branch was passed, so its tasks must be covered. */
+const REVIEWED_STATES = ["pr_open", "ready", "merged"];
 
 /**
- * What keeps the record from being whole: a closed task with no run that ended and kept its
- * tokens, or no check that ran; and any change to a remote's branch that no push the gate
- * allowed made. The review of a closed task is checked once the session steps make one.
+ * What keeps the record from being whole:
+ * - a closed code task with no run that ended and kept its tokens (a docs task is written by the
+ *   planner itself, whose runs the record does not keep yet: trustmybot/tmb#254);
+ * - a closed task with no check that ran, in a repo that has checks;
+ * - a closed task with no review: in truest mode its own pass, in agile mode a pass of its feature
+ *   branch once that branch is past its review;
+ * - any change to a remote's branch that no push the gate allowed made.
  */
 export function recordHoles(world: World): string[] {
   const holes: string[] = [];
+  const config = world.tmbJson<{ repos: Record<string, { checks?: string[] }> | null }>(["config"]);
   const db = new Database(path.join(world.project, ".tmb", "trajectory.db"), { readonly: true });
   try {
-    const tasks = db.query("SELECT id, state, commit_sha, repo, title FROM tasks WHERE state = 'closed'").all() as TaskRow[];
+    const tasks = db.query("SELECT id, state, commit_sha, repo, title, kind, feature_id, review_mode FROM tasks WHERE state = 'closed'").all() as TaskRow[];
     for (const task of tasks) {
+      const name = `closed task ${task.id} (${task.title})`;
       const runs = db.query("SELECT ended_at, cost FROM runs WHERE task_id = ?").all(task.id) as { ended_at: string | null; cost: string | null }[];
-      if (!runs.some((run) => run.ended_at !== null && run.cost !== null)) holes.push(`closed task ${task.id} (${task.title}) has no run that ended with its tokens`);
+      if (task.kind !== "docs" && !runs.some((run) => run.ended_at !== null && run.cost !== null)) holes.push(`${name} has no run that ended with its tokens`);
+      const hasChecks = (config.repos?.[task.repo ?? "."]?.checks ?? ["?"]).length > 0;
       const ran = db.query("SELECT count(*) AS n FROM check_runs WHERE task_id = ? AND result IS NOT NULL").get(task.id) as { n: number };
-      if (ran.n === 0) holes.push(`closed task ${task.id} (${task.title}) has no check that ran`);
+      if (hasChecks && ran.n === 0) holes.push(`${name} has no check that ran`);
+      if (task.feature_id === null) {
+        const passed = db.query("SELECT count(*) AS n FROM reviews WHERE target_kind = 'commit' AND target = ? AND verdict = 'pass'").get(task.id) as { n: number };
+        if (passed.n === 0) holes.push(`${name} has no review that passed it`);
+      } else {
+        const feature = db.query("SELECT name, state FROM features WHERE id = ?").get(task.feature_id) as { name: string; state: string } | null;
+        if (feature && REVIEWED_STATES.includes(feature.state)) {
+          const passed = db.query("SELECT count(*) AS n FROM reviews WHERE feature_id = ? AND verdict = 'pass'").get(task.feature_id) as { n: number };
+          if (passed.n === 0) holes.push(`${name} is on ${feature.name}, which is ${feature.state} with no review that passed it`);
+        }
+      }
     }
     holes.push(...unallowedPushes(world, db));
   } finally {
