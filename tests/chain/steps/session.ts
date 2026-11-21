@@ -153,6 +153,10 @@ export const resume: Step = {
   async run(world, checks) {
     const branch = openFeature(world, checks, "api");
     const closedBefore = tasksOf(world, branch).filter((task) => task.state === "closed").length;
+    // bro may have opened the pull request in step 6 (roles/planner.md). New work that builds on the
+    // branch is still its next task there; nothing unreviewed reaches the open pull request (trustmybot/tmb#181).
+    const prOpen = branch.state === "pr_open";
+    const originBefore = remoteTipOf(world, "api", branch.name);
     const where = askBro(world, prompt("07-resume"), "07-resume");
     turnRan(checks, where, "where were we");
     checks.ok(`bro picks up from the record: it names the feature branch ${branch.name}`, where.answer.includes(branch.name) || /due[ -]date/i.test(where.answer), where.answer);
@@ -164,6 +168,7 @@ export const resume: Step = {
     const added = tasksOf(world, branch).filter((task) => task.state === "closed" && task.created_at >= at);
     checks.must(`a second task on ${branch.name} closed`, added.length >= 1 && closedBefore + added.length >= 2, show(tasksOf(world, branch)));
     for (const task of added) workerRanFor(world, checks, task);
+    if (prOpen) checks.ok(`${branch.name}'s pull request is open, so its new commits are not pushed before a review (trustmybot/tmb#181)`, remoteTipOf(world, "api", branch.name) === originBefore, `origin ${remoteTipOf(world, "api", branch.name)}, before ${originBefore}, local ${tipOf(world, "api", branch.name)}`);
     // The graph reads the feature branch, so its new functions are found there (trustmybot/tmb#182).
     const [found] = await callTools(world, [{ name: "graph_find", args: { repo: "api", query: "overdue", feature: branch.name } }]);
     checks.ok(`the code graph reads ${branch.name}: it finds the overdue lookup there (trustmybot/tmb#182)`, found?.ok === true && /overdue/i.test(found.text), found?.text.slice(0, 800) ?? "no answer");
@@ -221,9 +226,11 @@ export const reviewAndPr: Step = {
     const branch = openFeature(world, checks, "api");
     const baseBefore = remoteBase(world, "api");
     // bro opens the pull request once the branch reaches its milestone (roles/planner.md), which may be
-    // in step 6 already. Then this step reviews the new tip and the push updates the same pull request.
+    // in step 6 already. Then this step reviews the new tip and the push updates the same pull request
+    // (trustmybot/tmb#181).
     const openedEarly = branch.state === "pr_open";
     if (openedEarly) console.log(`   bro opened ${branch.name}'s pull request before this step: ${branch.pr_url}`);
+    const originBefore = remoteTipOf(world, "api", branch.name);
     const at = now();
     const turn = askBro(world, prompt("10-review-and-pr"), "10-review-and-pr");
     turnRan(checks, turn, "review and pull request");
@@ -238,8 +245,8 @@ export const reviewAndPr: Step = {
     checks.ok("the record holds the feature branch as pr_open, with that pull request", after.state === "pr_open" && after.pr_url === pulls[0]?.url && (!openedEarly || after.pr_url === branch.pr_url), show([after]));
     checks.ok(`origin holds ${branch.name} at the reviewed tip`, remoteTipOf(world, "api", branch.name) === tip);
     checks.ok(`origin's ${BASE} did not move: only the Human merges`, remoteBase(world, "api") === baseBefore);
-    // A pull request opened early may already hold the reviewed tip, so this step need not push.
-    pushesAreAgents(world, checks, at, "api", !openedEarly);
+    // Origin may already hold the reviewed tip, when nothing landed since the pull request opened; else this step pushes it.
+    pushesAreAgents(world, checks, at, "api", originBefore !== tip);
   },
 };
 
