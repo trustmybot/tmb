@@ -1,8 +1,8 @@
-// The chain's steps, their checks, and the two checks that run after every step.
+// The chain's steps, their checks, and the checks that run after every step.
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { BASE, REMOTE_REPOS, type World } from "./world.ts";
+import { BASE, PROGRAM, REMOTE_REPOS, type World } from "./world.ts";
 
 export type Step = {
   n: number;
@@ -75,8 +75,26 @@ export function showFindings(findings: Finding[]): string {
     .join("\n");
 }
 
-/** The two checks that run after every step, once tmb is set up in the project. */
+/**
+ * A printed command of plain tmb: `tmb`, not part of a longer name or a path, then a command or a
+ * flag. The same pattern as test/program-name.test.ts.
+ */
+const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "dashboard", "update", "feedback", "doctor", "help", "mcp", "hook", "pre-push"];
+const PLAIN = new RegExp(`(?<![\\w./-])tmb (?:(?:${COMMANDS.join("|")})\\b|--)`);
+
+/** The lines tmb printed since the last call that tell their reader to run plain tmb. */
+export function plainCommands(world: World): string[] {
+  const printed = world.printed.splice(0, world.printed.length);
+  return printed.flatMap(({ run, text }) => text.split(/\r?\n/).filter((line) => PLAIN.test(line)).map((line) => `${run}: ${line.trim()}`));
+}
+
+/**
+ * The checks that run after every step: every command tmb printed names the program that runs
+ * (the chain runs it as tmb-dev), then, once tmb is set up in the project, doctor and the record.
+ */
 export function afterStep(world: World, checks: Checks): void {
+  const plain = plainCommands(world);
+  checks.ok(`every command tmb printed names ${PROGRAM}, the program that ran (trustmybot/tmb#268)`, plain.length === 0, plain.join("\n"));
   if (!existsSync(path.join(world.project, ".tmb", "trajectory.db"))) return;
   const findings = doctor(world);
   const failed = findings.filter((finding) => finding.status === "fail");

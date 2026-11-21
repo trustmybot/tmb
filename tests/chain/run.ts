@@ -1,4 +1,4 @@
-// The chained test: one record, the steps in order, the two checks after every step.
+// The chained test: one record, the steps in order, the checks after every step.
 //
 //   bun tests/chain/run.ts [--work <dir>] [--tmb-file <binary>] [--with-model]
 //                          [--tmb-next-file <binary>] [--from <step> | --only <step>] [--states <dir>]
