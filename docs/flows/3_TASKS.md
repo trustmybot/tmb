@@ -9,7 +9,7 @@ Every record a task leaves lives in the record, the cold store [MEMORY.md](../ar
 ## Units of work
 
 - **Issue.** One goal of the Human's, with the notes and decisions that shaped it.
-- **Task.** One change, with a spec: the intent, the files it may touch, the checks that must pass and the success criteria. Planned: it names the flow or design page it implements.
+- **Task.** One change, with a spec: the intent, the files it may touch, the checks that must pass and the success criteria. Planned (trustmybot/tmb#301): it names the flow or design page it implements.
 - **Milestone.** A group of issues the Human wants to judge as a whole, such as a first usable build.
 
 The [review mode](3_WORKFLOW.md) decides where a task's review happens. It is set per repo, only by the Human, and a task keeps the mode it was started in.
@@ -77,7 +77,7 @@ flowchart TD
 |---|---|---|---|
 | Ask | Human | judgment | intent. When it is vague, the Human and the planner pin it down |
 | Record the goal | planner | judgment | an issue titled in the Human's words, saved before any planning, with open questions as a note. In an unattended run a question with a recommended answer counts as answered and is recorded as a decision |
-| Spec | planner | judgment | scoped from the code graph, not by reading files: what to change and why, the files, the checks, and success criteria a check can prove. The planner names the task's kind. Planned: the spec names the flow or design page it implements, and design fit is judged against that page |
+| Spec | planner | judgment | scoped from the code graph, not by reading files: what to change and why, the files, the checks, and success criteria a check can prove. The planner names the task's kind. Planned (trustmybot/tmb#301): the spec names the flow or design page it implements, and design fit is judged against that page |
 | Start the task | engine | deterministic | a ready place to work: the task's branch, cut from the feature branch (agile) or the base branch (truest), its worktree and its brief. Refused until the review mode is set. The engine names the open tasks that share a file, as information |
 | Start the worker | host, checked by the gate | deterministic | a worker starts only on an open task whose worktree is ready; the start is recorded as a run. This is a checkpoint, not a watch |
 | Implement | worker | judgment | the spec exactly, in the task's worktree. No edit or command is checked on the way |

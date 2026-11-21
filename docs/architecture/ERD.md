@@ -474,7 +474,7 @@ Table constraints:
 
 ### Planned: `docs`
 
-One row per design document, so the planner finds the design whether it lives in the repo or outside it, such as on a wiki. A projection like the others: record kind `doc`, folded from its events.
+Planned (trustmybot/tmb#302). One row per design document, so the planner finds the design whether it lives in the repo or outside it, such as on a wiki. A projection like the others: record kind `doc`, folded from its events.
 
 | Column | Type | Null | Default | Constraints |
 |---|---|---|---|---|

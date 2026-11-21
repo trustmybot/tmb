@@ -129,7 +129,7 @@ flowchart LR
 | A worker writes outside its worktree | Its host keeps a worker's edits in a folder of its own, where the host can. The close names anything that changed in the main folder since the task started, with the command that puts it back. tmb puts nothing back: the list can hold the Human's own edits. |
 | A task changes files outside its spec | The close names each file. It refuses only on its checks. |
 | A docs task changes code | The close refuses, and names the file |
-| The reviewer edits what it judges | Its role has no editing tool. Planned: a verdict is taken only when git shows the tree unchanged since the reviewer's run started. |
+| The reviewer edits what it judges | Its role has no editing tool. Planned (trustmybot/tmb#303): a verdict is taken only when git shows the tree unchanged since the reviewer's run started. |
 | Unreviewed commits leave the machine | git's pre-push hook, whoever typed the push |
 | An agent takes a step that is the Human's alone | The command line: it runs the step only on a terminal, after a typed yes ([Ways into the engine](#ways-into-the-engine)) |
 | Two tasks change the same file | No lock. git settles it when the work is merged, and a clash holds back the later task's close. |

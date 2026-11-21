@@ -4,7 +4,7 @@ This file is the starting point for every flow. Each flow gets one chart of its 
 
 It is the ground truth for the workflow. Behaviour that is decided but not built is marked Planned, with its GitHub issue. A PR that changes a flow updates its chart here, and its detail page, in the same PR. Neither names an internal function, file or table. The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
 
-Planned: every flow has one scenario test of its ideal case. A change that breaks the flow fails that test, so the chart and the code cannot drift apart unseen.
+Planned (trustmybot/tmb#300): every flow has one scenario test of its ideal case. A change that breaks the flow fails that test, so the chart and the code cannot drift apart unseen.
 
 tmb gates the outcome and never watches each step. Its checks run at three checkpoints: a task's close, the review, and the push.
 
