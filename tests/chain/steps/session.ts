@@ -11,7 +11,7 @@ import path from "node:path";
 import { type Checks, remoteBase, type Step } from "../chain.ts";
 import { FOREIGN_HOOK_REFS } from "../demo.ts";
 import { Github } from "../github.ts";
-import { actorOf, audit, type FeatureRow, features, guardDecisions, issues, now, reviews, runs, show, since, type TaskRow, tasks } from "../record.ts";
+import { actorOf, audit, type FeatureRow, features, guardDecisions, issues, now, RECORD_BUGS, reviews, runs, show, since, strandedRuns, type TaskRow, tasks } from "../record.ts";
 import { askBro, prompt, type Turn } from "../session.ts";
 import { callTools } from "../tool-server.ts";
 import { BASE, PROGRAM, type RepoName, type World } from "../world.ts";
@@ -79,11 +79,15 @@ function passesAt(world: World, repo: RepoName, commit: string, command: string[
 /** A closed task's worker run: one that ended, finished, with its tokens (trustmybot/tmb#150). */
 function workerRanFor(world: World, checks: Checks, task: TaskRow): void {
   const ran = runs(world).filter((run) => run.task_id === task.id && run.role === "worker");
-  checks.ok(`task ${task.id} (${task.title}) was written by a worker run that finished and kept its tokens (trustmybot/tmb#150)`, ran.some((run) => run.ended_at !== null && run.outcome === "finished" && run.cost !== null), show(ran));
+  const name = `task ${task.id} (${task.title}) was written by a worker run that finished and kept its tokens (trustmybot/tmb#150)`;
+  const ok = ran.some((run) => run.ended_at !== null && run.outcome === "finished" && run.cost !== null);
+  // A failed worker start left its run open beside the real one, so neither ended (trustmybot/tmb#285).
+  if (!ok && strandedRuns(ran).length > 0) checks.known(RECORD_BUGS.strandedStart, name, false, show(ran));
+  else checks.ok(name, ok, show(ran));
 }
 
 /** Pushes tmb made for an agent are recorded as that agent's, not the Human's (trustmybot/tmb#134). */
-function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoName): void {
+function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoName, needed = true): void {
   const pushes = since(guardDecisions(world), at).filter((row) => {
     try {
       const event = JSON.parse(row.event) as { type?: string; repo?: string };
@@ -92,7 +96,8 @@ function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoNam
       return false;
     }
   });
-  checks.ok(`${repo}: tmb pushed for the agents in this step, and the record names an agent for each push, not the Human (trustmybot/tmb#134)`, pushes.length > 0 && pushes.every((row) => actorOf(row.created_by).kind === "agent"), show(pushes.map((row) => ({ by: row.created_by, event: row.event.slice(0, 200) }))));
+  const what = needed ? "tmb pushed for the agents in this step, and the record names" : "the record names";
+  checks.ok(`${repo}: ${what} an agent for each push in this step, not the Human (trustmybot/tmb#134)`, (pushes.length > 0 || !needed) && pushes.every((row) => actorOf(row.created_by).kind === "agent"), show(pushes.map((row) => ({ by: row.created_by, event: row.event.slice(0, 200) }))));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -212,7 +217,8 @@ export const drop: Step = {
     checks.ok("its worktree is gone: it held no work", task.worktree === null || !existsSync(task.worktree), task.worktree ?? "");
     const others = tasksOf(world, branch).filter((each) => each.id !== id && each.state === "dropped");
     checks.ok("no other task is dropped", others.length === 0, show(others));
-    checks.ok(`${branch.name} is still open`, features(world).find((each) => each.id === branch.id)?.state === "open", show(features(world)));
+    // Open, or with its pull request open: bro may open it once the first task reaches the milestone (roles/planner.md).
+    checks.ok(`${branch.name} is still open`, ["open", "pr_open"].includes(features(world).find((each) => each.id === branch.id)?.state ?? ""), show(features(world)));
   },
 };
 
@@ -226,6 +232,10 @@ export const reviewAndPr: Step = {
     const github = new Github(world);
     const branch = openFeature(world, checks, "api");
     const baseBefore = remoteBase(world, "api");
+    // bro opens the pull request once the branch reaches its milestone (roles/planner.md), which may be
+    // in step 6 already. Then this step reviews the new tip and the push updates the same pull request.
+    const openedEarly = branch.state === "pr_open";
+    if (openedEarly) console.log(`   bro opened ${branch.name}'s pull request before this step: ${branch.pr_url}`);
     const at = now();
     const turn = askBro(world, prompt("10-review-and-pr"), "10-review-and-pr");
     turnRan(checks, turn, "review and pull request");
@@ -237,10 +247,11 @@ export const reviewAndPr: Step = {
     checks.ok("the pass came from a reviewer run that finished and kept its tokens (trustmybot/tmb#150)", byRun.some((run) => run.role === "reviewer" && run.outcome === "finished" && run.cost !== null), show(byRun));
     const pulls = github.pulls("api");
     checks.ok(`one pull request is open, from ${branch.name} into ${BASE}`, pulls.length === 1 && pulls[0]!.state === "OPEN" && pulls[0]!.head === branch.name && pulls[0]!.base === BASE, JSON.stringify(pulls));
-    checks.ok("the record holds the feature branch as pr_open, with that pull request", after.state === "pr_open" && after.pr_url === pulls[0]?.url, show([after]));
+    checks.ok("the record holds the feature branch as pr_open, with that pull request", after.state === "pr_open" && after.pr_url === pulls[0]?.url && (!openedEarly || after.pr_url === branch.pr_url), show([after]));
     checks.ok(`origin holds ${branch.name} at the reviewed tip`, remoteTipOf(world, "api", branch.name) === tip);
     checks.ok(`origin's ${BASE} did not move: only the Human merges`, remoteBase(world, "api") === baseBefore);
-    pushesAreAgents(world, checks, at, "api");
+    // A pull request opened early may already hold the reviewed tip, so this step need not push.
+    pushesAreAgents(world, checks, at, "api", !openedEarly);
   },
 };
 

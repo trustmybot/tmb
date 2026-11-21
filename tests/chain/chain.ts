@@ -2,6 +2,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { RECORD_BUGS, type RunRow, strandedRuns } from "./record.ts";
 import { BASE, PROGRAM, REMOTE_REPOS, type World } from "./world.ts";
 
 export type Step = {
@@ -99,8 +100,9 @@ export function afterStep(world: World, checks: Checks): void {
   const findings = doctor(world);
   const failed = findings.filter((finding) => finding.status === "fail");
   checks.ok("tmb doctor reports no failure", failed.length === 0, showFindings(failed));
-  const holes = recordHoles(world);
+  const { holes, stranded } = recordHoles(world);
   checks.ok("the record is whole", holes.length === 0, holes.join("\n"));
+  if (stranded.length > 0) checks.known(RECORD_BUGS.strandedStart, "the record is whole: each closed task's worker run ended with its tokens", false, stranded.join("\n"));
 }
 
 type TaskRow = { id: string; state: string; commit_sha: string | null; repo: string | null; title: string; kind: string | null; feature_id: string | null; review_mode: string | null };
@@ -117,16 +119,18 @@ const REVIEWED_STATES = ["pr_open", "ready", "merged"];
  *   branch once that branch is past its review;
  * - any change to a remote's branch that no push the gate allowed made.
  */
-export function recordHoles(world: World): string[] {
+export function recordHoles(world: World): { holes: string[]; stranded: string[] } {
   const holes: string[] = [];
+  // A closed task whose worker runs trustmybot/tmb#285 left open: kept apart, as a known hole.
+  const stranded: string[] = [];
   const config = world.tmbJson<{ repos: Record<string, { checks?: string[] }> | null }>(["config"]);
   const db = new Database(path.join(world.project, ".tmb", "trajectory.db"), { readonly: true });
   try {
     const tasks = db.query("SELECT id, state, commit_sha, repo, title, kind, feature_id, review_mode FROM tasks WHERE state = 'closed'").all() as TaskRow[];
     for (const task of tasks) {
       const name = `closed task ${task.id} (${task.title})`;
-      const runs = db.query("SELECT ended_at, cost FROM runs WHERE task_id = ?").all(task.id) as { ended_at: string | null; cost: string | null }[];
-      if (task.kind !== "docs" && !runs.some((run) => run.ended_at !== null && run.cost !== null)) holes.push(`${name} has no run that ended with its tokens`);
+      const runs = db.query("SELECT * FROM runs WHERE task_id = ?").all(task.id) as RunRow[];
+      if (task.kind !== "docs" && !runs.some((run) => run.ended_at !== null && run.cost !== null)) (strandedRuns(runs).length > 0 ? stranded : holes).push(`${name} has no run that ended with its tokens`);
       const hasChecks = (config.repos?.[task.repo ?? "."]?.checks ?? ["?"]).length > 0;
       const ran = db.query("SELECT count(*) AS n FROM check_runs WHERE task_id = ? AND result IS NOT NULL").get(task.id) as { n: number };
       if (hasChecks && ran.n === 0) holes.push(`${name} has no check that ran`);
@@ -145,7 +149,7 @@ export function recordHoles(world: World): string[] {
   } finally {
     db.close();
   }
-  return holes;
+  return { holes, stranded };
 }
 
 type PushEvent = { repo?: string; refs?: { localSha: string; remoteRef: string }[] | string };
