@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { Database } from "bun:sqlite";
 import { projectDbPath, projectRootOf } from "../engine/project.ts";
 import { SCHEMA_VERSION, Store } from "../engine/store/index.ts";
+import { runningName } from "../program.ts";
 import { MACHINE_CHECKS } from "./machine.ts";
 import { guarded, projectFindings, unfinishedWork } from "./project.ts";
 import { type DoctorEnv, type Finding, SLOW_CHECKS, type Status } from "./types.ts";
@@ -33,7 +34,7 @@ export function exitCode(findings: readonly Finding[]): number {
 const MARKS: Record<Status, string> = { ok: "✓", warn: "!", fail: "✗" };
 
 /** The findings as the Human reads them: a heading per scope, one line per finding, its details and its fix under it. */
-export function formatFindings(findings: readonly Finding[]): string {
+export function formatFindings(findings: readonly Finding[], program: string = runningName()): string {
   const lines: string[] = [];
   for (const scope of ["machine", "project"] as const) {
     const ofScope = findings.filter((finding) => finding.scope === scope);
@@ -52,7 +53,7 @@ export function formatFindings(findings: readonly Finding[]): string {
   lines.push(
     warnings + failures === 0
       ? "Everything is fine."
-      : `${count(failures, "failure")} and ${count(warnings, "warning")}.${findings.some((finding) => finding.fix?.apply !== undefined && finding.status !== "ok") ? " `tmb doctor --fix` asks about each fix it can do." : ""}`,
+      : `${count(failures, "failure")} and ${count(warnings, "warning")}.${findings.some((finding) => finding.fix?.apply !== undefined && finding.status !== "ok") ? ` \`${program} doctor --fix\` asks about each fix it can do.` : ""}`,
   );
   return lines.join("\n");
 }
@@ -110,7 +111,7 @@ export async function runDoctorCommand(args: string[], env: DoctorEnv, io: Docto
   const { values } = parseArgs({ args, options: { json: { type: "boolean" }, fix: { type: "boolean" } }, allowPositionals: false, strict: true });
   const findings = runChecks(env);
   for (const finding of findings.filter((candidate) => candidate.bug === true)) io.keepBug?.(finding);
-  io.out(values.json === true ? findingsJson(findings) : formatFindings(findings));
+  io.out(values.json === true ? findingsJson(findings) : formatFindings(findings, env.program.name));
   if (values.fix !== true) return exitCode(findings);
   const fixable = findings.filter((finding) => finding.status !== "ok" && finding.fix?.apply !== undefined);
   if (fixable.length === 0) {

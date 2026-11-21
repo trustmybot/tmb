@@ -1,5 +1,6 @@
 // The project's configuration lives in the record: each change to a setting is one audit
 // entry, and a setting's current value is its newest entry.
+import { runningName } from "../program.ts";
 import type { Actor, Role, Store } from "./store/index.ts";
 
 export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "repos"] as const;
@@ -265,7 +266,11 @@ export function reviewModeChosenVia(store: Store): ReviewModeChooser | null {
 }
 
 /** The refusal of a task start while no review mode is chosen; it names `tmb onboard`. */
-export const NO_REVIEW_MODE =
-  "no review mode is chosen, and it is the Human's choice, as it decides how many tokens the project uses. " +
-  "Ask the Human which mode they choose (agile or truest) and set their answer with settings_set; " +
-  "with no one to ask, the Human runs `tmb onboard` first (`tmb onboard --review-mode <mode>` sets it once they type yes on their terminal)";
+export function noReviewMode(): string {
+  const name = runningName();
+  return (
+    "no review mode is chosen, and it is the Human's choice, as it decides how many tokens the project uses. " +
+    "Ask the Human which mode they choose (agile or truest) and set their answer with settings_set; " +
+    `with no one to ask, the Human runs \`${name} onboard\` first (\`${name} onboard --review-mode <mode>\` sets it once they type yes on their terminal)`
+  );
+}

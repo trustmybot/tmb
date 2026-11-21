@@ -3,6 +3,7 @@
 // on that commit. Only then does the engine push the branch and open its one pull request into
 // the base branch. The push gate reads the same coverage, so a commit no pass or waiver covers
 // never reaches the base branch by a push either.
+import { runningName } from "../../program.ts";
 import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
@@ -277,7 +278,7 @@ type ReviewRecordInput = { feature: string; commit: string; verdict: Verdict; bl
 export function reviewRecord(store: Store, actor: Actor, input: unknown, context: OperationContext): ReviewRecordResult {
   const given = validateInput<ReviewRecordInput>("review_record", reviewRecordSchema, input);
   if (actor.kind === "human") {
-    throw new HandlerError("refused", "only the reviewer records a review; the Human waives one instead, with `tmb feature waive <name> --reason <text>`");
+    throw new HandlerError("refused", `only the reviewer records a review; the Human waives one instead, with \`${runningName()} feature waive <name> --reason <text>\``);
   }
   requireRole(actor, "review_record", ["reviewer"]);
   // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
@@ -409,7 +410,7 @@ export function featurePr(store: Store, actor: Actor, input: unknown, context: O
           : `its newest review at the tip is a ${newest.verdict}`;
     throw new HandlerError(
       "refused",
-      `the pull request of ${feature.name} opens only after the reviewer passes the branch at its tip ${brief.tip}, or the Human waives the review: ${why}. Start the reviewer with the ${reviewLine(feature.name)} line in its prompt, or ask the Human to run \`tmb feature waive ${feature.name} --reason <text>\`.`,
+      `the pull request of ${feature.name} opens only after the reviewer passes the branch at its tip ${brief.tip}, or the Human waives the review: ${why}. Start the reviewer with the ${reviewLine(feature.name)} line in its prompt, or ask the Human to run \`${runningName()} feature waive ${feature.name} --reason <text>\`.`,
     );
   }
 

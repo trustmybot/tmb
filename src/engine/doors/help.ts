@@ -2,6 +2,7 @@
 // closest command on a typo, and their colours. No dependency: the runtime's styleText only
 // adds the codes; whether to colour is decided here.
 import { styleText } from "node:util";
+import { runningName } from "../../program.ts";
 
 /** The part of a stream the colour rule reads. */
 export type ColourStream = { isTTY?: boolean };
@@ -135,12 +136,12 @@ export type HelpGroup = { heading: string; commands: HelpCommand[] };
 export function shortHelpText(groups: HelpGroup[], paint: Paint): string {
   // Names start in column 2 and summaries in column 14, as in uv, unless a name is longer.
   const width = Math.max(12, ...groups.flatMap((group) => group.commands.map((command) => command.name.length + 2)));
-  const lines = [`${paint.heading("Usage:")} ${paint.command("tmb")} ${paint.placeholder("<COMMAND>")}`];
+  const lines = [`${paint.heading("Usage:")} ${paint.command(runningName())} ${paint.placeholder("<COMMAND>")}`];
   for (const group of groups) {
     lines.push("", paint.heading(`${group.heading}:`));
     for (const command of group.commands) lines.push(`  ${paint.command(command.name)}${" ".repeat(width - command.name.length)}${command.summary}`);
   }
-  lines.push("", `Use \`${paint.command("tmb help")} ${paint.placeholder("<command>")}\` for details.`, "");
+  lines.push("", `Use \`${paint.command(`${runningName()} help`)} ${paint.placeholder("<command>")}\` for details.`, "");
   return lines.join("\n");
 }
 
@@ -166,11 +167,14 @@ export function actionUsage(usage: string, command: string, action?: string): st
   return kept.join("\n");
 }
 
-/** A command's detail: `Usage:` and its entries, with command names and placeholders painted. */
+/**
+ * A command's detail: `Usage:` and its entries, with command names and placeholders painted. Each
+ * entry's head is written `tmb <command>` and shown under the running program's name.
+ */
 export function detailHelpText(usage: string, paint: Paint): string {
   const lines = usage.split("\n").map((line) => {
-    const named = /^( {2})(tmb(?: [a-z][a-z-]*)*)(.*)$/.exec(line);
-    if (named) return `${named[1]}${paint.command(named[2]!)}${paint.placeholders(named[3]!)}`;
+    const named = /^( {2})tmb((?: [a-z][a-z-]*)*)(.*)$/.exec(line);
+    if (named) return `${named[1]}${paint.command(`${runningName()}${named[2]!}`)}${paint.placeholders(named[3]!)}`;
     return paint.placeholders(line);
   });
   return [paint.heading("Usage:"), ...lines, ""].join("\n");

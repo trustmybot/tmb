@@ -3,10 +3,11 @@
 // the Human types yes, as an agent's shell has none; and the host's guard reads an agent's shell
 // command and denies one, with the reason, on a host that can deny a shell command.
 import path from "node:path";
+import { runningName } from "../program.ts";
 
 /** One Human-only step, as the command line was asked to run it. */
 export type HumanOnlyStep = {
-  /** The command, as `tmb task waive`. */
+  /** The command, as `tmb task waive`; a message names the running program in its place. */
   command: string;
   /** What it does, in a few words: "waive a task's review". */
   what: string;
@@ -32,10 +33,15 @@ export function humanOnlyStep(args: readonly string[]): HumanOnlyStep | null {
   return null;
 }
 
+/** The step's command as a message names it: under the running program's name, as `tmb-dev task waive`. */
+function spoken(step: HumanOnlyStep): string {
+  return step.command.replace(/^tmb /, `${runningName()} `);
+}
+
 /** The refusal of a Human-only step run with no terminal: nothing was done, and the Human runs it in their own terminal. */
 export function noTerminalRefusal(step: HumanOnlyStep): string {
   return (
-    `${step.command} is a step only the Human may take (to ${step.what}): it runs only on a terminal, where the Human types ${HUMAN_YES}. ` +
+    `${spoken(step)} is a step only the Human may take (to ${step.what}): it runs only on a terminal, where the Human types ${HUMAN_YES}. ` +
     "There is no terminal here, so nothing was done. An agent asks the Human to run it in their own terminal."
   );
 }
@@ -53,18 +59,18 @@ export function unattendedChangeRefusal(mode: string): string {
 
 /** The question a Human-only step asks on a terminal before it runs. */
 export function humanYesQuestion(step: HumanOnlyStep, args: readonly string[]): string {
-  return `Only the Human may ${step.what}. Type ${HUMAN_YES} to run tmb ${args.join(" ")}: `;
+  return `Only the Human may ${step.what}. Type ${HUMAN_YES} to run ${runningName()} ${args.join(" ")}: `;
 }
 
 /** The refusal of a Human-only step whose question was answered with anything but yes. */
 export function notConfirmedRefusal(step: HumanOnlyStep): string {
-  return `${step.command} needs ${HUMAN_YES} typed on the terminal; nothing was done.`;
+  return `${spoken(step)} needs ${HUMAN_YES} typed on the terminal; nothing was done.`;
 }
 
 /** The guard's deny of a Human-only step in an agent's shell command. */
 export function shellDenyReason(step: HumanOnlyStep): string {
   return (
-    `${step.command} is a step only the Human may take (to ${step.what}), and an agent's shell may not run it. ` +
+    `${spoken(step)} is a step only the Human may take (to ${step.what}), and an agent's shell may not run it. ` +
     "Ask the Human to run it in their own terminal, and say why."
   );
 }

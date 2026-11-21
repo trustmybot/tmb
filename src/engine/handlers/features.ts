@@ -1,5 +1,6 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
+import { runningName } from "../../program.ts";
 import { gitFailure, runGit } from "../git.ts";
 import { refreshLocalMerges, refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";
@@ -24,7 +25,9 @@ export type FeatureSummary = {
   dropReason: string | null;
 };
 
-const HOW_TO_START = "start one with feature_start (`tmb feature start <name>` from the command line)";
+function howToStart(): string {
+  return `start one with feature_start (\`${runningName()} feature start <name>\` from the command line)`;
+}
 
 function summaryOf(store: Store, feature: Feature): FeatureSummary {
   return {
@@ -42,7 +45,7 @@ function summaryOf(store: Store, feature: Feature): FeatureSummary {
 /** The commit the base branch is at now, or a refusal naming why it cannot be read. */
 export function baseBranchTip(projectDir: string, baseBranch: string, cutting: string): string {
   // A leading dash would reach git as an option, and no branch name starts with one.
-  if (baseBranch.startsWith("-")) throw new HandlerError("refused", `the base branch ${baseBranch} is not a branch name; set another with \`tmb onboard --base <branch>\``);
+  if (baseBranch.startsWith("-")) throw new HandlerError("refused", `the base branch ${baseBranch} is not a branch name; set another with \`${runningName()} onboard --base <branch>\``);
   const resolved = runGit(projectDir, ["rev-parse", "--verify", "--quiet", `${baseBranch}^{commit}`]);
   if (!resolved.ok) {
     const why = resolved.stderr === "" ? `it names no commit in the git repository at ${projectDir}` : gitFailure(resolved);
@@ -103,7 +106,7 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
   if (name !== undefined) {
     const feature = store.findFeature(name);
     if (!feature) {
-      throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? HOW_TO_START : `the open ones are ${names}`}`);
+      throw new HandlerError("not_found", `no feature branch ${name} in the record; ${open.length === 0 ? howToStart() : `the open ones are ${names}`}`);
     }
     if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN && feature.state !== READY) {
       throw new HandlerError(
@@ -114,7 +117,7 @@ export function featureForTask(store: Store, name: string | undefined, repo?: st
     return feature;
   }
   if (open.length === 1) return open[0]!;
-  if (open.length === 0) throw new HandlerError("refused", `no feature branch is open, and every task is cut from one; ${HOW_TO_START}, then start the task`);
+  if (open.length === 0) throw new HandlerError("refused", `no feature branch is open, and every task is cut from one; ${howToStart()}, then start the task`);
   throw new HandlerError("refused", `${open.length} feature branches are open (${names}); name the one this task belongs to with feature`);
 }
 
@@ -195,8 +198,8 @@ export function featureStart(store: Store, actor: Actor, input: unknown, context
 /** The refusal when the repo work is cut in has no base branch. */
 export function noBaseBranch(repo: string | null): string {
   return repo === null
-    ? "no base branch is set: the planner sets it with settings_set, or the Human with `tmb onboard --base <branch>`; in a project where `tmb init` has not run, run it first"
-    : `the repo ${repo} has no base branch set: the planner sets it in repos with settings_set, or the Human with \`tmb onboard --repo ${repo} --base <branch>\``;
+    ? `no base branch is set: the planner sets it with settings_set, or the Human with \`${runningName()} onboard --base <branch>\`; in a project where \`${runningName()} init\` has not run, run it first`
+    : `the repo ${repo} has no base branch set: the planner sets it in repos with settings_set, or the Human with \`${runningName()} onboard --repo ${repo} --base <branch>\``;
 }
 
 // --- feature_update -----------------------------------------------------------------------

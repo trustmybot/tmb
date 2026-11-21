@@ -1,6 +1,7 @@
 // The planner's two feedback tools (trustmybot/tmb#122): one drafts a bug report about tmb
 // itself, one sends a draft. The send is refused unless the Human said yes to that draft, and
 // in a run where no one can answer nothing is drafted for sending.
+import { runningName } from "../../program.ts";
 import { channelFor, draftReport, draftText, type FeedbackEnv, readDraft, routeLine, sendDraft, statusOf } from "../feedback/index.ts";
 import type { Actor, Store } from "../store/index.ts";
 import { type OperationContext, requireRole } from "./common.ts";
@@ -112,7 +113,7 @@ export function feedbackSend(store: Store, actor: Actor, input: unknown, context
   requireRole(actor, "feedback_send", ["planner"]);
   const values = validateInput<{ draft_id: string; human_answer: "yes" }>("feedback_send", feedbackSendSchema, input);
   const env = feedbackOf(context);
-  if (context.unattended === true) throw new HandlerError("refused", "feedback_send: no one can answer in this run, so no report is sent; the Human can send one later with `tmb feedback`");
+  if (context.unattended === true) throw new HandlerError("refused", `feedback_send: no one can answer in this run, so no report is sent; the Human can send one later with \`${runningName()} feedback\``);
   requireOn(env, "feedback_send");
   const draft = readDraft(env.stateDir, values.draft_id.trim());
   if (draft === null) throw new HandlerError("not_found", `feedback_send: no draft ${values.draft_id}; draft the report with feedback_draft and show it to the Human first`);

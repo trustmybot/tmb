@@ -44,6 +44,7 @@ import { runGit } from "./engine/git.ts";
 import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
 import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./engine/settings.ts";
 import type { Actor } from "./engine/store/index.ts";
+import { runningName } from "./program.ts";
 import { version as packageVersion } from "./version.ts";
 import { Paint } from "./engine/doors/help.ts";
 
@@ -90,7 +91,7 @@ export class SetupError extends Error {
 
 const HUMAN: Actor = { kind: "human" };
 const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, repos: null };
-const NOT_INITIALISED = "tmb is not set up in this project; run tmb init first";
+const notInitialised = () => `tmb is not set up in this project; run ${runningName()} init first`;
 
 /** The flag answers, checked. */
 type Answered = Partial<Omit<SettingValues, "host" | "host_roles">> & { role?: HostRole };
@@ -139,14 +140,14 @@ function chooseHost(options: SetupOptions, storedHost: string | null): HostAdapt
   if (flags.host !== undefined) {
     const named = adapters.find((adapter) => adapter.id === flags.host);
     if (!named) throw new SetupError(`unknown host '${flags.host}'; tmb supports ${supportedHosts(adapters)}`);
-    if (!named.detect().installed) throw new SetupError(`${named.name} is not installed; install it, then run tmb init again`);
+    if (!named.detect().installed) throw new SetupError(`${named.name} is not installed; install it, then run ${runningName()} init again`);
     out(`Setting tmb up for ${named.name}, as --host asked.`);
     return named;
   }
 
   const installed = adapters.filter((adapter) => adapter.detect().installed);
   if (installed.length === 0) {
-    throw new SetupError(`no supported host is installed; tmb supports ${supportedHosts(adapters)}. Install one, then run tmb init again.`);
+    throw new SetupError(`no supported host is installed; tmb supports ${supportedHosts(adapters)}. Install one, then run ${runningName()} init again.`);
   }
   if (installed.length === 1) {
     out(`Found ${installed[0]!.name}, the one supported host installed; setting tmb up for it.`);
@@ -361,7 +362,7 @@ function registerRepos(projectDir: string, stored: RepoPolicies | null, scan: Sc
     if (repos[name] !== undefined) continue;
     out(before[name]!.git === false ? `  Dropped folder ${name}: it is no longer in this folder.` : `  Dropped repo ${name}: it is no longer a repo in this folder.`);
   }
-  if (found.length === 0) out("  No repo found: tmb looks for git repos up to two folders down. Clone one here and run tmb init again.");
+  if (found.length === 0) out(`  No repo found: tmb looks for git repos up to two folders down. Clone one here and run ${runningName()} init again.`);
   storeAnswers(projectDir, { repos }, "init");
   return repos;
 }
@@ -410,7 +411,7 @@ async function initProject(options: SetupOptions): Promise<Initialised> {
   const other = inGitWorkTree(projectDir) ? otherProjectInRepo(projectDir, projectDir) : null;
   if (other !== null) {
     throw new Error(
-      `this repo already holds the tmb project in ${other}, whose push gate is the repo's pre-push hook; one repo holds one tmb project for now, so tmb init stops here. Work in ${other}, or run \`tmb remove\` there first`,
+      `this repo already holds the tmb project in ${other}, whose push gate is the repo's pre-push hook; one repo holds one tmb project for now, so ${runningName()} init stops here. Work in ${other}, or run \`${runningName()} remove\` there first`,
     );
   }
   // A folder that is not a git work tree and holds repos, or held them at an earlier init, is a workspace.
@@ -446,11 +447,11 @@ async function onboardProject(options: SetupOptions): Promise<Onboarded> {
   const { projectDir, adapters, flags, out } = options;
   const answered = validatedFlags(flags);
   const stored = storedSettings(projectDir);
-  if (stored === null || stored.host === null) throw new SetupError(NOT_INITIALISED);
+  if (stored === null || stored.host === null) throw new SetupError(notInitialised());
   const hostId = flags.host ?? stored.host;
   const name = hostName(adapters, hostId);
   if (hostId !== stored.host && stored.host_roles?.[hostId] === undefined) {
-    throw new SetupError(`${name} is not set up in this project; run tmb init --host ${hostId} first`);
+    throw new SetupError(`${name} is not set up in this project; run ${runningName()} init --host ${hostId} first`);
   }
   const ask = flags.yes === true ? null : options.ask;
   if (!ask) {
@@ -502,8 +503,8 @@ async function onboardWorkspace(
   let targets: string[];
   if (flags.repo !== undefined) {
     const repo = validateRepoName(flags.repo);
-    if (before[repo] === undefined) throw new SetupError(`no repo ${JSON.stringify(flags.repo)} in this workspace; its repos are ${Object.keys(before).join(", ") || "none"}, and tmb init finds new ones`);
-    if (before[repo]!.git === false) throw new SetupError(`the folder ${repo} is not a repo, so it takes no policy; once it is a repo, tmb init records it as one`);
+    if (before[repo] === undefined) throw new SetupError(`no repo ${JSON.stringify(flags.repo)} in this workspace; its repos are ${Object.keys(before).join(", ") || "none"}, and ${runningName()} init finds new ones`);
+    if (before[repo]!.git === false) throw new SetupError(`the folder ${repo} is not a repo, so it takes no policy; once it is a repo, ${runningName()} init records it as one`);
     targets = [repo];
   } else if (answered.base_branch !== undefined || answered.checks !== undefined || flags.exempt === true) {
     if (working.length !== 1) throw new SetupError(`this workspace has ${working.length} repos tmb works in (${working.join(", ") || "none"}); name the one --base, --check or --exempt sets with --repo`);
@@ -560,17 +561,17 @@ function repoModeFlag(value: string): { mode: ReviewMode | undefined } {
 }
 
 /** The refusal every task start meets until the review mode is chosen, said where the Human can act on it. */
-const NO_REVIEW_MODE_LINE =
+const noReviewModeLine = () =>
   "No review mode is chosen, so no task starts yet: it is your choice, as it decides how many tokens the project uses. " +
-  `Run tmb onboard, or tmb onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}>, on a terminal.`;
+  `Run ${runningName()} onboard, or ${runningName()} onboard --review-mode <${AVAILABLE_REVIEW_MODES.join("|")}>, on a terminal.`;
 
 function sayNoReviewMode(reviewMode: ReviewMode | null, out: (line: string) => void): void {
-  if (reviewMode === null) out(NO_REVIEW_MODE_LINE);
+  if (reviewMode === null) out(noReviewModeLine());
 }
 
 /** init's one question: the review mode, asked on a terminal when none is chosen. Returns how many changes it recorded. */
 function sayNoBase(base: string | null, out: (line: string) => void): void {
-  if (base === null) out("No base branch is set: this folder is not a git work tree. Run tmb onboard --base <branch> to set one.");
+  if (base === null) out(`No base branch is set: this folder is not a git work tree. Run ${runningName()} onboard --base <branch> to set one.`);
 }
 
 /**
@@ -618,7 +619,7 @@ export async function runInit(options: SetupOptions): Promise<void> {
   const paint = new Paint(options.colour === true);
   const code = (text: string) => `\`${paint.command(text)}\``;
   sayReady(projectDir, init.adapter, init.role, code, out);
-  const onboard = code(`${options.program?.name ?? "tmb"} onboard`);
+  const onboard = code(`${options.program?.name ?? runningName()} onboard`);
   const settings = storedSettings(projectDir) ?? NO_SETTINGS;
   // The review mode is the Human's to choose; the planner applies only the others.
   const empty = emptySettings(settings)

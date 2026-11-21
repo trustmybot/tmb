@@ -1,5 +1,6 @@
 // The record's operations by name, each with the input schema it enforces and a description
 // telling an agent when to use it. The tool server publishes these as its tools.
+import { runningName } from "../../program.ts";
 import type { Actor, Store } from "../store/index.ts";
 import * as feature from "./features.ts";
 import * as feedback from "./feedback.ts";
@@ -98,8 +99,9 @@ export const OPERATIONS = {
     run: review.reviewRecord,
   },
   feature_waive: {
-    description:
-      "Waive the review of a feature branch at its tip, with the reason, so its pull request may open unreviewed. Only the Human waives, from the command line (`tmb feature waive <name> --reason <text>`); an agent is refused.",
+    get description() {
+      return `Waive the review of a feature branch at its tip, with the reason, so its pull request may open unreviewed. Only the Human waives, from the command line (\`${runningName()} feature waive <name> --reason <text>\`); an agent is refused.`;
+    },
     inputSchema: review.featureWaiveSchema,
     run: review.featureWaive,
   },
@@ -134,8 +136,9 @@ export const OPERATIONS = {
     run: truest.taskReview,
   },
   task_waive: {
-    description:
-      "Waive the review of a truest task at its commit, with the reason, so its pull request may open unreviewed. Only the Human waives, from the command line (`tmb task waive <id> --reason <text>`); an agent is refused.",
+    get description() {
+      return `Waive the review of a truest task at its commit, with the reason, so its pull request may open unreviewed. Only the Human waives, from the command line (\`${runningName()} task waive <id> --reason <text>\`); an agent is refused.`;
+    },
     inputSchema: truest.taskWaiveSchema,
     run: truest.taskWaive,
   },
@@ -146,8 +149,9 @@ export const OPERATIONS = {
     run: truest.taskPr,
   },
   task_drop: {
-    description:
-      "Drop a task whose approach is wrong or that nobody will finish, with the reason: it ends without its work, as an open task or a truest task in review. tmb removes its worktree as at a close, unless it holds work nobody committed, and keeps its branch while that holds commits. A new task can name it in task_start's replaces. For the planner, or the Human (`tmb task drop <id> --reason <text>`).",
+    get description() {
+      return `Drop a task whose approach is wrong or that nobody will finish, with the reason: it ends without its work, as an open task or a truest task in review. tmb removes its worktree as at a close, unless it holds work nobody committed, and keeps its branch while that holds commits. A new task can name it in task_start's replaces. For the planner, or the Human (\`${runningName()} task drop <id> --reason <text>\`).`;
+    },
     inputSchema: task.taskDropSchema,
     run: task.taskDrop,
   },
