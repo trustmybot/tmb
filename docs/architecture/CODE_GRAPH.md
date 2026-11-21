@@ -76,6 +76,16 @@ Planned:
 - **A file's language comes from GitHub Linguist's list** (trustmybot/tmb#154, v1.x). Today each module names its own file extensions, and the unread languages come from a fixed copy of that list.
 - **A same-repo package whose entry is build output links to its source** (trustmybot/tmb#236, v1.x), only where the package's TypeScript settings state both the source and the output folder. Proposed, for the Human's review.
 
+Planned, the design for links (trustmybot/tmb#250, agreed by the Human on 2026-11-20). It follows a study of CodeGraph, other code navigation tools and the research on call graphs and coding agents; the issue names what was read and what was not. Built in this order:
+
+- **A link is made only on proof, and that stays the one promise.** There is no second set of less-sure links, marked or not. Studies of agents show wrong links cost more than missing ones, and none shows that marking a link as less sure helps.
+- **A name is looked up the way the language looks it up** (trustmybot/tmb#246, v1.0.0): from the call outward through the function's own names and parameters, the functions around it, the file, then what the file imports. The first place that has the name decides. If what is found there is not a function in the repo, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
+- **The scores are measured before and after each step** against the language's own compiler (trustmybot/tmb#242, trustmybot/tmb#244). Links right has the target, 100%. Links found is tracked and has no target, so that nothing pushes the graph to guess.
+- **Every link records the proof it was made on** (trustmybot/tmb#251, v1.x), for a score per proof and for the dashboard. It is not added to an agent's answer.
+- **A function says how many of its calls are not linked** (trustmybot/tmb#252, v1.x): linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest.
+- **A method call is linked when the object's type is written in the same function or class** (trustmybot/tmb#249, v1.x): the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used, by decision: where others measured them, they cost much and found little.
+- **Answers stay shallow:** search by name first, callers before callees, one step by default.
+
 ## Areas
 
 Built (trustmybot/tmb#146). Asked for by the Human on 2026-11-20: the planner can say which logical part a piece of code belongs to, and tests are one area. The choices below are proposed, for the Human's review.
