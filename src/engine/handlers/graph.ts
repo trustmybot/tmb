@@ -6,6 +6,7 @@ import { CONCEPT_KINDS, type Concept, type ConceptKind, getConcept, listConcepts
 import { openGraphDb } from "../graph/db.ts";
 import { type Freshness, type GraphView, openView, type ViewTarget } from "../graph/fresh.ts";
 import { FIND_MAX, find, type Hit, type PathFilter, lookupSymbol, type MapResult, projectMap, recordMiss, scope, type ScopeResult, type SymbolCard } from "../graph/lookups.ts";
+import { type NotReadNote, notReadNote } from "../graph/not-read.ts";
 import { UNTRUSTED_NOTE } from "../graph/summary.ts";
 import type { Actor, Store } from "../store/index.ts";
 import { type OperationContext, requireRole } from "./common.ts";
@@ -123,7 +124,7 @@ export const graphFindSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export async function graphFind(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ hits: Hit[] }>> {
+export async function graphFind(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ hits: Hit[] } & NotReadNote>> {
   const { query, k, area, skip_areas, task_id, feature, repo } = validateInput<{
     query: string;
     k?: number;
@@ -135,7 +136,10 @@ export async function graphFind(store: Store, actor: Actor, input: unknown, cont
   }>("graph_find", graphFindSchema, input);
   return withView(store, actor, context, { taskId: task_id, feature, repo }, (view, miss) => {
     const hits = find(view.db, view.layer, query, k, filterFor(view, area, skip_areas));
-    if (hits.length === 0) miss("graph_find", query);
+    if (hits.length === 0) {
+      miss("graph_find", query);
+      return { hits, ...notReadNote(view.db, view.layer) };
+    }
     return { hits };
   });
 }
@@ -160,11 +164,14 @@ export async function graphSymbol(
   actor: Actor,
   input: unknown,
   context: OperationContext,
-): Promise<GraphAnswer<{ cards: SymbolCard[]; more: number }>> {
+): Promise<GraphAnswer<{ cards: SymbolCard[]; more: number } & NotReadNote>> {
   const { name, path, task_id, feature, repo } = validateInput<{ name: string; path?: string; task_id?: string; feature?: string; repo?: string }>("graph_symbol", graphSymbolSchema, input);
   return withView(store, actor, context, { taskId: task_id, feature, repo }, (view, miss) => {
     const result = lookupSymbol(view.db, view.layer, name, path);
-    if (result.cards.length === 0) miss("graph_symbol", path === undefined ? name : `${path}#${name}`);
+    if (result.cards.length === 0) {
+      miss("graph_symbol", path === undefined ? name : `${path}#${name}`);
+      return { ...result, ...notReadNote(view.db, view.layer, path ?? name) };
+    }
     return result;
   });
 }
@@ -191,7 +198,7 @@ export const graphScopeSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export async function graphScope(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<ScopeResult>> {
+export async function graphScope(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<ScopeResult & NotReadNote>> {
   const {
     objective = "",
     anchors = [],
@@ -210,7 +217,10 @@ export async function graphScope(store: Store, actor: Actor, input: unknown, con
   return withView(store, actor, context, { taskId: task_id, feature, repo, defaultToFeature: true }, (view, miss) => {
     const result = scope(view.db, view.layer, { objective, anchors, k, filter: filterFor(view, area, skip_areas) });
     for (const anchor of result.unresolvedAnchors) miss("graph_scope", anchor, "anchor not found");
-    if (result.files.length === 0 && result.tests.length === 0) miss("graph_scope", objective, "nothing in scope");
+    if (result.files.length === 0 && result.tests.length === 0) {
+      miss("graph_scope", objective, "nothing in scope");
+      return { ...result, ...notReadNote(view.db, view.layer) };
+    }
     return result;
   });
 }
