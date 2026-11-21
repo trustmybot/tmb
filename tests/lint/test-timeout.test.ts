@@ -11,13 +11,13 @@ setDefaultTimeout(30_000);
 
 const ROOT = path.join(import.meta.dir, "..", "..");
 
-/** The repo's bun test files, as bun finds them, less the agent-run fixtures bunfig.toml ignores. */
+/** The repo's bun test files, as bun finds them, less the agent-run fixtures and the chain's demo app, which bunfig.toml ignores. */
 function testFiles(): string[] {
   const files: string[] = [];
   for (const pattern of ["**/*.test.ts", "**/*.test.tsx"]) {
     for (const file of new Bun.Glob(pattern).scanSync({ cwd: ROOT })) {
       if (file.startsWith("node_modules/") || file.includes("/node_modules/")) continue;
-      if (file.startsWith("tests/agent-run/fixtures/")) continue;
+      if (file.startsWith("tests/agent-run/fixtures/") || file.startsWith("tests/chain/demo-app/")) continue;
       files.push(file);
     }
   }

@@ -26,6 +26,24 @@ jobs:
       - run: bun test
       - run: bun tests/lint/links.ts
 
+  # The chained test's steps that use no model, in one empty Linux container: tmb installed by
+  # the real install script, then init, doctor, onboard and index on one record (trustmybot/tmb#260).
+  # The session steps need the model login and run on a developer's machine until it is set.
+  chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: bun tests/chain/container.ts --out "$RUNNER_TEMP/chain"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chain-logs
+          path: ${{ runner.temp }}/chain/work/logs
+
   # Each channel's install updating itself, against a local release repo, on the platforms
   # the test job does not run on (trustmybot/tmb#57). Runs on version tags only, so a
   # platform's update path is caught at the rc tag, not on a pull request (trustmybot/tmb#164).

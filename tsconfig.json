@@ -13,5 +13,6 @@
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "test", "tests", "scripts", "probe"]
+  "include": ["src", "test", "tests", "scripts", "probe"],
+  "exclude": ["tests/chain/demo-app"]
 }
