@@ -185,7 +185,7 @@ describe("the API reads the code graph", () => {
     expect(by("callback of `map`").parent).toBe(by("pick").id);
     expect(theme.links).toContainEqual({ from: by("toggleTheme").id, to: by("pick").id, count: 1 });
     const pick = await api(`graph/function/${by("pick").id}`);
-    expect(pick.callers).toEqual([{ id: by("toggleTheme").id, qualifiedName: "toggleTheme", kind: "function", path: "src/theme.ts", line: 2 }]);
+    expect(pick.callers).toEqual([{ id: by("toggleTheme").id, qualifiedName: "toggleTheme", kind: "function", path: "src/theme.ts", lines: [2], moreLines: 0 }]);
     const found = await api("graph/search?q=toggle");
     expect(found.hits.map((h: any) => h.qualifiedName)).toEqual(["toggleTheme"]);
   });
