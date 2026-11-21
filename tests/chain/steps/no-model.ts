@@ -144,7 +144,8 @@ export const dashboard: Step = {
 
       const tree = (await get<{ functions: number; children: TreeChild[] }>("/api/graph/tree?repo=api&path=.")).body as { functions: number; children: TreeChild[] };
       const summed = (tree.children ?? []).reduce((sum, each) => sum + each.functions, 0);
-      checks.ok("api's top level: every folder and file shows how many functions it holds, and they add up to all 12", tree.functions === 12 && summed === 12 && (tree.children ?? []).every((each) => typeof each.functions === "number"), JSON.stringify(tree).slice(0, 800));
+      // 12 functions as the demo app was built; more once the session steps merged their work.
+      checks.ok("api's top level: every folder and file shows how many functions it holds, and they add up to all of api's", tree.functions >= 12 && summed === tree.functions && (tree.children ?? []).every((each) => typeof each.functions === "number"), JSON.stringify(tree).slice(0, 800));
       const lib = (await get<{ children: TreeChild[] }>("/api/graph/tree?repo=api&path=lib")).body as { children: TreeChild[] };
       checks.ok("the minified file is shown as a file marked not parsed", (lib.children ?? []).some((each) => each.path === "lib/todo-bundle.js" && /not parsed/.test(each.notParsed ?? "")), JSON.stringify(lib).slice(0, 600));
       const todo = (await get<{ symbols: Symbol[] }>("/api/graph/file?repo=api&path=src/todo.ts")).body as { symbols: Symbol[] };
