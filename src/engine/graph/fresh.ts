@@ -17,8 +17,10 @@ export type Freshness = {
   baseBranch: string;
   /** The base branch commit the graph answers from. */
   commit: string;
-  /** The commit the graph held before this read brought it forward; null when it was current. */
+  /** The commit the graph held before this read brought it forward; null when it was at this commit already. */
   broughtForwardFrom: string | null;
+  /** True when this read rebuilt the graph because tmb's reader of the code changed (trustmybot/tmb#232). */
+  readerChanged: boolean;
   /** Set when the read is for a task: the task's commit, laid on top of the base. */
   task: { id: string; commit: string } | null;
   /** Set when the read is for a feature branch: its name and the tip the read answered from. */
@@ -51,11 +53,18 @@ function isCurrent(db: Database, layer: string, commit: string): boolean {
 }
 
 /** Brings one layer to `commit` unless it is there already; returns the commit it held before, or null when current. */
-async function bringForward(db: Database, projectDir: string, layer: string, commit: string): Promise<{ from: string | null; stats: BuildStats | null }> {
-  if (isCurrent(db, layer, commit)) return { from: null, stats: null };
-  const from = layerRow(db, layer)?.commit_sha ?? null;
+async function bringForward(
+  db: Database,
+  projectDir: string,
+  layer: string,
+  commit: string,
+): Promise<{ from: string | null; readerChanged: boolean; stats: BuildStats | null }> {
+  if (isCurrent(db, layer, commit)) return { from: null, readerChanged: false, stats: null };
+  const held = layerRow(db, layer);
   const stats = await buildLayer(db, projectDir, commit, layer);
-  return { from: from ?? "none", stats };
+  // A graph at this commit already, built by an older reader, was rebuilt, not brought forward.
+  if (held !== null && held.commit_sha === commit) return { from: null, readerChanged: true, stats };
+  return { from: held?.commit_sha ?? "none", readerChanged: held !== null && held.extractor !== EXTRACTOR_VERSION, stats };
 }
 
 /** A task's work is laid on the graph while it is open, or in review in truest mode, where the reviewer reads it. */
@@ -141,9 +150,9 @@ export async function openView(projectDir: string, store: Store, options: ViewTa
   const commit = currentBaseCommit(repo.dir, baseBranch);
   const db = openGraphDb(projectDir, repo.name);
   try {
-    const { from } = await bringForward(db, repo.dir, BASE_LAYER, commit);
+    const { from, readerChanged } = await bringForward(db, repo.dir, BASE_LAYER, commit);
     dropEndedLayers(db, store);
-    const freshness: Freshness = { baseBranch, commit, broughtForwardFrom: from, task: null, feature: null };
+    const freshness: Freshness = { baseBranch, commit, broughtForwardFrom: from, readerChanged, task: null, feature: null };
     const feature =
       options.feature !== undefined
         ? namedFeature(store, options.feature)

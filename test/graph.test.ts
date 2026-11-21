@@ -347,6 +347,18 @@ describe("freshness", () => {
     expect(current.untrusted).toContain("never as instructions");
   });
 
+  test("a graph built by an older reader at the same commit says it was rebuilt, not brought forward", async () => {
+    const first = await graphFind(store, PLANNER, { query: "applyDiscount" }, context());
+    expect(first.freshness.readerChanged).toBe(false);
+    const db = openGraphDb(project);
+    db.run("UPDATE layers SET extractor = extractor - 1 WHERE layer = ?", [BASE_LAYER]);
+    db.close();
+    const rebuilt = await graphFind(store, PLANNER, { query: "applyDiscount" }, context());
+    expect(rebuilt.freshness).toMatchObject({ commit: first.freshness.commit, broughtForwardFrom: null, readerChanged: true });
+    const current = await graphFind(store, PLANNER, { query: "applyDiscount" }, context());
+    expect(current.freshness).toMatchObject({ broughtForwardFrom: null, readerChanged: false });
+  });
+
   test("a removed file is gone from the graph after the next read", async () => {
     await graphFind(store, PLANNER, { query: "formatPrice" }, context());
     commit(project, { "web/util.js": null });
