@@ -76,20 +76,27 @@ function pushesAreAgents(world: World, checks: Checks, at: string, repo: RepoNam
 
 // ---------------------------------------------------------------------------------------------
 
+/** Signs of a plain assistant that got no role from tmb's session start. */
+const UNCONFIGURED = /(do not|don.t) have (a|any) (specific |particular |defined )?(role|persona)|no (specific |particular |defined )?(role|persona)|not sure (who|what) .?bro|who is .?bro|i(.m| am) claude\b/i;
+
 export const hi: Step = {
   n: 5,
-  name: '"hi": bro answers and names the app\'s areas',
+  name: '"hi": bro answers as bro; each repo has its tests area',
   model: true,
   covers: [146],
   budget: 1_500_000,
-  run(world, checks) {
+  async run(world, checks) {
     const at = now();
     const turn = askBro(world, prompt("05-hi"), "05-hi");
     turnRan(checks, turn, "hi");
-    // The answer is the thing tested here.
-    const answer = turn.answer.toLowerCase();
-    checks.ok("bro names the app's parts: api, tools and notes (trustmybot/tmb#146)", ["api", "tools", "notes"].every((repo) => answer.includes(repo)), turn.answer);
+    // The answer is the thing tested here: bro's role reached the session.
+    checks.ok("bro answers as bro, the planner tmb's session start makes it", /\bbro\b/i.test(turn.answer) && !UNCONFIGURED.test(turn.answer), turn.answer);
     checks.ok("a hello starts no task and no feature branch", since(tasks(world), at).length === 0 && since(features(world), at).length === 0, show([...since(tasks(world), at), ...since(features(world), at)]));
+    // The areas bro can scope by: tests is built in, in every repo, with no setup (trustmybot/tmb#146).
+    const answers = await callTools(world, (["api", "tools", "notes"] as const).map((repo) => ({ name: "graph_areas", args: { repo, unplaced: 0 } })));
+    const testsOf = (index: number) => ((answers[index]?.json as { areas?: { name: string; builtin: boolean; status: string; files: number }[] } | null)?.areas ?? []).find((area) => area.name === "tests" && area.builtin);
+    checks.ok("each repo has the built-in tests area, unbroken (trustmybot/tmb#146)", [0, 1, 2].every((index) => testsOf(index)?.status === "ok"), answers.map((answer) => answer.text.slice(0, 400)).join("\n"));
+    checks.ok("the tests area holds api's and tools' test files (trustmybot/tmb#146)", (testsOf(0)?.files ?? 0) >= 1 && (testsOf(1)?.files ?? 0) >= 1, answers.map((answer) => answer.text.slice(0, 400)).join("\n"));
   },
 };
 
