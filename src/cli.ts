@@ -719,7 +719,8 @@ async function runFeedback(args: string[]): Promise<number> {
 }
 
 async function dispatch(command: string, rest: string[]): Promise<number> {
-  if (isRecordCommand(command)) return runRecordCommand(command, rest, process.cwd(), OUTPUT);
+  // A record command typed in a folder below the project, such as one repo of a workspace, uses the project's record.
+  if (isRecordCommand(command)) return runRecordCommand(command, rest, projectRootOf(process.cwd()), OUTPUT, process.cwd());
   switch (command) {
     case "init":
     case "onboard":

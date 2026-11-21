@@ -1,6 +1,6 @@
 // The record commands of the command line: the Human's way into the record. Each command
 // calls the same operation an agent's tool call does, acting as the Human.
-import { repoOfRow, workingRepos, workspaceRepos } from "../repos.ts";
+import { repoOf, repoOfRow, workingRepos, workspaceRepos } from "../repos.ts";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
   type FeatureBrief,
@@ -34,7 +34,7 @@ import type { Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/l
 import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
 import { openProjectStore } from "../project.ts";
 import { readSettings, settingLines } from "../settings.ts";
-import type { Actor, Discussion, Issue, IssueSummary, SearchHit, StoredEvent } from "../store/index.ts";
+import type { Actor, Discussion, Issue, IssueSummary, SearchHit, Store, StoredEvent } from "../store/index.ts";
 
 export const RECORD_COMMANDS = ["issue", "note", "search", "history", "feature", "task", "graph"] as const;
 export type RecordCommand = (typeof RECORD_COMMANDS)[number];
@@ -108,6 +108,8 @@ ${JSON_NOTE}`,
   tmb graph areas           List the project's areas and the files in none
   Add --task <id> to a lookup to read as that task sees the code, or --feature <name> to read a
   feature branch at its tip. scope reads the only open feature branch when neither is given.
+  In a workspace of several repos, --repo <name> names the repo whose graph to read; left out,
+  it is the repo whose folder the command runs in.
 ${JSON_NOTE}`,
 };
 
@@ -606,58 +608,61 @@ function formatAreas(answer: GraphAnswer<{ areas: Area[]; unplaced: { count: num
   return lines.join("\n");
 }
 
+const REPO_OPTION = { repo: { type: "string" } } as const;
+// What a lookup reads: a repo of a workspace, a task's view or a feature branch's tip.
+const VIEW_OPTIONS = { ...REPO_OPTION, task: { type: "string" }, feature: { type: "string" } } as const;
 const AREA_OPTIONS = { area: { type: "string" }, "skip-area": { type: "string", multiple: true } } as const;
 
 function graphRequest(args: string[]): Request {
   const [action, ...rest] = args;
   switch (action) {
     case "map": {
-      const { values, positionals } = parse(rest, { depth: { type: "string" }, task: { type: "string" }, feature: { type: "string" } });
+      const { values, positionals } = parse(rest, { depth: { type: "string" }, ...VIEW_OPTIONS });
       if (positionals.length > 1) throw new UsageError(`graph map takes at most one directory, got ${positionals.length}`);
       const depth = values.depth === undefined ? undefined : Number(values.depth);
       if (depth !== undefined && !Number.isInteger(depth)) throw new UsageError(`--depth must be a whole number, got ${values.depth}`);
-      return { operation: "graph_map", input: { path: positionals[0], depth, task_id: values.task, feature: values.feature }, json: values.json === true, format: formatMap };
+      return { operation: "graph_map", input: { path: positionals[0], depth, task_id: values.task, feature: values.feature, repo: values.repo }, json: values.json === true, format: formatMap };
     }
     case "find": {
-      const { values, positionals } = parse(rest, { task: { type: "string" }, feature: { type: "string" }, ...AREA_OPTIONS });
+      const { values, positionals } = parse(rest, { ...VIEW_OPTIONS, ...AREA_OPTIONS });
       return {
         operation: "graph_find",
-        input: { query: words(positionals, "search words"), area: values.area, skip_areas: values["skip-area"], task_id: values.task, feature: values.feature },
+        input: { query: words(positionals, "search words"), area: values.area, skip_areas: values["skip-area"], task_id: values.task, feature: values.feature, repo: values.repo },
         json: values.json === true,
         format: formatFind,
       };
     }
     case "symbol": {
-      const { values, positionals } = parse(rest, { path: { type: "string" }, task: { type: "string" }, feature: { type: "string" } });
+      const { values, positionals } = parse(rest, { path: { type: "string" }, ...VIEW_OPTIONS });
       return {
         operation: "graph_symbol",
-        input: { name: only(positionals, "symbol name or file path"), path: values.path, task_id: values.task, feature: values.feature },
+        input: { name: only(positionals, "symbol name or file path"), path: values.path, task_id: values.task, feature: values.feature, repo: values.repo },
         json: values.json === true,
         format: formatSymbol,
       };
     }
     case "scope": {
-      const { values, positionals } = parse(rest, { anchor: { type: "string", multiple: true }, task: { type: "string" }, feature: { type: "string" }, ...AREA_OPTIONS });
+      const { values, positionals } = parse(rest, { anchor: { type: "string", multiple: true }, ...VIEW_OPTIONS, ...AREA_OPTIONS });
       return {
         operation: "graph_scope",
-        input: { objective: positionals.join(" "), anchors: values.anchor, area: values.area, skip_areas: values["skip-area"], task_id: values.task, feature: values.feature },
+        input: { objective: positionals.join(" "), anchors: values.anchor, area: values.area, skip_areas: values["skip-area"], task_id: values.task, feature: values.feature, repo: values.repo },
         json: values.json === true,
         format: formatScope,
       };
     }
     case "concepts": {
-      const { values, positionals } = parse(rest, {});
+      const { values, positionals } = parse(rest, REPO_OPTION);
       return {
         operation: "graph_concepts",
-        input: { query: positionals.length === 0 ? undefined : positionals.join(" ") },
+        input: { query: positionals.length === 0 ? undefined : positionals.join(" "), repo: values.repo },
         json: values.json === true,
         format: formatConcepts,
       };
     }
     case "areas": {
-      const { values, positionals } = parse(rest, {});
+      const { values, positionals } = parse(rest, REPO_OPTION);
       if (positionals.length > 0) throw new UsageError("graph areas takes no arguments");
-      return { operation: "graph_areas", input: {}, json: values.json === true, format: formatAreas };
+      return { operation: "graph_areas", input: { repo: values.repo }, json: values.json === true, format: formatAreas };
     }
     default:
       throw actionError("graph", action);
@@ -711,8 +716,22 @@ function writeUsageError(command: string, error: UsageError, output: Output): vo
   output.err(text.trimEnd());
 }
 
-/** Runs one record command in the project as the Human; resolves to the exit code. */
-export async function runRecordCommand(command: RecordCommand, args: string[], projectDir: string, output: Output): Promise<number> {
+/**
+ * In a workspace, the repo a graph command reads when it names none: the repo whose folder `cwd`
+ * is in. A task or a feature branch names its own repo, and a folder in no repo names none.
+ */
+function graphRepoOf(store: Store, projectDir: string, cwd: string, input: Record<string, unknown>): string | undefined {
+  if (input.repo !== undefined || input.task_id !== undefined || input.feature !== undefined) return undefined;
+  if (workspaceRepos(store) === null) return undefined;
+  return repoOf(store, projectDir, cwd)?.name ?? undefined;
+}
+
+/**
+ * Runs one record command in the project as the Human; resolves to the exit code. `cwd` is the
+ * folder it was typed in, which may be below the project folder: in a workspace, a graph command
+ * reads the repo that folder is in unless it names another.
+ */
+export async function runRecordCommand(command: RecordCommand, args: string[], projectDir: string, output: Output, cwd = projectDir): Promise<number> {
   let request: Request;
   try {
     request = toRequest(command, args);
@@ -732,12 +751,15 @@ export async function runRecordCommand(command: RecordCommand, args: string[], p
     return 1;
   }
   try {
-    const result = await OPERATIONS[request.operation].run(opened.store, HUMAN, request.input, { projectDir });
+    const repo = command === "graph" ? graphRepoOf(opened.store, projectDir, cwd, request.input) : undefined;
+    const input = repo === undefined ? request.input : { ...request.input, repo };
+    const result = await OPERATIONS[request.operation].run(opened.store, HUMAN, input, { projectDir });
     output.out(request.json ? JSON.stringify(result, null, 2) : request.format(result as never));
     return 0;
   } catch (error) {
     if (!(error instanceof HandlerError)) throw error;
-    output.err(`tmb ${command}: ${error.message}`);
+    // The handlers name the tool's `repo` input; on the command line it is the --repo option.
+    output.err(`tmb ${command}: ${error.message.replace(/ with repo$/, " with --repo")}`);
     return 1;
   } finally {
     opened.store.close();
