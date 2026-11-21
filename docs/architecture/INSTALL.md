@@ -173,7 +173,6 @@ flowchart TD
 | `tmb: command not found` after install | The install folder is not on PATH in this terminal | Open a new terminal, or add the line the installer printed |
 | `tmb init` stops and names the hosts it supports | No host tmb knows is installed | Install one; with several installed, `--host <id>` picks |
 | No role, tools or events in a session | Init has not run here, the session started before init, or the worktree is one the host files do not wire | `tmb init`, then start a new session; `tmb doctor` lists unwired worktrees |
-| Codex runs without tmb | The Human has not trusted the project or tmb's hooks | Trust the folder in Codex, then review the hooks with `/hooks` |
 | Writes and agent starts denied: `tmb cannot read the project's record, so it allows nothing` | The record is damaged, empty, or not a tmb database | `tmb doctor --fix` repairs it on a yes and keeps the damaged file beside it |
 | `has schema version N, made by a newer tmb` | Another program, or a newer build, reshaped the record | Run the program the message names, or `tmb update` |
 | `task_start` is refused: no review mode | The review mode is the Human's choice and none is set | Answer the planner's question, or `tmb onboard` on a terminal |

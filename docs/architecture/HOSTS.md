@@ -83,7 +83,6 @@ Several workers at once, each on its own task and worktree, is the host's parall
 | Host | Support | Tools | Roles |
 |---|---|---|---|
 | Claude Code, command line and desktop app | Supported | Tool server from the project's settings | Agent files in the project |
-| Codex | Can be set up, and init says it is not a supported host. What holds there and what does not: [What each host can deny](#what-each-host-can-deny). | Tool server from the project's config | Agent files in the project |
 | Others | Planned | | |
 
 The same three building blocks, a tool server, role files and events, exist in both hosts, which is what makes one adapter shape enough.
@@ -164,27 +163,21 @@ The few hooks tmb has. Each is one tmb event, whatever raised it.
 
 ### What each host can deny
 
-| | Claude Code | Codex |
-|---|---|---|
-| Can deny | Yes, from the project's settings, inside subagents too | Commands, file writes, tmb's tools and a subagent's start, after the Human trusts the project and its hooks |
-| Asks tmb | Only for the tools below | Before every tool call. The adapter passes on only those it knows; any other goes on. |
-| Names the agent that makes a call | Yes | No |
+|  | Claude Code |
+|---|---|
+| Can deny | Yes, from the project's settings, inside subagents too |
+| Asks tmb | Only for the tools below |
+| Names the agent that makes a call | Yes |
 
-| tmb event | Claude Code | Codex |
-|---|---|---|
-| Session start | Its session start event | Its session start event |
-| Before an agent start | Before a call of its agent tool | Before a call of its spawn tool. The call may name no role: it is allowed, and recorded as a finding. |
-| An agent start that failed | After a failed call of its agent tool | Not raised |
-| A worker in its folder | Before a call of tmb's brief or close tool | Not raised |
-| After an agent stop | Its subagent stop event, with the subagent's token use | Its subagent stop event |
-| Session end | Its session end event | Its session end event |
-| Before a push | git's pre-push hook, the same on every host | The same |
-
-What does not hold on Codex:
-
-- **A worker's folder is not tied to its task**, and the engine does not check where a worker was started from.
-- **A call is judged under the role its host was set up with.** The host names no agent on a call, so the engine cannot tell a subagent's call from the main agent's.
-- **Setup cannot tell whether the hooks are trusted**, so it always lists that step. It never trusts a project or its hooks on the Human's behalf.
+| tmb event | Claude Code |
+|---|---|
+| Session start | Its session start event |
+| Before an agent start | Before a call of its agent tool |
+| An agent start that failed | After a failed call of its agent tool |
+| A worker in its folder | Before a call of tmb's brief or close tool |
+| After an agent stop | Its subagent stop event, with the subagent's token use |
+| Session end | Its session end event |
+| Before a push | git's pre-push hook, the same on every host |
 
 **What a host cannot raise or deny, a later checkpoint catches.** The adapter reports it and nothing switches over: the close and the push check every change whatever the host raised.
 
@@ -234,7 +227,7 @@ Open:
 - **A project's data stays in the project.** The record, one code graph per repo, the task worktrees and small notes on which host files init created sit in tmb's own folder there. Nothing about a project is kept anywhere else on the machine.
 - **tmb writes only where the Human ran it.** A project gets tmb's files when the Human runs init in it, never because a session opened there.
 - **tmb changes only what it wrote.** In a host file or a hook it shares with the Human or another tool, tmb adds its own marked entries and leaves the rest. Remove takes out exactly those ([INSTALL.md](INSTALL.md#upgrade)).
-- **Reads outside the project are read-only and named.** tmb looks for the host's program on the machine, reads Codex's user config to see whether the project is trusted, reads a plugin project's database when the Human migrates it, and reads GitHub through the Human's own command line.
+- **Reads outside the project are read-only and named.** tmb looks for the host's program on the machine, reads a plugin project's database when the Human migrates it, and reads GitHub through the Human's own command line.
 - **The host's own instruction file is never written.** The role reaches a session as the engine's answer to its session start. Planned (trustmybot/tmb#112): a cheatcode may add one reference line and take it out again ([EXTENDING.md](EXTENDING.md#cheatcodes)).
 - **No login, no trust, no host settings.** tmb never changes a repo's branch protection, and changes no host setting beyond its own entries.
 
@@ -284,7 +277,7 @@ A session with no one to answer, such as a run in CI, a scheduled job or an agen
 ## Different models on one task
 
 - **One vendor, several models.** The host already runs a different model per subagent. The adapter writes a role's model into the host's role definitions when the role names one. No role tmb ships names a model, so each runs on the host's default.
-- **Several vendors.** Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
+- **Several vendors.** Each host connects to the same record in the same project and takes a role: one host plans and writes, and another, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
   - **A role per host.** Setup records the role each host takes in the project, the planner by default. Session start briefs a host in its role: a host set up as the reviewer is told which feature branches wait for a review, and that includes a branch whose pull request is open and whose new tip is not reviewed. Two hosts may both be planners, as two sessions of one host may. Open, for the Human: whether two planner hosts stay allowed.
   - **A reviewer that is a host's main agent.** Its run opens at that host's session start and ends with the verdict it records.
 - **Local models.** They arrive through a host that supports them. The adapter writes a role's model as given, and the model's provider is the host's own setup.
@@ -317,4 +310,4 @@ All of them call the same engine. tmb has no slash commands: each action is a te
 - **The steps:** waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
 - **A terminal and a typed yes.** The command line runs such a step only on a terminal, after the Human types yes. With no terminal it refuses and changes nothing.
 - **One exception, for a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode where none is set, for the workspace or for one repo. It never changes a mode that is set, so an agent that turns unattended mode on for its own command cannot undo the Human's choice (trustmybot/tmb#223). Nothing else passes.
-- **What the fence is not.** It stops an agent that takes the plain path. It is not proof: an agent that writes a script which opens its own terminal can pass it, and on Codex an agent's shell tool can open a terminal. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Open, for the Human: whether tmb builds one.
+- **What the fence is not.** It stops an agent that takes the plain path. It is not proof: an agent that writes a script which opens its own terminal can pass it. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Open, for the Human: whether tmb builds one.

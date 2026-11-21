@@ -199,10 +199,8 @@ Installing loads a cheatcode; attachment decides which role can use it. A skill,
 flowchart LR
     S[Skill] --> R[Attached to a role, recorded once]
     R --> A1[Claude Code adapter]
-    R --> A2[Codex adapter]
     R --> A3[Any later adapter]
     A1 --> H1["That host's files for the role"]
-    A2 --> H2["That host's files for the role"]
     A3 --> H3["That host's files for the role"]
 ```
 

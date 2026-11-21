@@ -55,10 +55,8 @@ A harness built as a plugin serves one agent program, and nobody can build a plu
 ```mermaid
 flowchart LR
     H1["Claude Code"] --> A1["Its adapter"]
-    H2["Codex"] --> A2["Its adapter"]
     H3["Another host"] --> A3["A new adapter"]
     A1 --> E["One engine: record, code graph, workflow and gate"]
-    A2 --> E
     A3 --> E
 ```
 

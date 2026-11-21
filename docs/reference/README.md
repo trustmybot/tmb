@@ -82,7 +82,7 @@ Init asks nothing. At the first session the planner asks you for the review mode
 
 ### init
 
-`tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With only Codex installed it sets Codex up and warns that Codex is not supported yet. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
+`tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
 
 It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
 
@@ -369,5 +369,4 @@ Some commands are yours alone (trustmybot/tmb#179): `tmb feature waive`, `tmb ta
 
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.
-- In Claude Code and Codex, tmb's hook also denies one in an agent's shell command before it runs, and tells the agent to ask you.
 - A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`), only while none is set (trustmybot/tmb#223). An agent can turn unattended mode on for its own command, so a mode you chose is changed only on a terminal, where you type yes.

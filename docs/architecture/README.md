@@ -20,7 +20,7 @@ tmb is a harness around the agents a host runs. It is one compiled program per p
 
 ```mermaid
 flowchart TD
-    H["Human"] --> Host["Host: an agent program such as Claude Code or Codex"]
+    H["Human"] --> Host["Host: an agent program such as Claude Code"]
     H --> D["Dashboard"]
     H --> C["Command line"]
     Host --> A["Host adapter"]
@@ -70,7 +70,7 @@ Looking for one answer instead?
 |---|---|
 | Why does tmb do X at all? | [PHILOSOPHY.md](PHILOSOPHY.md) |
 | What happens when the Human asks for Y? | [FLOWS.md](FLOWS.md) |
-| How does tmb work with Claude Code or Codex without being built for either? | [HOSTS.md](HOSTS.md) |
+| How does tmb work with a host such as Claude Code without being built for it? | [HOSTS.md](HOSTS.md) |
 | How is tmb installed and updated, and what do I check when it is missing or degraded? | [INSTALL.md](INSTALL.md) |
 | What does first contact ask, and what does it record? | [ONBOARD.md](ONBOARD.md) |
 | How does the planner learn a repo's checks? | [ONBOARD.md](ONBOARD.md#the-repos-checks) |
@@ -121,7 +121,7 @@ Looking for one answer instead?
 | Form | A standalone program. It is not a plugin of any agent. |
 | Language | TypeScript, shipped as one compiled file per platform. Nothing else, Node included, has to be installed first. |
 | Platforms | macOS, Windows and Linux. |
-| Hosts | Claude Code, in its command line and its desktop app, and Codex. No host is hardcoded: each is an adapter. |
+| Hosts | Claude Code, in its command line and its desktop app. No host is hardcoded: each is an adapter. |
 | Login | The Human's subscription to the host. No API key is needed. |
 | Roles | The host's main agent is the planner. Workers and the reviewer are subagents the host starts. The engine briefs, records and gates them. |
 | Role prompts | Written once, host-neutral. The adapter turns them into each host's format. |
@@ -148,7 +148,7 @@ The words tmb uses. tmb prefers the name a developer already knows. The product 
 | Word | Meaning |
 |---|---|
 | The Human | The developer tmb works for. |
-| Host | An agent program, such as Claude Code or Codex, that runs the agents. |
+| Host | An agent program, such as Claude Code, that runs the agents. |
 | Harness | tmb as a whole: the record, the code graph, and the workflow with the gate that enforces it, around the agents a host runs. It is not the program that runs the model; that is the host. |
 | Engine | tmb without its adapters: the record, the code graph, the workflow and the gate. |
 | Host adapter | The one part of tmb that knows a host: its file formats, its events and its limits. |
