@@ -55,14 +55,15 @@ const GUARDED_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|Bash|mcp__
 const tmbHooks = (tmbCommand: readonly string[]) => ({
   SessionStart: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start") }] }],
   PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: hookCommand(tmbCommand, "pre-tool-use") }] }],
+  PostToolUseFailure: [{ matcher: "Agent|Task", hooks: [{ type: "command", command: hookCommand(tmbCommand, "post-tool-use-failure") }] }],
   SubagentStop: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "subagent-stop") }] }],
   SessionEnd: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-end") }] }],
 });
 const tmbSettings = { hooks: tmbHooks(BINARY), enabledMcpjsonServers: ["tmb"] };
-const ALL_HOOKS = ["SessionStart", "PreToolUse", "SubagentStop", "SessionEnd"];
+const ALL_HOOKS = ["SessionStart", "PreToolUse", "PostToolUseFailure", "SubagentStop", "SessionEnd"];
 
 describe("settings: setup", () => {
-  test("on a fresh project creates the settings file with the three hooks and the enabled server", () => {
+  test("on a fresh project creates the settings file with tmb's hooks and the enabled server", () => {
     const result = install(project, BINARY);
     expect(result).toMatchObject({ hooksAdded: ALL_HOOKS, serverEnabled: true });
     expect(readJson(settingsPath(project))).toEqual(tmbSettings);
@@ -100,6 +101,7 @@ describe("settings: setup", () => {
       hooks: {
         SessionStart: [...prior.hooks.SessionStart, ...ours.SessionStart],
         PreToolUse: [...prior.hooks.PreToolUse, ...ours.PreToolUse],
+        PostToolUseFailure: ours.PostToolUseFailure,
         SubagentStop: [...prior.hooks.SubagentStop, ...ours.SubagentStop],
         Stop: prior.hooks.Stop,
         SessionEnd: ours.SessionEnd,
@@ -165,7 +167,7 @@ describe("hook commands", () => {
   });
 
   test("recognises each of tmb's hooks from a binary and from source, quoted or not", () => {
-    for (const name of ["session-start", "pre-tool-use", "subagent-stop", "session-end"] as const) {
+    for (const name of ["session-start", "pre-tool-use", "post-tool-use-failure", "subagent-stop", "session-end"] as const) {
       expect(isTmbHookCommand(hookCommand(BINARY, name))).toBe(true);
       expect(isTmbHookCommand(hookCommand(SOURCE, name), name)).toBe(true);
       expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/tmb/src/cli.ts hook ${name}`)).toBe(true);

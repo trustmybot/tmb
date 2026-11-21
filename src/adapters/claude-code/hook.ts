@@ -76,11 +76,32 @@ function preToolUse(input: JsonObject): string {
   if (!tool) return "";
   const toolInput = isObject(input.tool_input) ? input.tool_input : {};
   const role = tool.roleField === undefined ? roleOf(input) : (stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT);
-  const answer = decide(eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? "", role));
+  const event = eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? "", role);
+  // Claude Code cuts a worker's own worktree from the folder the session is in (trustmybot/tmb#285).
+  const folder = stringField(input, "cwd");
+  if (tool.type === "before-agent-start" && folder !== undefined) event.startFolder = folder;
+  const answer = decide(event);
   if (answer.decision === "allow") return "";
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: answer.reason },
   });
+}
+
+/**
+ * An Agent call that failed after the gate allowed it, such as a worktree Claude Code could not
+ * make (trustmybot/tmb#285): no subagent ran, so no stop will come, and the engine ends the run
+ * the start opened. Claude Code takes no answer.
+ */
+function postToolUseFailure(input: JsonObject): string {
+  const toolName = stringField(input, "tool_name");
+  const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
+  if (tool?.type !== "before-agent-start" || tool.roleField === undefined) return "";
+  // A call the user stopped may have started its subagent, whose stop then ends the run.
+  if (input.is_interrupt === true) return "";
+  const toolInput = isObject(input.tool_input) ? input.tool_input : {};
+  const role = stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT;
+  decide(eventOf(input, "agent-start-failed", stringField(toolInput, tool.actionField) ?? "", role));
+  return "";
 }
 
 /** Claude Code takes no answer to a subagent's stop; the engine records it. */
@@ -102,6 +123,7 @@ function sessionEnd(input: JsonObject): string {
 const ANSWERS: Record<HookName, (input: JsonObject, run: HookRun) => string> = {
   "session-start": sessionStart,
   "pre-tool-use": preToolUse,
+  "post-tool-use-failure": postToolUseFailure,
   "subagent-stop": subagentStop,
   "session-end": sessionEnd,
 };

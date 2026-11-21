@@ -113,6 +113,7 @@ describe("tmb init and remove", () => {
       { matcher: "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close", hooks: [{ type: "command", command: hookCommand("pre-tool-use") }] },
     ]);
     expect(afterInit.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-start") }] }]);
+    expect(afterInit.hooks.PostToolUseFailure).toEqual([{ matcher: "Agent|Task", hooks: [{ type: "command", command: hookCommand("post-tool-use-failure") }] }]);
     expect(afterInit.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
     expect(afterInit.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
 

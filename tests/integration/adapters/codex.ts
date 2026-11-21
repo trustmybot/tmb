@@ -66,6 +66,9 @@ export const codexHarness: HostHarness = {
           command: wiredCommand(project, "SubagentStop"),
           input: input(project, "SubagentStop", { turn_id: "t1", agent_id: "a1", agent_type: event.role, stop_hook_active: false }),
         };
+      case "agent-start-failed":
+        // tmb wires no Codex hook for a failed spawn: a Codex start makes no worktree to fail on.
+        return null;
       case "worker-in-folder":
         // A Codex worker has no worktree of its host's making, so tmb has no folder to adopt.
         return null;

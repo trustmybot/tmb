@@ -147,9 +147,10 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
 
 - Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
-- Adds four hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
+- Adds five hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - A SessionStart hook runs `tmb hook session-start`, which starts each session with the role this host was set up with, the planner unless you chose the reviewer, and the open work from the record.
   - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. It also runs before a shell command, and denies one that runs a [step only you may take](#steps-only-you-may-take); tmb reads no other shell command, and git's pre-push hook checks every push.
+  - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
@@ -354,7 +355,7 @@ tmb remove
 
 It removes only what `tmb init` added:
 
-- The four hooks, keeping your own hooks and settings.
+- The five hooks, keeping your own hooks and settings.
 - The agent files tmb wrote in `.claude/agents/`, keeping any you wrote.
 - The tool server's entry and its enabled line.
 - `.mcp.json` itself, only if init created that file and nothing else is left in it.

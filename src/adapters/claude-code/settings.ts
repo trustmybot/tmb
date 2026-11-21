@@ -23,6 +23,7 @@ export const GUARDED_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Age
 export const TMB_HOOKS = [
   { hookEvent: "SessionStart", name: "session-start" },
   { hookEvent: "PreToolUse", name: "pre-tool-use", matcher: GUARDED_TOOLS.join("|") },
+  { hookEvent: "PostToolUseFailure", name: "post-tool-use-failure", matcher: "Agent|Task" },
   { hookEvent: "SubagentStop", name: "subagent-stop" },
   { hookEvent: "SessionEnd", name: "session-end" },
 ] as const;

@@ -14,6 +14,8 @@ export type ContractEvent =
   /** A shell call by the agent: tmb denies only a step only the Human may take in it (trustmybot/tmb#179). */
   | { type: "before-shell-command"; role: string; command: string }
   | { type: "before-agent-start"; role: string; prompt: string }
+  /** An agent start that failed after tmb allowed it, so no agent runs (trustmybot/tmb#285). */
+  | { type: "agent-start-failed"; role: string; prompt: string }
   | { type: "after-agent-stop"; role: string }
   | { type: "worker-in-folder"; task: string; folder: string };
 
