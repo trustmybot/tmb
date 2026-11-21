@@ -73,7 +73,7 @@ describe("tmb hook session-start", () => {
     expect(context).toContain(groundTruthRule);
   });
 
-  test("ends with the unattended instruction only when TMB_UNATTENDED is 1", () => {
+  test("starts with the unattended instruction only when TMB_UNATTENDED is 1", () => {
     const event = JSON.stringify({ session_id: "integration", hook_event_name: "SessionStart", source: "startup", cwd: away });
     const contextWith = (extraEnv: Record<string, string>) => {
       const result = run(process.execPath, [CLI, "hook", "session-start"], away, event, extraEnv);
@@ -84,7 +84,7 @@ describe("tmb hook session-start", () => {
 
     const attended = contextWith({});
     expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
-    expect(contextWith({ TMB_UNATTENDED: "1" })).toBe(`${attended.trimEnd()}\n\n${UNATTENDED_INSTRUCTION}\n`);
+    expect(contextWith({ TMB_UNATTENDED: "1" })).toBe(`${UNATTENDED_INSTRUCTION}\n\n${attended}`);
     expect(contextWith({ TMB_UNATTENDED: "0" })).toBe(attended);
     expect(contextWith({ TMB_UNATTENDED: "" })).toBe(attended);
     for (const value of ["true", "yes", " 1", "1 "]) expect(contextWith({ TMB_UNATTENDED: value })).toBe(attended);

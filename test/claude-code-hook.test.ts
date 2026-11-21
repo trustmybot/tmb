@@ -316,7 +316,7 @@ describe("hook session-start", () => {
     const attended = handleEvent({ type: "session-start", projectDir: project, unattended: false }).context;
     expect(sessionStartContext(false)).toBe(attended);
     expect(sessionStartContext(true)).toBe(handleEvent({ type: "session-start", projectDir: project, unattended: true }).context);
-    expect(sessionStartContext(true)).toEndWith(`${UNATTENDED_INSTRUCTION}\n`);
+    expect(sessionStartContext(true)).toStartWith(`${UNATTENDED_INSTRUCTION}\n\n`);
     expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
   });
 });
