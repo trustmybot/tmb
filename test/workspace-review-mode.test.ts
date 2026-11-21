@@ -284,6 +284,43 @@ describe("tmb onboard in a workspace", () => {
     expect(withStore((store) => readSettings(store).repos)).toEqual({ a: { base_branch: "dev", checks: [], review_mode: "truest" }, b: { base_branch: "main", checks: [] } });
   });
 
+  // trustmybot/tmb#263: a workspace with no mode of its own, the repos api, tools and notes.
+  async function workspaceOfThree(): Promise<void> {
+    workspace = path.join(scratch, "todo");
+    mkdirSync(workspace);
+    for (const name of ["api", "tools", "notes"]) makeRepo(name, "main");
+    await runInit(setupOptions());
+    output = [];
+  }
+  const NO_MODE = "No review mode is chosen, so no task starts yet";
+  const said = (text: string) => output.some((line) => line.includes(text));
+
+  test("once every repo has a mode of its own, onboard no longer says none is chosen", async () => {
+    await workspaceOfThree();
+    await runOnboard(setupOptions({ repo: "api", reviewMode: "agile", yes: true }));
+    expect(said(NO_MODE)).toBe(true);
+    output = [];
+    await runOnboard(setupOptions({ repo: "tools", reviewMode: "truest", yes: true }));
+    expect(said(NO_MODE)).toBe(true);
+    output = [];
+    await runOnboard(setupOptions({ repo: "notes", reviewMode: "agile", yes: true }));
+    expect(said("tools")).toBe(true);
+    expect(said(NO_MODE)).toBe(false);
+    // init run again says the same.
+    output = [];
+    await runInit(setupOptions());
+    expect(said("No review mode is chosen")).toBe(false);
+  });
+
+  test("an exempt repo with no mode of its own does not count", async () => {
+    await workspaceOfThree();
+    await runOnboard(setupOptions({ repo: "api", reviewMode: "agile", yes: true }));
+    await runOnboard(setupOptions({ repo: "tools", reviewMode: "truest", yes: true }));
+    output = [];
+    await runOnboard(setupOptions({ repo: "notes", exempt: true, yes: true }));
+    expect(said(NO_MODE)).toBe(false);
+  });
+
   test("answering no to the offer asks no repo's mode, and each repo follows the workspace's", async () => {
     const prompts: string[] = [];
     await runOnboard(setupOptions({}, scripted(["", "agile", "n", "", "", "", ""], prompts)));

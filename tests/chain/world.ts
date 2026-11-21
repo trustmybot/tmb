@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { asHuman, type HumanRun } from "../lib/as-human.ts";
+import { Github } from "./github.ts";
 
 export type Result = { status: number; stdout: string; stderr: string; output: string };
 
@@ -52,6 +53,8 @@ export class World {
       if (found && !existsSync(link) && !SYSTEM_PATH.includes(path.dirname(found))) symlinkSync(found, link);
     }
     // A person who uses git has told it who they are; tmb's commits use that identity.
+    // GitHub's stand-in: a fake gh, with its pull requests kept beside the bare remotes.
+    new Github(this).install();
     const gitconfig = path.join(this.home, ".gitconfig");
     if (!existsSync(gitconfig)) writeFileSync(gitconfig, "[user]\n\tname = Demo Human\n\temail = human@example.com\n[init]\n\tdefaultBranch = main\n");
   }
@@ -73,7 +76,7 @@ export class World {
 
   /** The environment of every command; `installedOnPath` false is a shell opened before the install. */
   env(extra: Record<string, string | undefined> = {}, installedOnPath = true): Record<string, string> {
-    const keep = ["LANG", "LC_ALL", "TERM", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"];
+    const keep = ["LANG", "LC_ALL", "TERM", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "TMB_CHAIN_MODEL"];
     const env: Record<string, string> = {};
     for (const name of keep) if (process.env[name]) env[name] = process.env[name]!;
     Object.assign(env, {
