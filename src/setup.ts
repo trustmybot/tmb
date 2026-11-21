@@ -34,6 +34,7 @@ import {
 import { firstRunAtInit } from "./engine/feedback/first-run.ts";
 import type { FeedbackEnv } from "./engine/feedback/index.ts";
 import { indexProject } from "./engine/graph/fresh.ts";
+import { notReadSummary } from "./engine/graph/not-read.ts";
 import { emptySettings } from "./engine/handlers/settings.ts";
 import { HandlerError } from "./engine/handlers/errors.ts";
 import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
@@ -306,7 +307,7 @@ async function indexCodeGraph(projectDir: string, out: (line: string) => void, r
   try {
     const stats = await indexProject(projectDir, opened.store, { rebuild: false, repo });
     const what = repo?.name ? `of ${repo.name} from ${stats.baseBranch}` : `of ${stats.baseBranch}`;
-    out(`Indexed the code graph ${what} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed.`);
+    out(`Indexed the code graph ${what} at ${stats.commit.slice(0, 12)}: ${stats.files} files, ${stats.symbols} symbols, ${stats.functions} functions; ${stats.notParsed} ${stats.notParsed === 1 ? "file" : "files"} not parsed${notReadSummary(stats.notRead) === "" ? "" : `; ${notReadSummary(stats.notRead)}`}.`);
   } catch (error) {
     // The settings are stored by now, and every lookup indexes the graph itself, so a failed index never fails the run.
     const message = error instanceof Error ? error.message : String(error);

@@ -6,7 +6,7 @@ import { existsSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { sessionEntries } from "../builds.ts";
 import { detectBaseBranch } from "../engine/base-branch.ts";
-import { EXTRACTOR_VERSION } from "../engine/graph/build.ts";
+import { EXTRACTOR_VERSION, MINIFIED } from "../engine/graph/build.ts";
 import { BASE_LAYER, graphDbPath } from "../engine/graph/db.ts";
 import { baseCommit } from "../engine/graph/git-source.ts";
 import { keptCheckouts, removeTaskCheckout } from "../engine/handlers/fold.ts";
@@ -324,7 +324,7 @@ function graphChecks(env: DoctorEnv, projectDir: string, settings: Settings): Fi
       const layer = db.query("SELECT commit_sha, extractor, files FROM layers WHERE layer = ?").get(BASE_LAYER) as { commit_sha: string; extractor: number; files: number } | null;
       if (layer === null) return finding("code graph", { status: "warn", summary: `${label} is not indexed yet`, fix: index });
       const head = baseCommit(dir, base);
-      const unparsed = (db.query("SELECT path FROM files WHERE layer = ? AND parse_error IS NOT NULL ORDER BY path").all(BASE_LAYER) as { path: string }[]).map((row) => row.path);
+      const unparsed = (db.query("SELECT path FROM files WHERE layer = ? AND parse_error IS NOT NULL AND parse_error != ? ORDER BY path").all(BASE_LAYER, MINIFIED) as { path: string }[]).map((row) => row.path);
       const problems: string[] = [];
       if (head !== null && head !== layer.commit_sha) problems.push(`behind ${base}: indexed at ${layer.commit_sha.slice(0, 12)}, ${base} is at ${head.slice(0, 12)}`);
       if (layer.extractor < EXTRACTOR_VERSION) problems.push("built by an older indexer");
