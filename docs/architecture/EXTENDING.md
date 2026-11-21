@@ -1,16 +1,20 @@
 # Extending the team
 
-Every case of flows 4.2 to 4.5 in [FLOWS.md](FLOWS.md): how a project gains agents, skills and second opinions, and what each path refuses. Acquiring a published capability (flow 4.1) is in [CHEATCODES.md](CHEATCODES.md); what each agent may do once it exists is in [RESPONSIBILITIES.md](RESPONSIBILITIES.md).
+Every case of flows 4.2 to 4.4 in [FLOWS.md](FLOWS.md): how a project gains agents, skills and second opinions, and what each path refuses. Acquiring a published capability (flow 4.1) is in [CHEATCODES.md](CHEATCODES.md); what each agent may do once it exists is in [RESPONSIBILITIES.md](RESPONSIBILITIES.md).
+
+Today tmb ships three roles and no skill. Everything else on this page is Planned or Open ([Shipped and planned](#shipped-and-planned)).
 
 ## 4.2 Agent creation
+
+**Open, for the Human:** whether tmb carries the plugin's agent creation over. The plugin's design, in tmb's words:
 
 ```mermaid
 flowchart TD
     A[Routing hits a role with no agent] --> B{Name allowed?}
-    B -- bro, swe or code-reviewer --> X[Refused]
-    B -- a project agent file of that name exists --> T{TMB wrote it?}
-    T -- yes --> U[Show the diff; the Human says yes or no]
-    T -- no --> V[The Human picks skip, adopt or overwrite; skip is the default]
+    B -- "planner, bro, worker or reviewer" --> X[Refused]
+    B -- a project agent of that name exists --> T{tmb wrote it?}
+    T -- yes --> U["Show the diff; the Human says yes or no"]
+    T -- no --> V["The Human picks skip, adopt or overwrite; skip is the default"]
     U -- yes --> W
     V -- adopt or overwrite --> W
     U -- no --> Z
@@ -19,70 +23,95 @@ flowchart TD
     Q --> D[Tailored draft]
     D --> H{Human approves?}
     H -- revise --> D
-    H -- no --> Z[Draft discarded; nothing lands in the project's agents folder]
-    H -- yes --> W[Project agent file written and registered]
-    W --> R[Later sessions route to it; the file stays local to this checkout]
+    H -- no --> Z["Draft discarded; nothing is written"]
+    H -- yes --> W[Role recorded; each adapter writes it for its host]
+    W --> R["Later sessions route to it; the files stay local to this checkout"]
 ```
 
-bro is a reserved name, and swe and code-reviewer are refused because a project copy would shadow the workflow backbone.
+The planner, worker and reviewer names are refused because a project copy would shadow the workflow backbone.
 
 - **Every draft starts from one generic scaffold.** There is no per-role template; the clarifying questions tailor the draft.
 - **An approval covers one file and lapses.** A draft approved but not written within a short window needs a new approval.
-- **The file is not committed by default.** It lands in the project's Claude folder, which TMB keeps out of commits; the Human un-ignores it to share the agent with the team.
-- **A backbone copy comes only from an attachment.** Attaching a skill or a cheatcode to swe or code-reviewer creates a project-local copy that differs from the shipped agent only in its skill and tool lists. Refreshing that copy's body after a plugin upgrade is planned (GH 3260); until then the copy keeps the body it was made from.
+- **tmb never touches an agent file it did not write.** Shipped: setup leaves such a file alone and says so, and replaces only its own.
+- **A backbone role is never copied.** Attaching a skill or a cheatcode to the worker or the reviewer extends that role's lists; the adapters write the result.
 
 ## 4.3 Skill creation
 
+**Planned.** tmb has no skills yet.
+
 ```mermaid
 flowchart TD
-    A[Recurring pattern] --> D[bro drafts the skill]
-    D -- the name is already registered --> Q2[The Human picks another name, or edits the existing skill]
+    A[Recurring pattern] --> D[The planner drafts the skill]
+    D -- the name is already registered --> Q2["The Human picks another name, or edits the existing skill"]
     Q2 --> D
     D --> H{Human approves?}
     H -- revise --> D
-    H -- no --> Z[Draft discarded; nothing lands in the project's skills folder]
-    H -- yes --> S[Skill lands in the project's skills folder]
-    S --> O[A project-local override agent extends its skill list]
+    H -- no --> Z["Draft discarded; nothing is written"]
+    H -- yes --> S[Skill lands in the project]
+    S --> O[Attached to a role; each adapter writes it for its host]
 ```
 
-bro never edits an agent's body; attaching a skill only extends the agent's skill list, through a project-local override.
+The planner never edits a role's prompt; attaching a skill only extends the role's skill list. A skill is attached to a role once and reaches every host in that role. The attach step also takes a skill the Human downloaded.
+
+## tmb's own skills
+
+**Planned; must ship.** tmb ships its own skills, as the plugin shipped 13. A skill is loaded on demand, so the always-loaded role text stays short. Today each procedure sits in a role's text.
+
+```mermaid
+flowchart LR
+    R["Role text: always loaded, short"] --> T{A skill's trigger fires?}
+    T -- no --> W[Work goes on with the role text alone]
+    T -- yes --> L[The role loads that skill]
+    L --> P[The skill carries the procedure]
+```
+
+- Skills are written once, host-neutral, like the roles. Each adapter writes them in its host's format.
+- New for tmb: a search skill. It teaches the planner to search with several word queries and to follow the code graph.
+
+What the plugin shipped, in tmb's words. **Open, for the Human:** which of these tmb keeps, and under what names.
+
+| Skill | Loaded by | When |
+|---|---|---|
+| Planning | Planner | The first code task of a session: scope, spec, start the worker, hand off to review. |
+| Spec authoring | Planner | Each turn that writes a spec; raises effort for it. |
+| Push gate | Planner | A push is refused, the Human asks for a review, or a milestone is reached. |
+| Comment triage | Planner | Review comments reach a pull request it owns. Depends on triage, Planned. |
+| Recovery | Planner | A tool or the tool server fails. |
+| Concerns protocol | Planner | It disagrees with the Human's plan. |
+| Audit | Planner | The Human asks for an audit or an architecture review. |
+| Cheatcode | Planner | A task needs a capability the project lacks. Depends on [cheatcodes](CHEATCODES.md), Planned. |
+| Skill creator | Planner | The Human asks to capture a repeatable behaviour ([4.3](#43-skill-creation)). |
+| Docs conventions | Any role | Editing prompts or docs. |
+| Doc review | Any role | Checking a change to prompts or docs. |
+| Worker checklist | Worker | Its self-review before close. |
+| Review | Reviewer | Judging a diff and recording the verdict. |
 
 ## 4.4 Consultant invocation
+
+**Open, for the Human:** whether tmb carries consultants over. The plugin's design, in tmb's words:
 
 ```mermaid
 flowchart TD
     A[Human asks for a second opinion] --> C{Role exists?}
-    C -- yes --> S[Spawn the consultant on the question]
-    C -- no --> F[Flow 4.2: draft, the Human approves, write and register]
+    C -- yes --> S[The host starts the consultant on the question]
+    C -- no --> F["Flow 4.2: draft, the Human approves, write and record"]
     F -- approved --> S
-    F -- rejected --> Z[No consultant; bro answers the question itself and says so]
-    S --> R[Analysis recorded on the issue, checked when it stops]
-    R --> B[bro reports; the Human decides]
+    F -- rejected --> Z["No consultant; the planner answers the question itself and says so"]
+    S --> R["Analysis recorded on the issue, checked when it stops"]
+    R --> B["The planner reports; the Human decides"]
 ```
 
-When a prompt matches a consultant's domain, a hint suggests routing it to that consultant; the hint is only advice. The consultant never decides and never writes workflow state.
+The consultant never decides and never writes workflow state. The planner judges when a question fits a consultant: tmb's hooks are checkpoints, so nothing injects a routing hint on each prompt.
 
-## 4.5 Roundtable
+## Shipped and planned
 
-Planned (GH 3360): the roundtable is cut; consultants stay.
-
-```mermaid
-flowchart TD
-    A{Human typed /roundtable?} -- no --> X[No table, short of an audited waiver with a reason]
-    A -- yes --> N{At least two consultants fit the topic?}
-    N -- no --> X2[No table; bro says which roles are missing]
-    N -- yes --> S[bro spawns 2–5 consultants on the shared topic]
-    S --> P[Each full position lands on the carrier issue]
-    S -- a consultant fails or returns nothing --> Y[bro spawns it again once; if it fails again the table closes as skipped, with the reason]
-    P --> V[bro records each stance as a vote]
-    V --> W[Last expected vote: table awaits the Human]
-    W --> R{Anything to ratify?}
-    R -- no --> K[Closes as skipped]
-    R -- yes --> H[Human ratifies in one question]
-    H --> C[Ratification, outcome and summary land in one transaction]
-    C --> F2[The Human picks which ratified agreements become issues]
-```
-
-- **The Human ratifies** agreements as a multi-select and each disagreement as a single choice.
-- **A table never waits forever.** It awaits the Human only once every expected vote has landed, so a consultant that never answers is spawned again once and then ends the table as skipped.
-- **A missing capture is reported, never blocked.** After the close, bro is told which records the table lacks and reports them to the Human; the close itself goes through.
+| Part | State |
+|---|---|
+| Three roles, written once and written to each host by its adapter | Shipped |
+| Setup leaves an agent file tmb did not write alone | Shipped |
+| tmb's own skills | Planned; must ship |
+| Skill creation and attachment to a role | Planned |
+| Cheatcodes | Planned (trustmybot/tmb#112) |
+| Agent creation | Open, for the Human |
+| Consultants | Open, for the Human |
+| Roundtable | Not carried over |

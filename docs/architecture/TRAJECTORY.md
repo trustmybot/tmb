@@ -1,134 +1,183 @@
 # Trajectories
 
-How the trajectory DB records every long-running thing TMB starts, so that "why is this still running?" and "why did this stop?" are answered by reading records, not by guessing. A task's trajectory is in [TASKS.md](TASKS.md#task-lifecycle); this page covers the four things a task runs inside: sessions, agent runs, hook runs and verification runs.
+The record of the work: what was asked, what was decided, what each agent did and how it ended. Any session can resume from it without the conversation that came before. This page covers what the record holds and how it answers "why is this still running?" and "why did this stop?" from records, not guesses. A task's own trajectory is in [TASKS.md](TASKS.md#task-lifecycle); this page covers the things a task runs inside: sessions, agent runs, gate decisions and check runs.
 
-Planned (GH 3255). Today an agent run and a verification run are each one record that is filled in when the run ends, a hook call is recorded only after it returns, and a session has no record of its own, so a hang leaves nothing behind and a dead run looks like a live one.
+tmb records outcomes at checkpoints. It does not record each tool call or each step of an agent.
 
-## The rule
+## What is recorded
 
-- **Start is a fact.** Each of the four writes an event when it starts, before it does any work.
-- **End is a second event.** It carries an outcome from a fixed list and, when the outcome is not a clean finish, a cause from a fixed list.
-- **Each names its parent.** A nested session names the session that started it. An agent run names its session. A hook run or a verification run names the agent run or session it ran in.
-- **Writes stay cheap.** SQLite takes one writer at a time, so a record on a hot path is one small insert, and the detail a record keeps is weighed against what the write costs the session.
-- **Nothing is edited.** A start is never updated into an end. A record with a start and no end is still running, or was killed before it could say so.
+| Record | Holds | State |
+|---|---|---|
+| Issue | A goal, its state and its milestone | Shipped |
+| Discussion | Notes and decisions on an issue. The newest decision is the one in force | Shipped |
+| Feature branch | A branch tasks fold into, its base, its state and its repo | Shipped |
+| Task | A spec, its kind, its state, its branch, its commit and its repo | Shipped |
+| Run | One worker or reviewer on one task or one review: start, end, how it ended, its cost | Shipped |
+| Check run | The checks run on a commit, each command and its result: start and end | Shipped |
+| Review | A reviewer's verdict on a commit or a feature branch, its findings, and the run that wrote it | Shipped |
+| Guard decision | Each allow and deny the gate gave at a checkpoint, and why | Shipped |
+| Audit entry | Every change to configuration and every Human waiver | Shipped |
+| Session | One host session, with its start, its end and its own cost | Planned (trustmybot/tmb#63, trustmybot/tmb#254) |
 
 ```mermaid
 flowchart TD
-    S1[Session: the Human's] --> S2[Session: a nested lane]
-    S1 --> R1[Agent run: bro's turns]
-    S2 --> R2[Agent run: swe on a task]
-    S2 --> R3[Agent run: code-reviewer on a commit]
-    R2 --> H1[Hook run: a write guard, ended allowed]
-    R2 --> H2[Hook run: the close gate, no end yet]
-    H2 --> V1[Verification run: the task's checks, no end yet]
+    I[Issue] --> D["Discussion: notes and decisions"]
+    I --> T[Task]
+    F[Feature branch] --> T
+    T --> R1["Run: a worker"]
+    T --> C[Check run]
+    T --> V1["Review of a truest task's commit"]
+    F --> R2["Run: the reviewer on the branch"]
+    R2 --> V2["Review of the branch's tip"]
+    G[Guard decision] -.-> R1
+    G -.-> R2
 ```
 
-The chart is one moment of a real tree. To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped.
+## The rule
+
+- **Start is a fact.** A run and a check run each write their start before any work.
+- **End is a second event.** It carries the outcome. A start is never edited into an end: the record only adds events, and the current state is derived from them.
+- **A start without an end is a finding.** It is still running, or it stopped without saying so.
+- **Each names what it belongs to.** A run names its task, or its feature branch for a branch review. A review names the run that wrote it. A check run names its task and commit.
+- **Every record names who made it.** The Human, or the role and host that acted. A push tmb makes for an agent is that agent's; a push typed by hand is the Human's (trustmybot/tmb#134). Every command-line call is the Human's, which is why a step only the Human may take needs a terminal and a typed yes ([HOSTS.md](HOSTS.md)).
+- **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
+- **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump.
+- **Ids never collide across machines.** A record can be copied to another machine without renumbering.
+- **Writes stay cheap.** The database takes one writer at a time, so a record at a checkpoint is one small insert.
+
+```mermaid
+flowchart TD
+    S1["Session: the Human's (Planned)"] --> R1["Run: a worker on a task"]
+    S1 --> R2["Run: the reviewer on a branch"]
+    R1 --> H1["Guard decision: start allowed"]
+    R1 --> V1["Check run at close, no end yet"]
+    R2 --> W["Review: the verdict"]
+```
+
+The chart is one moment of a real tree. To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. Today the tree starts at the run; the session level and the link from a run to its session are Planned.
 
 ## Sessions
 
-Every session is recorded, not only a lane. A lane is a session with owned issues and its own review mode ([LANES.md](LANES.md)).
+Planned (trustmybot/tmb#63, trustmybot/tmb#254). Today a session has no record: a record names the role and host, not the session, so the work of two sessions on one project cannot be told apart.
 
 ```mermaid
 stateDiagram-v2
     [*] --> active: session starts
-    active --> active: compacted, cleared or resumed under a new host id
+    active --> active: compacted, cleared or resumed
     active --> ended: the host reports the session ended
-    active --> ended: swept, its process is gone
     ended --> active: the Human resumes it
     ended --> [*]
 ```
 
-- **One stable id.** A session keeps one id across a compaction, a clear and a resume, and each of those is an event that changes no state.
-- **The parent link is written by the parent.** Starting a nested session records the child and its parent at once, so a child that never takes a turn is still on record.
-- **Ended is not final.** A session the Human resumes becomes active again, and the resume is an event.
+- **One stable id** across a compaction, a clear and a resume.
+- **A session with a start and no end is a finding,** like a run.
+- **A session's own tokens** are recorded with the same four counts as a run's, apart from its runs' counts, so a total counts nothing twice.
+- **tmb still starts no session and assigns no work between sessions.** [LANES.md](LANES.md) covers parallel sessions.
 
 ## Agent runs
 
-One run is one spawn of swe, code-reviewer or a consultant, or one stretch of bro's own turns.
+Shipped. One run is one start of a worker or the reviewer. The planner's own turns are not a run; they belong to the session record, which is Planned.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> running: spawned, or bro's turn begins
-    running --> ended: finished
-    running --> ended: failed, with the cause
-    running --> ended: out of turns, checkpoint kept
-    running --> ended: killed by the Human or the host
-    running --> ended: swept, its process is gone
-    ended --> [*]
+    [*] --> running: the gate allows the start
+    running --> finished: a worker's task left the open state
+    running --> finished: a reviewer recorded a verdict
+    running --> stopped: any other end
+    running --> stopped: the host failed to make the agent
+    finished --> [*]
+    stopped --> [*]
 ```
 
-- **A resume is a new run** that names the run it resumes, so a chain of resumes reads as one line, like a chain of task retries.
-- **A refused spawn is recorded too.** A spawn a gate refuses writes a start and an end with the refusal as its cause, so "why did swe never start?" has a record.
-- **The task's story joins here.** A task event names the agent run that made the move, so a task that failed points at the run, and the run points at what it was doing.
+- **Finished or stopped** (trustmybot/tmb#133). A reviewer that gave no verdict is stopped. So is a start the gate allowed and the host then failed to make: no agent ran, so no stop would come to end its run (trustmybot/tmb#285).
+- **A denied start is recorded too,** as a guard decision with its reason, so "why did the worker never start?" has a record. It opens no run.
+- **A reviewer that is a host's main agent** has no subagent start. Its run opens at that host's session start and ends with its verdict.
+- **Cost is tokens, per model:** input, output, cache read and cache write, given by the host's adapter. A run whose usage cannot be read has no cost, and that is not an error.
+- **tmb records no price.** Prices change, and a subscription has none per run.
+- **Planned:** a fixed list of causes on a stopped run (failed, out of turns, killed), and a resumed run that names the run it resumes.
 
 ## Hook runs
 
-One run is one hook or gate answering one tool call or session event.
+In tmb a hook runs only at a checkpoint: a session start, an agent's start or stop, a file write by the reviewer, a step only the Human may take, and git's pre-push hook. Each answer is one guard decision.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> running: the hook is called
-    running --> ended: allowed
-    running --> ended: denied, with the reason shown to the agent
-    running --> ended: timed out
-    running --> ended: crashed
-    ended --> [*]
+    [*] --> asked: the host or git raises the event
+    asked --> allowed: recorded with the reason
+    asked --> denied: recorded with the reason and what would be allowed
+    asked --> denied: the record cannot be read or written
+    allowed --> [*]
+    denied --> [*]
 ```
 
-- **Every run is recorded, lightly.** An allowed run keeps only its two times and its outcome. A denied, timed-out or crashed run also keeps its detail: what it was guarding, the reason, and the error.
-- **The start is written before the work.** It is the one write that may not be deferred, because a hook that hangs never reaches its end.
-- **A fail-open is not silent.** A hook that times out or crashes and lets the call through writes that outcome, so "the gate did not run" is on record.
-- **This replaces hook telemetry in the audit log.** The audit log keeps workflow events only; GH 3229 moves the hook rows here.
+- **Shipped: every decision is recorded,** allow and deny, with the event and the reason.
+- **Shipped: a gate never fails open on a broken record.** It denies when it cannot read or write the record, and allows only where tmb was never set up.
+- **Not recorded:** a shell command tmb let pass. tmb reads a shell command only for a step only the Human may take, and records only the deny.
+- **Not events:** a task's start and close. The engine checks them when asked, and a refusal goes to the caller without a guard decision.
+- **Planned:** a start written before the hook's work, so a hook that hangs or crashes leaves a record. Today a decision is written once, when it is made.
 
 ## Verification runs
 
-One run is one execution of a task's checks or its close lints.
+Shipped, as check runs. One run is one execution of a task's checks on one commit: at close, and again after a fold or a rebase moved the commit.
 
 ```mermaid
 stateDiagram-v2
     [*] --> running: the checks start
-    running --> ended: passed
-    running --> ended: failed, naming the command
-    running --> ended: timed out
-    running --> ended: killed with its hook or session
-    ended --> [*]
+    running --> passed: every command passed
+    running --> failed: naming the command
+    running --> not_run: with the reason
+    passed --> [*]
+    failed --> [*]
+    not_run --> [*]
 ```
 
-When a verification run outlives the hook that started it, the sweep ends it with the outcome killed, so a close that was killed never leaves a run that looks as if it is still going.
+A check run killed with its session keeps its start and has no end, so it shows as a finding.
 
 ## Finding and ending what is stuck
 
+tmb has no watcher and no timer: it runs only when something calls it (trustmybot/tmb#160).
+
 ```mermaid
 flowchart TD
-    A[A session start, a health check, or the parent's turn] --> B[List records with a start and no end]
-    B --> E{Is its process still alive?}
-    E -- no --> G[Ended as swept, with the cause and the sweep that found it]
-    E -- yes --> C{Has it run longer than runs of its kind usually take?}
-    C -- no --> D[Left alone]
-    C -- yes --> P[bro probes it: its last events, what it waits on, whether events still arrive]
-    P -- working or waiting --> D
-    P -- stalled --> F[Reported as stalled: what it is, since when, and its last event]
-    F --> H[bro tells the Human]
+    A["A session start, or the health check"] --> B["List runs and check runs with a start and no end<br/>and open tasks with no run"]
+    B --> C["Named to the planner in one line, and listed in full by the health check"]
+    C --> D{The planner decides}
+    D --> E["Leave it: still working"]
+    D --> F["Resume: start a worker on the open task again"]
+    D --> G[Drop the task with a reason]
 ```
 
-- **Last activity needs no heartbeat.** It is the newest event under the record: a hook run under an agent run, an agent run under a session.
-- **A sweep ends a record; it never deletes one.** The swept record keeps its start, and its end names the sweep.
-- **Stalled is a judgment, not a limit.** No fixed time ends or flags a run. bro compares a run with the past month's run times of its kind, the same statistics the dashboard shows. Past the median bro makes a light probe: it reads the run's latest events without interrupting it. Past the 75th percentile it makes a deeper one: it asks the agent for its state and tells the Human. With no recorded runs of the kind, bro flags nothing on time alone. Today the recovery step still fails a running task after a fixed six hours with no open run; that window goes (GH 3260). A long test run and a hang look the same from outside, so bro reads the run's events before it calls it stalled.
-- **Stalled is not dead.** A run whose process is alive is reported, never ended. Only the Human or the host kills it.
-- **Waiting is a recorded state of mind.** An agent that is waiting on the Human or on another lane writes what it waits on, so a quiet session reads as waiting, not stuck.
+- **Last activity needs no heartbeat.** It is the newest record under the run.
+- **Nothing is ended for the agent.** tmb lists what has no end and deletes nothing.
+- **Open, for the Human:** the plugin's sweep, which ends a record whose process is gone, and its stall probe, where the planner compares a run with past run times and probes it. Both watch a run rather than gate an outcome, and tmb does not start the agent's process.
 
 ## Nothing is skipped silently
 
-A step that is skipped or runs degraded writes an event with its cause: a gate that allowed because it could not read its record, a sync that did not happen because no repo was named, a search that fell back because its model failed to load. The event is attached to the session or agent run it happened in.
+A step that did not run is recorded as not run, with the reason: a check that could not run, a backup push that was skipped, a commit status that could not be sent, a push allowed in an exempt repo. An agent start whose role the host did not name is allowed and recorded as a finding.
+
+## Where it lives
+
+One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one, in the workspace folder ([GIT.md](GIT.md#multi-repo-workspaces)). Each feature branch and task names its repo; one with none belongs to the project folder itself. The engine creates the file at init and is the only program that migrates it.
+
+| State | Gate | Other commands |
+|---|---|---|
+| No database | Allows: tmb stays out of projects it was never set up in | Offer `tmb init` |
+| Readable | Decides normally | Run normally |
+| Unreadable, empty, or made by a newer tmb | Denies, naming the cause, and for a newer one the version that wrote it | None runs. `tmb doctor` still runs and reads the record read-only |
+
+- **The code graph is separate.** It can be rebuilt from git at any time and lives in its own file, one per repo. Indexing is not recorded in the trajectory ([WORLD_MODEL.md](WORLD_MODEL.md)).
+- **Plugin projects.** A one-way migration carries a plugin project's records into a new tmb database and leaves the plugin's database untouched. A kind of record tmb does not have is left behind, not folded into another kind.
 
 ## Debugging with it
 
 | Question | Where the answer is |
 |---|---|
-| Why does this hook run forever? | The hook run with a start and no end: what it guards, and the verification run under it, if any |
-| Why does this nested session never end? | Follow its records with no end downward; the lowest one is where it stopped |
-| Is this run alive or dead? | Whether its process is gone, in the sweep's report; for a live one, its run time against the usual for its kind and its last event |
-| Why did swe never start? | The agent run's end: a refused spawn names the gate and the reason |
-| Why did the gate let this through? | The hook run's outcome: allowed, or timed out or crashed and failed open |
-| Why three re-runs of this task? | The task's events, each naming its agent run and cause ([TASKS.md](TASKS.md#task-lifecycle)) |
+| What is stuck? | `tmb doctor`: runs and check runs with a start and no end, and open tasks with no run |
+| Why did the worker never start? | The guard decision for its start: the deny names the reason and what would be allowed |
+| Did the worker finish? | Its run's outcome: finished or stopped |
+| Why did the close fail? | The task's newest check run: each command and its result |
+| Why did the gate let this push through? | The guard decision: covered by a pass or waiver, or an exempt repo. With no record in the project nothing is recorded, and the hook says so in one line |
+| Who waived this review? | The audit trail |
+| What did this task cost? | The cost on its runs, in tokens per model |
+| Why three re-runs of this task? | The task's events in order, with its runs and reviews ([TASKS.md](TASKS.md#task-lifecycle)) |
+| Why does this session never end? | Planned, with the session record |

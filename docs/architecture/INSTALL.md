@@ -1,106 +1,185 @@
 # Install, upgrade and session start
 
-Every case of flow 1.1 in [FLOWS.md](FLOWS.md): how TMB gets into a project, how an upgrade lands, what each session start checks, and how to tell what broke.
+Every case of flow 1.1 in [FLOWS.md](FLOWS.md): how tmb gets onto a machine and into a project, how an update lands, what each session start does, and how to tell what broke. The commands a user types are in the [reference](../reference/README.md).
+
+tmb is one compiled program per platform, not a plugin of any host. It holds the engine, the command line, the tool server, the dashboard's pages and every host adapter ([HOSTS.md](HOSTS.md)). Nothing else has to be installed first: no Node, no package install. tmb is one program for the whole machine; only the record and the host wiring are per project.
 
 ```mermaid
 flowchart TD
-    A[Human installs at project or local scope] --> B[Full restart of Claude Code]
-    B --> C{Plugin loaded?}
-    C -- no --> X1[No TMB agents or hooks: check scope, channel, restart]
-    C -- yes --> M{DB schema behind the server?}
-    M -- yes --> N{Migration succeeds?}
-    N -- no --> X3[DB stays at its old version; fix the cause and restart]
-    N -- yes --> D
-    M -- no --> D[Session start: mark session, advisory checks]
-    D --> E{Checks pass?}
-    E -- no --> X2[Degraded banner names what is broken; the session still runs]
-    E -- yes --> F[First prompt]
-    X2 --> F
-    F --> G{Project onboarded?}
-    G -- no --> H[2.1 First contact]
-    G -- yes --> I[Normal bro turn]
-    I --> J{Context past the compact threshold?}
-    J -- yes, once per session --> K[One advisory line suggesting /compact]
-    J -- no --> I
+    A[Human runs the installer script] --> B{Download matches its checksum?}
+    B -- no --> X1[Nothing is installed]
+    B -- yes --> C[Program lands under its channel's name]
+    C --> D[Human runs init in the project]
+    D --> E{A host tmb knows is installed?}
+    E -- no --> X2[Stops, names the hosts, changes nothing]
+    E -- yes --> F[Record created, host wired, push hook added, code graph indexed]
+    F --> G[Human opens the host in the project]
+    G --> H[Session start: the role and the open work]
+    H --> I{Record readable?}
+    I -- no --> X3[The session goes on and the gates deny until it is fixed]
+    I -- yes --> J{Settings empty?}
+    J -- yes --> K[2.1 First contact]
+    J -- no --> L[Normal planner turn]
 ```
 
-## Recommended scope: project or local
+## Install: one program, three channels
 
-TMB keeps its state inside the project, so it installs per project: **project** scope for a team (`.claude/settings.json`), **local** scope for one person and for the dev and rc channels (`.claude/settings.local.json`). User scope loads TMB's hooks into every project. When session start sees a user-scope install, it recommends `--scope project`, once per session.
+The installer script is the only supported way to install. It needs no login, checks the download against the published checksums and refuses on a mismatch.
 
-`claude plugin install` defaults to user scope, so always pass `--scope`. From the project root, with `<scope>` set to `project` or `local`:
+| Channel | Program | Holds |
+|---|---|---|
+| stable | `tmb` | Releases, tagged `vX.Y.Z`. |
+| rc | `tmb-rc` | Release candidates, tagged `vX.Y.Z-rc.N`. |
+| dev | `tmb-dev` | Every merge to the base branch, as one rolling prerelease. |
+| one release | `tmb-<version>` | One rc or stable release. It never updates itself. |
 
-```bash
-claude plugin marketplace add trustmybot/marketplace --scope <scope>
-claude plugin install tmb@trustmybot --scope <scope>
-claude plugin update tmb@trustmybot --scope <scope>
-claude plugin marketplace update trustmybot   # no scope flag
-```
+- **Channels live side by side.** Each program updates only from its own channel and keeps its machine-wide state in a folder of its own name, so one never swaps another. `TMB_CHANNEL` picks the channel at install, `TMB_INSTALL_VERSION` pins one release.
+- **A version names its channel:** `X.Y.Z-dev.N`, `X.Y.Z-rc.N` or `X.Y.Z`. A `tmb` installed before the names were split keeps following the channel its version names.
+- **A project runs the program that initialised it.** Its host events, its tool server and git's push hook call that program. Running another program's `init` moves the project, in either direction, whenever that program can read the record. The record's audit trail keeps every move.
+- **Every printed command names the running program:** a project set up by `tmb-dev` is told to run `tmb-dev init`. A test builds tmb as `tmb-dev` and fails on any printed `tmb <command>`. Built (trustmybot/tmb#268). Open, for the Human: not yet reviewed.
+- **Releases are plain downloads.** Release files go to one public repo, separate from the source repo. Each release carries a `VERSION` file and its checksums. dev is published on every push to the base branch; rc and stable only when their tag is pushed. The source repo's README offers stable only and links to the release repo for rc and dev.
+- **The packaging test comes first.** One compiled file must run on all three platforms with no network, open the record, parse code and answer a tool call from a host.
 
-Other channels: `trustmybot/marketplace-rc` with `tmb@trustmybot-rc`, or `trustmybot/marketplace-dev` with `tmb@trustmybot-dev`.
+### What init writes
 
-- **The Human installs and restarts.** Any plugin change applies only after a full quit and relaunch of Claude Code. Installing at both scopes is safe; the project install wins.
-- **Node.js 22.16 or later on PATH**, or session start prints `TMB DEGRADED: missing node, or node older than 22.16 …`, and no hook or server starts until it is fixed.
-- **One plugin loads together:** the swe and code-reviewer agents, the trajectory server and the hooks. Everything TMB writes stays under the project root ([CONTAINMENT.md](CONTAINMENT.md)).
-- **bro's persona comes from hooks.** Claude Code never loads a plugin's own `CLAUDE.md`, so hooks deliver bro's persona at session start, resume, `/clear` and compaction, and on the first prompt of a session that started before the hooks loaded; after a compaction they bring back bro's state from the DB. TMB never writes to `<project>/CLAUDE.md`; a `<!-- tmb:persona start … -->` block an older `/onboard` copied there can be deleted.
+`tmb init` asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162). It finds the installed host and has its adapter wire tmb in. It leaves tmb's settings empty and ends by saying so and how they get filled ([ONBOARD.md](ONBOARD.md)).
+
+| Init writes | Where |
+|---|---|
+| The record | `.tmb/` in the project |
+| The tool server's registration, the event wiring and the role files | The host's own project files, through its adapter ([HOSTS.md](HOSTS.md)) |
+| git's pre-push hook | Each repo tmb works in |
+| The code graph | `.tmb/`, one graph per repo |
+| Ignore lines for the above | `.gitignore` |
+
+- **Run again, init replaces only what tmb wrote** and takes out what this version no longer wires: role files for roles that no longer exist, and hooks under an event tmb no longer uses. The Human's own entries stay.
+- **Init and onboard replace the earlier `tmb setup`** (trustmybot/tmb#89). Files an earlier build marked as written by `tmb setup` are still recognised as tmb's.
+- **A plugin project's records are carried over by `tmb migrate`**, a one-way copy that leaves the plugin's database unchanged (trustmybot/tmb#17). A plugin project of several repos goes into one workspace record, each repo to the workspace repo of the same name or one the Human names. tmb never guesses a repo (trustmybot/tmb#193).
+
+### Package managers
+
+Built. Not supported and not tested before v1.x (trustmybot/tmb#91): tmb's own installer and updater come first, and no v1 release waits for a package-manager test. The installer scripts stay; package managers are added beside them.
+
+| Where | Route | Channels |
+|---|---|---|
+| macOS and Linux | tmb's own Homebrew tap, as a cask. On macOS it waits for notarization. | `tmb`, `tmb@rc` and `tmb@dev` |
+| Windows | tmb's own Scoop bucket, then winget's community list | Scoop: `tmb`, `tmb-rc` and `tmb-dev`. winget: one package per channel. |
+| Linux without Homebrew | The installer script | |
+
+- **tmb keeps its own updater on every route.** The cask sets `auto_updates`, and the winget package refuses winget's own upgrade.
+- **A manifest is a template in the source repo.** A release fills in its version and checksums, and pushes the cask to the tap and the Scoop manifest to the bucket. A release that is not the newest on its channel leaves them alone. The winget manifests are kept with the workflow run, for a submission.
+- **A cask, not a formula.** A formula would not avoid the quarantine below, and Homebrew allows no formula name such as `tmb@dev`.
+- **Planned for v1.x (trustmybot/tmb#91):** the Human creates the tap, the bucket and their token, and submits to winget. Until they exist the publishing step skips and the release still succeeds.
 
 ## Operating systems
 
-| OS | Claude Code workflow | Bash sandbox | `/onboard` sandbox default |
+| OS | Builds | Installer | Notes |
 |---|---|---|---|
-| macOS | Supported | Supported; the recorded network probe ran here | **Yes (Recommended)**, unless a repo remote uses SSH |
-| Linux | Supported (CI runs the suite on Linux) | Not yet validated on a Linux host; the network probe is macOS-only | **No**; answering Yes still writes the block |
-| Windows | WSL 2 only, which is the Linux case; native Windows is untested | None on native Windows | As Linux |
+| macOS | arm64, x64 | `install.sh` | Not signed with a Developer ID, not notarized |
+| Linux | x64, arm64 | `install.sh` | |
+| Windows | x64, native | `install.ps1` | git's hooks run under Git for Windows' own sh (trustmybot/tmb#221) |
 
-Planned (GH 3360): `/onboard` stops setting up the sandbox, so the last column goes away. The sandbox is the Human's own Claude Code setting.
+After each release, CI runs the published installer on all three.
+
+**macOS signing.** Homebrew marks what it downloads as quarantined, and macOS refuses to run a quarantined program that is only signed ad hoc. So a Homebrew install on macOS installs, then does not run. Planned: the release workflow signs the macOS files with a Developer ID and has Apple notarize them. Until then the installer script is the only route on macOS, and the tap says so. The script works because curl does not quarantine. Tested on macOS 15 with Homebrew 7.0.15 (trustmybot/tmb#91).
+
+**Offline.** The engine, the record, the code graph and the dashboard need no network. Whether the agents run offline depends on the host and its models.
 
 ## Upgrade
 
-An upgrade changes two things: the plugin files, which Claude Code fetches when the plugin's version changes, and the trajectory DB, which the server migrates the first time it starts after a full restart. Neither change applies until Claude Code is fully restarted.
+An install follows one channel and updates itself. A session that is running keeps the build it started with, so a task never meets a new build half way.
 
-- **Version.** Session start prints `Plugin version:`; `claude plugin list` shows each install's version and scope. A newer cached version than the running one adds a "fully quit and relaunch" line.
-- **Check now.** `claude plugin marketplace update <marketplace>` (`trustmybot`, `trustmybot-rc` or `trustmybot-dev`) skips the poll.
-- **Switch channels.** Uninstall the current one and install the other, each with an explicit `--scope`. The DB is per project, so data carries over.
-- **Prune or reset the cache.** `node --experimental-sqlite <plugin-source>/mcp/trajectory-server/dist/cli.js heal-mcp-cache [--dry-run] [--channel stable|rc|dev]` clears a per-project MCP disable flag, prunes old cached versions, and can wipe the channel's cache for a clean reinstall. It asks before each change.
-- **DB migration.** When the DB's schema is behind the server's, the server takes the write lock, writes `<dbpath>.pre-v<TARGET>.<timestamp>.bak`, and runs every pending migration in one transaction that rolls back whole on failure. Rows are preserved. Migrations only go forward: to roll back, restore that backup and install a plugin version that targets the older schema; work since the upgrade is lost.
-  - **Restore.** Close every session on the project, replace the DB with the backup, delete the two sidecar files beside it, and install a plugin version for that schema.
-  - **Backups kept.** Planned (GH 3260): every migration attempt takes a fresh backup, and so does adopting a DB that is older than schema versioning. TMB keeps the newest three backups and says so, so a Human who needs every backup copies them out. Today a retry reuses the backup of the first attempt, adoption takes none, and nothing is pruned.
-- **Uninstall.** Removing the plugin runs no code, so TMB cleans nothing up on its own. Planned (GH 3260, GH 3281): one cleanup command, run before the plugin is removed, takes out what TMB added to the project's local settings and to each repo's git folder. It then asks whether to delete the trajectory DB too, warns that this cannot be undone, and deletes it only on a yes. What stays until the Human deletes it: the state folder with its logs and backups, task worktrees and their branches, the ignore line, the policy files committed to each repo, and the agent, skill and cheatcode files the Human approved.
+```mermaid
+flowchart TD
+    A[Session start] --> B{Looked within the hour, or updates off?}
+    B -- yes --> R[Run the installed build]
+    B -- no --> C[Look for a newer build on the channel, in the background]
+    C --> D{Newer build that matches its checksum?}
+    D -- "no, or no network" --> R
+    D -- yes --> E[Keep it]
+    E --> F[Installed at a session's end, or by the update command]
+    F --> G{A session still running in a project?}
+    G -- no --> K[The next open of the record upgrades it]
+    G -- yes --> H[That session and its project keep their build]
+    H --> I{Its next tool call, with no task open?}
+    I -- no --> H
+    I -- yes --> J[Its tool server moves to the new build and says so]
+    J --> K
+    K --> L{Next session start: no task open?}
+    L -- yes --> M[Init's wiring is redone; hosts read it from the session after]
+    L -- no --> N[Waits, and says so]
+```
 
-### Upgrading into v1.1.0 — remove leftover user-wide hooks
-
-Before v1.1.0, `/onboard` wrote hook commands into `~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR/settings.json` when set), stamped `"_tmb_managed": true` or running `resolve-hook.sh`. They fire in every project, so an old gate can deny what the current one allows. TMB reports them (a session start `Plugin:` line, `WARN  legacy-user-hooks` in the health check, with each object's line and the projects still below 1.1.0 to upgrade first) and never edits the file.
-
-To remove them:
-
-1. `cp ~/.claude/settings.json ~/.claude/settings.json.bak`.
-2. Under `"hooks"`, delete each reported hook object, then any group or event key left empty.
-3. `jq empty ~/.claude/settings.json` to check it still parses.
-4. Delete `~/.claude/tmb-hooks/`.
-5. Start a new session; the `Plugin:` line is gone.
+- **An update installs at once, whatever is running** (trustmybot/tmb#159): at a session's end or on `tmb update`. `tmb update --check` only looks. `TMB_NO_UPDATE=1` turns updates off. A tmb run from source never updates itself.
+- **A running session keeps its build, and so does its project.** Every tmb call there runs that build: the host's events, the tool server, git's push hook, a command the Human types. So the record keeps its shape and the host files stay as they are until the session moves.
+- **The session moves by itself**, once no task is open, and keeps its conversation. When the move fails it keeps its build and says how to reconnect the tool server in that host. Not checked: whether each host reads tmb's tool list again after a move.
+- **`tmb update` names each session still on an old build**, with its folder, title and start time, and why it waits.
+- **An old build is never deleted by itself.** tmb says how many old builds no session uses and their size. `tmb doctor` lists them and deletes them on the Human's yes (trustmybot/tmb#160).
+- **Version.** `tmb --version` prints the program's name, its version, its source commit and its channel.
+- **Switch channels.** Install the other channel's program and run its `init` in the project. The record is per project, so data carries over.
+- **The record follows the program** (trustmybot/tmb#128). A newer tmb that opens a record upgrades it by itself: every pending step in one transaction, so the record is never left between versions. An older tmb refuses a record a newer one reshaped, and names the program that wrote it and the command that moves on, never a version number (trustmybot/tmb#173). Such a project never holds this tmb's update back.
+  - **No backup is taken before an upgrade.** Open, for the Human: the plugin took one before every migration and kept the newest three.
+- **The host files follow at a session start.** When another version of the same program last wired the project, tmb redoes init's wiring: each host the project is set up for, and git's push hook.
+  - It replaces only what tmb wrote, asks nothing and changes no setting. An older version refreshes as a newer one does, so the files match the program that runs.
+  - Never while a task is open, and not for a project tied to another channel's program: moving a project stays the Human's `init`.
+  - The record keeps each refresh as an audit entry: the program, from which version to which, the hosts and what changed.
+  - A refresh that fails never stops the session. The line says what failed and names `init`.
+- **Uninstall.** `tmb remove` undoes what init added and leaves the Human's own settings alone. It runs only on a terminal, after a typed yes. Three things stay: the record, which is the Human's data, the lines init added to `.gitignore`, and the repo from `git init` in a folder that had none.
 
 ## Session start
 
-- **Advisory, never blocking.** Session start checks health, required tools, leftovers from older versions and the project inventory. When something is broken, a degraded banner names it and the session goes on. The gates still fail closed while the trajectory DB is unhealthy or unmigrated ([MEMORY.md](MEMORY.md)), so the work waits until the health check is green. The required tools are Node with its built-in SQLite, and git. A project whose repos have no remote gets one line saying TMB is operating locally and skips remote and push steps; that is not degraded.
-- **One compact nudge.** Once per session, when bro's context passes a configurable token threshold (off when set to zero), bro gets one line suggesting /compact at the next natural break. The compaction restore brings back the session's open issues, newest first up to a fixed limit with the counts of the rest, the current issue, its tasks and the newest decision.
-- **The pre-push hook.** On git 2.54 or newer, session start installs TMB's pre-push hook from the repo's own git config in the project's repo and every registered repo, beside any hook already there, and marks the agent's shell so the hook acts only on an agent's push; `cli.js prepush-uninstall [--repo <path>]` removes it from one repo.
-- **The pre-push switch.** The pre-push hook can be switched off for a project. Only the Human does it, through /onboard; no agent tool can change it.
-  - *Never silent.* Each session start with the setting off prints one notice that names the setting, /onboard and `prepush-uninstall`.
-  - *Fails safe.* With the setting off, session start removes any installed TMB hook from every repo it would install in, so no live hook remains, and the guard that reads the push command before it runs stays on. Each observed push records whether the setting was off. A setting the DB cannot read counts as on.
-- **Which DB.** The session uses the project's trajectory DB; [MEMORY.md](MEMORY.md#where-the-trajectory-db-lives) gives the rule that finds it.
+- **The role comes from the engine, every time.** The host raises its session start event, and the engine answers with the host's role, the open work from the record and the project's layout from the code graph. A host that raises the event again on resume, clear or compaction gets the same answer, so a session resumes from the record and needs nothing from the conversation before it. tmb never writes the host's own instruction file.
+- **Never blocking.** A session start never fails. With a record it cannot read, it gives the role and one line naming the problem, and the gates deny until it is fixed ([CONTAINMENT.md](CONTAINMENT.md#gates-fail-closed)).
+- **One line per finding.** The planner is told, in one line each: a host-file refresh, what `tmb doctor` would find ("N things need a look"), each pull request that ended since the last session, and a repo whose push gate is off. It runs only doctor's quick checks, asks git and not GitHub, and says nothing when there is nothing to say.
+- **Empty settings start first contact** ([ONBOARD.md](ONBOARD.md)).
+- **It tidies.** With no task open or in review, tmb tries again to remove the worktrees closed and dropped tasks kept.
+- **Unattended runs.** A run with no one to answer is told so first ([HOSTS.md](HOSTS.md#unattended-mode)).
+- **The push gate.** Init installs git's pre-push hook, not session start. There is no switch that turns it off; a repo marked exempt gets none. A repo whose pre-push hook is another tool's keeps that hook, and the gate is off there until the Human says yes to tmb's one line in it; init, every session start and `tmb doctor` name the repo until then (trustmybot/tmb#184).
+- **Which record.** The nearest record in the session's folder or a folder above it.
+- **A compact nudge.** Not built. Open, for the Human: the plugin suggested compacting once per session past a token threshold.
+
+## Bug reports
+
+Flow 5.1. Built for v1.0.0 (trustmybot/tmb#122). How to use it is in the [reference](../reference/README.md#report-a-bug-in-tmb).
+
+```mermaid
+flowchart TD
+    A[tmb itself breaks, or the Human runs the feedback command] --> B{Feedback program on?}
+    B -- "no, and the planner would offer" --> Z[No report offered]
+    B -- yes, or the Human's own command --> C[Draft from the repo's bug form, cleaned of paths and secrets]
+    C --> D[Human reads the whole report]
+    D --> E{Yes?}
+    E -- no --> Z2[Nothing is sent]
+    E -- yes --> F{GitHub's CLI signed in?}
+    F -- yes --> G[tmb files the issue from the Human's account]
+    F -- no --> H[The bug form opens filled in; the Human submits]
+    G --> I[The record keeps the report and its link]
+    H --> I2[The record keeps that a form was opened]
+```
+
+- **Nothing is sent by itself, on any channel.** The Human says yes to each report.
+- **On by default on dev and rc, asked about on stable**, once, at the first run. The setting belongs to the person: it is kept with the machine-wide state of each channel's program.
+- **A report is an issue on the source repo, from the user's own GitHub account.** A link is kept under 7,500 characters; a longer report is saved to a file to attach.
+- **A report follows the repo's bug form** as it stands on the default branch, so the version, the labels and the questions are always current ([contributing](../contributing/README.md#issues)). With no network it uses a built-in copy, which the build takes from the same form file.
+- **Labels come from the form on both routes.** GitHub drops the labels of an issue filed through its API by someone who cannot write to the repo. So a report filed through the CLI carries one hidden line, `<!-- tmb-feedback form=bug.yml -->`, and a workflow on the repo adds that form's labels. Not yet seen running on a real report.
+- **A report holds no source code, file contents, prompts, agent messages or environment variables.**
+- **For an opened form the record cannot know whether the user pressed submit.**
 
 ## Debugging
 
+`tmb doctor` checks the machine and the project and names the fix for each finding. It only reads; `--fix` asks before each change.
+
 | Symptom | Cause | Fix |
 |---|---|---|
-| No TMB agents or persona after install | Claude Code was not fully restarted, or the plugin went to another scope or channel | Check `claude plugin list`, install at the right scope, fully restart |
-| A degraded banner at session start | A required tool is missing, or the trajectory DB or server is unhealthy | The banner names which; fix it and restart |
-| TMB gates fire in projects that never installed it | A user-scope install, or user-wide hooks from before v1.1.0 | Reinstall at project scope; [remove the leftover hooks](#upgrading-into-v110--remove-leftover-user-wide-hooks) |
-| Some gates never fire; `WARN  duplicate-plugin` | Two channels enabled in one project | Disable the extra copy at its scope (the warning prints the command), then restart |
-| trajectory-server dead in one project only | `disabledMcpServers` holds `plugin:tmb:trajectory-server` for the project in `~/.claude.json` | `heal-mcp-cache` step A, or set the array to `[]`, then restart |
-| Every `mcp__plugin_tmb_*` tool missing after an update; `mcp-health.log` shows `"mcp_alive":false` | Claude Code bug: hooks load from the new cache but the MCP server does not | In order: `claude --plugin-dir <plugin-source>` once; uninstall, restart, reinstall; `heal-mcp-cache` step B, reinstall, restart |
-| Gates deny with `BLOCKED: trajectory DB unavailable` | The DB resolved but could not be read: busy, corrupt or unreadable | See [Where the trajectory DB lives](MEMORY.md#where-the-trajectory-db-lives) |
-| `stored schema_version N is newer than code's max M` | Plugin downgraded, or another session on a newer plugin migrated the DB | Upgrade the plugin, or restore the `.pre-v<N>` backup. The health check's own hint for this case, to quit and relaunch, is wrong (GH 3260) |
-| Migration failed | Full disk, or another session held the lock past 5 s | Fix the cause and restart. On a full disk the DB stayed at its old version. When two sessions started the upgrade together, the other one migrated it: the session that lost the wait has no TMB tools until it restarts, and nothing else needs fixing |
-| `legacy_db_no_plugin_meta` in `mcp-server.log` | DB predates schema versioning; the server adopted it | Check your data if you did not expect it |
-| `no such column` or `NOT NULL constraint failed` on first boot | DB shape the migration chain does not know | Restore the newest `.bak`, stay on that version, open an issue with `sqlite3 <dbpath> '.schema'` |
+| `tmb: command not found` after install | The install folder is not on PATH in this terminal | Open a new terminal, or add the line the installer printed |
+| `tmb init` stops and names the hosts it supports | No host tmb knows is installed | Install one; with several installed, `--host <id>` picks |
+| No role, tools or events in a session | Init has not run here, the session started before init, or the worktree is one the host files do not wire | `tmb init`, then start a new session; `tmb doctor` lists unwired worktrees |
+| Codex runs without tmb | The Human has not trusted the project or tmb's hooks | Trust the folder in Codex, then review the hooks with `/hooks` |
+| Writes and agent starts denied: `tmb cannot read the project's record, so it allows nothing` | The record is damaged, empty, or not a tmb database | `tmb doctor --fix` repairs it on a yes and keeps the damaged file beside it |
+| `has schema version N, made by a newer tmb` | Another program, or a newer build, reshaped the record | Run the program the message names, or `tmb update` |
+| `task_start` is refused: no review mode | The review mode is the Human's choice and none is set | Answer the planner's question, or `tmb onboard` on a terminal |
+| Session start says the push gate is off in a repo | The repo's pre-push hook is another tool's, or the record names none of the folder's repos | `tmb onboard --add-push-gate`; or `tmb init` again in the project folder |
+| Host files are still an older version's | A task is open, so the refresh waits | Close or drop the task; the next session start refreshes |
+| A session stays on an old build | A task is open in its project, or the move failed | `tmb update` says which and why; reconnect the tool server as the session says (in Claude Code: `/mcp`, then Reconnect on tmb) |
+| A Homebrew install on macOS does not run | The build is not notarized | Use the installer script |
+| A tmb check fails by itself | It looks like tmb's own bug | `tmb feedback` drafts a report |

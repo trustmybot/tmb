@@ -1,241 +1,250 @@
 # Agile review mode
 
-Every case of flow 3.9 in [FLOWS.md](FLOWS.md): how agile work builds up on a long-lived feature branch, how its tasks close without a per-task review, how the branch is reviewed once before it merges, and how the review mode is set and changed.
+Every case of flow 3.9 in [FLOWS.md](FLOWS.md): how agile work builds up on a long-lived feature branch, how its tasks close without a review of their own, how the branch is reviewed once before its pull request opens, and how the review mode is set and changed.
 
-The review mode decides who reviews a task and when. It is separate from the merge policy, which decides who merges.
+The review mode decides who reviews a change and when. Who merges is a separate question: the Human does.
 
-Project-level agile mode has shipped. /onboard asks for the project's review mode. Agile tasks close without a per-task review, fold into a feature branch and are queued for review. At the milestone, code-reviewer reviews the queue in groups. The feature branch's PR into the working branch merges only after that review, or after a Human waiver that the audit log keeps. The agent prompts walk bro and code-reviewer through each step. Planned (GH 3025, GH 3224): lane review modes, and review states as lifecycle states. [Shipped and planned](#shipped-and-planned) marks each piece.
+Agile mode is built: the feature branch, the close without a review, the review of the whole branch, the gate on its one pull request and the Human's waiver. [Shipped and planned](#shipped-and-planned) marks each piece.
 
 ## Why a feature branch
 
-Agility is agile mode's one core goal, and every agile design choice below serves it: the feature reaches a state the Human can try, change or drop sooner, with fewer reviews and CI runs on the way.
+Agility is agile mode's one goal: the feature reaches a state the Human can try, change or drop sooner, with fewer reviews and CI runs on the way.
 
-- **Truest** reviews every task before its push, and each task becomes its own PR into the working branch, such as dev. Nothing reaches the working branch unreviewed.
-- **Agile** is for building a feature in many small tasks and judging it as a whole: an MVP the Human wants to try once it works end to end, or an idea that may be dropped. Merging ten tasks into dev one by one, each with its own review and CI run, delays that test and spends ten CI runs on work no one can judge yet.
+| Mode | Review | Reaches the base branch as | For |
+|---|---|---|---|
+| **Agile** (recommended; the Human chooses) | Once, on the whole feature branch | One pull request per milestone | A feature built in many small tasks and judged as a whole |
+| **Truest** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed |
 
-So agile work builds up on one long-lived feature branch per milestone, such as an MVP. Each task closes without a code-reviewer pass and folds into the feature branch locally, with no PR and no CI run of its own. The Human can try the feature branch at any time. At the milestone, code-reviewer reviews the whole branch, and only then does it go to the working branch as one PR with one CI run.
-
-Only the Human sets a mode. Today truest is the default and agile is opt-in. Planned (GH 3281): agile becomes the default, the mode that applies when none is stored, because TMB's first users are solo developers, and a review of every task is too heavy for demo and early work. bro still recommends a mode first, from what the project shows. Truest is for a repo where nothing may reach the working branch unreviewed.
+- **One feature branch per milestone.** Each task closes on its checks alone and folds into the branch locally, with no pull request and no CI run of its own. The Human can try the branch at any time.
+- **Only the Human chooses the mode,** because it decides how many tokens the project uses. tmb marks agile as recommended and shows what each mode costs. It never picks: until a mode is chosen, no task starts.
+- **Truest has no feature branch.** Each task is cut from the base branch and gets its own review and pull request ([GIT.md](GIT.md#rebasing-a-reviewed-task)).
 
 ## Where the review mode is set
 
 ```mermaid
 flowchart TD
-    A[Task closes] --> E{Its repo is exempt?}
-    E -- yes --> EX[Exempt: no review at all, and nothing below can change that]
-    E -- no --> B{"Its lane has its own review mode? (planned, GH 3025)"}
-    B -- yes --> L[Use the lane's review mode]
-    B -- no, or no lane --> R{Its repo has its own mode?}
-    R -- yes --> RM[Use the repo's mode]
-    R -- no --> P[Use the project's review mode]
-    EX --> T[The task records that mode, fixed from now on]
-    L --> T
-    RM --> T
-    P --> T
+    A[A task is about to start] --> E{Its repo is exempt, or not a repo?}
+    E -- yes --> EX[Refused: tmb does no work there]
+    E -- no --> R{Its repo has its own mode?}
+    R -- yes --> RM["Use the repo's mode"]
+    R -- no --> P{"A mode is set for the project?"}
+    P -- yes --> PM["Use the project's mode"]
+    P -- no --> X[Refused: the Human chooses a mode first]
+    RM --> T[The task keeps that mode from its start]
+    PM --> T
 ```
 
-- **Project.** /onboard sets the project-wide review mode. Truest is the default today: when the stored mode is missing or cannot be read, TMB treats it as truest. Planned (GH 3281): bro recommends a mode first, from what the project shows, and /onboard stores the Human's answer. Agile becomes the fallback: a mode that is missing or unreadable then reads as agile. A project that never stored a mode is not switched at the upgrade: it stays on truest, and at its next session start bro asks the Human to choose, with its recommendation first. That change ships together with the rule for tasks already open at the upgrade: each one finishes under the mode it was opened in, and the upgrade stores the project's mode explicitly, so nothing later depends on the fallback. The mode already stored on a closed task is history and does not change.
-- **Repo.** A repo's own mode decides before the project's, and an exempt repo decides before everything (shipped, GH 3281). Planned: /onboard asks one mode per repo, with bro's recommendation, and a repo given no mode of its own uses the project's ([GIT.md](GIT.md#multi-repo-workspaces)).
-- **Lane.** Each lane of a parallel run takes its own review mode when it starts, recorded on the lane's record, and it overrides the project's ([LANES.md](LANES.md)). bro recommends a mode per lane and the Human approves the set. Planned: GH 3025 records it on the lane; GH 2225 adds the lane lookup to the close.
-- **TMB keeps it.** The review mode lives in TMB's own records, never in GitHub labels, which a user without triage access cannot apply.
+- **Project.** The planner asks the Human for the mode among its onboarding questions at the first session, and stores the answer. The Human can also set it with `tmb onboard`. Setup itself asks nothing.
+- **Repo.** In a workspace of several repos, a repo can name its own mode. One that names none follows the workspace's, and follows it when it changes. Onboarding asks for the workspace's mode once, then asks once whether any repo takes its own ([GIT.md](GIT.md#multi-repo-workspaces)).
+- **The task keeps it.** A task records the mode it was started in. A later change of mode applies to tasks started after it.
+- **Two fences keep the choice the Human's.** On the command line the mode is set only on a terminal, after a typed yes. The host's guard also denies an agent's shell command that sets it. One exception: a run with no one to ask, such as CI, may set a mode where none is set, and never changes one.
+- **tmb keeps it.** The mode lives in tmb's record, and every change is in the audit trail.
 
 ## The feature branch
 
 ```mermaid
 flowchart TD
-    A[Agile milestone starts, such as an MVP the Human names] --> B[bro proposes the feature branch and its scope; Human approves]
-    B --> C[bro cuts the feature branch from the working branch]
-    C --> D[Each task branch is cut from the feature branch]
-    D --> E[Task closes without review and folds into the feature branch locally]
-    E --> X[The task branch is deleted]
-    X --> F[bro pushes the feature branch as a backup, with no PR]
+    A[Human names a milestone] --> B[Planner proposes the feature branch and its scope; Human approves]
+    B --> C[Engine fetches the base branch and cuts the feature branch from it]
+    C --> D["Engine cuts each task branch from the feature branch's tip"]
+    D --> E[Task closes on its checks and folds into the feature branch locally]
+    E --> X[The task's branch and worktree are removed]
+    X --> F[Engine pushes the feature branch as a backup, with no pull request]
     F --> D
-    G[Optional periodic sync] -.-> H[bro brings the working branch into the feature branch]
+    G[The base branch moved] -.-> H[Planner has the engine merge it into the feature branch]
     H -.-> D
     F --> T[The Human tries the feature branch in a separate worktree]
-    F --> M[Milestone reached: sync once, fix its conflicts, then the feature branch review]
-    M --> P[One PR into the working branch]
-    P --> Z[Merged: TMB deletes the local branch; the remote copy is deleted on merge]
+    F --> M[Milestone reached: the base branch is brought in, then the branch is reviewed]
+    M --> P[One pull request into the base branch]
+    P --> Z[Human merges; tmb records the branch as merged]
 ```
 
-- **One feature branch per milestone.** It is long-lived and spans every task of the milestone, such as an MVP. bro proposes it for the milestone the Human names, and the Human approves its scope and name. An agile lane owns one for its own work (planned, GH 3025). In a workspace of several repos, each repo the milestone touches gets its own feature branch, and each is reviewed, gated and merged on its own.
-- **Tasks fold into it.** Each task branch is cut from the feature branch's tip and folds back into it locally once the task closes, so the next task builds on the last. The fold opens no PR, and the task branch is then deleted.
-- **Its tasks are checked against it.** An agile task's freshness, merge-base and scope checks use its feature branch as the base. The working branch is the base only for the milestone PR.
-- **Pushed only as a backup.** bro pushes the feature branch so the work is on origin. TMB opens no PR for it before the milestone, so no CI or review runs on it. A repo with no remote has no push and no PR: the branch stays local, and at the milestone the Human merges it into the working branch locally, behind the same merge gate.
-- **Tried in its own worktree.** The Human tries the work by opening the feature branch in a separate worktree, never by switching the shared checkout, which every lane reads on the working branch.
-- **Synced at the milestone.** At the milestone, bro brings the working branch into the feature branch and fixes its conflicts once. An optional periodic sync before then keeps that fix small. On a conflict the sync is undone, bro reads what each side changed, and the Human says how to resolve each path. Planned (GH 3313): once that path has been proven end to end, bro settles a conflict itself, through a task on the feature branch, when the intent of both sides is clear. Until then every conflict goes to the Human.
-- **Cleaned up after the merge.** Once the milestone PR merges, TMB deletes the local feature branch, and the remote copy is deleted on merge.
+- **One feature branch per milestone.** It collects every task of the milestone. A request that adds to the work of an open branch is its next task there; a new branch is only for separate work. In a workspace, a feature branch belongs to one repo, and its tasks work in that repo. Feature names are unique in the record.
+- **It starts from the remote's base branch,** fetched first. The engine uses the local base branch instead when that holds a commit the remote lacks, when there is no remote, or when the remote is out of reach.
+- **Tasks fold into it.** Each task branch is cut from the feature branch's tip and folds back into it once the task closes, so the next task builds on the last.
+- **Pushed only as a backup.** No pull request opens before the review, so no CI runs on the branch.
+- **Tried in its own worktree.** The engine cuts and moves the branch without checking it out, so the main folder never switches under a session.
+- **The base branch is brought in before the review.** On the planner's request the engine merges the base branch in, with a merge commit and never a rebase, since the branch is already pushed. The planner asks at the milestone, and earlier whenever the base moved. A conflict changes nothing and names the files: the planner settles it in a task on the branch, or raises it to the Human.
+- **How it ends.** Merged, closed or dropped; see [Merge gate](#merge-gate). tmb never deletes the branch.
 
 ## Review state
 
-The review mode on a task is history: it is fixed at the close and never changes. What changes afterwards is the task's review state.
+tmb keeps no review state per task. An agile task is open, closed or dropped, and review is a fact about one commit: the feature branch's tip.
 
 ```mermaid
 flowchart LR
-    T[Truest task] --> RV[Reviewed before its push; never queued]
-    A[Agile task closed without a per-task review] --> Q[Queued]
-    Q -- the branch's review passes for its group --> BR[Batch-reviewed]
-    Q -- the Human waives the review --> W[Waived]
-    Q -- the Human asks for a review now --> IR[In review]
-    IR -- pass --> RD[Reviewed; closes when the feature branch merges]
-    IR -- fail: stays queued, findings open --> Q
-    Q -- bro reopens it before the fold --> RW[Running: back to its author]
-    RW -- the author closes it again --> A
-    Q -- the Human drops the feature branch --> ES[Cancelled]
+    O[Open: tasks fold in] -- "a pass or a waiver at the tip" --> C[Tip covered]
+    C -- "a new fold or a merge of the base moves the tip" --> O
+    O -- "a fail at the tip" --> O
+    C -- "pull request step" --> PR[Pull request open]
+    C -- "pull request step, no remote" --> RD[Ready for a local merge]
+    PR -- merged --> M[Merged: final]
+    RD -- "the local base branch holds the work" --> M
+    PR -- "closed without a merge" --> CL[Closed]
+    CL -- "a new task, or a new pull request" --> O
+    O -- "dropped with a reason" --> D[Dropped: final]
+    CL -- "dropped with a reason" --> D
 ```
 
-- **Queued** means closed without a per-task review and waiting for one. The task is queued at its close, and it counts toward its feature branch's review and merge gate once it is folded into that branch.
-- **Batch-reviewed** means the feature branch's review passed for the task's group. The move is recorded with the review that cleared it.
-- **Waived** means the Human let the feature branch merge without that review. The waiver names the branch and its repo, and the audit log keeps it.
-- **A queued task can leave the queue early.** A review the Human asks for moves it to in review. A pass leaves it reviewed, and it closes with the rest when the feature branch merges. A fail leaves it queued with its findings open. When the task is not yet folded into the feature branch, bro reopens it, and after rework it closes into the queue again. When it is already folded, bro files the findings as a fix task on the feature branch. Dropping the feature branch cancels it.
-- **Review states are lifecycle states.** Queued (named review-deferred in the lifecycle), batch-reviewed and waived are states of the task lifecycle in [TASKS.md](TASKS.md#task-lifecycle), and each move into one is a lifecycle event, not a separate record. A group review is recorded once, as a review batch. In the same transaction, every task in the group moves to batch-reviewed, and each move points at that batch. Planned, GH 3224.
+- **Covered** means the newest verdict on that exact commit is a pass, or the Human waived the review on it. A waiver is the Human's call, so a later fail does not undo it.
+- **A moved tip is uncovered.** Any new commit on the branch needs a new pass or waiver before it reaches the pull request.
+- **A fail sends the work back.** The planner starts a task for each blocking finding, and the new tip is reviewed again.
 
 ## Task flow
 
 ```mermaid
 flowchart TD
-    A[Human asks] --> B[bro grounds the ask, writes the spec, provisions the task off the feature branch]
-    B --> C[swe implements, tests the paths it touched, closes with its report]
-    C --> V{The spec's checks pass on the commit?}
-    V -- no --> C
-    V -- yes --> E{bro: report covers every criterion, change fits the design?}
-    E -- no --> R[bro amends the spec and reopens the task]
-    R --> C
-    E -- yes --> F[Close without review: the task records agile and the skipped review]
-    F --> G[bro merges the task into the feature branch and pushes it]
-    G --> Q[Task is queued]
-    H[Human asks for a review now] -. optional .-> CR[code-reviewer reviews this task, as in truest]
-    CR -. pass .-> X[Task never queues, or leaves the queue]
-    CR -. fail on a task not yet closed .-> C
-    CR -. fail on a queued task .-> RF[Stays queued: bro reopens it before the fold, or files a fix task after]
+    A[Human states a goal] --> B[Planner records it as an issue, scopes the task from the code graph, writes the spec]
+    B --> S["Engine cuts the task's branch from the feature branch into its own worktree"]
+    S --> K{Kind of task?}
+    K -- code --> C[Worker implements, commits and closes]
+    K -- docs --> DC[Planner writes it in the worktree, commits and closes]
+    C --> V{"The checks pass on the commit?"}
+    DC --> V
+    V -- no --> RF[Close refused, naming the check; the author fixes and closes again]
+    RF --> V
+    V -- yes --> F[Task closes with no review of its own and folds into the feature branch]
+    F --> G[Engine pushes the feature branch as a backup]
+    G --> RP[Planner reads what the close reports]
 ```
 
-- **swe tests the patch.** It runs the checks for the paths it touched, and the spec's checks run once more on its commit before the completion counts. These local checks replace the per-task CI run.
-- **bro tests the design.** It judges whether the report covers every success criterion and whether the change fits the architecture. It reviews no diff line by line.
-- **A non-code task takes the same path.** bro writes a docs or prompts task itself and self-checks it with the doc-review skill, as in truest. It closes without a code-reviewer pass and is queued like any other, and the feature branch review grades its files with the same doc-review checklist.
-- **bro merges into the feature branch.** The merge policy covers PRs into the working branch. bro itself merges a task into its feature branch, because that is local work no one else has seen yet.
-- **code-reviewer is on call.** The Human can ask for a review of any task at any time, and a passing review keeps that task out of the queue. A fail on a task not yet closed reopens it at high effort, as in truest. A fail on a queued task leaves it queued and reopens nothing by itself: bro reopens it when it is not yet folded, and files a fix task on the feature branch when it is.
+- **The checks replace the per-task review and CI run.** The engine runs the project's checks and the task's own on the committed work. A task with no checks never closes.
+- **The planner judges the kind.** A code task goes to a worker. A docs task changes only docs or prompts and no behaviour, and the planner writes it. The engine refuses the close of a docs task whose commit touches a file type that is not prose, data or an image.
+- **The planner judges the design fit once,** on the whole branch after the reviewer, not at each close.
+- **A task that will not close is dropped,** with a reason, by the planner or the Human. Nothing of it reaches the feature branch, and a new task can name the one it replaces.
 
 ## Safe close
 
-Dropping the per-task review removes one gate and nothing else. A task closes when every remaining gate holds:
+Dropping the per-task review removes one gate and nothing else.
 
 ```mermaid
 flowchart TD
-    A[swe completes] --> B{Completion report covers every criterion?}
-    B -- no --> X1[Close refused, back to swe]
-    B -- yes --> C{The spec's checks passed on this commit?}
+    A[The author closes the task] --> B{Worktree clean, with a commit past where it was cut?}
+    B -- no --> X1[Close refused; the task stays open]
+    B -- yes --> K{"A docs task that touches a file that is not docs?"}
+    K -- yes --> X1
+    K -- no --> C{"The checks pass on this commit?"}
     C -- no --> X1
-    C -- yes --> D{Changed paths outside the spec reported with reasons bro accepts?}
-    D -- no --> X2[bro has them reverted through swe, or records why they stay]
-    X2 --> D
-    D -- yes --> E{bro: architecture fit?}
-    E -- no --> X3[bro records the misfit, amends the spec, reopens the task]
-    E -- yes --> F[One step: task closed, its review mode and the skipped review recorded]
-    F --> G{Feature branch moved since the task was cut?}
-    G -- no --> P[Merge into the feature branch]
-    G -- yes --> I[Rebase onto it; checks re-run on the rebased commit]
+    C -- yes --> G{Feature branch moved since the task was cut?}
+    G -- no --> P[The feature branch moves to the task's commit]
+    G -- yes --> I[Rebase onto its tip; every check runs again]
     I -- pass --> P
-    I -- fail --> X1
+    I -- "conflict or failing check" --> X1
+    P --> R[The close reports files changed outside the spec, and changes in the main folder]
+    R --> W[Worktree and task branch removed, unless uncommitted work is left]
+    W --> U[Backup push]
 ```
 
-- **What stays on.** swe's completion report, the spec's checks, the git and write guards, and the close as one step.
-- **What the close records.** The task's review mode is fixed at the close and stored on the task. It is resolved in the order above: an exempt repo, then the repo's own mode, then the project's (shipped, GH 3281). The lane step between the exempt check and the repo's mode is planned (GH 3025). After the close, the queue, the merge gate and the health check read the stored mode. Before the close, these steps depend on the mode: which base the task's checks measure against, whether its close needs a pass, and which review it is handed to. Each of them uses the mode in effect for the task at that moment, resolved the same way. So a mode per repo changes each of those steps, not only the close, and a mode per lane will too.
-- **Recovery.** A close that fails partway leaves the task as it was. bro fixes the cause and closes again.
+- **A close refuses only on its checks, its commit and a clash.** A refused close leaves the task open, the feature branch where it was and the worktree as it was.
+- **Files outside the spec are reported, not refused.** The spec stays as written. The planner or the reviewer checks those names with git.
+- **Changes in the main folder are reported too,** each with the command that puts it back. The planner raises the list to the Human. tmb puts nothing back by itself, because the change may be the Human's own.
+- **Two tasks may change the same file.** There is no lock. A concurrent fold is never lost: the later task is rebased, and a clash holds back its close until it is settled.
+- **The backup push is never forced,** and a failed push does not reopen the task. It is skipped when there is no remote, and while the branch's pull request is open.
 
 ## Feature branch review
 
-Shipped, project mode only.
-
 ```mermaid
 flowchart TD
-    A[Human says the milestone is reached] --> B[bro brings the working branch into the feature branch and fixes its conflicts once]
-    B -- a conflict --> BH[The sync is undone; the Human says how to resolve it]
+    A[Milestone reached] --> B[Planner has the engine bring the base branch into the feature branch]
+    B -- a conflict --> BH[Nothing changes; settled in a task, or raised to the Human]
     BH --> B
-    B --> C[Group the queued tasks whose changed files overlap]
-    C --> HO{Hand-off of each group: the close lints and the full test suite pass at the feature branch's tip, and no queued task sharing a file is left out?}
-    HO -- a task is left out --> C
-    HO -- a lint or the suite fails --> H
-    HO -- yes --> D[One code-reviewer per group, groups in parallel]
-    D -- the feature branch moved since the hand-off --> HO
-    D --> E[Each reviewer reads its group's files in the net diff from the working branch to the feature branch]
-    E --> F{Verdict}
-    F -- pass --> G[In one step, every task in the group moves from queued to batch-reviewed, recorded with the review]
-    F -- fail --> H[bro files the findings as a new fix task on the feature branch]
-    H --> I[The fix is reviewed before it merges, as in truest; the group stays queued]
-    I --> HO
-    G --> M{Every group batch-reviewed?}
-    M -- yes --> P[bro opens one PR from the feature branch into the working branch]
-    P --> CI[One CI run and one merge-queue run]
-    CI --> MG[Merged per the merge policy]
-    CI -- a check fails, or a review comment asks for a change --> H
+    B --> D[Planner starts the reviewer on the branch]
+    D --> E["Reviewer reads each task's group of commits against its spec"]
+    E --> W[Then the whole diff, from where the branch leaves the base to its tip]
+    W --> F{Verdict on the exact tip}
+    F -- "the branch moved meanwhile" --> E
+    F -- fail --> H[Planner starts a task for each blocking finding]
+    H --> D
+    F -- pass --> J[Planner judges the design fit]
+    J --> P[One pull request into the base branch]
+    P --> M[Human merges]
 ```
 
-- **The Human decides when.** The review runs when the Human says the milestone is reached, for example when an MVP works end to end, and not after each task. The Human can say so in the lane's own session or in the session that started it. It is one batch review of the milestone, split into groups that run in parallel.
-- **Groups form after the fact.** Which files a task will touch is hard to know before it is planned, so tasks are not grouped up front. The groups come from the files each task actually changed, and tasks that share a file are reviewed together, so a reviewer sees their combined effect.
-- **Net diff.** The review reads what the feature branch adds to the working branch, not each task's patch. A change that a later task undid is never reviewed, and a conflict resolved on the branch is reviewed in its resolved form.
-- **The suite covers the gaps.** A reviewer reads its group's files and their dependents. The full suite runs at the feature branch's tip in each hand-off, and again in the milestone PR's CI run, and catches what crosses two groups.
-- **A pass updates the whole group.** Every task in the group becomes batch-reviewed at once, recorded with the review that cleared it. Each task still records agile as its review mode.
-- **The hand-off checks the group first.** A group goes to its reviewer only when two things hold: the close lints and the full suite pass at the feature branch's tip, and the group includes every queued task that shares one of its changed files. A missing task is added to the group. A failing lint or suite becomes a fix task. When the feature branch moves after a hand-off, the group is handed off again at the new tip.
-- **Failures.** A fail becomes a fix task on the feature branch, and that task is reviewed before it merges, like any truest task. Once the fix has merged, the failed group is handed off and reviewed again on the new net diff, which now holds the fix. A fix task's own pass never batch-reviews the group.
-- **Already-reviewed tasks stay out.** A task that passed a review on request is not queued, so no group includes it.
-- **After the PR opens.** A failing check or a review comment on the milestone PR is fixed the same way: a new fix task on the feature branch, reviewed before it merges, which updates the PR. Batch-reviewed and waived tasks are not reopened.
-- **Visibility.** TMB's health check reports agile tasks closed more than a day ago, by default, with neither a passing review nor a waiver, so the queue never hides (shipped).
+- **One review of the whole branch.** The reviewer did not write the change and has no tool that edits a file. It judges whether the diff breaks behaviour beyond what it meant to change.
+- **A group per task.** The branch's brief lists each closed task's commits in the order they landed, so the reviewer reads each against its spec before it reads what the tasks break together.
+- **Whole diff.** The review reads what the feature branch adds to the base branch. A change a later task undid is never reviewed, and a conflict settled on the branch is reviewed in its settled form.
+- **Docs tasks are in the same review.** A docs task that changed behaviour is a blocking finding, and that part is redone as a code task.
+- **The brief says whether the branch holds the base.** Nothing refuses a review of a branch that does not; the brief is how the planner and the reviewer know.
+- **The verdict is on one commit.** tmb takes it only on the branch's current tip.
+- **A second host can be the reviewer.** A host set up as the project's reviewer is told at session start which branches wait for a review ([HOSTS.md](HOSTS.md)).
 
 ## Merge gate
 
-The feature branch reaches the working branch only through one gated PR.
+The feature branch reaches the base branch only through one gated pull request.
 
 ```mermaid
 flowchart TD
-    A[PR from the feature branch into the working branch] --> B{Any of its tasks still queued, in review or being reworked?}
-    B -- no --> OK[Allowed to merge per the merge policy]
-    B -- yes --> W{Human recorded a waiver for this branch?}
-    W -- yes --> L[Allowed; the covered tasks move to waived, and the waiver goes to the audit log]
-    W -- no --> X[Blocked: run the feature branch review first]
-    D[Human abandons the feature branch] --> E[Its queued tasks are cancelled, with the dropped branch as the cause]
-    E --> F[bro deletes the branch only when the Human says so]
+    A[Planner asks for the pull request] --> B{"A pass or a Human waiver covers the tip?"}
+    B -- no --> X[Refused: review the branch first]
+    B -- yes --> R{The repo has a remote?}
+    R -- yes --> O{A pull request is already open from the branch?}
+    O -- no --> N[Engine pushes the branch and opens one pull request]
+    O -- yes --> S[Engine pushes the covered tip to the same pull request]
+    R -- no --> RD[Branch recorded ready; the Human gets the command to merge it locally]
+    N --> M[Human merges]
+    S --> M
+    RD --> M
 ```
 
-- **Scope.** Task merges into the feature branch are not gated by the queue. Only the merge into the working branch is.
-- **Waivers.** Only the Human records a waiver. bro asks one question that names the feature branch and its queued tasks, and records the Human's answer word for word. The waiver covers one repo: every task of that repo queued on the branch at that moment. When a milestone spans several repos, each repo's feature branch needs its own review or its own waiver, so the Human's decision about one repo's unreviewed code never covers another's. A waiver that names no repo is refused when the queue holds tasks from more than one repo. The audit log keeps it with the list of tasks that merged unreviewed. A task queued after the waiver is not covered and needs the review or a new waiver.
-- **A waiver covers queued tasks only.** A task in review or being reworked blocks the merge until its review passes or its rework closes back into the queue.
-- **Dropped work.** A feature branch the Human abandons never merges, so its queued tasks need no review. They are cancelled with the dropped branch as the cause, which ends them without a retry (escalated, until the lifecycle schema of GH 3224 splits that state), and bro deletes the branch only when the Human says so.
+- **The push gate backs it.** A push that brings onto the base branch a commit no covered tip holds is refused, whoever typed it ([GIT.md](GIT.md#the-push-gate-at-gits-own-hook)).
+- **Waivers.** Only the Human waives a review: on a terminal, after a typed yes, with a reason. The waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The audit trail keeps it, and the commit's mark on GitHub says the review was waived.
+- **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line: at the planner's session start, when the branches are listed, and for the dashboard. A read that fails changes nothing. The session start names each pull request that ended since the last session.
+- **Dropped work.** The planner or the Human drops a branch nobody will merge, with a reason. Dropped is final, and the branch is kept in git. A drop is refused while a task on the branch is open or in review, and while its pull request is open: the Human closes the pull request first.
+
+### New work on a branch whose pull request is open
+
+- **The branch takes more tasks:** fixes for a failing check or a review comment, and new work that builds on what the branch holds. The base branch does not hold that work yet, so a new branch could not build on it. The planner says in its reply that the pull request grows, and does not stop to ask.
+- **No unreviewed commit reaches an open pull request.** While it is open, a fold or a merge of the base is not pushed, and the answer says so. The new commits stay in the local branch until the new tip is passed or waived. The pull request step then pushes the tip to the same pull request and opens no second one.
+
+### A project with no remote
+
+Nothing is pushed and no pull request opens. A close skips the backup push and says so. Once the tip is covered, the pull request step records the branch ready and gives the Human the command to merge it locally.
+
+- **tmb sees the local merge.** Once the local base branch holds the tip, the branch is merged. A squash or a rebase by hand also counts, when merging the branch into the base would change nothing. A branch with no commit of its own never counts.
+- **One limit.** When the base changed the same lines again after the merge, tmb cannot tell. The branch stays ready until it is dropped with a reason that says where the work went.
+- **A ready branch takes fix tasks.** The first one opens it again, and its new tip needs a new pass or waiver.
+
+### A closed feature branch taken up again
+
+A branch whose pull request closed without a merge is recorded as closed, and the planner's session start says so.
+
+- **A new pull request** opens from it under the same rule: a pass or a waiver at its tip. A tip the earlier review covers needs no new review.
+- **A task that names the branch** opens it again for rework.
+- **A pull request the Human reopened on GitHub** is recorded, and tmb opens none. The record keeps the earlier pull request's link.
 
 ## Switching review modes
 
 ```mermaid
 flowchart TD
-    A[Human runs /onboard] --> B[Project review mode changes]
-    B --> B1[Later closes in the project, and in lanes without their own mode, use it]
-    C[Human changes a lane's review mode] --> C1[Later closes in that lane use it]
-    B1 --> K[Closed tasks keep their mode and review state]
-    C1 --> K
-    K --> Q[Queued tasks stay queued until batch-reviewed, waived, reviewed on request, reopened or dropped]
-    E[Task open when a mode changed] --> F[Takes the mode resolved at its close]
+    A["Human changes the project's mode"] --> B[Tasks started later use it, in every repo that names no mode of its own]
+    C["Human changes one repo's mode"] --> D[Tasks started later in that repo use it]
+    B --> K[Tasks already started keep theirs]
+    D --> K
 ```
 
-- **Only the Human switches.** The project's mode changes through /onboard. A lane's mode is set when the lane starts and changes later only as [LANES.md](LANES.md#3-change-a-lane) sets out (planned: GH 3025, with the approval gate in GH 3028). bro or another agent never switches a mode.
-- **The close decides.** A task opened under one mode and closed under the other follows the mode resolved at its close.
-- **Switching a repo to exempt releases its queue.** Planned (GH 3281). The tasks of that repo still queued for review are released, each with a recorded cause that names the switch, and the merge gate stops holding the feature branch for them. The Human's switch is the decision, so it is recorded and never silent.
-- **Switching to truest keeps the branch.** Later tasks are reviewed before they merge into the feature branch, and the branch still needs its review, or a waiver, before it merges into the working branch.
-- **Switching to agile starts a branch.** bro proposes a feature branch for the work still ahead, as in [The feature branch](#the-feature-branch).
+- **Only the Human switches,** by the same fences as the first choice. The planner stores the Human's answer and never picks one.
+- **The start decides.** A task opened under one mode finishes under it.
+- **A truest repo starts no feature branch.** A task there is cut from the base branch and goes into review at its close.
 
 ## Shipped and planned
 
 | Piece | State |
 |---|---|
-| Project review mode setting, truest by default | Shipped, read by the close gate |
-| Review mode recorded on each task at its close | Shipped, project mode only |
-| Health-check report of agile tasks closed without a review or waiver | Shipped |
-| /onboard question for the project review mode | Shipped |
-| Agile as the default when no mode is stored, bro's recommendation for the project, and one mode per repo with bro's recommendation | Planned (GH 3281) |
-| Feature branch per milestone: tasks cut from it and folded into it locally, with no per-task PR, and checked against it as their base | Shipped, project mode only |
-| Close without a per-task review | Shipped, project mode only |
-| Review states queued, batch-reviewed and waived | Shipped |
-| Queue of a feature branch's tasks, grouped by the files each task changed | Shipped, project mode only. Today the queue proposes groups from the files each spec named. The hand-off then checks the files each task actually changed: it refuses a group that leaves out a queued task sharing one of them |
-| Feature branch review: one batch review on its net diff | Shipped, project mode only |
-| Merge gate on the feature branch PR, and audited waiver | Shipped |
-| Lane review mode and lane feature branch, set at the lane's start, and the lane lookup at the close | Planned (GH 3025, GH 2225) |
-| Agent prompts for agile review mode | Shipped, project mode only |
-| Review states as lifecycle states, moved with the review batch | Planned (GH 3224) |
+| Review mode chosen by the Human, agile recommended, no task before it is set | Shipped |
+| One mode per repo in a workspace, following the workspace's when it names none | Shipped |
+| Review mode recorded on each task at its start | Shipped |
+| Feature branch per milestone: tasks cut from it and folded into it locally, backup push | Shipped |
+| Close on the checks alone, with the report of files outside the spec and of the main folder | Shipped |
+| The base branch merged into the feature branch before its review | Shipped |
+| Feature branch review: one reviewer, a group per task, a verdict on the tip | Shipped |
+| Gate on the one pull request, the push gate behind it, and the audited waiver | Shipped |
+| More tasks on a branch whose pull request is open; a closed branch taken up again; dropping a branch | Shipped |
+| A project with no remote | Shipped |
+| Planner and reviewer prompts for agile mode | Shipped |
+| The review queue: the tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel | Planned |
+| Comments on an open pull request brought into the record and sorted into tasks | Planned (trustmybot/tmb#70) |
+
+### Open, for the Human
+
+- **Review states per task** (queued, batch-reviewed, waived), a review of one agile task on request, and a health-check line for agile tasks closed with neither a review nor a waiver. The plugin had them. tmb covers the branch's tip instead.
+- **Built, and still proposed for the Human's review:** the merge of the base branch before the review; new work, not only fixes, on a branch whose pull request is open (trustmybot/tmb#260); holding unreviewed commits back from an open pull request; dropping a feature branch; the fallback to the workspace's mode and the one question for the repos' own modes.

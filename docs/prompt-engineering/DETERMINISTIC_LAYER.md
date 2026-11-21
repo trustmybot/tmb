@@ -1,6 +1,6 @@
 # Deterministic layer
 
-The rules for moving TMB doctrine out of prompts and into code: the layers, what each guarantees, which layer covers which interaction, and how to add a deterministic check. How to write the prompts that stay in layer 6 is in [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md).
+The rules for moving tmb doctrine out of prompts and into code: the layers, what each guarantees, which layer covers which interaction, and how to add a deterministic check. How to write the prompts that stay in layer 6 is in [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md).
 
 > **If a step could fail because the LLM forgot, misordered, or misunderstood it, that step does not belong in a prompt. It belongs in a deterministic layer.**
 
@@ -8,29 +8,29 @@ The rules for moving TMB doctrine out of prompts and into code: the layers, what
 
 | # | Layer | What it is for | What it guarantees |
 |---|---|---|---|
-| 1 | **MCP server** | Role-bound tool access, input validation, server-side defaults for omitted args, and atomic composite tools that run a multi-step workflow as one call in one DB transaction. | Wire-level rejection (`is_error: true`) regardless of prompt content; a composite's steps land together or not at all. |
-| 2 | **Hooks** | Gates fired by the host on lifecycle events: PreToolUse blocks a call until its prerequisite holds; PostToolUse emits follow-up side effects; SessionStart and UserPromptSubmit inject context. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
-| 3 | **Frontmatter** | The `tools:` allowlist in agent `.md` files. | The host grants only the listed tools at spawn. |
+| 1 | **Engine** (behind the tool server and the command line) | Role-bound tool access, input validation, server-side defaults for omitted args, and atomic composite tools that run a multi-step workflow as one call. | Wire-level rejection (`is_error: true`) regardless of prompt content; a composite's steps land together or not at all. |
+| 2 | **Checkpoints** | git's own hooks first (pre-push refuses a push), then the few host hooks an adapter writes: PreToolUse blocks an agent start until its prerequisite holds; SubagentStop records the run's end; SessionStart injects context. No hook guards each edit. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
+| 3 | **Role file** | The tool list in each role file, written by the host's adapter from what the role may do. | The host withholds the listed tools at spawn. Claude Code does; Codex has no per-agent switch for file edits. |
 | 4 | **Schema constraints** | `CHECK`, `UNIQUE`, `NOT NULL`, FK on the trajectory DB. | Rejects malformed writes at the storage layer, including raw-SQL bypasses of MCP handlers. |
-| 5 | **Skill `paths:`** | Skill auto-loads when matching files are in the active context. | Soft — reduces prompt noise; the model can still ignore loaded content. No shipped skill uses it yet. |
-| 6 | **Prompts** | CLAUDE.md, agent prompts, skill prose: the judgment layer. | None — accept the compliance ceiling. |
+| 5 | **Skill `paths:`** | Skill auto-loads when matching files are in the active context. | Soft — reduces prompt noise; the model can still ignore loaded content. Planned: tmb ships no skill yet. |
+| 6 | **Prompts** | The role prompts in `roles/`, skill prose (Planned): the judgment layer. | None — accept the compliance ceiling. |
 
 **Doctrine: prefer the hardest layer that fits.** Layer 6 is the fallback, not the default. Move a constraint to a harder layer as soon as the softer layer it sits in fails to enforce it.
 
-The layers stack: a rule a prompt states should also be caught by a harder layer, so a dropped prompt line fails loudly (a block, a rejection) instead of silently. Layers 1 and 4 hold in every host configuration; layer 2 depends on the host firing the plugin's hooks.
+The layers stack: a rule a prompt states should also be caught by a harder layer, so a dropped prompt line fails loudly (a block, a rejection) instead of silently. Layers 1 and 4 and git's pre-push hook hold in every host configuration; the rest of layer 2 depends on the host firing tmb's hooks.
 
-Source of truth for each layer's implementation: hooks under `mcp/trajectory-server/src/hooks/` (registered in `registry.ts`), MCP tools and middleware under `mcp/trajectory-server/src/`, constraints in `mcp/trajectory-server/src/schema.sql`, plugin settings in [`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md).
+Source of truth for each layer's implementation: the gate's rules in `src/engine/decide.ts` and `src/engine/push-gate.ts` (each host's hooks are wired under `src/adapters/`), tools under `src/engine/handlers/`, role files from `roles/` and `src/engine/roles.ts`, constraints in `src/engine/store/schema.ts`, tmb's settings in [`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md).
 
 ## What stays in layer 6
 
 Recognizable by the verb. **Anything that is *classifying*, *composing*, or *weighing novel context*.**
 
-| Verb class | TMB examples |
+| Verb class | tmb examples |
 |---|---|
 | **Classify / decide** | "Is this an architectural change?" "Is this scope creep?" |
 | **Draft / compose** | Spec body, commit messages, issue descriptions, Q+A wording, discussion notes |
 | **Weigh / trade off** | "Should I raise this concern with the human?" "Is the simpler alternative acceptable?" "Should the scope split into multiple tasks?" |
-| **Synthesize from novel context** | Roundtable participant arguments, code review qualitative assessment, consultant-style analysis |
+| **Synthesize from novel context** | Code review qualitative assessment, consultant-style analysis (consultants: Open, for the Human) |
 | **Recognize patterns in unfamiliar input** | "Does this diff match the spec?" "Is this a regression in the diff?" |
 
 Code cannot replace these: each needs judgment in context, and the possible inputs are open-ended.
@@ -47,12 +47,12 @@ Recognizable by mechanism. **Anything that is *sequencing*, *defaulting*, *const
 | "Validate input matches schema" | Layer 1 input validation, or a layer 4 constraint |
 | "Probe the environment for X, Y, Z" | Layer 1 tool that runs deterministic code |
 | "Don't proceed until Z has happened" | Layer 2 PreToolUse block |
-| "After A, also do B" | Layer 2 PostToolUse side effect |
-| "Use this file naming / commit format" | Layer 2 lint hook |
+| "After A, also do B" | Layer 1 composite; a layer 2 PostToolUse side effect is Planned |
+| "Use this file naming / commit format" | A check at task close; tmb has no lint hook on each edit |
 
 ## The boundary test (apply this to any prompt line)
 
-For every numbered step or imperative in a skill, agent file, or CLAUDE.md:
+For every numbered step or imperative in a skill or a role file:
 
 1. **Strike the verb.** Is what remains a *fact about the world* (file exists, role has access, value is X)? → migrate. Is it a *judgment* (is this good, what should I write)? → keep.
 2. **Imagine the LLM dropping this line.** Does the workflow break in a deterministic way (test fails, hook blocks, server rejects)? If not, only the prose guards against the mistake: build a check that catches it.
@@ -69,114 +69,110 @@ A composite turns N steps into one: the model decides once to make the call, and
 
 ## Coverage matrix
 
-The "Layer" column names the **strongest currently deployed** layer for each interaction. `6 only` means prompt-only — relies on LLM compliance. Which file implements a row lives in the sources named above.
+The "Layer" column names the **strongest currently deployed** layer for each interaction. `6 only` means prompt-only — relies on LLM compliance. tmb gates the outcome, so a rule the plugin guarded at each step is checked at a checkpoint instead, and the row names it: close, review or push. Which file implements a row lives in the sources named above.
 
-### bro
-
-| Interaction | Layer |
-|---|---|
-| Activation routine (onboarded marker + pending issue injection) | 2 |
-| Bro edits only docs and prompts paths (per `.config/tmb/path-classes.json`), and only in a running no-code task's worktree; every code change goes to SWE | 2 |
-| Bro's no-code task commits pass the same push gate as code; code-reviewer grades them with the doc-review checklist | 2 |
-| The main checkout never switches onto a branch an open task owns | 2 |
-| A cheatcode installs only after the Human approves that candidate (fails closed) | 2 |
-| Bro's state restored from the DB after Claude Code compacts the session | 2 (injection) |
-| Project `.gitignore` excludes `.claude/` | 2 |
-| Only provisioning creates task branches and worktrees (SWE may not invent, abbreviate, or detach a branch) | 1 + 2 |
-| Branch up to date with the remote target branch before SWE attach | 2 |
-| Worktree cleanup on task close | 2 |
-| Provisioning blocked until `/scan` has run (world-model-cold gate) | 1 |
-| Provisioning blocked until bro has read the world model this session | 2 |
-| Decision row required on every provisioned task | 1 |
-| Project skill and agent files change only with the Human's approval | 2 |
-| MCP calls include `agent: 'bro'` | 1 |
-| `discussion_append(author='human')` is refused; an agent quotes the Human under its own name | 1 |
-| AUQ shape during roundtable `awaiting_human` | 2 |
-| Roundtable state machine | 1 |
-| Issue-sync default-off + env-var kill-switch | 1 |
-| Architectural-intent and consultant routing hints | 2 (injection) |
-| Welcome banner phrasing, verify-context before answering, voice | 6 only |
-
-### SWE
+### Planner (bro)
 
 | Interaction | Layer |
 |---|---|
-| Spawned only with a valid `task_id` whose spec is non-empty and names a writer for each new schema item | 2 |
-| Spawn effort matches the task's stored effort | 2 |
-| Rework spawns judged against the task's rework record | 2 |
-| Runs in the isolated worktree that provisioning created | 1 + 2 |
-| Task moved to `running` and its run row opened at spawn | 2 |
-| Cannot create branches (attaches to bro's pre-created branch) | 2 |
-| Worktree branch descends from the remote target branch | 2 |
-| Reads its brief before any other trajectory call | 2 |
-| Writes only under its task's worktree | 2 |
-| Each edit linted as it lands | 2 |
-| Scope-limited tools keep SWE off bro-only MCP writes | 1 + 3 |
-| MCP calls include `agent: 'swe'`, scope-restricted | 1 |
-| Never writes its own `validation_record` | 1 |
-| Close runs the task's typed `verification[]` commands; denies on any failure | 2 |
-| Edits stay inside the task's `files[]` | 2 (advisory note) + 1 (close-time scope check) |
+| Session start: the planner's role, the open work and the empty settings injected | 2 (injection) |
+| A docs task changes only docs file types; any other file refuses its close | 1 (close) |
+| Every code change goes to a worker | 6 only |
+| The planner's docs task commits pass the same checks and push gate as code; the reviewer sees them in the same review | 1 (close) + 2 (push) |
+| The main folder never switches onto a branch an open task owns | 6 only; the close reports what changed in the main folder |
+| A cheatcode installs only after the Human approves that candidate | Planned (trustmybot/tmb#112) |
+| The planner's open work restored from the record at each session start | 2 (injection) |
+| Project `.gitignore` excludes tmb's project folder | 1 (init) |
+| tmb cuts every task branch and worktree; a worker starts only on a task whose worktree is ready | 1 + 2 |
+| Feature branch cut from the fetched base branch; a truest task rebased onto a moved base before its pull request | 1 |
+| Base branch brought into a feature branch before its review | 6 only; the brief says whether the branch holds the base |
+| Worktree cleanup on task close | 1 (close) |
+| No task starts until the review mode is set | 1 |
+| The code graph read before a task starts | 6 only |
+| A decision recorded for every task | 6 only |
+| Project skill and agent files change only with the Human's approval | Planned (skills); Open, for the Human (agent creation) |
+| A tool call's `role` is one of the three roles, and defaults to the role the host was set up in | 1 |
+| Feature branch, task start and drop, pull request, settings and areas are the planner's tools alone | 1 |
+| A pull request opens only when a pass or a Human waiver covers the tip | 1 + 2 (push) |
+| Issue sync | Planned (trustmybot/tmb#70) |
+| Verify-context before answering, voice | 6 only |
 
-### code-reviewer
+### Worker
 
 | Interaction | Layer |
 |---|---|
-| Spawned only on a commit with a passing verification run and a current lint record, with the anchor-only prompt shape | 2 |
-| Push blocked unless each pushed task commit's newest verdict is a pass for that commit | 2 |
-| Reviewer identity observed at `validation_record`, never taken from the caller | 2 |
-| MCP calls include `agent: 'code-reviewer'`, scope-restricted | 1 |
-| `validation_record` is code-reviewer-only | 1 |
-| A fail reopens the task at high effort | 1 |
-| Cannot edit code (read-only review) | 3 |
+| Started only when its prompt names an open task whose worktree is ready | 2 |
+| A role's model and effort written into its role file; no effort per task | 3 |
+| Rework after a failed review | 1 in truest mode (a fail reopens the task); 6 only in agile mode. Escalation after repeated fails: Planned |
+| Runs in the task's own worktree, which tmb cut or adopted from the host | 1 + 2 |
+| Its start and stop recorded as a run | 2 |
+| Cannot create branches | 6 only |
+| Its commit builds on the task's base commit | 1 (close) |
+| Reads its brief before any other call | 6 only |
+| Writes only under its task's worktree | 3 (Claude Code); the close reports what changed in the main folder |
+| Lint and other project checks | 1 (close), not on each edit |
+| Planner-only tools refused | 1 |
+| Tool calls name the caller's role | 1 (a name outside the three roles is refused); passing its own role is 6 only |
+| Never records its own verdict | 1 |
+| Close runs the project's and the task's checks on the committed work; refuses on any failure | 1 (close) |
+| Edits stay inside the spec's files | 1 (close, reported and not refused) + review |
+
+### Reviewer
+
+| Interaction | Layer |
+|---|---|
+| Its start recorded as a run, which a verdict needs | 2 + 1 |
+| A task reaches a review only after its checks passed at close | 1 (close) |
+| Push blocked unless a pass or a Human waiver covers the pushed commits | 2 (push) |
+| The reviewer role is the caller's word, checked against an open reviewer run on that host | 1 |
+| Recording a verdict is reviewer-only | 1 |
+| A verdict is taken only on the branch's current tip | 1 |
+| A fail reopens a truest task; in agile mode the planner starts fix tasks | 1 (truest); 6 only (agile) |
+| Cannot edit code (read-only review) | 3 (Claude Code) + 2 (a write the host names as the reviewer's is denied) |
 | Diff-level judgment: whether a behaviour change the probes show is a bug | 6 only |
 
 ### Consultants
 
-| Interaction | Layer |
-|---|---|
-| Uses only the tools its frontmatter grants; the user may grant write tools (e.g. pm writing SVGs) | 3 |
-| Its file writes pass the same edit gates as every role: outside a worktree, only docs, config and scratch paths | 2 |
-| Cannot write workflow state (task_*, validation_record, issue_*) | 1 |
-| Records its analysis on the issue before it stops | 2 |
-| Return analyses, never decisions | 6 only |
+Open, for the Human: whether tmb carries consultants over ([`EXTENDING.md`](../architecture/EXTENDING.md)). No rows until then.
 
 ### Universal
 
 | Interaction | Layer |
 |---|---|
-| Force-push and direct commits to protected branches blocked | 2 |
-| Remote-write text citing a local issue id whose remote id differs blocked | 2 |
-| Issue a merged PR resolved auto-closed on a successful merge | 2 (side effect) |
-| Naming conventions, conventional-commit subjects, mechanical code-quality patterns | 2 (fail-open) |
-| Plans, specs and drafts never written as prose files in scratch; they live in the trajectory DB | 2 |
-| bro's persona injected in every session | 2 |
-| Project inventory at session start | 2 |
-| Roundtable capture-surface verification on close | 2 |
-| Task close, SWE retry, and `branch_id` derivation as atomic composites | 1 |
+| A push that brings onto the base branch a commit no review or waiver covers is refused, typed by hand too | 2 (push) |
+| Only the Human waives a review | 1 |
+| A step only the Human may take is denied in an agent's shell command | 2 |
+| The gate denies when it cannot read the record | 2 |
+| Naming conventions, commit subjects, mechanical code-quality patterns | 1 (close) where the project's checks cover them; else 6 only |
+| Specs live in the record: a task starts only through the tool that records its spec | 1 |
+| The planner's role injected in every session | 2 |
+| Project map at session start | 2 |
+| PR comment triage | Planned |
+| Task close as one composite: checks, fold, backup push | 1 |
 
 ## How to add a deterministic check
 
 1. Identify the failure mode. What's the bad thing if the LLM doesn't comply?
 2. Pick the hardest layer that fits ([The 6 layers](#the-6-layers-hardest--softest)).
 3. Implement it in that layer's source (see above) with a test; a layer 4 change to an existing table also needs its migration.
-4. If the guard covers version-control commands, match git, gh and glab at a command boundary — so `gh pr merge` and `glab mr merge` are both caught, while a match inside a quoted string or a longer word is not — and add a test case for each CLI.
-5. Hooks that compare role names normalize them first: the host passes roles with or without a `<plugin>:` prefix, and a hook that silently skips a prefixed role is a disabled safety gate.
+4. If the guard covers version-control commands, put it in git's own hook, which holds whatever was typed. tmb parses no shell command for a workflow rule; the one command guard matches a step only the Human may take.
+5. Rules compare tmb's own role names: each adapter turns its host's agent name into one first, and a rule that silently skips a role it cannot name is a disabled safety gate.
 6. Update the coverage matrix. A layer 6 row notes that it may need promotion.
 7. **Moving a rule to a softer layer needs its reason in the PR.**
 
 ## Prompt cache zones
 
-Claude Code's prompt cache matches from the start of the assembled prompt and stops at the first byte that differs. TMB orders its context in three zones so the stable prefix stays as long as possible:
+Claude Code's prompt cache matches from the start of the assembled prompt and stops at the first byte that differs. tmb orders its context in three zones so the stable prefix stays as long as possible:
 
 | Zone | Content | Stability |
 |------|---------|-----------|
-| **A — stable identity** | Plugin persona (`CLAUDE.md`), MCP tool descriptions, fixed across all sessions and users | Stable |
-| **B — semi-stable bodies** | Skill bodies and rule files, which change only on plugin upgrades | Semi-stable |
+| **A — stable identity** | The planner's role (`roles/planner.md`), tool descriptions, fixed across all sessions and users | Stable |
+| **B — semi-stable bodies** | Skill bodies (Planned), which change only on tmb updates | Semi-stable |
 | **C — volatile hook tails** | Hook-injected context (counts, banners, branch, last commits), which changes every session or turn | Volatile |
 
-**Contract for hook authors:** a hook that injects `additionalContext` puts its stable descriptive text first and its volatile fields at the tail of its own output, because a hook that opens with a volatile line breaks the cache for everything after it. Volatile fields include the branch name, commit and dirty-path counts, open-issue and pending-task counts, recent commit messages, the DB and plugin paths, and any timestamp or PID.
+**Contract for hook authors:** a hook that injects `additionalContext` puts its stable descriptive text first and its volatile fields at the tail of its own output, because a hook that opens with a volatile line breaks the cache for everything after it. Volatile fields include the branch name, commit and dirty-path counts, open-issue and pending-task counts, recent commit messages, the record's and tmb's paths, and any timestamp or PID.
 
-An L3 hook test checks this order for the activation-routine hook only; the other hooks are held to it by review.
+In tmb the session-start hook is the only one that injects context: it puts the role first and the record's sections after it, and is held to this order by review.
 
 ## See also
 
@@ -184,4 +180,4 @@ An L3 hook test checks this order for the activation-routine hook only; the othe
 - [`RESPONSIBILITIES.md`](../architecture/RESPONSIBILITIES.md) — agent roles and boundaries.
 - [`FLOWS.md`](../architecture/FLOWS.md) — workflows: who acts, what each step guarantees, and the state each flow leaves.
 - [`ERD.md`](../architecture/ERD.md) — schema.
-- [`agent-scope.ts`](../../mcp/trajectory-server/src/middleware/agent-scope.ts) — defines the `requireRoles` check behind layer 1; each tool's allowed roles are set at its `requireRoles(...)` call in [`tools/*.ts`](../../mcp/trajectory-server/src/tools/).
+- [`common.ts`](../../src/engine/handlers/common.ts) — defines the `requireRole` check behind layer 1; each tool's allowed roles are set at its `requireRole(...)` call in [`handlers/*.ts`](../../src/engine/handlers/).

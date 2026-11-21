@@ -1,6 +1,6 @@
 # packaging
 
-Templates for installing tmb through a package manager (trustmybot/tmb#89, Part 3). The design is in [DISTRIBUTION.md](../docs/architecture/DISTRIBUTION.md#package-managers).
+Templates for installing tmb through a package manager (trustmybot/tmb#89, Part 3). The design is in [INSTALL.md](../docs/architecture/INSTALL.md#package-managers).
 
 | Template | Becomes | Pushed to |
 |---|---|---|

@@ -1,189 +1,223 @@
 # Git workflow
 
-Where each actor's git state lives at every stage of a TMB task, and how a workspace with several repos decides which repo an operation belongs to. [FLOWS.md](./FLOWS.md) shows the task chain this serves, from the Human's ask to the merge.
+Where the work sits at every stage of a tmb task, what the engine does in git, what the push gate lets leave the machine, and how a workspace of several repos decides which repo a step belongs to. [FLOWS.md](./FLOWS.md) shows the task chain this serves, from the Human's ask to the merge.
 
 ## Core principle: local is canonical, origin is downstream
 
-Your local `<feature>` branch is the source of truth at every step of a task. swe's commits land directly on `<feature>`, since its worktree owns the branch, and the branch reaches origin only through bro's push. swe never pushes, so nothing reaches origin without passing bro's checks and the code-reviewer.
+The local branch is the source of truth at every step. A worker commits in its task's worktree, and the work reaches origin only through a push the engine makes. No worker or reviewer pushes.
 
-This is the standard developer flow: commit locally, push, open a PR. The TMB twist is that the commits happen in swe's worktree, attached to `<feature>`, so they advance the branch with no separate merge step. Integration into `<base>` happens on the remote when the PR merges. A repo with no remote has no push or PR: the work ends with the branch ready after the review pass, and the Human merges it into `<base>` locally.
+tmb watches no git step on the way. It judges what leaves the machine: git's own pre-push hook asks the engine about every push, an agent's or one typed by hand.
+
+The engine, not an agent, creates branches and worktrees, runs checks, folds a task into its feature branch, pushes and opens pull requests. Agents ask for these through the engine's tools, so every step is recorded and no agent is trusted to follow a git procedure.
 
 ## Actors and stages
 
-- **You and bro** work on the project's main checkout, which stays on `<base>` for the whole task.
-- **swe** works only in a private worktree under the project, attached to `<feature>`.
-- **Origin** is your remote; `<base>` is the repo's configured PR target.
+- **The Human and the planner** work in the project's main folder, which stays on its branch for the whole task.
+- **A worker** works only in the task's worktree, on the task's branch.
+- **Origin** is the remote. The base branch is the branch pull requests merge into.
 
-| Actor | Idle | Task provisioned | swe working | swe committed | Bro pushes (PR opens) | After merge |
+Agile mode, the recommended one:
+
+| Where | Idle | Task started | Worker committed | Task closed | Milestone | After the merge |
 |---|---|---|---|---|---|---|
-| **You + bro** | `<base>` | `<base>`; bro fetches `<base>`, cuts `<feature>` from it and attaches a worktree, without switching | `<base>` | `<base>` | `<base>`; bro pushes `<feature>` | `<base>`; merged local branch pruned |
-| **swe** | not spawned | not spawned | worktree on `<feature>`, dirty | worktree on `<feature>`, commits advance it | done; worktree removed after the passing review, recreated on rework | — |
-| **Origin** | `<base>` | `<base>` | same | same | `<feature>` updated | `<base>` advanced |
+| **Main folder** | its branch | unchanged | unchanged | unchanged | unchanged | unchanged |
+| **Task worktree** | none | on the task branch, cut from the feature branch's tip | commits advance the task branch | removed with the task branch | none | none |
+| **Feature branch** | cut from the base branch | unchanged | unchanged | moved to the task's commit | base branch merged in, then reviewed | kept; recorded as merged |
+| **Origin** | base branch | same | same | feature branch pushed as a backup | reviewed tip pushed; one pull request | base branch advanced |
+
+Truest mode has no feature branch: the task branch is cut from the base branch, waits in review at its commit with its worktree kept, and is pushed only for its own pull request, after a pass or a waiver. [AGILE.md](AGILE.md) covers every agile case.
 
 ## Key handoffs
 
-- **Bro provisions.** One step creates the task, fetches `<base>`, cuts `<feature>` and attaches a worktree (see [Keeping the base fresh](#keeping-the-base-fresh)). The main checkout never switches branches; swe never creates branches or worktrees.
-- **No bro-side merge.** swe's commits are already on `<feature>`, so bro just pushes it.
-- **Push gate.** A push is admitted only when every pushed task commit has a passing code-reviewer verdict.
-- **A session inside a worktree adopts it.** A session that itself runs in a linked worktree uses that worktree for its task instead of getting a new one, and no other session may adopt it. A close keeps an adopted worktree.
-- **Cleanup.** A passing review removes the task's worktree and returns the main checkout to `<base>`; reopening the task for rework recreates the worktree. A merge in the session also removes the merged local branch and prunes deleted remote branches.
+- **The engine provisions.** Starting a task cuts its branch and adds its worktree in one step. When git cannot add the worktree, nothing is recorded and what was made is removed. The main folder never switches branches.
+- **A worker starts only on a ready task.** The gate refuses a worker start that names no open task with its worktree on disk.
+- **A worker's own folder is adopted.** A host may start each worker in a worktree of the host's making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([HOSTS.md](HOSTS.md)).
+- **No planner-side merge.** A fold moves the feature branch to the task's commit. When another task folded first, the engine rebases the later task onto the new tip and runs every check again.
+- **Cleanup.** A close removes the task's worktree and branch. Both stay when the worktree holds uncommitted changes, untracked files git does not ignore, or a lock set by the host; the close names them. Files git ignores go with the worktree. tmb tries a kept worktree again at the planner's session start, when no task is open or in review. A truest task's branch stays for its pull request, and a dropped task's branch stays while it holds commits.
+- **tmb deletes no feature branch.**
 
 ## Why this design
 
-A branch can be checked out in only one worktree at a time. swe's worktree owns `<feature>` while swe works, and the main checkout sits on `<base>` throughout, so there is never a second checkout to reconcile.
+A branch can be checked out in only one worktree at a time. The task's worktree owns the task branch, and the main folder stays where it is, so there is never a second checkout to reconcile.
 
-Routing swe's commits through your local branch, rather than letting swe push, keeps the usual mental model: you can inspect, rebase or drop anything before it reaches origin.
+Routing a worker's commits through local branches, rather than letting it push, keeps the usual model: the Human can inspect, rebase or drop anything before it reaches origin.
 
 ## Keeping the base fresh
 
-Work always starts from the latest `<base>`, so a task never builds on stale code. Each entry point checks it:
+```mermaid
+flowchart TD
+    A[A feature branch is about to be cut] --> B[Engine fetches the base branch from origin]
+    B --> C{"Local base branch holds a commit origin lacks, or there is no origin?"}
+    C -- yes --> L[Cut from the local base branch]
+    C -- no --> O["Cut from origin's base branch"]
+    B -- "the fetch fails" --> K["Cut from what git already holds of origin's"]
+    TT[A truest task is about to be cut] --> TB["Fetched the same way; cut from origin's base branch, the local one only with no origin"]
+    T[An agile task is about to be cut] --> F["Cut from the feature branch's tip"]
+    M[The base branch moves later] --> U{Mode?}
+    U -- agile --> V[Planner has the engine merge it into the feature branch before the review]
+    U -- truest --> W[Engine rebases the reviewed task before its first push]
+```
 
-- **Provisioning fetches first.** Provisioning, reopening and retrying a task each run an environment gate before anything is recorded: a bounded fetch of `<base>` from origin, then the branch, the worktree, setup and the world-model index. When a stage fails, the call is refused and whatever it created is removed. The fetch is skipped only when the repo has no origin or origin has no such branch.
-- **The cut takes the newer tip.** A new `<feature>` is cut from local `<base>` when it is a fast-forward ahead of `origin/<base>`, so unpushed local work is kept, else from `origin/<base>`. When the two have diverged, origin wins and bro is told why.
-- **An existing branch is fast-forwarded or refused.** A `<feature>` already at or behind the base tip is fast-forwarded to it. One that has diverged is refused, so bro picks a fresh name or explicitly continues that branch.
-- **A stale branch gets no worktree.** A guard denies attaching a worktree to a branch that is behind `origin/<base>`, after its own fetch.
-- **Hand-made branches start from a current base.** A guard denies creating a branch in a main checkout that is not on `<base>`, or whose local `<base>` differs from origin after a fetch.
-- **Integration resolves the base the same way.** The post-review rebase below fetches `<base>` and uses the newer of local and origin, as provisioning does.
+- **A new branch never reuses a name.** A feature branch whose name already exists is refused.
+- **The brief says whether a feature branch holds the base,** so the planner and the reviewer know before the review.
+- **The code graph follows the branches.** Each lookup first brings the graph to the newest commit of what it reads: the base branch, a feature branch's tip or an open task's commit.
 
 ## Git guards
 
-Hooks enforce the rest of this model. Each hook applies the policy of the repo the command runs in, except the PR-target guard, which applies the policy of the repo the command names ([multi-repo workspaces](#multi-repo-workspaces)):
+tmb has none. It reads no shell command to find a commit, a merge, a checkout or a push, and it blocks no direct commit. A list of every way to write a git command has no end; git already says exactly what a push sends.
 
-- **Destructive commands.** Force-pushes to protected branches are denied, as are direct commits, merges and rebases on a shared base. Denying hard resets and forced cleans is planned (GH 3260).
-- **The main checkout stays on `<base>`.** Checking out a branch that belongs to an open task is denied; the task's worktree is the place to work on it.
-- **swe stays in its lane.** swe cannot push, create branches or worktrees, or touch files outside its worktree. A swe spawn waits until its task's branch exists, and its worktree is created if missing.
-- **Pushes are reviewed.** See the push gate above.
-- **Remote identity is the Human's.** An interactive forge login is denied in a repo with no remote, where it would hang, and a remote write that cites a local issue number under the wrong remote number is denied. Denying commands that change remote identity or create repos is planned (GH 3260).
-- **The world model follows the refs.** A command that moves refs, such as a fetch, merge, rebase or reset, triggers a background re-index.
+What stands in their place, each at a checkpoint:
+
+- **The close** runs the checks on the committed work and reports what changed outside the spec and in the main folder.
+- **The review** judges the diff.
+- **The push gate** below judges every push.
+- **Two host events stay:** a worker's start is refused without a ready task, and a file write the host names as the reviewer's is denied ([CONTAINMENT.md](CONTAINMENT.md)).
+- **One shell command is read:** where the host shows tmb an agent's shell command, the guard denies one that takes a step only the Human may take, such as a waiver or setting the review mode.
 
 ## Rebasing a reviewed task
 
-swe never fetches, rebases or pulls. When `<base>` moves after a task passed review, bro rebases the reviewed commit in a scratch worktree, refuses when the rebased patch differs from the reviewed one or conflicts, and re-runs the task's verification on the result. Only on a pass do the branch and the task's recorded commit move to the rebased commit. Because the patch is unchanged, the review carries over, the way Gerrit carries a vote across a trivial rebase; any other new commit needs a fresh review. The push gate applies the same patch-identity rule to rebased commits no task records.
+Truest mode only. The rebase runs before the first push, in the task's own worktree.
 
-Planned (GH 3357): where the target branch has a merge queue on GitHub or GitLab, bro skips this rebase and pushes the reviewed commit as is. The queue tests the commit on the new base before it merges, so a local re-run would test the same combination twice. A commit the queue rejects reopens its task, like any failed required check. The rebase stays for a repo with no merge queue. It also stays for a branch the queue cannot take: one that conflicts with the base, or one whose lower commits already merged into the base.
+```mermaid
+flowchart TD
+    A[A pass or a waiver covers the task; the planner asks for its pull request] --> B{Base branch moved since the task was cut?}
+    B -- no --> P[Engine pushes the task branch and opens its pull request]
+    B -- yes --> R[Engine rebases the reviewed commit onto the newest base]
+    R -- conflict --> X[Rebase undone; the task reopens for its worker]
+    R -- "the base already holds the change" --> N[Task closed with no pull request]
+    R --> C{"The checks pass on the rebased commit?"}
+    C -- no --> X
+    C -- yes --> S{Same change as the reviewed one?}
+    S -- yes --> K[The pass carries over, recorded in the audit trail]
+    K --> P
+    S -- no --> V[Task stays in review at the rebased commit: a fresh review]
+```
+
+- **The same change keeps its pass,** the way Gerrit carries a vote across a trivial rebase. Any other new commit needs a fresh review.
+- **A failed rebase leaves the worktree as it was.**
+- **No remote.** The task is rebased onto the local base branch the same way, then recorded ready: its worktree goes, its branch stays, and the Human merges it locally.
 
 ### When the base moves after the PR is open
 
-Planned (GH 3227). The rebase above runs before the first push. Once the PR is open, a moved base is not by itself a reason to rebase: a rebase rewrites the commit, so the branch on origin can only be updated by a force-push. Today bro rebases an open PR's branch whenever the base moved, and the push gate then also checks the base's own commits between the old tip and the new one, so the force-push is denied.
+An open pull request is never rebased, because that would rewrite what was pushed.
 
 ```mermaid
 flowchart TD
-    A[The base moves while the task's PR is open] --> B{Can the forge still merge the PR as it stands?}
-    B -- yes --> C[Leave the branch alone; the merge, or the forge's merge queue, tests it on the new base]
-    B -- "no: the repo requires an up-to-date branch, or commits under the task's commit merged into the base" --> D[Rebase the reviewed commit in a scratch worktree and re-run its verification]
-    B -- no: it conflicts with the base --> E[Integrate conflict: the task is retried as a fresh task from the current base]
-    D --> F{Result?}
-    F -- patch unchanged, verification passes --> G[Force-push to the task's own branch, refused when origin's branch moved since bro last read it]
-    F -- patch changed --> H[One new review of the rebased commit, then the same push]
-    F -- verification fails --> I[The task is reopened and its author reworks it]
-    G --> J[Same PR, same review thread]
-    H --> J
+    A["The base moves while a pull request is open"] --> B{Mode?}
+    B -- truest --> C[The task branch is left alone]
+    B -- agile --> D[Planner has the engine merge the base into the local feature branch]
+    D -- conflict --> E[Nothing changes; settled in a task, or raised to the Human]
+    D --> F[Not pushed while the pull request is open]
+    F --> G[The new tip is reviewed or waived]
+    G --> H[The pull request step pushes it to the same pull request]
 ```
 
-- **Behind is not broken.** A PR whose branch is behind the base, with no conflict, is left alone unless the repo's rules require an up-to-date branch.
-- **A stack is the common case.** A task cut on top of another branch has that branch's commits under its own. When they merge into the base, the task's commit is rebased onto the base and the commits already there drop out.
-- **The force-push is narrow.** It goes only to the task's own branch, never to a protected one, and it is refused when origin's branch holds a commit bro has not seen, so nobody's push is overwritten.
-- **The gate checks only what the push adds.** That is the commits reachable from the new tip and not from the base. A commit already on the base passed its own gate when it merged, and needs no new verification.
-- **The PR is kept.** A rebase never opens a new branch or a new PR, so the review thread and history stay in one place.
+- **The pull request is kept.** tmb opens no second one, so the review thread and history stay in one place.
+- **Nothing is force-pushed.**
 
 ## The push gate at git's own hook
 
-Planned (GH 3281). A prototype proved the hook mechanism; the list under the bullets says what is still open. Today the push gate runs before a Bash command, reads its text to decide whether it is a push and what it sends, looks up each pushed commit on its own, and takes its policy from the working directory. Each of the three is a steady source of bugs: a shell form nobody foresaw, a commit whose id changed in a rebase or that two tasks share, and a command aimed at another repo. The design below removes the causes.
+Built. git hands its pre-push hook the exact refs and commits of a push, so the gate reads no command text and no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
 
 ```mermaid
 flowchart TD
-    A[Any command that ends in a push, in any shell form] --> B[git runs the repo's pre-push hook and hands it the exact refs and commits]
-    B --> C{Pushed from an agent session?}
-    C -- no --> OK[Admitted: the Human's own push]
-    C -- yes --> D{Is this repo exempt?}
-    D -- yes --> N[Admitted: an exempt repo is excused from TMB's workflow rules]
-    D -- no --> E{Protected branch?}
-    E -- yes --> X[Denied]
-    E -- no --> F{Whose branch is it?}
-    F -- a task's --> G[Net diff between the base and the pushed tip]
-    F -- an agile feature branch --> FB[Admitted as a backup; its gate is the merge gate]
-    F -- "nobody's" --> H{Does it hold a task's commit, by id or by patch?}
-    H -- no --> OK2[Admitted]
-    H -- yes --> G
-    G --> I{Is the newest verdict for this net diff a pass?}
-    I -- yes --> OK3[Admitted]
-    I -- no --> X2[Denied, naming the task and what is missing]
+    A[Any push, in any shell form, by an agent or by hand] --> B["git runs the repo's pre-push hook with the refs it sends"]
+    B --> C{"The project's record?"}
+    C -- none --> N1[Allowed, and the hook says so in one line]
+    C -- "damaged or unreadable" --> X0[Denied]
+    C -- readable --> D{Repo registered and not exempt?}
+    D -- no --> N2[Allowed: tmb has no policy for it]
+    D -- yes --> E{"A ref deletes the base branch?"}
+    E -- yes --> X1[Denied]
+    E -- no --> M{"The repo's review mode?"}
+    M -- agile --> G{A ref pushes to the base branch?}
+    G -- no --> OK1["Allowed: feature backups and the Human's own branches go freely"]
+    G -- yes --> I{"Every commit it brings is held by a covered tip?"}
+    M -- truest --> H{"A ref to the base brings an uncovered commit, or any ref brings a task's uncovered commit?"}
+    H -- no --> OK2[Allowed]
+    H -- yes --> X2[Denied, naming the commits and the next step]
+    I -- yes --> OK3[Allowed]
+    I -- no --> X2
 ```
 
-- **Git says what is pushed.** The hook receives each ref and commit the push sends, so the gate reads no command text and no shell form can hide a push from it. It runs inside the repo being pushed, so the policy is that repo's.
-- **The text guard keeps one job.** It denies an agent's command that would skip, disable or replace TMB's hook, or strip the mark of an agent's shell. That list is short and fixed, while the list of every way to write a push has no end.
-- **Every push checks the hook is live.** Before an agent's push, the guard confirms three things in the worktree that pushes: git will run TMB's hook for a push and it is enabled, the hook's command is TMB's script, and the script is intact. Git still lists a hook whose command was swapped, and the text guard sees only an agent's command, so a change made any other way would leave a hook that is listed and judges nothing. When one of the three fails, today's command-text judge stays on for that push and the next session start repairs the hook. The judge steps aside only when all three pass.
-- **The hook observes before it enforces.** It is first installed in observe mode: it admits every push, and each agent push leaves one record of what the hook would have decided, what today's judge decided and whether the two agree. Today's judge runs before the command, so a push it denies never reaches git or the hook; on that path the judge itself asks the new judge for its verdict and writes the record. That case, the old judge denying what the hook would admit, is the false block this work removes. Installing the hook adds one kind of deny only: the denies on skipping, disabling or replacing the hook and on stripping the agent mark start with the install, so no push goes around the record. They apply only where a hook is installed: in an exempt repo there is no hook, these denies stand down with every other guard, and the hook's own judge treats the repo as exempt from the first install. Each disagreement is a bug in the hook or a false block of the old judge, and bro explains every one before the switch. In one later release, for every project at once, the hook starts to enforce and today's judge steps aside. That release needs both: the agent mark proven, and no disagreement left unexplained.
-- **The Human is not gated.** The hook acts only on a push from an agent session. The Human's own push from a terminal passes, as it does today. TMB marks an agent's shell itself, at session start, with a mark no terminal the Human opens carries; it does not rely on the host's own mark, which the Human's terminal may share.
-- **The gate judges the branch, not each commit.** A review is recorded against the net diff between the base and the reviewed tip. A push is admitted when the newest verdict for the pushed tip's net diff is a pass.
-  - A rebase that leaves the diff unchanged keeps its pass with no extra record.
-  - Commits already on the base are never in the diff, so a moved base adds nothing to check.
-  - A commit a retry inherited from the task it replaces is covered by the review of the whole diff.
-- **An unchanged diff is necessary, not enough.** Integrate still re-runs the task's verification on the rebased commit and checks that the base's changes touch nothing the diff depends on. When they do, the commit gets one new review, recorded against the new tip.
-- **Close follows integrate.** A task closes only once integrate succeeded, so a failed integrate always leaves an open task to rework or to review again. Today the task closes first, and a failed integrate leaves nothing to reopen (GH 3234).
-- **Integrate rebases in the task's own worktree.** It checks the tree out nowhere else, so it needs no second copy of the repo's files and runs verification on the full tree. A rebase that fails leaves the branch and the worktree at the reviewed commit. Planned (GH 3295), after close follows integrate (GH 3234): today integrate rebases in a temporary worktree, which a sandboxed session cannot create.
-- **The hook is named in the repo's local git config, not placed in a hooks folder.** Git runs a hook named there in addition to the project's own, so TMB never touches the project's hooks folder or its hooks path, wraps no other hook, and a tool that manages the project's hooks, such as husky, cannot unhook it. The config is shared by every worktree of the repo by default. A repo that allows per-worktree config can switch the hook off in one worktree, which is why the check above runs in the worktree that pushes.
-- **The hook script is a stable local file.** It sits in the repo's git folder, is never committed, and only hands the push to the installed TMB. Session start refreshes it, so a plugin update never leaves it pointing at a version that is gone. An exempt repo gets none.
-- **A leftover hook never blocks anyone.** A hook whose script is missing fails every push, the Human's included, so the script always exists and admits the push once TMB is uninstalled. Removing the plugin runs no code, so the hook is then inert, and one cleanup command, named in [INSTALL.md](INSTALL.md), removes the config entry and the script. When TMB is installed and its judge fails to run, an agent's push is denied and the Human's passes.
-- **It needs a git that runs hooks from config** (2.54 or newer). On an older git TMB installs nothing, keeps today's command-text judge, and says so at session start. Planned (GH 3281): that notice asks the Human to upgrade git, naming the version it found and the version it needs. A plain hook file for an older git, only in a repo with no hooks path and no pre-push hook of its own, is a later slice.
-- **TMB serves one developer.** A push follows the remote's own branch rules and the pushing developer's TMB. The hook judges a push only against the project the pushing session belongs to; when that project does not list the repo, the push is admitted and noted. TMB never reads another install's policy.
-- **The remote host is the last line of defence.** The Human sets a protected branch's rules on GitHub or GitLab, and TMB's hook does not replace them.
+- **Covered** means a pass or a Human waiver on that exact commit: a feature branch's tip in agile mode, a task's commit in truest mode, or a commit a pass was carried to by a rebase.
+- **Only what the remote says it holds counts as already there.** A local ref can hold commits that never reached the remote.
+- **Merge commits are left out.** They bring no change of their own.
+- **The Human's push is judged too.** The gate holds whoever typed the push. In truest mode a commit of no task goes to a branch other than the base freely, so the Human's own branches need no waiver.
+- **Every decision is recorded,** with who pushed. A push the engine makes for an agent names that agent; a push with no name is the Human's.
+- **The gate denies when it cannot read the record.** A record file that is there but empty counts as damaged. With no base branch set, no push is judged.
+- **The hook names its project.** Setup writes the project's folder into the hook, relative to the repo's top, so the gate never searches for it. A project may be one package of a monorepo, below the top where git runs the hook. One repo holds one tmb project for now: setup refuses a second one and says why.
+- **A hook that is another tool's is left alone,** as husky and lefthook write. The gate is off there, and setup, every session start and the health check say so until the gate is on or the repo is exempt. With the Human's yes, tmb adds one line first in that hook, so the gate sees every pushed ref before the rest runs. The line is safe to commit: it calls the program by name, does nothing where the program is not installed, and hands the same refs on. tmb changes only a hook written for a shell; for one in another language it says how to call the gate by hand. A tool that rewrites its hook on every install drops the line, and the next session start says the gate is off again.
+- **Removing tmb deletes the hook it wrote,** or takes out its one line. A hook that is not tmb's stays.
+- **Linked worktrees share the hook.** A push from a task's worktree is judged as one from the repo it was cut from.
+- **A mark on GitHub.** A local hook can be skipped, so the gate also has a place on the server. Each verdict or waiver sets a commit status named tmb/review on that exact commit: success for a pass or a waiver, failure for a fail. The repo's branch protection can require it before a merge. tmb says whether the base branch requires it and how to turn that on, and never changes the protection settings: they are the Human's. A mark that could not be sent is sent at the next review, waiver or pull request, and never fails the review. It is sent with the Human's own GitHub command line, only when origin is a GitHub repo. It is a convention among people who can write to the repo, not proof.
+- **The remote host is the last line of defence.** tmb's hook does not replace the branch rules the Human sets there.
 
-Proven by the prototype, on git 2.56: the hook runs beside a project's own hooks path and in linked worktrees, a deny stops the push, the mark set at session start reaches the hook, and the net diff of a 1,339-file branch takes 0.22 s. Still to prove: that the mark reaches a subagent's shell and survives a compacted or resumed session. Until a live session shows it, the hook stays in observe mode and the command-text judge stays on.
+Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70). Today the health check counts the commits on each base branch that went around tmb.
 
 ## Agile feature branches
 
-Shipped for the project review mode; a lane's feature branch is planned (GH 3025). In agile review mode a long-lived feature branch stands between the task branches and `<base>`. Each `<feature>` is cut from the feature branch's tip instead of `<base>`, and bro merges it back into the feature branch locally once the task closes, with no PR. bro pushes the feature branch as a backup and brings `<base>` into it at the milestone, or earlier in an optional periodic sync. Only the feature branch itself reaches `<base>`, as one PR after its review passes or the Human waives it. [AGILE.md](AGILE.md) covers every case.
+In agile mode a long-lived feature branch stands between the task branches and the base branch. Each task branch is cut from its tip and folds back into it locally, with no pull request. The engine pushes it as a backup and merges the base branch into it before the review. Only the feature branch reaches the base branch, as one pull request after a pass or a Human waiver. [AGILE.md](AGILE.md) covers every case.
 
 ## Multi-repo workspaces
 
-A workspace can hold several inner git repos, siblings or submodules, under one trajectory DB. A scan discovers them and maps each one to a repo row in the DB:
+A project is a set of repos sharing one record. Setup decides which shape it is:
 
 ```mermaid
 flowchart TD
-    A["/scan, or bro's first scan when the world model is empty"] --> B[Walk the project root up to four levels deep, skipping dependency and build folders and task worktrees]
-    B --> C{Folder holds .git?}
-    C -- no --> B
-    C -- yes --> D{The project root itself?}
-    D -- yes --> R
-    D -- no --> E{Hidden folder, ignored by an enclosing repo, a linked worktree, or no commits?}
-    E -- yes --> S[Skipped; an audit row records why]
-    E -- no --> R[Repo row upserted: name from the folder, path, file count, remotes]
-    R --> F[Tracked files indexed into the world model, paths relative to the repo]
-    R --> P["/onboard records the repo's branch policy on its row"]
-    G[A registered repo this scan no longer finds] --> H{A task or another record still references it?}
-    H -- yes --> K[Kept, reported stale]
-    H -- no --> X[Retired with its world-model rows]
+    A[Setup runs in a folder] --> B{In a git work tree?}
+    B -- yes --> ONE[A project of one repo: the folder itself]
+    B -- no --> C{Holds git repos, up to two folders down?}
+    C -- no --> GI[Setup makes the folder a git repo and says so]
+    GI --> ONE
+    C -- yes --> WS[A workspace: its repos share one record in that folder]
+    WS --> F{Each top-level folder}
+    F -- "a repo" --> R["Recorded with its own policy: base branch and checks"]
+    F -- "no repo, and holds none" --> NR[Recorded as not a repo; left alone]
+    R --> EX{Exempt?}
+    EX -- yes --> LA[Listed and left untouched]
+    EX -- no --> MG[Managed: push hook written, code graph indexed]
 ```
 
-TMB then resolves "which repo does this operation belong to" by **path**, never by a global default repo:
+- **What counts as a repo.** A folder whose git folder is a real folder. A linked worktree or a submodule is never one, so a task's worktree is not taken for a repo. Setup does not look inside a repo it found, a dot-folder or a dependency folder.
+- **The record keeps the set,** so no later step scans or guesses. Running setup again adds what appeared and drops what is gone, with a line for each.
+- **A project of one repo works as before,** even when it holds nested repos.
 
-1. **Repos are identified by registration.** A repo takes part in TMB only once `/scan` has registered it. Registration is the same step that warms the world model, so the two stay aligned. A repo TMB has not registered is treated as exempt by every guard and by the push gate (planned, GH 3281; today the guards skip it and the push gate still judges it).
-2. **Resolution is path-keyed.** An operation belongs to the registered repo whose path contains it: the command's git root for a hook, the task's repo for a task. World-model paths are stored relative to their repo.
-3. **Branch policy is per repo.** Each repo's PR target, branching model and protected branches are recorded with its registration and nowhere else; there is no global fallback. The git guards enforce the policy of the repo the command runs in. The PR-target guard already follows the repo the command names (GH 3278): a repo named on the command line wins over the working directory, a name that matches no registered repo gets no verdict from this guard, and a name the guard cannot read literally falls back to the working directory. Planned (GH 3281): the other guards follow the targeted repo too, and a deny names the repo whose policy it applied.
-4. **Single-repo fallback.** When an operation names no repo and exactly one is registered, it resolves to that repo, so single-repo projects need no repo argument anywhere. With several repos registered, an operation that names none and has no path is refused.
-5. **Each repo has a mode.** Partly shipped (GH 3281); the bullets say which parts. A workspace holds repos that need different amounts of TMB: a product repo, and beside it a private test fixture that never ships. The repo's record says which, and the Human sets it. A repo the Human has not been asked about is unset: it behaves as exempt, and it is the only state that makes bro ask (planned; today an unasked repo is stored as exempt, so bro cannot tell it from one the Human chose).
+tmb then resolves "which repo does this step belong to" from the work, never from the folder a session runs in:
+
+1. **A feature branch or a task records its repo.** With one managed repo it may be left out; with several, a start that names none is refused with the list. An agile task works in its feature branch's repo. Every later step runs there: the cut, the worktree, the checks, the fold, the backup push and the pull request.
+2. **Policy is per repo.** Each repo has its own base branch and checks, taken from its own git at setup: origin's default branch, else the current branch. A policy set before is kept. Each repo pushes to its own origin and opens pull requests on its own remote repo. The project-wide base branch and checks are not read in a workspace.
+3. **One record.** Task worktrees stay under the workspace, so a worker finds the shared record. Feature names are unique in the record. Issues live in the record and name no repo.
+4. **Each repo has a mode.**
 
    | Repo mode | What applies in the repo |
    |---|---|
-   | Truest | The full flow: tasks, a review of every task before its push, the git guards |
-   | Agile | The same, with the review deferred to the feature branch ([AGILE.md](AGILE.md)) |
-   | Exempt | Indexed for the world model, and excused from the workflow rules: no task is required, no review, no git guard and no push gate |
+   | Agile | Feature branches, tasks, the review of the whole branch, the push gate ([AGILE.md](AGILE.md)) |
+   | Truest | Tasks cut from the base branch, a review of every task before its push, the push gate |
+   | Exempt | Listed in the record and left untouched: no task, no hook, no code graph, no push gate. For a repo tmb does no work in, such as fixtures that never ship |
 
-   - **Onboarding asks one mode per repo.** /onboard lists every repo with the mode bro recommends and the reason, and the Human approves or changes the set in one round ([ONBOARD.md](ONBOARD.md)). The recommendation is bro's judgement, not a rule the server computes: the server supplies the facts it can read offline, bro adds one read of GitHub or GitLab for branch protection and releases, and bro passes its pick and its reason into the question. For a fork, bro reads the remote the developer pushes to, and the PR target's remote too when it differs, and shows both. bro weighs what the repo shows; these are signals, not thresholds:
+   - **The workspace has one review mode, and a repo can name its own.** One that names none follows the workspace's ([AGILE.md](AGILE.md#where-the-review-mode-is-set)). Everything that reads the mode reads the repo's: starting work, the push gate, the session start and the health check.
+   - **Only the Human chooses a repo's mode,** as for the workspace's. In unattended mode a repo's mode is not changed.
+   - **Its mode shows.** The settings and the planner's session start list each repo with its base branch and its mode.
+5. **The gate in each repo.** Setup writes the pre-push hook into every managed repo. The hook names the workspace's folder: the gate reads the record there and judges the push against that repo's base branch and mode. A push from a repo the record does not register, or registers as exempt, is allowed, and the recorded reason says why.
+6. **A code graph per repo,** built from its own base branch, with paths relative to that repo. A repo that cannot be indexed yet says why, and the others go on.
 
-     | What the repo shows | bro recommends |
-     |---|---|
-     | Almost no tracked files, or no remote in a project that has remotes elsewhere | Exempt |
-     | One author, few commits, no release | Agile |
-     | A protected branch, CI, several authors or releases | Truest |
-     | Nothing clear | Agile, the default |
+A global default repo would force one repo to be "the" repo; it breaks as soon as a second joins. Recording the repo on the work lets sibling repos sit side by side with none treated as the main one.
 
-   - **A scan only indexes.** A repo a scan finds after onboarding is unset, so it behaves as exempt until the Human answers, and bro asks when the first task is set up in that repo. bro never enforces a guessed policy. Shipped: a scan registers a new repo as exempt and a later scan never changes its mode; at the upgrade, a repo with no confirmed policy became exempt and every onboarded repo kept its rules. The question at first contact is planned; until it ships, onboarding a repo puts it on the project's mode.
-   - **What exempt switches off today.** Shipped: the git guards and the push guard stand down in an exempt repo. Shipped too: a task in an exempt repo closes with no review and no hand-off, and records exempt as its mode. Planned: every other workflow rule stands down too, so an agent may edit, commit, branch and push in an exempt repo without a task. Today several guards still need a task there, such as the guard on editing outside a task, which makes an exempt repo stricter than an unregistered one.
-   - **A repo left on the project's mode takes it.** The Human can answer "the project's" for a repo, and it then follows the project's review mode, truest or agile. When the project has no mode stored, that is truest today, and agile once the fallback changes ([AGILE.md](AGILE.md#where-the-review-mode-is-set)). The project's mode is never exempt, so one setting cannot switch the rules off in every repo. A lane's review mode still overrides both for a repo that is not exempt. Exempt is final: no lane and no project setting turns the rules back on.
-   - **Two things stay on in an exempt repo.** Containment still keeps every write inside the project, and the trajectory still records what ran there. They protect the Human's machine and the record, not the repo's workflow.
-   - **A task in an exempt repo is recorded, not gated.** Tasks are optional there. One that exists keeps its lifecycle events, its agent runs and its own checks, and it closes without a review, and the task records exempt as the mode it closed under, so the record says why no review ran (shipped). The close's cause naming the repo's mode comes with the lifecycle events (planned, GH 3224).
-   - **Its mode shows.** The repo list shows each repo's stored mode and the mode in effect, and a deny names the repo and the mode it applied (shipped). The dashboard showing it is planned.
+## Shipped and planned
 
-A global default repo would force one repo to be "the" repo and make the guards guess what to enforce; it breaks as soon as a second repo joins. Path-keyed resolution lets sibling repos sit side by side with none treated as the main one.
+| Piece | State |
+|---|---|
+| Engine-made branches and worktrees, the fold, the backup push, the pull request step | Shipped |
+| The push gate at git's pre-push hook, in agile and truest mode | Shipped |
+| One line in another tool's hook, with the Human's yes | Shipped |
+| The review mark on GitHub | Shipped |
+| Rebase of a reviewed truest task before its first push, in its own worktree | Shipped |
+| Workspaces of several repos, with a policy and a review mode per repo | Shipped |
+| A skipped gate found by the sync with the remote | Planned (trustmybot/tmb#70) |
+
+### Open, for the Human
+
+- **Skipping the local rebase where the remote has a merge queue.** The plugin planned it; tmb has not said.
+- **The planner recommending a mode per repo from what the repo shows.** The plugin planned it; tmb asks the Human one question and recommends agile.
+- **Built, and still proposed for the Human's review:** a rebase that makes the same change keeps its pass, where the alternative is a fresh review after every rebase; a commit of no task goes to a branch other than the base freely, where the alternative refuses every uncovered commit on every branch.

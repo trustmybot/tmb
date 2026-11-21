@@ -1,6 +1,6 @@
 # Prompt Engineering
 
-The research reference behind TMB's prompt rules. Each rule below names how strong its evidence is and where the evidence comes from. To write or check a prompt, use [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md), the rules built on this evidence.
+The research reference behind tmb's prompt rules. Each rule below names how strong its evidence is and where the evidence comes from. To write or check a prompt, use [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md), the rules built on this evidence.
 
 The rules are ordered by evidence tier, strongest first, so a reader sees which claims rest on controlled studies; the guide orders the same rules the way a prompt is written.
 

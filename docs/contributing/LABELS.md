@@ -1,92 +1,102 @@
 # Labels
 
-This page lists the issue labels on the trustmybot/plugin GitHub board, which is TMB's own board. Planned (GH 3314): the board moves to six groups written in lower case with a slash, adding status, decision and theme groups, and the same scheme ships to TMB users as a default each project can change; [ISSUES.md](../architecture/ISSUES.md) holds that design. Until it ships, the list below applies, and no default, prompt, skill or tool description that TMB ships names these labels.
+This page lists the issue labels on the trustmybot/tmb GitHub board, which is tmb's own board. They fall in six groups written in lower case with a slash: `type/`, `priority/`, `area/`, `status/`, `decision/` and `theme/`. [ISSUES.md](../architecture/ISSUES.md) holds the design.
 
-Every label lives in [`.github/labels.json`](../../.github/labels.json) as `{name, color, description, group}`. The tables below are generated from it.
+**This page is written by hand from the labels on GitHub as they stand today** (`gh label list --repo trustmybot/tmb`). Planned: one labels file in the repo that this page and the board are both made from, as the plugin had.
 
 ## Rule: one type, one priority, one area
 
-Every issue carries exactly **one type**, **one priority** and **one area**. Themes are optional. An issue that misses the rule gets `needs-triage` until it is fixed.
+Every issue carries exactly **one type**, **one priority** and **one area**. Themes are optional. An issue that misses the rule keeps `status/needs-triage` until it is fixed.
 
-Names stay flat and self-explanatory; groups that need a prefix use the `Prefix: Value` form (`Priority: High`, `Area: Hooks`), per GH 101.
+```mermaid
+flowchart LR
+    F["issue form"] --> L["type/ label + status/needs-triage"]
+    T["tmb feedback, through GitHub's CLI"] --> W["feedback-labels workflow"]
+    W --> L
+    L --> M["maintainer sets priority/ and area/"]
+    M --> D["removes status/needs-triage, sets the milestone"]
+```
 
-To add, rename or remove a label, edit `labels.json` in a PR, regenerate this file, and let the sync workflow apply it.
-
+To add, rename or remove a label, change it on GitHub and change this page in the same pull request.
 
 ## Canonical list
-
-<!-- BEGIN GENERATED labels: scripts/maintenance/labels.mjs -->
 
 ### Type — exactly one
 
 | Label | Means |
 |---|---|
-| **Bug** | Something isn't working |
-| **Feature** | New feature or request |
-| **Improvement** | Refactor / polish / quality work |
-| **Docs** | Documentation-only changes |
-| **Test** | Test-only changes |
-| **Chore** | Tooling, deps, release mechanics |
-| **Research** | Papers, experiments and open design questions |
+| `type/bug` | Something isn't working |
+| `type/feature` | New feature or request |
+| `type/improvement` | Refactor / polish / quality work |
+| `type/docs` | Documentation-only changes |
+| `type/test` | Test-only changes |
+| `type/chore` | Tooling, deps, release mechanics |
+| `type/research` | Papers, experiments and open design questions |
 
 ### Priority — exactly one
 
 | Label | Means |
 |---|---|
-| **Priority: Urgent** | Critical priority — broken-in-prod class |
-| **Priority: High** | High priority — blocks meaningful workflows |
-| **Priority: Medium** | Medium priority — quality / UX |
-| **Priority: Low** | Low priority — polish / nice-to-have |
+| `priority/urgent` | Critical priority — broken-in-prod class |
+| `priority/high` | High priority — blocks meaningful workflows |
+| `priority/medium` | Medium priority — quality / UX |
+| `priority/low` | Low priority — polish / nice-to-have |
 
 ### Area — exactly one
 
 | Label | Means |
 |---|---|
-| **Area: Hooks** | Hook entry points, containment-guard, cmd-analysis, intent hints, git and push guards |
-| **Area: Trajectory Server** | MCP tools, schema, DB layer, task and issue flow, server-side gates |
-| **Area: World Model** | Scan, code graph, concepts, world_model_* tools, embeddings |
-| **Area: Dashboard** | dashboard/ server and UI |
-| **Area: Install** | Deps installer, plugin payload, marketplace channels, OS compatibility |
-| **Area: Agents** | agents/, skills/, commands/, CLAUDE.md and the bro/swe/code-reviewer workflow |
-| **Area: Cheatcode** | Cheatcode search, vet, install and ranking |
-| **Area: Release** | CI workflows, dev-build, release-gate, cli.js integrate, versioning |
+| `area/workflow` | Issues, tasks, feature branches, review, the gate and its guards |
+| `area/trajectory` | The record: its store, its tools, sessions, the syncer, migration from the plugin |
+| `area/code-graph` | Indexing, lookups, concepts |
+| `area/roles` | The planner, worker and reviewer prompts |
+| `area/adapters` | Host adapters and what setup writes for a host |
+| `area/dashboard` | The local web page |
+| `area/distribution` | Build, install, update, release channels, CI |
 
 ### Theme — optional
 
 | Label | Means |
 |---|---|
-| **token-burn** | Cost/perf cleanup to reduce LLM/API token consumption |
+| `theme/design-gap` | The docs are silent on something the work needs |
+| `theme/docs-drift` | Code, an issue or a request disagrees with the docs |
+| `theme/false-block` | A guard or gate blocked something it should have allowed |
+| `theme/prompt` | Agent prompts, roles or skills |
+| `theme/regression` | Something that worked before stopped working |
+| `theme/tech-debt` | Shortcut or leftover that should be cleaned up |
+| `theme/token-burn` | Cost/perf cleanup to reduce LLM/API token consumption |
 
-### Status — set by the triage workflow
+### Status — set by the form, removed by a maintainer
 
 | Label | Means |
 |---|---|
-| **needs-triage** | Missing exactly one type, one priority or one area |
+| `status/needs-triage` | Missing a type, a priority or an area; stays until all three are set |
 
-<!-- END GENERATED labels -->
+### Decision — what the planner decided for the Human
 
+| Label | Means |
+|---|---|
+| `decision/needs-human` | bro decided something on the Human's behalf; the body lists those decisions in one section |
+| `decision/human-reviewed` | The Human answered the decisions bro listed |
 
 ## Checks
 
 | Piece | What it does |
 |---|---|
-| `scripts/maintenance/labels.mjs --sync` | Creates or updates GH labels to match `labels.json`. Extra labels on GH are printed, never deleted. |
-| `scripts/maintenance/labels.mjs --doc` | Regenerates the canonical list above. `--check` fails when it is stale. |
-| `scripts/maintenance/labels.mjs --check-live` | Diffs the GH labels against `labels.json`. Skips without `gh` or with `TMB_L1_OFFLINE=1`. |
-| `.github/workflows/label-sync.yml` | Runs `--sync` on a push to `dev` that changes `labels.json`, and on demand. |
-| `.github/ISSUE_TEMPLATE/` | Bug, Improvement, Feature and Research forms set the type. The Improvement, Feature and Research forms require an Area; the Bug form requires only what went wrong, what happened, the Impact and the no-secrets check. Blank issues are disabled. |
-| `.github/workflows/issue-triage.yml` | Runs `--triage` on every issue open, edit, label and unlabel. It turns the form's Area answer into its label when the issue has no area, and the Impact answer into its priority when the issue has no priority (Blocks all TMB work → `Priority: High`, Blocks one task, has a workaround → `Priority: Medium`, Annoying or cosmetic → `Priority: Low`). A report filed from the CLI carries a `<!-- tmb-report v1 sig=… -->` marker but no labels, so on a marked body it also adds `Bug` when the issue has no type. An existing type or priority is never replaced. It then adds `needs-triage` unless the issue has exactly one type, one priority and one area, and removes it once it does. |
-| `tests/l1-lint/labels.test.mjs` | Unit tests for the triage rule plus the doc-sync check. |
-| `tests/l1-lint/bug-form.test.mjs` | Checks that `bug.yml` lists the same fields, labels, types and options as `FORM_FIELDS` in the bug-report module. |
+| `.github/ISSUE_TEMPLATE/` | Bug, Improvement, Feature and Research forms. Each sets its `type/` label and `status/needs-triage`. Blank issues are disabled; a security problem goes to the security policy, never an issue. |
+| The bug form's Area answer | Optional, and a guess: Workflow, Record, Code graph, Roles, Host setup, Dashboard, Install and update. The maintainer sets the `area/` label. |
+| `.github/workflows/feedback-labels.yml` | On an issue opened with the marker `tmb feedback` leaves in its body, adds the labels of the form the marker names. A report filed through GitHub's CLI carries no labels of its own (trustmybot/tmb#122). |
+| A labels file, a sync to GitHub, a generated list | Planned. |
+| A workflow that turns the form's Area and Impact answers into labels, and adds or removes `status/needs-triage` by itself | Planned. Today a maintainer does both by hand. |
+| Tests that compare the forms and this page with the labels | Planned. |
 
 ## Filing with labels
 
-Whoever files an issue, a contributor or an agent working on TMB, applies one type, one priority and one area from the list above. When no label fits, change `labels.json`; never make up a label on the spot.
+Whoever files an issue, a contributor or an agent working on tmb, applies one type, one priority and one area from the list above. When no label fits, propose a new one in a pull request to this page; never make up a label on the spot.
 
 No label marks an issue as stale. Such a label would only repeat the issue's last-update time, so search by that time instead (`gh issue list --state open --search 'updated:<YYYY-MM-DD>'`).
-
 
 ## Related
 
 - [`ENUMS.md`](./ENUMS.md) — same rule for the DB vocabularies: adopt an established convention, invent only where none applies
-- [`CONTRIBUTING.md`](../../CONTRIBUTING.md#filing-an-issue) — filing an issue
+- [`README.md`](./README.md#issues) — filing an issue

@@ -1,6 +1,6 @@
 # Judgment layer
 
-The rules for writing and grading a TMB prompt (`CLAUDE.md`, `agents/*.md`, skills, commands), the layer 6 that holds only what needs judgment: a checklist of yes/no criteria, a grading rubric, and real examples. Which rules belong in code instead is in [`DETERMINISTIC_LAYER.md`](DETERMINISTIC_LAYER.md). Each criterion names its rule in [`PROMPT_ENGINEERING.md`](PROMPT_ENGINEERING.md), the research reference, and carries that rule's evidence tier.
+The rules for writing and grading a tmb prompt (`roles/*.md`, and skills, Planned), the layer 6 that holds only what needs judgment: a checklist of yes/no criteria, a grading rubric, and real examples. Which rules belong in code instead is in [`DETERMINISTIC_LAYER.md`](DETERMINISTIC_LAYER.md). Each criterion names its rule in [`PROMPT_ENGINEERING.md`](PROMPT_ENGINEERING.md), the research reference, and carries that rule's evidence tier.
 
 ---
 
@@ -25,7 +25,7 @@ The criteria follow the order in which you write or read a prompt, one category 
 | Consistency | Does the whole file agree with itself, other prompts, hooks and code? |
 | Validation | Did an eval show no regression? |
 
-`Rule` is the rule number in [`PROMPT_ENGINEERING.md`](PROMPT_ENGINEERING.md#core-rules), or the section below that holds the TMB-specific rule. `Tier` copies that rule's tier. `How checked` is `deterministic` when a grep, lint or script could check it, `judgment` when a reader has to.
+`Rule` is the rule number in [`PROMPT_ENGINEERING.md`](PROMPT_ENGINEERING.md#core-rules), or the section below that holds the tmb-specific rule. `Tier` copies that rule's tier. `How checked` is `deterministic` when a grep, lint or script could check it, `judgment` when a reader has to.
 
 | Category | ID | Check | Rule | Tier | How checked |
 |---|---|---|---|---|---|
@@ -50,9 +50,9 @@ The criteria follow the order in which you write or read a prompt, one category 
 
 ## Each prompt owns one job
 
-Each prompt does only its agent's job. It names what the agent receives, hands its output over in the shape the next agent expects, and never asks the agent to redo a check another agent owns: overlapping jobs duplicate work and blur who owns a miss. This holds for every agent, a new one included. An agent in TMB's code flow also matches its place in [`FLOWS.md`](../architecture/FLOWS.md) and its row of the [quality layers](../architecture/TASKS.md#quality-layers) table; where the flow and its prompt disagree, fix one of them in the same change so they do not drift.
+Each prompt does only its agent's job. It names what the agent receives, hands its output over in the shape the next agent expects, and never asks the agent to redo a check another agent owns: overlapping jobs duplicate work and blur who owns a miss. This holds for every agent, a new one included. An agent in tmb's code flow also matches its place in [`FLOWS.md`](../architecture/FLOWS.md) and its row of the [quality layers](../architecture/TASKS.md#quality-layers) table; where the flow and its prompt disagree, fix one of them in the same change so they do not drift.
 
-Each shipped prompt carries only the wiring that makes TMB work: who the agent is, what it does every turn, and pointers to the skills and commands that hold procedures. Rubrics, checklists, persona and style guidance, and domain heuristics arrive as cheatcodes ([`CHEATCODES.md`](../architecture/CHEATCODES.md)); a paragraph that teaches a technique instead of wiring a role belongs in one.
+Each shipped prompt carries only the wiring that makes tmb work: who the agent is, what it does every turn, and pointers to the skills (Planned) that hold procedures. Rubrics, checklists, persona and style guidance, and domain heuristics arrive as cheatcodes ([`CHEATCODES.md`](../architecture/CHEATCODES.md), Planned); a paragraph that teaches a technique instead of wiring a role belongs in one.
 
 ---
 
@@ -63,10 +63,10 @@ Each shipped prompt carries only the wiring that makes TMB work: who the agent i
 | Test | Pass condition |
 |---|---|
 | **(A) Mechanism test** | Any line that sequences, sets a default, constrains, or measures moves to layers 1–5 ([`DETERMINISTIC_LAYER.md`](DETERMINISTIC_LAYER.md)). Only judgment stays. |
-| **(B) If/else test** | Anything you can write as an if/else statement lives in hooks/MCP, never in prompt prose. |
+| **(B) If/else test** | Anything you can write as an if/else statement lives in checkpoints or the engine's tools, never in prompt prose. |
 | **(C) Natural-language test** | If the Human cannot read a prompt line as natural language, it is machine-spec in disguise — migrate it or rewrite it. |
 | **(D) Placement test** | Judgment needed on every run belongs in the always-loaded body, optional judgment in skills loaded on a trigger, and deterministic logic in code. |
-| **(E) Persona test** | Every agent opens with a plain-language sentence naming its job, not an expert title ("You execute one task spec assigned by bro."). |
+| **(E) Persona test** | Every agent opens with a plain-language sentence naming its job, not an expert title ("You carry out one task's spec in the task's own worktree, then report back to the planner."). |
 | **(F) Load-bearing test** | Every line drives a judgment, names a call, or states a constraint the reader acts on. No line sells the concept, narrates the skill's own purpose, restates the frontmatter, or repeats a point for emphasis. |
 
 ### Every line earns its place
@@ -122,15 +122,15 @@ A prompt is a contract, not a wish: it states the role, the inputs, the steps, t
 
 Copied verbatim from current prompt files.
 
-**`CLAUDE.md`, "You are bro"** (G1, G7)
+**`roles/planner.md`, "You are bro, the planner"** (G1, G7)
 
 ```text
-You plan the work, route it, and gate it at every step. You don't write production code yourself: that goes to **swe**, and **code-reviewer** judges whether the diff breaks other behaviour before anything is pushed.
+tmb is the harness around this session: you plan the work, route it, and gate every step of it. You don't write production code yourself. Workers write it on a feature branch that is pushed as a backup as tasks land, and a reviewer passes the whole branch before its pull request opens.
 ```
 
 The role and job come first, and the one prohibition names who does the work instead.
 
-**`CLAUDE.md`, "Skills"** (G3, G8)
+**`CLAUDE.md`, "Skills"** (G3, G8), from the plugin: tmb ships no skill yet (Planned)
 
 ```text
 Load the skill when its trigger fires — it carries the procedure so this file stays short.
@@ -138,26 +138,26 @@ Load the skill when its trigger fires — it carries the procedure so this file 
 
 Procedure lives in a skill, and the line says why.
 
-**`CLAUDE.md`, "Voice"** (G7)
+**`roles/planner.md`, "Voice"** (G7)
 
 ```text
-Relaxed and natural, but precise. Short and action-first — trim filler, but don't clip so hard you drop context a reader needs.
+Relaxed and natural, but precise. Short and action-first: trim filler, but keep the context a reader needs.
 ```
 
 The prohibition is paired with the wanted action and the limit on it.
 
-**`skills/tmb_planning/SKILL.md`, "5. Spawn SWE" > "Spawning SWE"** (G8, G9)
+**`roles/planner.md`, "How work flows" > "What a close reports"** (G8, G9)
 
 ```text
-- The spawn prompt MUST contain the literal `task_id=<N>` from the `task_provision` response — a bare `task_id 5` without `=` fails the gate.
+Never put a file back yourself: the change may be the Human's own.
 ```
 
-`MUST` guards a true invariant, and the line states the reason: anything else fails the gate.
+`Never` guards a true invariant, and the line states the reason: the change may be the Human's own.
 
-**`agents/swe.md`, "How you write code"** (G7, G8)
+**`roles/worker.md`, "How you write code"** (G7, G8)
 
 ```text
-- **Solve the general case.** Never special-case a test's inputs, hard-code its expected output, or edit a test so it passes; read paths, limits and IDs from config or data. When a test or the spec looks wrong, leave it unchanged and close `failed`, naming it and why.
+- **Solve the general case.** Never special-case a test's inputs, hard-code its expected output, or edit a test so it passes. When a test or the spec looks wrong, leave it as it is and report it.
 ```
 
 Each prohibition comes with what to do instead, including the case where the rule seems wrong.
@@ -189,7 +189,7 @@ The repo's current prompts are near-clean, so each pair below is `constructed`.
 **3. Persona and tip boilerplate** — `constructed`, fails G10
 
 - Before: `You are a world-class 10x engineer. Take a deep breath. I'll tip $200 for a perfect answer.`
-- After: `You are swe. You execute one task spec from bro in an isolated git worktree.`
+- After: `You are a worker. You carry out one task's spec from the planner in the task's own worktree.`
 
 **4. Duplicated, contradicting rule** — `constructed`, fails G13 and G14
 

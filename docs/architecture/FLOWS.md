@@ -1,287 +1,379 @@
-# TMB Workflows
+# tmb Workflows
 
 This file is the starting point for every flow. Each flow gets one chart of its ideal case, a short description, and a link to its detail page. The detail page holds every other case, failures included, and how to debug them. A flow whose chart says everything has no detail page. Who owns each quality check, and how a task hands from one owner to the next, is in [TASKS.md](TASKS.md#quality-layers).
 
-It is the ground truth for the workflow: it describes what ships and marks unshipped behaviour as planned, with its GitHub issue. A PR that changes a flow updates its chart here, and its detail page, in the same PR. Neither names a hook, gate, tool or symbol. The world model says what enforces a step, and the code holds the logic.
+It is the ground truth for the workflow: it describes what ships and marks unshipped behaviour as planned, with its GitHub issue. A PR that changes a flow updates its chart here, and its detail page, in the same PR. Neither names an internal function, file or table. The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
+
+tmb gates the outcome and never watches each step. Its checks run at three checkpoints: a task's close, the review, and the push.
 
 Flows are grouped by when they run, and numbered within their group.
 
 | Group | # | Flow | Trigger | Agents | State it leaves |
 |---|---|---|---|---|---|
-| 1. Install | 1.1 | [Install and session start](#11-install-and-session-start) | Plugin install, then every session start | — (the plugin itself) | per-session markers |
-| 2. Cold start | 2.1 | [First contact](#21-first-contact) | A project that is not yet onboarded | bro | repo and remote settings, the sync, sandbox, bug-report and review-mode settings, the onboarded marker, and two uncommitted files per repo |
-| 2. Cold start | 2.2 | [Scan and world-model refresh](#22-scan-and-world-model-refresh) | An empty world model, `/scan`, a merged architectural change, or the trajectory server connecting | bro (or the server, in background) | the world model and the discovered-capability registry |
-| 2. Cold start | 2.3 | [Environment profile](#23-environment-profile) | bro needs a repo's install, test and lint commands | bro | a per-machine cache of resolved commands |
-| 3. Agent task handling | 3.1 | [Code task](#31-code-task) | An ask that changes code, architectural changes included | bro → swe; code-reviewer per task; bro closes after its pass | issue, decision, task, run, verification and review records; a reviewed, pushed branch and its PR |
-| 3. Agent task handling | 3.2 | [Non-code task](#32-non-code-task) | An ask that changes only docs or prompts | bro writes it; code-reviewer grades it with the doc-review checklist | as 3.1, the task marked docs or prompts |
-| 3. Agent task handling | 3.3 | [Push gate](#33-push-gate) | Each completed task bro hands to review; any push | bro → code-reviewer (one per task, parallel) | a verdict per reviewed commit, with its findings |
-| 3. Agent task handling | 3.4 | [Retry and escalation](#34-retry-and-escalation) | A design misfit, a review fail, an integrate conflict, a failed check or a stale run | bro ↔ the author (↔ code-reviewer per task) | further attempts and their findings, or a fresh task |
-| 3. Agent task handling | 3.5 | [PR comment triage](#35-pr-comment-triage) | Review comments reach a PR bro owns | bro → swe, or bro itself, per task-worthy comment group | stored comments, reopened or new tasks on the PR's issue, a fetch cursor |
-| 3. Agent task handling | 3.6 | [Multi-repo workspaces](#36-multi-repo-workspaces) | Inner repos registered; bro indexes them | bro | repo-relative world-model paths, scoped per repo |
-| 3. Agent task handling | 3.7 | [Bulk cleanup](#37-bulk-cleanup) | Human pre-authorizes a bulk delete | bro (direct, no swe) | an audit row naming what was deleted |
-| 3. Agent task handling | 3.8 | [Parallel lanes](#38-parallel-lanes) | Several independent streams of work, each too large for one turn (planned, GH 3024) | one bro per lane session, each with its own swe and code-reviewer | lanes with their owned issues and review mode |
-| 3. Agent task handling | 3.9 | [Agile mode](#39-agile-mode) (project mode shipped; lane mode planned, GH 3025) | A code or no-code task in a project or lane the Human set to agile | bro → swe; bro closes without review and merges into a long-lived feature branch; code-reviewer later, one per group of its tasks | a feature branch of tasks closed without review; group verdicts, then one PR into the working branch, or a Human waiver |
-| 4. Extending the team | 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | A capability wall, the Human says "cheatcode", or a reuse check before building | bro (Human approves install) | the capability registry and its attachments |
-| 4. Extending the team | 4.2 | [Agent creation](#42-agent-creation) | Routing hits a role the project has no agent for | bro | a project agent file |
-| 4. Extending the team | 4.3 | [Skill creation](#43-skill-creation) | Recurring pattern needs encoding | bro | a registered skill |
-| 4. Extending the team | 4.4 | [Consultant invocation](#44-consultant-invocation) | Human asks for a second opinion | bro → consultant | the consultant's analysis |
-| 4. Extending the team | 4.5 | [Roundtable](#45-roundtable) | The Human types `/roundtable <topic>` | bro orchestrates 2–5 consultants | the table, its votes and the ratified decision |
-| 5. Reporting TMB bugs | 5.1 | [Bug report](#51-bug-report) | bro hits a real TMB bug and the Human opted in | bro (Human approves each report) | a record of each filed report |
+| 1. Install | 1.1 | [Install and session start](#11-install-and-session-start) | One-step install, `tmb init` once per project, then every session start | — (tmb itself) | the project's record, the host's files, git's pre-push hook, the code graph |
+| 1. Install | 1.2 | [Updates and channels](#12-updates-and-channels) | A session start, or `tmb update` | — (tmb itself) | a newer build, and an audit entry for each refresh of a project's wiring |
+| 1. Install | 1.3 | [Move a plugin project](#13-move-a-plugin-project) | `tmb migrate` | — (the Human) | the plugin's records, copied into tmb's record |
+| 2. Cold start | 2.1 | [First contact](#21-first-contact) | A session start in a project whose settings are empty | planner | the base branch, the checks and the review mode, and who chose the mode |
+| 2. Cold start | 2.2 | [Index and code-graph refresh](#22-index-and-code-graph-refresh) | `tmb init`, `tmb index`, or any lookup that finds the graph behind its base branch | — (the engine) | a code graph per repo |
+| 2. Cold start | 2.3 | [Environment profile](#23-environment-profile) | The planner needs a repo's checks | planner | the repo's checks, as a project setting |
+| 3. Agent task handling | 3.1 | [Code task](#31-code-task) | An ask that changes code | planner → worker; reviewer per the review mode | issue, decision, task, run, check and review records; a reviewed branch and its PR |
+| 3. Agent task handling | 3.2 | [Docs task](#32-docs-task) | An ask that changes only docs or prompts | planner writes it; reviewer sees it in the same review | as 3.1, the task marked docs |
+| 3. Agent task handling | 3.3 | [Push gate](#33-push-gate) | Any push, tmb's own or typed by hand | reviewer records the verdict; git asks the engine | a verdict or waiver per reviewed commit, and a mark on GitHub |
+| 3. Agent task handling | 3.4 | [Retry and escalation](#34-retry-and-escalation) | A failed check, a review fail, a conflict or a run that never ended | planner ↔ the author | a task still open or reopened, fix tasks, or a dropped task |
+| 3. Agent task handling | 3.5 | [PR comment triage](#35-pr-comment-triage) | Review comments reach a PR tmb opened (planned, trustmybot/tmb#70) | planner → worker, or the planner itself | fix tasks on the PR's branch |
+| 3. Agent task handling | 3.6 | [Multi-repo workspaces](#36-multi-repo-workspaces) | `tmb init` in a folder that holds several repos | planner | one record; per repo a policy, a pre-push hook and a code graph |
+| 3. Agent task handling | 3.7 | [Bulk cleanup](#37-bulk-cleanup) | `tmb doctor --fix` | — (the Human) | leftovers removed, each on the Human's yes |
+| 3. Agent task handling | 3.8 | [Parallel lanes](#38-parallel-lanes) | Several independent streams of work, each too large for one turn | one planner per session, each with its own workers and reviewer | no lane record: the shared record, and one branch and worktree per task |
+| 3. Agent task handling | 3.9 | [Agile mode](#39-agile-mode) | A task in a repo the Human set to agile (recommended) | planner → worker; reviewer once, on the whole feature branch | a feature branch of closed tasks; one verdict or waiver, then one PR |
+| 3. Agent task handling | 3.10 | [Truest mode](#310-truest-mode) | A task in a repo the Human set to truest | planner → worker → reviewer, per task | a verdict or waiver per task, and one PR per task |
+| 3. Agent task handling | 3.11 | [Project with no remote](#311-project-with-no-remote) | Reviewed work in a repo that has no remote | planner; the Human merges locally | a branch or task recorded ready, then merged |
+| 3. Agent task handling | 3.12 | [Unattended run](#312-unattended-run) | A session with no one to answer, such as CI | planner | each default it applied, recorded as a decision |
+| 3. Agent task handling | 3.13 | [Several hosts on one record](#313-several-hosts-on-one-record) | `tmb init` once per host, each with a role (built; supported from v2) | a planner on one host, a reviewer on another | every record names the role and the host that made it |
+| 4. Extending the team | 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | A capability gap (planned, trustmybot/tmb#112) | planner (Human approves) | a skill given to a role |
+| 4. Extending the team | 4.2 | [Agent creation](#42-agent-creation) | A role the project has no agent for (open, for the Human) | planner | a project agent |
+| 4. Extending the team | 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern needs encoding (planned) | planner | a project skill |
+| 4. Extending the team | 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion (open, for the Human) | planner → consultant | the consultant's analysis |
+| 5. Reporting tmb bugs | 5.1 | [Bug report](#51-bug-report) | tmb itself breaks, or `tmb feedback` | planner (Human approves each report) | a record of each report filed and each form opened |
 
 ## 1. Install
 
 ### 1.1 Install and session start
 
-The Human installs TMB at project or local scope and restarts; from then on, every session start marks the session and runs advisory checks that never block it. [INSTALL.md](INSTALL.md) covers each case, including a broken install, and how to debug it.
+tmb is one compiled program per platform, installed in one step, with nothing to install first. `tmb init` prepares a project once and asks nothing. From then on the host raises its session start, and the engine answers with the role, the rules and the open work from the record. [INSTALL.md](INSTALL.md) covers each case and how to debug it; [HOSTS.md](HOSTS.md) covers what an adapter writes.
 
 ```mermaid
 flowchart LR
-    A[Human installs at project or local scope] --> B[Full restart]
-    B --> C[Plugin loads: agents, server, hooks]
-    C --> D[Session start: advisory checks pass]
-    D --> E[First prompt: 2.1 First contact]
+    A["Human installs tmb in one step"] --> B["tmb init in the project"]
+    B --> C["Record created; adapter writes the host's tools, roles and events"]
+    C --> D["git's pre-push hook added; code graph indexed"]
+    D --> E["Human opens the host in the project"]
+    E --> F["Session start: the engine briefs the planner from the record"]
+    F --> G["First session: 2.1 First contact"]
+```
+
+### 1.2 Updates and channels
+
+An install follows one channel: stable, rc or dev. Each channel is a program of its own name, side by side with the others, and updates only itself. A running session keeps the build it started with, so a task never meets a new build half way. With no network tmb runs the build it has. [INSTALL.md](INSTALL.md) covers channels, pinned builds and package managers.
+
+```mermaid
+flowchart LR
+    A["Session start, at most once an hour, or tmb update"] --> B["Look for a newer build on this channel"]
+    B --> C["Download in the background, verify, keep"]
+    C --> D["Install at the session's end, or on tmb update"]
+    D --> E["A running session moves at its next tool call, once no task is open"]
+    E --> F["Next session start with no task open: the project's wiring is refreshed and audited"]
+```
+
+### 1.3 Move a plugin project
+
+A project of the TMB plugin starts fresh in tmb. `tmb migrate` is a one-way copy of its records and leaves the plugin's database unchanged. In a workspace each plugin repo goes to the repo of the same name, or to one the Human names; tmb never guesses. The [reference](../reference/README.md#move-a-plugin-project) covers its use.
+
+```mermaid
+flowchart LR
+    A["tmb init in the project"] --> B["tmb migrate"]
+    B --> C["Plugin records copied into tmb's record"]
+    C --> D["Plugin database left unchanged"]
 ```
 
 ## 2. Cold start
 
-On a new project the server's first connect starts the scan (2.2) in the background. First contact (2.1) then reads the repos the scan found, and records each repo's environment profile (2.3) before its verification round. Later sessions skip what is already done.
+`tmb init` builds the record and the code graph (2.2). The first session then finds the settings empty and runs first contact (2.1), which takes each repo's checks from its environment profile (2.3). Later sessions skip what is already done.
 
 ### 2.1 First contact
 
-The first bro turn on a project that isn't onboarded runs `/onboard` before any reply. bro asks in rounds. The workspace answers and the onboarded marker are saved together, in one transaction. Each repo's verification defaults and path classes are written as files for the Human to commit. [ONBOARD.md](ONBOARD.md) covers each round and when it runs.
+Onboarding happens by itself. The planner applies the base branch and the checks it recommends, and shows them. The review mode is the Human's alone: it decides how many tokens a project uses, so tmb recommends agile and never picks. No task starts until the Human has chosen. `tmb onboard` sets the same settings from a terminal, at any time. tmb sets up no sandbox. [ONBOARD.md](ONBOARD.md) covers each setting and each way to set it.
 
 ```mermaid
 flowchart LR
-    A[Project not onboarded] --> B[bro re-probes the project]
-    B --> C[Rounds: shape, branching, sync, sandbox, bug reports, review mode]
-    C --> D[Workspace answers and onboarded marker land together]
-    D --> E[Per repo: verification defaults and path classes written as files for the Human to commit]
+    A["Session start: settings are empty"] --> B["Engine tells the planner what it found in the project"]
+    B --> C["Planner applies the base branch and checks it recommends, and shows them"]
+    C --> D["Planner asks the Human for the review mode, agile recommended"]
+    D --> E["Human's answer stored, with who chose it"]
+    E --> F["Tasks can start"]
 ```
 
-### 2.2 Scan and world-model refresh
+### 2.2 Index and code-graph refresh
 
-A scan builds the project map bro reasons from and reconciles the capabilities already on disk. [WORLD_MODEL.md](WORLD_MODEL.md) covers what the map holds and how it stays current.
+The code graph is the project map the planner scopes tasks from: files with their summaries, symbols and the links between them. Each repo has its own graph, built from its base branch. Every lookup first brings a graph that is behind forward, so no agent has to ask for a refresh. A lookup for an open task or a feature branch answers from that work's own commit. [WORLD_MODEL.md](WORLD_MODEL.md) covers what the graph holds and how it stays current.
 
 ```mermaid
 flowchart LR
-    A[Empty world model, /scan, a merged architectural change, or server connects] --> B[Index each repo at its target commit]
-    B --> C[Directory summaries, file purposes, symbol edges]
-    C --> D[Reconcile on-disk skills, plugins, MCP servers]
+    A["tmb init, tmb index, or a lookup that finds the graph behind"] --> B["Read each repo at its base branch commit"]
+    B --> C["Parse only the files that changed"]
+    C --> D["File summaries, symbols and their links"]
+    D --> E["The lookup is answered from the fresh graph"]
 ```
 
 ### 2.3 Environment profile
 
-When bro needs a repo's install, test and lint commands, it works them out from the repo's own evidence; no toolset is hardcoded. [ENVIRONMENT.md](ENVIRONMENT.md) covers what it reads and what survives a re-record.
+tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a workspace, and they run at every task's close. [ENVIRONMENT.md](ENVIRONMENT.md) covers what is read.
 
 ```mermaid
 flowchart LR
-    A[bro needs a repo's commands] --> B[Detect from CI, manifests, config]
-    B --> C[Record resolved commands per category]
-    C --> D[Per-machine cache]
+    A["Planner needs a repo's checks"] --> B["Engine suggests them from the repo's own files"]
+    B --> C["Planner applies them, or the Human replaces them"]
+    C --> D["Stored as the repo's checks"]
+    D --> E["Run at every task close"]
 ```
 
 ## 3. Agent task handling
 
-[TASKS.md](TASKS.md) holds every case of flows 3.1 to 3.5: what each step guarantees, the failure paths and how to debug a stuck task.
+[TASKS.md](TASKS.md) holds every case of flows 3.1 to 3.5: what each step guarantees, the failure paths and how to debug a stuck task. The engine, not an agent, creates branches and worktrees, runs checks, folds, pushes and opens pull requests. Agents ask for these through tmb's tools, so every step is recorded.
 
 ### 3.1 Code task
 
-The canonical chain: bro plans and gates, swe implements, code-reviewer reviews, and the Human merges. An architectural change also records a decision naming its blast radius at provision, and bro weighs the change against it at close.
+The canonical chain: the planner plans and writes the spec, a worker implements, the engine runs the checks at close, the reviewer reviews, and the Human merges. The host starts the worker and the reviewer as its own subagents; tmb starts no agent. When the review happens depends on the repo's review mode: once per feature branch in agile (3.9), once per task in truest (3.10).
 
 ```mermaid
 flowchart LR
-    A[Human asks] --> B[bro grounds and records intent]
-    B --> C[bro provisions task, branch, worktree]
-    C -. architectural .-> C1[Decision and blast radius recorded]
-    C1 -.-> D
-    C --> D[swe implements and closes]
-    D --> E[3.3 Push gate: pass]
-    E --> F[bro closes task, pushes, opens PR]
-    F --> G[Human merges]
+    A["Human asks"] --> B["Planner grounds it and records the issue"]
+    B --> C["Planner writes the spec; engine cuts the task's branch and worktree"]
+    C --> D["Host starts a worker; it implements and closes"]
+    D --> E["Checks pass on the task's commit"]
+    E --> F["Review, per the review mode: 3.9 or 3.10"]
+    F --> G["3.3 Push gate: pass; pull request opens"]
+    G --> H["Human merges"]
 ```
 
-### 3.2 Non-code task
+### 3.2 Docs task
 
-bro writes a docs or prompts change itself, in a task worktree marked with that kind. bro self-checks it with the doc-review skill before review, and code-reviewer then grades it with the same skill.
+The planner writes a docs or prompts change itself, in a task worktree marked as docs. The planner judges the kind; the engine checks the call by file type at close and refuses a docs task that touched any other file. Its checks run at close like any task's, and the reviewer sees it in the same review as the code tasks. Planned: a doc-review skill the planner and the reviewer both grade with (tmb ships no skills yet).
 
 ```mermaid
 flowchart LR
-    A[Human asks] --> B[bro grounds and records intent]
-    B --> C[bro provisions a docs or prompts task]
-    C --> D[bro edits and closes]
-    D --> E[3.3 Push gate: pass]
-    E --> F[bro closes task, pushes, opens PR]
-    F --> G[Human merges]
+    A["Human asks"] --> B["Planner grounds it and records the issue"]
+    B --> C["Planner starts a docs task"]
+    C --> D["Planner edits and closes"]
+    D --> E["Checks pass; only docs file types changed"]
+    E --> F["Review, per the review mode: 3.9 or 3.10"]
+    F --> G["3.3 Push gate: pass; pull request opens"]
+    G --> H["Human merges"]
 ```
 
 ### 3.3 Push gate
 
-Each completed task of either kind gets its own code-reviewer, in parallel, and no task commit is pushed without a passing verdict for that commit.
+The gate is git's own pre-push hook, so it holds on any host and for a push typed by hand. A push is refused unless the record holds what the repo's review mode requires for its commits: a reviewer's pass or the Human's waiver. Each verdict and waiver also sets a mark on that exact commit on GitHub, which the repo's branch protection can require before a merge. The gate denies when it cannot read the record, and allows in a project tmb was never set up in.
 
 ```mermaid
 flowchart LR
-    A[Task handed to review] --> B[code-reviewer probes the diff's dependents, or grades docs and prompts with the doc-review checklist]
-    B --> C[Recorded verdict: pass]
-    C --> D[bro closes, pushes, opens PR]
+    A["Reviewer records a pass, or the Human a waiver"] --> B["Commit marked on GitHub"]
+    A --> C["A push, tmb's own or typed by hand"]
+    C --> D["git's pre-push hook asks the engine"]
+    D --> E{"Record covers every commit?"}
+    E -- yes --> F["Push goes"]
+    E -- no --> G["Refused, with the reason"]
 ```
 
 ### 3.4 Retry and escalation
 
-A review fail, a design misfit, an integrate conflict, a failed check or a stale run sends the task back to its owner without waiting on the Human.
+Work that fails goes back to its author without waiting on the Human. Nothing waits for a timer: tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`. Planned (trustmybot/tmb#165): after two review fails in a row, no worker starts on the task until the planner has recorded the cause; the rest of the plugin's retry rules are not built.
 
 ```mermaid
 flowchart LR
-    A[Fail, misfit, conflict or stale run] --> B[bro reopens or retries the task]
-    B --> C[The author reworks: swe, or bro on a non-code task]
-    C --> D[3.3 Push gate]
+    A["A check fails at close"] --> B["Close refused; names the check; task stays open"]
+    C["Reviewer fails the work"] --> D["Task reopens, or the planner starts fix tasks"]
+    E["A fold or a rebase conflicts"] --> F["Step undone; names the files"]
+    B --> G["The author reworks: worker, or the planner on a docs task"]
+    D --> G
+    F --> G
+    G --> H["Close again, then review again"]
+    G -. wrong approach .-> I["Task dropped with a reason; a new task replaces it"]
 ```
 
 ### 3.5 PR comment triage
 
-Review comments on a PR bro owns become tasks through 3.1 or 3.2, on the PR's own issue.
+Planned for v1.x (trustmybot/tmb#70): a sync with the remote brings review comments into the record, and the planner sorts them into tasks. Today the planner starts fix tasks on the PR's branch itself. Either way no unreviewed commit reaches an open pull request: the new tip is pushed to the same pull request only after its review or a waiver.
 
 ```mermaid
 flowchart LR
-    A[Comments reach a PR bro owns] --> B[Fetch and store each once]
-    B --> C[Group the task-worthy ones]
-    C --> D[3.1 or 3.2 per group, on the PR's issue]
+    A["Comments reach a PR tmb opened"] --> B["Sync brings each into the record once"]
+    B --> C["Planner groups the task-worthy ones"]
+    C --> D["3.1 or 3.2 per group, on the PR's branch"]
+    D --> E["New tip reviewed, then pushed to the same PR"]
 ```
 
 ### 3.6 Multi-repo workspaces
 
-A workspace's inner repos are identified by registration, which scopes both the world model's repo-relative paths and source protection. [GIT.md](GIT.md#multi-repo-workspaces) covers how each operation resolves to its repo.
+A project is a set of repos sharing one record. A project folder that is a git work tree is a project of one repo. A folder that is not one, and holds repos, is a workspace: tmb runs from it and its repos share the record there. Only managed repos get the workflow; an exempt repo and a folder that is no repo are listed and left alone. The repo comes from the work, never from the folder a session runs in. [GIT.md](GIT.md#multi-repo-workspaces) covers how each operation resolves to its repo.
 
 ```mermaid
 flowchart LR
-    A[Inner repos registered] --> B[World-model paths stored per repo]
-    A --> C[bro may not edit registered repos from the main checkout]
+    A["tmb init in a folder that holds repos"] --> B["Every top-level folder recorded: repo, exempt, or not a repo"]
+    B --> C["Per managed repo: base branch, checks, optional review mode"]
+    B --> D["Per managed repo: pre-push hook and its own code graph"]
+    C --> E["A feature or task names its repo"]
+    D --> E
+    E --> F["Every later step runs in that repo"]
 ```
 
 ### 3.7 Bulk cleanup
 
-When the Human's prompt names what to delete, bro deletes it in one step and does not ask again. Any safety check belongs before the Human authorizes, and asking again would treat an instruction the Human already gave as a question. It covers what no task owns: untracked files, merged branches and stale worktrees. A tracked repo file is deleted through a task like any other change. bro records in the audit log what it deleted and the Human's words that authorized it.
+tmb cleans up only what it wrote, and only on the Human's yes to each item. `tmb doctor` lists what is left on disk: old builds no session uses, entries of ended sessions, and worktrees and branches of closed and dropped tasks. A worktree holding work nobody committed stays. A tracked repo file is deleted through a task like any other change. Open, for the Human: the plugin's one-step delete that the planner runs on a prompt naming what to delete.
 
 ```mermaid
 flowchart LR
-    A[Human names what to delete] --> B[bro deletes in one step]
-    B --> C[Audited: what was deleted, and the Human's words]
-    A -- a tracked repo file --> D[A task, as in 3.1 or 3.2]
+    A["tmb doctor"] --> B["Lists leftovers, one line each"]
+    B --> C["tmb doctor --fix asks about each"]
+    C -- yes --> D["Removed"]
+    C -- no --> E["Kept"]
+    A -- "a tracked repo file" --> F["A task, as in 3.1 or 3.2"]
 ```
 
 ### 3.8 Parallel lanes
 
-Planned (epic GH 3024). When the Human's ask holds several independent streams of work, each too large for one turn, bro proposes lanes. A lane is a Claude session running its own bro on flow 3.1, 3.2 or 3.9 for the issues it owns. Starting sessions and messaging between them are Claude's own features, and TMB builds no lane mechanism of its own. TMB adds a record of each lane with its owned issues in the trajectory DB, so a session finds its work again after a compaction, and a review mode per lane. Lane PRs merge like any other PR, with no queue, priority or collision check of TMB's own. [LANES.md](LANES.md) holds every case.
+tmb does not manage lanes and keeps no lane record. Starting sessions and messaging between them are the host's features. tmb gives every session the same footing: one shared record to resume from, a branch and a worktree per task, and a planner that is told which open tasks share a file. Two tasks may change the same file; git settles it at the merge, and a clash holds back the later task's close. Lane PRs merge like any other PR. Planned: guidance for running parallel sessions in the planner's prompt; which session made each entry (trustmybot/tmb#63); a freeze that stops every session at once (trustmybot/tmb#64). [LANES.md](LANES.md) holds every case.
 
 ```mermaid
 flowchart LR
-    A[Human asks for parallel work] --> C[bro proposes lanes: issues and a review mode per lane]
-    C --> D{Human approves?}
-    D -- yes --> E[Claude starts one session per lane]
-    E --> F[Each lane is recorded and runs 3.1, 3.2 or 3.9 on its own issues]
-    F --> G[Lane PRs merge like any other PR]
-    D -- no --> S[One session, flow 3.1]
+    A["Human asks for parallel work"] --> B["Planner splits it into independent issues"]
+    B --> C["Host starts one session per stream"]
+    C --> D["Each session's planner resumes from the shared record"]
+    D --> E["Each runs 3.1 or 3.2 on its own issues, a worktree per task"]
+    E --> F["Planner is told which open tasks share a file"]
+    F --> G["PRs merge like any other; git settles a clash"]
 ```
 
 ### 3.9 Agile mode
 
-Shipped for the project review mode; lane review modes are planned (GH 3025). The review mode, truest or agile, decides who reviews a task and when. /onboard sets it for the project, and a lane may take its own at its start. Agile work builds up on one long-lived feature branch per milestone, such as an MVP, pushed to origin only as a backup, with no PR, so no CI or review runs on it. The Human tries it in a separate worktree, never by switching the shared checkout, which every lane reads on the working branch. bro closes each task without a code-reviewer pass, though it still judges swe's report and the architecture fit. It then folds the task into the feature branch locally and deletes the task branch, and the task is queued for review. An agile task's freshness, merge-base and scope checks use its feature branch as the base; the working branch is the base only for the milestone PR. At the milestone, bro syncs the working branch into the feature branch and fixes its conflicts once, and an optional periodic sync keeps that fix small. Then one batch review runs on the net diff against the working branch, in groups of tasks that changed overlapping files, and a passing group's tasks become batch-reviewed together. Only then does the branch go to the working branch as one PR, with one CI run and one merge-queue run, unless the Human waives the review. After the merge, TMB deletes the local branch, and the remote copy is deleted on merge. Truest is the default today; agile becomes the default, and onboarding will recommend a mode and ask one per repo (planned, GH 3281). [AGILE.md](AGILE.md) holds every case.
+The recommended mode. Work builds up on one long-lived feature branch per milestone, cut from the remote's base branch. Each task closes on its checks alone, with no review of its own, folds into the feature branch, and the branch is pushed only as a backup, with no pull request. The Human tries the branch in a separate worktree at any time. At the milestone the base branch is merged in, the reviewer reviews the whole branch once, and only then does it go to the base branch as one pull request, unless the Human waives the review. A workspace has one review mode and a repo can name its own. A task keeps the mode it started in. [AGILE.md](AGILE.md) holds every case, including a branch that ends merged, closed or dropped.
 
 ```mermaid
 flowchart LR
-    A[Human approves a milestone's feature branch] --> B[bro provisions a task off it]
-    B --> C[swe implements and closes]
-    C --> D[bro closes without review, folds it into the feature branch locally, deletes the task branch]
-    D --> F[Task queued for review]
-    F --> B
-    F --> S[Milestone: sync the working branch in, fix conflicts once]
-    S --> G[One batch review on the net diff, one code-reviewer per group]
-    G --> H[One PR into the working branch: nothing queued, or Human waiver]
-    H --> I[One CI run and one merge-queue run; merged per the merge policy]
-    I --> J[Local branch deleted; remote copy deleted on merge]
-    G -. fail .-> K[New fix task on the feature branch, reviewed as in 3.1]
-    K -. the failed group is reviewed again .-> G
-    F -. Human asks for a review now .-> R[code-reviewer reviews that task, as in 3.1]
-    F -. Human drops the feature branch .-> X[Its queued tasks are cancelled]
+    A["Human approves a milestone's feature branch"] --> B["Engine cuts it from the base branch"]
+    B --> C["Planner starts a task off it"]
+    C --> D["Worker implements, or the planner writes docs"]
+    D --> E["Checks pass: task closes with no review and folds in"]
+    E --> F["Feature branch pushed as a backup, no PR"]
+    F --> C
+    F --> S["Milestone: base branch merged in"]
+    S --> G["Reviewer reviews the whole branch"]
+    G -- "pass, or Human waiver" --> H["One PR into the base branch"]
+    H --> I["Human merges"]
+    G -. fail .-> K["Fix tasks on the feature branch"]
+    K -.-> G
+```
+
+### 3.10 Truest mode
+
+For a repo where nothing may reach the base branch unreviewed. There is no feature branch: each task is cut from the base branch, waits in review after its checks pass, and gets its own pull request after a pass or a per-task Human waiver. Before the first push the engine rebases the reviewed commit when the base branch moved; an open pull request is never rebased. [AGILE.md](AGILE.md) compares the two modes; [TASKS.md](TASKS.md) holds every case.
+
+```mermaid
+flowchart LR
+    A["Engine cuts the task branch from the base branch"] --> B["Worker implements, or the planner writes docs"]
+    B --> C["Checks pass; the task waits in review"]
+    C --> D["Reviewer reviews the task's commit"]
+    D -- "pass, or Human waiver" --> E["Engine rebases if the base moved, pushes, opens the PR, closes the task"]
+    E --> F["Human merges"]
+    D -. fail .-> G["Task reopens; the worker reworks it"]
+    G -.-> C
+```
+
+### 3.11 Project with no remote
+
+In a repo with no remote nothing is pushed and no pull request is opened. A close skips the backup push and says so. After the review passes, or the Human waives it, the pull request step records the work as ready and gives the Human the command to merge it locally. tmb records the merge once the local base branch holds the work, and looks at session start, when features or tasks are listed, and for the dashboard. A ready branch still takes fix tasks. [GIT.md](GIT.md) covers every case.
+
+```mermaid
+flowchart LR
+    A["Review passes, or the Human waives it"] --> B["PR step records the work as ready"]
+    B --> C["Human gets the local merge command"]
+    C --> D["Human merges into the local base branch"]
+    D --> E["tmb sees the base branch holds the work"]
+    E --> F["Recorded as merged, or the task closed"]
+```
+
+### 3.12 Unattended run
+
+A session with no one to answer, such as a run in CI, a scheduled job or an agent test, is started in unattended mode by whoever starts the run, for that run only. It changes guidance only: the checkpoints allow and refuse exactly as in a normal session. A choice the role leaves to the Human alone, such as the review mode, is never a default. [HOSTS.md](HOSTS.md) covers it.
+
+```mermaid
+flowchart LR
+    A["Run started in unattended mode"] --> B["Session start puts one instruction first: apply your defaults and name each"]
+    B --> C["Planner answers its own questions with its recommendation"]
+    C --> D["Each default recorded as a decision on its issue"]
+    D --> E["Work goes on; the answer names the defaults"]
+    C -. "no safe default" .-> F["Planner stops and says why"]
+```
+
+### 3.13 Several hosts on one record
+
+Built; not supported or tested before v2. Each host connects to the same record in the same project and takes a role, the planner by default. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's. [HOSTS.md](HOSTS.md) covers hosts, adapters and each host's limits.
+
+```mermaid
+flowchart LR
+    A["tmb init once per host, each with a role"] --> B["Host one opens as the planner"]
+    A --> C["Host two opens as the reviewer"]
+    B --> D["Planner and workers build the work"]
+    D --> E["Record: a branch waits for review"]
+    C --> E
+    E --> F["Reviewer host is briefed at session start and records its verdict"]
+    F --> G["Same checks, same push gate"]
 ```
 
 ## 4. Extending the team
 
+None of group 4 is built. tmb ships three roles: planner, worker and reviewer. [EXTENDING.md](EXTENDING.md) covers 4.2 to 4.4.
+
 ### 4.1 Cheatcode lifecycle
 
-bro acquires a published skill, MCP toolkit or plugin instead of building a capability by hand, and the Human approves each install. [CHEATCODES.md](CHEATCODES.md) covers every stage, the trust design and teardown. Planned (GH 3360): cheatcodes are cut. The skill creator's attach step also takes a skill the Human downloaded, so a skill still reaches the agent that needs it.
+Planned (trustmybot/tmb#112). The planner acquires a published skill instead of building a capability by hand, and the Human approves each install. In tmb the scope grows: a skill is given to a role once, for every host in that role. [CHEATCODES.md](CHEATCODES.md) covers every stage, the trust design and teardown.
 
 ```mermaid
 flowchart LR
-    A[Capability gap] --> B[Search registries]
-    B --> C[Vet the pick]
-    C --> D[Human approves]
-    D --> E[Install and attach to its agent]
-    E --> F[Activate]
+    A["Capability gap"] --> B["Search registries"]
+    B --> C["Vet the pick"]
+    C --> D["Human approves"]
+    D --> E["Skill given to a role"]
+    E --> F["Every host in that role gets it"]
 ```
 
 ### 4.2 Agent creation
 
-When routing hits a role the project has no agent for, bro drafts one and the Human approves it before the project agent file is written. [EXTENDING.md](EXTENDING.md) covers 4.2 to 4.5, including what each refuses.
+Open, for the Human: whether tmb carries this over. When routing hits a role the project has no agent for, the planner drafts one and the Human approves it before the agent is written.
 
 ```mermaid
 flowchart LR
-    A[Role with no agent] --> B[Up to three questions]
-    B --> C[Tailored draft]
-    C --> D[Human approves]
-    D --> E[Agent file written and registered]
+    A["Role with no agent"] --> B["Up to three questions"]
+    B --> C["Tailored draft"]
+    C --> D["Human approves"]
+    D --> E["Agent written for the host and registered"]
 ```
 
 ### 4.3 Skill creation
 
-A recurring pattern becomes a project skill the same way: bro drafts, the Human approves.
+Planned. tmb will ship its own skills, loaded on demand; today it ships none. A recurring pattern becomes a project skill the same way: the planner drafts, the Human approves.
 
 ```mermaid
 flowchart LR
-    A[Recurring pattern] --> B[bro drafts the skill]
-    B --> C[Human approves]
-    C --> D[Skill lands in the project]
+    A["Recurring pattern"] --> B["Planner drafts the skill"]
+    B --> C["Human approves"]
+    C --> D["Skill lands in the project"]
 ```
 
 ### 4.4 Consultant invocation
 
-A consultant answers a second-opinion question; bro reports its analysis, and the Human decides.
+Open, for the Human: whether tmb carries this over. A consultant answers a second-opinion question; the planner reports its analysis, and the Human decides.
 
 ```mermaid
 flowchart LR
-    A[Human asks for a second opinion] --> B[Consultant spawned on the question]
-    B --> C[Analysis recorded on the issue]
-    C --> D[bro reports, Human decides]
+    A["Human asks for a second opinion"] --> B["Consultant started on the question"]
+    B --> C["Analysis recorded on the issue"]
+    C --> D["Planner reports, Human decides"]
 ```
 
-### 4.5 Roundtable
-
-The Human opens a table on a topic, 2–5 consultants each take a position, and the Human ratifies the outcome. Planned (GH 3360): the roundtable is cut; consultants stay.
-
-```mermaid
-flowchart LR
-    A[Human types /roundtable] --> B[Consultants take positions]
-    B --> C[Each stance recorded as a vote]
-    C --> D[Human ratifies]
-    D --> E[Table closes atomically]
-```
-
-## 5. Reporting TMB bugs
+## 5. Reporting tmb bugs
 
 ### 5.1 Bug report
 
-Off by default; the Human opts in during first contact, or asks for one report by name. bro drafts a redacted report, offers it once per session per signature, and files nothing until the Human has read the full draft and said yes.
+Nothing is ever sent by itself. The feedback program is on by default on dev and rc, and on stable the first run asks once; the setting is the person's, per machine. With it on, the planner may draft a report when tmb itself breaks. `tmb feedback` drafts one on request either way. A report is a public issue on tmb's source repo from the Human's own GitHub account, and holds no source code, file contents, prompts, agent messages or environment variables. The [reference](../reference/README.md#report-a-bug-in-tmb) covers its use. Planned: a check for an earlier or matching report before a new one is offered, as the plugin had.
 
 ```mermaid
 flowchart LR
-    A[bro hits a real TMB bug] --> O{Opted in, or the Human asked for this report?}
-    O -- no --> N[No offer]
-    O -- yes --> B[Redacted draft with a signature]
-    B -- the same signature was already filed --> P[bro names the earlier report; nothing new]
-    B -- a matching report exists upstream --> Q[Offer a comment with this session's environment instead]
-    C -- edit first --> B
-    C -- no --> R[Dropped; not offered again this session]
-    D -- no forge CLI, or signed out --> S[The Human gets a prefilled link; recorded as handed over]
-    B --> C[Human reads the full draft]
-    C --> D[Human says yes]
-    D --> E[Filed to the plugin's repo and audited]
+    A["tmb itself breaks"] --> O{"Feedback on, or the Human ran tmb feedback?"}
+    O -- no --> N["No offer"]
+    O -- yes --> B["Cleaned draft"]
+    B --> C["Human reads the full draft"]
+    C -- no --> R["Dropped"]
+    C -- yes --> D{"GitHub CLI signed in?"}
+    D -- yes --> E["Filed to tmb's repo and recorded"]
+    D -- no --> S["Bug form opens filled in; the Human submits; recorded as opened"]
 ```

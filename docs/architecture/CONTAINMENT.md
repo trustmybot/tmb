@@ -1,120 +1,128 @@
 # Containment
 
-TMB writes nothing outside the project it runs in, whatever scope it is installed at, and holds the agents it runs to the same boundary. This page states the boundaries, the layers that keep them, and why. For the code that enforces each one, ask the world model.
+tmb keeps a project's data inside the project, keeps its own program and state in two named places on the machine, and changes nothing it did not write. It does not watch each step an agent takes: it gates the outcome at checkpoints. This page states the boundaries, the checkpoints that keep them, and why. For the code that enforces each one, ask the code graph.
 
 ## The invariant
 
-- **Writes stay in the project.** Nothing is created, changed or deleted under the user's home directory: no Claude Code config, no marker, no log, no lock. By installing TMB, the user agrees to its writes: in any folder where the plugin is enabled, the server creates the project's state folder and trajectory DB at session start, and each repo gets one ignore line. So TMB installs per project; a user-scope install writes that state into every folder a session opens ([INSTALL.md](INSTALL.md)).
-- **Reads outside the project are read-only and named.** Hooks read Claude Code's plugin install registry, to find which install serves the project, and its user settings, to warn about duplicate copies and leftover hooks. They never write either.
-- **A user project's `CLAUDE.md` is never written**, with one exception: a cheatcode the Human approved and attached to bro adds one reference line to the project's `CLAUDE.md`, and its uninstall removes that line. bro's persona reaches a session as injected context.
-- **No context or effort settings.** TMB never changes Claude Code's context, model or effort settings. Token savings come from TMB's own design, not from changing how the user's Claude Code runs.
+- **A project's data stays in the project.** The record, the code graph and the task worktrees sit in tmb's own folder there. Nothing about a project is kept anywhere else on the machine.
+- **tmb writes only where the Human ran it.** A project gets tmb's files when the Human runs init in it, never because a session opened there. In a project with no record every gate allows and nothing is recorded.
+- **tmb changes only what it wrote.** In a host file or a hook it shares with the Human or another tool, tmb adds its own marked entries and leaves the rest. Remove takes out exactly those ([INSTALL.md](INSTALL.md#upgrade)).
+- **Reads outside the project are read-only and named.** tmb looks for the host's program on the machine, reads Codex's user config to see whether the project is trusted, reads a plugin project's database when the Human migrates it, and reads GitHub through the Human's own command line.
+- **The host's own instruction file is never written.** The role reaches a session as the engine's answer to its session start ([HOSTS.md](HOSTS.md#cold-start)). Planned (trustmybot/tmb#112): a cheatcode may add one reference line and take it out again ([CHEATCODES.md](CHEATCODES.md)).
+- **No login, no trust, no host settings.** tmb never reads, stores or passes on a login. It never trusts a project or a hook on the Human's behalf, and never changes a repo's branch protection. It changes no host setting beyond its own entries.
 
-Three exceptions, each declared once:
+The plugin's three exceptions are gone: tmb has no embedding model, no runtime dependencies to install and no host cache to repair.
 
-| Exception | Why |
+## What tmb writes in the project
+
+Everything of tmb's own sits in its project folder: the record, one code graph per repo, the task worktrees, and small notes on which host files init created. Outside that folder init writes only these:
+
+- the host's project files, through its adapter: the tool server's registration, the event wiring and the role files, each marked as tmb's ([HOSTS.md](HOSTS.md#what-an-adapter-provides)). A role file tmb did not write is never overwritten;
+- git's pre-push hook in each repo tmb works in. A hook that is another tool's is left alone; with the Human's yes tmb adds one line first in it;
+- ignore lines for its folder and for the host files that are the Human's alone. Remove leaves these lines;
+- `git init`, once, in a folder that is in no repo and holds none;
+- feature and task branches in git, which tmb never deletes while they hold work.
+
+Planned: the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([EXTENDING.md](EXTENDING.md)).
+
+## What tmb writes on the machine
+
+tmb is one program for the whole machine, so two things live outside any project. Each channel's program has its own, and one never touches another's.
+
+| Where | Holds |
 |---|---|
-| The embedding model cache, shared with other Hugging Face tools and relocatable | A shared, re-downloadable cache; per-project copies would cost gigabytes. |
-| The MCP server's runtime dependencies, installed once per plugin install in Claude Code's plugin data dir | The embedding library ships native builds per platform, so it stays outside the bundle, and a marketplace install runs no package install. The dependencies belong to the install, not to a project. |
-| A Human-run repair command for Claude Code's MCP cache | Its job is fixing Claude Code's own plugin config. It is never a hook and never the server. |
+| The user's program folder | The program, under its channel's name. The installer adds the folder to PATH unless told not to. |
+| The program's state folder | Kept builds, the time of the last look for an update, a marker per running session, the person's feedback setting, drafts of bug reports and the last error |
 
-## What TMB writes in the project
+- **The feedback setting is the person's**, not a project's, which is why it is here.
+- **Nothing is deleted by itself.** An old build goes only on the Human's yes ([INSTALL.md](INSTALL.md#upgrade)).
+- **Scratch files go to the system's temp folder** and are removed when the step ends.
 
-Everything sits in the project's state directory: the trajectory DB, logs, short-lived session markers and the locks that stop one hook call from running twice. Markers and locks are pruned on a timer. Outside that directory TMB writes only these:
+## Tests never touch the live record
 
-- task worktrees, under the project;
-- one ignore line per repo, added at session start. Today it ignores the project's whole Claude folder, which also hides a team install's shared settings, agents and skills from commits; planned (GH 3260): it ignores only TMB's own state, the local settings and the task worktrees;
-- the agent, skill and cheatcode files the Human approved one by one;
-- after a yes during onboarding, the optional headless enforcement shim and the sandbox settings in the project's local Claude Code settings, each entry stamped as TMB's. Planned (GH 3360): the headless shim is cut.
+- **Machine-wide state is swapped before any test runs.** Every tmb a test starts, in its own process or as a child, keeps its state in a scratch folder, never the person's. The feedback program is off for them.
+- **Each test works in a project of its own.** A fixture is copied into a fresh repo in a temp folder, removed on exit. The record is found only in a folder or above it, so a temp folder never reaches a real one.
+- **Rows a past run left behind are never deleted by an agent.** `tmb doctor` shows what it finds, and the Human decides.
 
-## Tests never touch the live DB
+Planned, from the plugin's design: under a test flag the record is never looked up, so a test run started inside a tmb project cannot reach its record either.
 
-Every hook finds the DB through one resolver that walks up from the current directory, so a test run inside the project could reach the live DB. Under the test flags the resolver never walks: with no explicit DB or project dir the DB is unresolved, gates allow, and nothing is read or written. Test suites pin a fixture DB, and the integration runners refuse any direct call on the real one. Rows a past run left behind are reported by the doctor, never deleted by an agent: the Human decides.
+## One program, one build, one engine
 
-## One install, one entry point, one execution
+Several things could answer for one project: two channels' programs, an old build beside a new one, two hosts. Three rules keep a checkpoint from running twice or at two versions:
 
-A hook can be registered several times for one event: a project install beside a user-scope one, two channels, the headless shim beside the plugin. Three rules keep a gate from running twice or at two versions:
+1. **One program per project.** The project is tied to the program whose init last wired it. Its host events, its tool server and git's push hook all call that program.
+2. **One build per session.** While a session runs, every tmb call in its project runs the build the session started with. The host files are refreshed only at a session start with no task open ([INSTALL.md](INSTALL.md#upgrade)).
+3. **One engine.** Every way in asks the same engine, and every rule is written once against tmb's own events ([HOSTS.md](HOSTS.md#tmbs-own-events)). An adapter holds no rule.
 
-1. **One install per project.** A dev checkout always runs its own gates. Otherwise a project-scope install wins over a user-scope one, and the newest of two project installs wins, with a notice naming both.
-2. **One entry point.** Every hook registration, on every event, runs the same router. That router hands the call to the router of the install that serves the project, so a call that came in through a stale or user-scope install still runs the project's version.
-3. **One execution per call.** The router builds a key for each call from its event, session, tool and input, and takes a lock on that key. A duplicate call that arrives at the same time waits, then repeats only a denial, so context and banners appear once.
-
-**Gates fail closed.** Every hook that can deny is registered to block when it fails, and the router itself denies when an enforcement gate throws an error, runs past its time limit or answers badly. When an advisory gate fails, the failure is logged and ignored. Because the router decides this, the headless shim behaves the same.
-
-**Gates run in order.** Claude Code runs the hooks of one matcher in parallel, so a gate could act on a call another gate denies. Each event therefore has one router registration per group, and the router runs a group's gates in a fixed order, enforcement first, answering with the first deny.
-
-One hook call through the router:
+One host event, answered:
 
 ```mermaid
 flowchart TD
-    A[Claude Code fires a hook event; every registration runs the router] --> B{Which install serves this project?}
-    B --> B1[A dev checkout runs its own gates; else the newest project install, else the newest user install]
-    B1 --> C[Hand the call to that install's router]
-    C --> D{Another invocation already holds the lock for this event, session, tool and input?}
-    D -- yes --> E[Wait, then replay only its denial]
-    D -- no --> F[Take the lock]
-    F --> J[Run the group's gates in order, enforcement first]
-    J --> K{A gate denies, throws, overruns or answers badly?}
-    K -- an enforcement gate --> L[Answer with that deny]
-    K -- an advisory gate --> M[Log it and drop it]
-    M --> J
-    K -- no, all gates done --> N[Allow]
+    A[The host raises an event] --> B[The project's program answers, at the session's build]
+    B --> C{An agent's shell command?}
+    C -- yes --> C1{Does it run a step only the Human may take?}
+    C1 -- yes --> DENY[Deny with the reason, and record it]
+    C1 -- no --> SILENT[Allow, nothing read further, nothing recorded]
+    C -- no --> D{The project's record?}
+    D -- none here --> SILENT2[Allow, nothing recorded]
+    D -- "damaged, empty or a newer tmb's" --> DENY2[Deny with the cause]
+    D -- readable --> E{Which checkpoint?}
+    E -- the reviewer writes a file --> DENY
+    E -- a worker starts --> F{Open task, worktree ready, started from its repo?}
+    F -- no --> DENY
+    F -- yes --> G
+    E -- anything else --> G[Allow]
+    G --> H{Decision recorded?}
+    H -- yes --> OK[The host goes on, and still asks the Human as it would without tmb]
+    H -- no --> DENY2
 ```
 
-## Agents write only under their run's root
+### Gates fail closed
 
-Every agent run has a root: the project for bro and code-reviewer, the task's worktree for swe. A write is judged against the root of the caller's own run, resolved from who the caller is, never from its working directory, because a swe starts with the main checkout as its working directory. A swe's run is bound to its task through the task id in its spawn prompt; until that task resolves to a worktree, the run has no root and every write is denied. Three layers hold the boundary:
+- **A record tmb cannot read denies.** A record that is damaged, empty, or reshaped by a newer tmb denies every file write, agent start and push, and the deny names the cause and the way out (trustmybot/tmb#185).
+- **A decision tmb cannot record denies.**
+- **No record allows.** A project tmb was never set up in is not tmb's to gate. A push hook left in such a repo lets the push go and says so in one line.
+- **A deny always says why**, and what would be allowed.
+- **One limit, accepted.** When tmb itself cannot answer a host event, such as input it cannot parse, the host goes on and tmb writes a note: a tmb fault must never break the Human's session. The close and the push still check everything.
+- **A push hook that fails refuses the push.** Where tmb's line sits in another tool's hook, it does nothing on a machine without tmb, so a teammate's push is not blocked.
 
-| Tier | Layer | What it holds |
-|---|---|---|
-| 0 | Claude Code's Bash sandbox, enabled by `/onboard` on an explicit yes | OS-level: Bash, in the main loop and every subagent, writes only to the project, the sandbox temp dir and the model cache, and reaches only allowed hosts. It does not cover the file tools and allows the whole project, not one worktree. |
-| 1 | Server tools | A tool that takes a path or installs something refuses a target outside the project, and a global install is refused in favour of a project-local one. |
-| 2 | The containment guard hook, on the file tools and Bash | Denies a write outside the run's root, per swe worktree, and audits every denial. |
+## Checkpoints, not a guard on every write
 
-### The guard is an allowlist
-
-The guard is a parser, not a jail, and its rule is simple: a write it cannot prove lands inside the root is denied. File tools are judged by their target path; Bash by every write target a shell parser finds in the command. Paths resolve the way the kernel does, symlinks included. A target with an unknown part is allowed only when the literal directory before the unknown part is inside the root. A command the guard cannot parse, or an inline program that could hide a write, is denied outright, and the denial says why. Reads are never judged. What the parser cannot follow, such as a variable set in an earlier call, Tier 0 covers for Bash.
-
-Besides the run's root, the guard allows only places that store nothing outside the project or are the host's own scratch space: the device sinks, the model cache, the host's private temp dirs and the project's scratch dir. The main session may also write Claude Code's own state for the project, such as its memory and plans; subagents may not.
-
-How the guard judges one call:
+tmb checks what is delivered, like CI, and does not watch each step (trustmybot/tmb#98). The plugin judged every file write and parsed every shell command to predict what it would write. That cannot be done in general: it denied good commands and missed real writes, and it was the babysitting that made the plugin heavy. tmb builds no per-write guard, no shell parser and no sandbox. Whether the host's sandbox is on is the Human's own setting.
 
 ```mermaid
-flowchart TD
-    A[A file tool or Bash call] --> B{Trajectory DB state?}
-    B -- unresolved --> OK[Allow]
-    B -- error --> DENY[Deny and audit, naming why]
-    B -- ok --> C{Caller is a swe?}
-    C -- no --> R1[Root: the project]
-    C -- yes --> D{Its task resolves to a worktree?}
-    D -- no --> DENY
-    D -- yes --> R2[Root: the task's worktree]
-    R1 --> E{Bash?}
-    R2 --> E
-    E -- no, a file tool --> T[Target: the tool's path]
-    E -- yes --> P{The parser can read the command, with no inline program that could hide a write?}
-    P -- no --> DENY
-    P -- yes --> T2[Targets: every write the parser finds]
-    T --> K[Resolve each target the way the kernel does, symlinks included]
-    T2 --> K
-    K --> L{Every target inside the root or an allowed place, or an unknown part after a literal directory inside the root?}
-    L -- yes --> OK
-    L -- no --> DENY
+flowchart LR
+    W[An agent works in its worktree] --> C1[Task close: the checks run on the commit]
+    C1 --> C2[Review: the reviewer judges what it did not write]
+    C2 --> C3[Push: git's hook refuses unreviewed commits]
+    C3 --> C4[GitHub: a review mark that branch protection can require]
 ```
 
-### The sandbox opt-in
+| Mistake | Caught at |
+|---|---|
+| A worker starts with no task, or on a closed one | Its start: denied |
+| A worker writes outside its worktree | Its host keeps a worker's edits in a folder of its own, where the host can. The close names anything that changed in the main folder since the task started, with the command that puts it back. tmb puts nothing back: the list can hold the Human's own edits. |
+| A task changes files outside its spec | The close names each file. It refuses only on its checks. |
+| A docs task changes code | The close refuses, and names the file |
+| The reviewer edits what it judges | Its role has no editing tool, and a write the host names as the reviewer's is denied. A file written from its shell is not seen. |
+| Unreviewed commits leave the machine | git's pre-push hook, whoever typed the push |
+| An agent takes a step that is the Human's alone | The terminal's typed yes, and the host's deny of that shell command ([HOSTS.md](HOSTS.md#ways-into-the-engine)) |
+| Two tasks change the same file | No lock. git settles it when the work is merged, and a clash holds back the later task's close. |
 
-Onboarding merges the sandbox block into the project's local settings only on an explicit yes. The block turns the sandbox on, allows writes to the project and the model cache, and allows network access to GitHub, the package registries and the project's remote hosts. It also moves package caches into the project, so write access never has to widen to the home directory. The merge keeps every existing setting and records what TMB added, and a later no removes exactly what was added.
+- **Hooks are for checkpoints.** A host event is wired only where a checkpoint needs it: a session's start and end, an agent's start and stop, a file write, and a shell command.
+- **git's own hooks first.** A push is judged by git's pre-push hook, not by reading an agent's command, so it holds on every host and for a push typed by hand. tmb builds a hook of its own only where git has none.
+- **The engine reads no shell command**, with one exception: it looks for a step only the Human may take, and denies that.
+- **What a host cannot raise, a later checkpoint catches.** Nothing switches over: the close and the push check every change whatever the host raised.
+- **The engine does the git steps itself.** It, not an agent, cuts branches and worktrees, folds, pushes and opens pull requests, so every step is recorded.
+- **Deliberate evasion is out of the threat model.** Agents make mistakes but do not attack tmb. The fences stop the plain path, and the record shows each deny.
 
-The default answer comes from evidence: a recorded live probe per platform runs TMB's remote commands with and without the sandbox. A fresh onboard defaults to yes only when the platform has a clean record and no remote uses SSH, which bypasses the sandbox's proxy; otherwise it defaults to no. The release gate reruns the probe.
+Planned:
 
-The guard still judges temp paths because a live probe showed the sandbox leaves its own temp dir writable by default.
-
-Planned (GH 3360): onboarding stops setting up the sandbox. Whether Claude Code's sandbox is on is the Human's own Claude Code setting. TMB writes no sandbox settings, runs no probe and moves no package cache. In a project where TMB wrote them, the next onboarding run asks the Human once whether to keep the sandbox on. On keep, which is the default, the settings stay and become the Human's own. On remove, TMB deletes only the entries it added that still hold its value, and the closing summary lists them. Either way TMB drops its record of them. Nothing outside onboarding touches the settings file.
-
-### Planned: Claude Code's sandbox instead of write prediction
-
-(planned, GH 2098) Predicting what an arbitrary program will write cannot be done in general, so the parser both denies legitimate commands and misses real writes. The planned design stops predicting, and TMB builds no sandbox of its own: sandboxing is Claude Code's job. Where the Human turned on Claude Code's Bash sandbox, it is the hard boundary for Bash. TMB does not set it up, so TMB's own state inside the project gets no wall of its own: it is the Human's data, like the rest of the project. Every hook that judges a write keeps judging the file tools by their target path, and no hook reads a Bash command to predict what it writes. That holds for the containment guard, the swe boundary, the prompt-write approval and the other write rules alike. A Bash write to a prompt file is caught at the task's close, where the changed files are compared with the files the task may touch. Hooks decide only from what the literal input shows and never read an arbitrary program. One limit is accepted: Claude Code's sandbox covers the whole session, so even with it on a swe's Bash command can write anywhere in the project, not only in its task's worktree. Deliberate evasion is out of the threat model, since agents make mistakes but do not attack TMB.
+- **A skipped gate is found later.** The sync with the remote records it as a finding (trustmybot/tmb#70).
+- **Freeze.** One request stops all work in a project until the Human starts it again (trustmybot/tmb#64).
 
 ## Enforcement
 
-Lints and tests hold each invariant: no home-directory writes from scripts or the server, no live-DB access under test, every deny-capable hook blocking on failure, no write outside a run's root, and the router answering with the first deny in order and running each call once.
+Tests hold each rule: a damaged, empty or newer record denies; init and remove leave the Human's entries alone, and remove takes out exactly what init added; a program updates only itself and keeps its own state; a step that is the Human's alone is refused without a terminal. Two lints run with them: the engine never names a host outside its adapter, and every test's machine-wide state is a scratch folder.
+
+Open, for the Human: the plugin also had a lint that fails on any write to the home folder. tmb has none.
