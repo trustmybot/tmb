@@ -22,6 +22,7 @@ CI is split so that it never slows a lane down (trustmybot/tmb#164).
 - **Version tags (`vX.Y.Z-rc.N` and `vX.Y.Z`) run the heavy jobs:** `update-scenario` on macOS and Windows, `packaging-probe` on macOS, Linux and Windows, and the release build and install tests.
 - **`dev-release.yml` builds and publishes the dev channel after each merge to `dev`.** It runs after the merge and blocks no one.
 - **A macOS or Windows break shows up in the dev build or at the rc tag, not on the pull request.** That is the trade-off taken for speed. `packaging-probe` can also be run by hand from the Actions tab.
+- **An rc is made from `dev` only after the whole chain passes on the Human's own machine** (the Human's rule, 2026-11-20). The Human runs it, with their own login, in the container and with the session steps: see [the whole chain in a container](../../tests/README.md#the-whole-chain-in-a-container). The run on GitHub comes after the local one, never in its place. There is no rc branch: an rc is the `vX.Y.Z-rc.N` tag, so the rule holds before that tag is pushed.
 
 ## Docs first
 
