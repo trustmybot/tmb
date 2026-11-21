@@ -94,3 +94,10 @@ Built (trustmybot/tmb#146). Asked for by the Human on 2026-11-20: the planner ca
 ## Honest limits
 
 Agents do not always use a graph when one is offered, and a symbol lookup can cost more than a plain text search for a simple question. So the graph is used where it earns its cost: scoping a task, and finding what a change may break. Plain search stays available for everything else, and every miss or wrong answer of the graph is recorded so its value can be measured.
+
+Measured on 2026-11-20 against the TypeScript compiler, on one public repo (hono, 2,033 functions, 11,093 links between files; trustmybot/tmb#245):
+
+- **Functions found:** 2,016 of 2,033. The 17 missing are a bug (trustmybot/tmb#247).
+- **Links right:** 98.4% of the links the graph made. "It never guesses" is the rule, and 87 links broke it; three causes are known (trustmybot/tmb#246).
+- **Links found:** 50.6% of the compiler's links. The graph leaves a call unlinked when proving it needs the type of the thing it is called on. On two Python repos a sample of 120 links each was 118 and 120 right, but far fewer links are found there than in TypeScript.
+- A benchmark that repeats these scores for every release is planned (trustmybot/tmb#244, v1.x).
