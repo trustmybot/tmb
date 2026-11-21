@@ -472,6 +472,26 @@ Table constraints:
 | `key` | TEXT | nullable |  | PK |
 | `value` | TEXT | NOT NULL |  | CHECK `json_valid(value)` |
 
+### Planned: `docs`
+
+One row per design document, so the planner finds the design whether it lives in the repo or outside it, such as on a wiki. A projection like the others: record kind `doc`, folded from its events.
+
+| Column | Type | Null | Default | Constraints |
+|---|---|---|---|---|
+| `id` | TEXT | nullable |  | PK |
+| `repo` | TEXT | nullable |  | The repo the document describes, named as `features.repo` and `tasks.repo` name theirs; NULL is the project folder itself |
+| `location` | TEXT | NOT NULL |  | A path inside the repo, or a link outside it. UNIQUE with `repo`; CHECK `length(trim(location)) > 0` |
+| `title` | TEXT | NOT NULL |  | CHECK `length(trim(title)) > 0` |
+| `purpose` | TEXT | NOT NULL |  | What the document is for and when to read it. CHECK `length(trim(purpose)) > 0` |
+| `state` | TEXT | NOT NULL | `'current'` | `current` or `retired`. A retired row is kept |
+| `created_by` | TEXT | NOT NULL |  |  |
+| `created_at` | TEXT | NOT NULL |  |  |
+| `updated_at` | TEXT | NOT NULL |  |  |
+
+- **The row holds no content.** The document stays where it lives; the row says where that is and what it is for.
+- **The planner records and updates it;** the Human may. An updated event may change `location`, `title`, `purpose` and `state`.
+- **A task's spec names a row** as the design it implements ([`3_TASKS.md`](../flows/3_TASKS.md)).
+
 ### The code graph (`graph.db`)
 
 #### `layers`

@@ -17,6 +17,7 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 | Review | A reviewer's verdict on a commit or a feature branch, its findings, and the run that wrote it |
 | Guard decision | Each allow and deny the gate gave at a checkpoint, and why |
 | Audit entry | Every change to configuration and every Human waiver |
+| Doc | **Planned.** One design document: where it lives, in a repo or outside it such as a wiki, what it is for, and its repo |
 | Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
 
 ```mermaid
