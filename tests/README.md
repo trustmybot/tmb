@@ -43,7 +43,7 @@ tmb is a product for users, so an agent run tests what a user would really type,
 
 An agent run has no one to answer a question, so it runs tmb in unattended mode ([HOSTS.md](../docs/architecture/HOSTS.md#unattended-mode)): the engine tells bro at session start to apply its defaults and name the ones it used. The test sets the mode; the prompt never mentions it.
 
-Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. The whole chain has one: when bro stops to ask before it starts the work in steps 6, 12 or 14, which unattended mode should prevent, the check is marked known and the step answers once with `@bro go` ([tests/chain/prompts/go.txt](chain/prompts/go.txt)) in the same session, so the chain goes on.
+Unattended mode does not test whether bro asks a good question when a person is there. A test that needs that holds scripted replies, and the run resumes the session with one when bro asks. The whole chain holds none: in steps 6, 12 and 14 bro must start the work on its defaults without stopping to ask (trustmybot/tmb#281).
 
 ## Test drivers
 

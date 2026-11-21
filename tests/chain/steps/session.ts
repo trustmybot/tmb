@@ -21,25 +21,13 @@ function turnRan(checks: Checks, turn: Turn, what: string): void {
   checks.must(`${what}: the session ran to its end`, turn.status === 0 && !turn.isError, turn.shown);
 }
 
-/** tmb bugs the session steps found, filed: their checks are marked known until each is fixed. */
-const BUGS = {
-  /** In unattended mode bro stops to ask a question it has a default for, and starts no work. */
-  unattendedAsks: 281,
-};
-
 /**
- * With no one to answer, bro should apply its defaults and start the work (unattended mode). When
- * it stops to ask instead, that is marked known and the step answers it once, in the same session,
- * with the Human's "go" (tests/README.md: scripted replies), so the chain goes on. Returns the turn
- * the work started in.
+ * With no one to answer, bro applies its defaults and starts the work (unattended mode,
+ * trustmybot/tmb#281). A step that needs the work goes on only when it started.
  */
-function goOnIfAsked(world: World, checks: Checks, turn: Turn, repo: RepoName, at: string, log: string): Turn {
-  const started = () => since(tasks(world), at).some((task) => task.repo === repo);
-  checks.known(BUGS.unattendedAsks, `with no one to answer, bro starts the work in ${repo} on its defaults, without stopping to ask`, started(), turn.answer);
-  if (started()) return turn;
-  const go = askBro(world, prompt("go"), `${log}-go`, { resume: turn.sessionId });
-  turnRan(checks, go, "the scripted go");
-  return go;
+function startsWork(world: World, checks: Checks, turn: Turn, repo: RepoName, at: string): void {
+  const started = since(tasks(world), at).some((task) => task.repo === repo);
+  checks.must(`with no one to answer, bro starts the work in ${repo} on its defaults, without stopping to ask (trustmybot/tmb#281)`, started, turn.answer);
 }
 
 /** The one open feature branch in `repo`; stops the step when there is not exactly one. */
@@ -136,7 +124,7 @@ export const feature: Step = {
     const at = now();
     const asked = askBro(world, prompt("06-feature"), "06-feature");
     turnRan(checks, asked, "the feature request");
-    goOnIfAsked(world, checks, asked, "api", at, "06-feature");
+    startsWork(world, checks, asked, "api", at);
     const opened = since(issues(world), at);
     checks.ok("bro records the goal as an issue", opened.length >= 1 && opened.every((issue) => actorOf(issue.created_by).role === "planner"), show(opened));
     const branch = openFeature(world, checks, "api");
@@ -305,7 +293,7 @@ export const truestTask: Step = {
     rmSync(refs, { force: true });
     const asked = askBro(world, prompt("12-truest-task"), "12-truest-task");
     turnRan(checks, asked, "the tools task");
-    goOnIfAsked(world, checks, asked, "tools", at, "12-truest-task");
+    startsWork(world, checks, asked, "tools", at);
     checks.ok("truest mode has no feature branches: none in tools", features(world).every((feature) => feature.repo !== "tools"), show(features(world)));
     const made = since(tasks(world), at).filter((task) => task.repo === "tools");
     checks.must("a task in tools", made.length >= 1, show(since(tasks(world), at)));
@@ -357,7 +345,7 @@ export const notesTask: Step = {
     const at = now();
     const asked = askBro(world, prompt("14-notes-task"), "14-notes-task");
     turnRan(checks, asked, "the notes task");
-    goOnIfAsked(world, checks, asked, "notes", at, "14-notes-task");
+    startsWork(world, checks, asked, "notes", at);
     const made = since(features(world), at).filter((feature) => feature.repo === "notes");
     checks.must("a feature branch in notes", made.length === 1, show(features(world)));
     const branch = made[0]!;
