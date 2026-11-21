@@ -3,10 +3,11 @@
 // per blob: a later commit reparses only the files it changed.
 import type { Database } from "bun:sqlite";
 import { basename, posix } from "node:path";
-import { type ExtractedExport, type Extraction, extractFile, inSymbolScope, languageOf, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import { languageNamed } from "./languages/registry.ts";
+import { unreadLanguageOf } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
@@ -16,9 +17,10 @@ import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 5;
+export const EXTRACTOR_VERSION = 6;
 const MAX_PARSE_BYTES = 1_000_000;
-const MINIFIED = "minified; not parsed";
+/** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
+export const MINIFIED = "minified; not parsed";
 const MAX_ERROR_CHARS = 200;
 
 export type BuildStats = {
@@ -36,7 +38,33 @@ export type BuildStats = {
   functions: number;
   /** Files in a language tmb parses that could not be parsed; each is in the graph with its reason. */
   notParsed: number;
+  /** What the graph does not read: code in languages tmb has no module for, and files left out by rule (trustmybot/tmb#234). */
+  notRead: NotRead;
 };
+
+/** Files of a commit the graph does not read, with counts, most first. */
+export type NotRead = {
+  /** Files of each programming language tmb has no module for; they are in the graph as files, with no symbols. */
+  languages: { name: string; files: number }[];
+  /** Files each rule leaves out of the graph altogether, such as dist/ or lockfiles. */
+  leftOut: { rule: string; files: number }[];
+};
+
+export const NOTHING_UNREAD: NotRead = { languages: [], leftOut: [] };
+
+/** Counts, most first, then by name. */
+const sortedCounts = (counts: Map<string, number>): [string, number][] => [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+/** The layer's stored counts of what it does not read. */
+export function parseNotRead(text: string | null | undefined): NotRead {
+  if (text === null || text === undefined) return NOTHING_UNREAD;
+  try {
+    const value = JSON.parse(text) as Partial<NotRead>;
+    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [] };
+  } catch {
+    return NOTHING_UNREAD;
+  }
+}
 
 /** The symbol kinds that are functions. */
 export const FUNCTION_KINDS: ReadonlySet<string> = new Set(["function", "method", "sh_function"]);
@@ -78,8 +106,13 @@ async function planCommit(
   db: Database,
   repoDir: string,
   commit: string,
-): Promise<{ plans: FilePlan[]; readmes: Map<string, string>; configs: Map<string, string>; parsed: number; reused: number }> {
-  const entries = listTree(repoDir, commit).filter((entry) => inSymbolScope(entry.path));
+): Promise<{ plans: FilePlan[]; readmes: Map<string, string>; configs: Map<string, string>; parsed: number; reused: number; leftOut: Map<string, number> }> {
+  const leftOut = new Map<string, number>();
+  const entries = listTree(repoDir, commit).filter((entry) => {
+    const rule = leftOutRule(entry.path);
+    if (rule !== null) leftOut.set(rule, (leftOut.get(rule) ?? 0) + 1);
+    return rule === null;
+  });
   const byExtension = new Map<string, SourceLanguage | null>();
   const needText: string[] = [];
   const plans: FilePlan[] = [];
@@ -138,7 +171,7 @@ async function planCommit(
     plan.summary = fileSummary(plan.entry.path, moduleDoc, text);
     if (isReadme(plan.entry.path) && text !== null) readmes.set(dirOf(plan.entry.path), readmeSummary(text));
   }
-  return { plans, readmes, configs, parsed, reused };
+  return { plans, readmes, configs, parsed, reused, leftOut };
 }
 
 function ancestorsOf(dir: string): string[] {
@@ -156,6 +189,7 @@ function applyLayer(
   plans: FilePlan[],
   readmeByDir: Map<string, string>,
   configs: Map<string, string>,
+  leftOut: Map<string, number>,
 ): Omit<BuildStats, "parsed" | "reused"> {
   dropLayer(db, layer);
   const dirFiles = new Map<string, number>();
@@ -248,9 +282,18 @@ function applyLayer(
     insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint);
   }
   const unresolvedImports = resolver.unresolvedImports;
-  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved, unresolvedImports, functions, notParsed };
+  const unread = new Map<string, number>();
+  for (const plan of plans) {
+    const language = plan.lang === null ? unreadLanguageOf(plan.entry.path) : null;
+    if (language !== null) unread.set(language, (unread.get(language) ?? 0) + 1);
+  }
+  const notRead: NotRead = {
+    languages: sortedCounts(unread).map(([name, files]) => ({ name, files })),
+    leftOut: sortedCounts(leftOut).map(([rule, files]) => ({ rule, files })),
+  };
+  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved, unresolvedImports, functions, notParsed, notRead };
   db.run(
-    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed, not_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
     layer,
     commit,
@@ -263,6 +306,7 @@ function applyLayer(
     stats.unresolvedImports,
     stats.functions,
     stats.notParsed,
+    JSON.stringify(notRead),
     ],
   );
   return stats;
@@ -273,7 +317,7 @@ function applyLayer(
  * already at `commit` and `force` is not set. A base layer then re-checks every concept.
  */
 export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: { force?: boolean } = {}): Promise<BuildStats> {
-  const { plans, readmes: readmeByDir, configs, parsed, reused } = await planCommit(db, repoDir, commit);
+  const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
   const stats = db
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.
@@ -289,9 +333,10 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
           unresolvedImports: current.unresolved_imports,
           functions: current.functions,
           notParsed: current.not_parsed,
+          notRead: parseNotRead(current.not_read),
         };
       }
-      const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs);
+      const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs, leftOut);
       if (layer === BASE_LAYER) {
         recheckConcepts(db, commit);
         recheckAreas(db, commit);

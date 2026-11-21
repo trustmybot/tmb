@@ -20,26 +20,28 @@ export type {
 } from './languages/contract.ts';
 export { clip, DOC_MAX, isBannerLine, isRuleLine, md5, oneLine, splitWords, STOPWORDS } from './languages/kit.ts';
 
-const GENERATED_PATH = [
-  /(^|\/)dist\//,
-  /(^|\/)build\//,
-  /(^|\/)node_modules\//,
-  /(^|\/)vendor\//,
-  /\.map$/,
-  /\.min\.js$/,
+// What the graph leaves out by path, each rule named so the index can count it
+// (trustmybot/tmb#234): installed or vendored dependencies and build output as GitHub
+// Linguist's vendored list names them, source maps, minified bundles and lockfiles. A folder
+// named `build` is read: the graph is built from git, so output git ignores is never in it.
+const LEFT_OUT: readonly { rule: string; re: RegExp }[] = [
+  { rule: 'dist/', re: /(^|\/)dist\// },
+  { rule: 'node_modules/', re: /(^|\/)node_modules\// },
+  { rule: 'vendor/', re: /(^|\/)vendor\// },
+  { rule: 'source maps', re: /\.map$/ },
+  { rule: 'minified (.min.js)', re: /\.min\.js$/ },
+  { rule: 'lockfiles', re: /(^|\/)package-lock\.json$/ },
+  { rule: 'lockfiles', re: /\.lock(b)?$/ },
 ];
 
-const LOCKFILE_PATH = [/(^|\/)package-lock\.json$/, /\.lock(b)?$/];
-
-// Build output, installed or vendored dependencies, source maps and minified
-// bundles: the world model indexes none of them (GH 1835).
-export function isGeneratedPath(relPath: string): boolean {
-  return GENERATED_PATH.some((re) => re.test(relPath));
+// The rule that leaves a path out of the graph, or null when the graph reads it.
+export function leftOutRule(relPath: string): string | null {
+  return LEFT_OUT.find(({ re }) => re.test(relPath))?.rule ?? null;
 }
 
-// A path is in symbol scope unless it is generated output or a lockfile.
+// A path is in symbol scope unless a rule leaves it out.
 export function inSymbolScope(relPath: string): boolean {
-  return !isGeneratedPath(relPath) && !LOCKFILE_PATH.some((re) => re.test(relPath));
+  return leftOutRule(relPath) === null;
 }
 
 // The language a path parses as: by extension, else by the shebang of an extensionless file;
