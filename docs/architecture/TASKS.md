@@ -1,8 +1,8 @@
 # Agent task handling
 
-Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md). A task is one change that one agent can finish in one run. It is one of two kinds: a **code task**, which a worker implements, and a **docs task** (the plugin's non-code task), a docs or prompts change the planner writes itself. Both kinds end in the same push gate, retry paths and pull request comment triage, and the [quality layers](#quality-layers) rules hold for every step. [GIT.md](GIT.md) covers where the task's work sits at each stage.
+Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md). A task is one change that one agent can finish in one run. It is one of two kinds: a **code task**, which a worker implements, and a **docs task**, a docs or prompts change the planner writes itself. Both kinds end in the same push gate, retry paths and pull request comment triage, and the [quality layers](#quality-layers) rules hold for every step. [GIT.md](GIT.md) covers where the task's work sits at each stage.
 
-**tmb gates the outcome.** It does not watch a task's steps: no guard on each edit, no reading of shell commands, no per-step metering. It checks at three checkpoints, like CI: the checks at close, the review, and the push gate (trustmybot/tmb#98). Decided by the Human, 2026-11-21: "we never babysit anymore, we only gate the outcome."
+**tmb gates the outcome.** It does not watch a task's steps: no guard on each edit, no reading of shell commands, no per-step metering. It checks at three checkpoints, like CI: the checks at close, the review, and the push gate (trustmybot/tmb#98).
 
 Every record a task leaves lives in the record, the cold store [MEMORY.md](MEMORY.md) describes; an agent reads it back from there, never from chat. [TRAJECTORY.md](TRAJECTORY.md) lists what is recorded.
 
@@ -91,8 +91,8 @@ flowchart TD
 - **A close reports, and refuses only on its checks.** Out-of-spec files are named and the spec stays as written. Main-folder changes go to the Human as a report with the command that puts each file back; tmb puts nothing back, because the change may be the Human's own.
 - **Two tasks may change the same file.** There is no lock. git settles it at the fold, and a clash holds back the later task's close.
 - **Checks never fail open.** A check that could not run is recorded as not run, with the reason, and the task stays open.
-- **Planned at close:** the plugin's changelog, stale-doc and leak checks, a probe for each open finding, and a code graph check that no downstream caller breaks.
-- **Planned:** the issue closes itself once all its tasks' commits reach the base branch. Today the planner closes it.
+- **Planned at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
+- **The planner closes the issue.** Planned: it closes itself once all its tasks' commits reach the base branch.
 
 ## 3.2 Non-code task
 
@@ -132,11 +132,11 @@ flowchart TD
 | Review | reviewer | judgment | seen in the same review as the code tasks. The engine cannot tell whether a config or data change alters behaviour; a docs task that did is a blocking finding |
 | Pull request, merge | engine, then Human | as in 3.1 | as in 3.1 |
 
-- **Planned: the doc-review skill.** The plugin's author self-check and the reviewer's matching checklist arrive with tmb's skills, which are not built yet.
+- **Planned: the doc-review skill.** The author's self-check and the reviewer's matching checklist.
 
 ## Task lifecycle
 
-Every task of both kinds moves through one state machine. Shipped: each move is added to the record as an event, the current state is derived from the events, and the engine is the only writer.
+Every task of both kinds moves through one state machine. Each move is added to the record as an event, the current state is derived from the events, and the engine is the only writer.
 
 ```mermaid
 stateDiagram-v2
@@ -164,16 +164,14 @@ stateDiagram-v2
 - **A rebase with the same change keeps its pass.** The checks run again; a change that differs needs a fresh review. An open pull request is never rebased.
 - **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
 
-The plugin's richer lifecycle is kept as the design. What tmb has today, and what is Planned:
-
-| Plugin state | tmb today |
+| State | Means |
 |---|---|
-| pending, running | open; the task's runs say whether an agent is on it |
-| submitted, in review, reviewed | in review; the newest review of the commit says which |
-| review-deferred, batch-reviewed, waived | closed, with the mode recorded; the review or waiver is on the feature branch |
-| failed | Planned. Today a stuck or failed task stays open until the planner acts |
-| superseded | dropped, and named by the task that replaces it |
-| cancelled | dropped, with a reason |
+| open | Work may be done on it. The task's runs say whether an agent is on it. A stuck task stays open until the planner resumes or drops it |
+| in_review | A truest task whose checks passed, waiting at its commit. The newest review of the commit says where it stands |
+| ready | Covered by a pass or a waiver in a repo with no remote, waiting for the Human's local merge |
+| closed | Final. An agile task is folded, with its mode recorded; the review or waiver is on the feature branch. A truest task has its pull request |
+| dropped | Final, with a reason. The task that replaces it names it |
+| failed | **Planned.** A task whose worker stopped on a broken environment or a contradictory spec ([3.4](#34-retry-and-escalation)) |
 
 - **Planned:** each move names a cause from a fixed list and the record it rests on, and the record refuses a move without it.
 - **Planned:** a move the planner takes by hand carries a note saying why, so no bypass is silent.
@@ -205,46 +203,46 @@ flowchart TD
 | Pass | planner | reads the verdict from the record, judges design fit and asks for the pull request without being told |
 | Fail | planner | sends the work back to its author without asking the Human |
 
-- **The gate is git's own hook** (decided by the Human, 2026-11-21: "Use git if possible"). It does not depend on the host, so it holds for a push typed by hand. The engine reads no shell command to find a push.
+- **The gate is git's own hook.** It does not depend on the host, so it holds for a push typed by hand. The engine reads no shell command to find a push.
 - **What it refuses.** In every mode: a push to the base branch that carries a commit no pass or waiver covers. In truest also: a push to any other branch that carries a task's commit without one. A commit of no task, pushed to another branch, goes through, so the Human's own branches are not stopped.
 - **No unreviewed commit reaches an open pull request.** While it is open, new folds stay local until the new tip is reviewed or waived; then the same pull request is updated.
 - **When the record cannot be read.** No record: the push goes, because tmb stays out of projects it was never set up in. A damaged or empty record, or one from a newer tmb: denied. A repo that is exempt or not registered: allowed, with the reason recorded.
 - **Append-only record.** Verdicts are never rewritten; the newest review of a commit decides.
 - **A mark on GitHub** (trustmybot/tmb#101). A local hook can be skipped, so each verdict or waiver also sets a commit status on that exact commit. The repo's branch protection can require it; tmb says whether it does and never changes protection settings. A mark that could not be sent is recorded and sent later; it never fails the review. It is a convention, not proof.
 - **Another tool's hook** (trustmybot/tmb#184). Where a repo already has a pre-push hook, tmb leaves it alone and says the gate is off there at every session start. With the Human's yes, tmb adds one line first in that hook; removal takes out that line alone.
-- **One project per repo for now.** The hook names its project, so the gate never searches. A project may be one package of a monorepo (trustmybot/tmb#178).
+- **One project per repo.** The hook names its project, so the gate never searches. A project may be one package of a monorepo (trustmybot/tmb#178).
 - **Planned:** a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
 - **Planned: freeze** (trustmybot/tmb#64). The Human stops all work in a project with one request: task and agent starts, closes and pull requests are denied until it is lifted. Reads stay allowed.
 
 ## 3.4 Retry and escalation
 
-tmb keeps the plugin's rules that a checkpoint can hold (trustmybot/tmb#165). Nothing here waits for a timer: tmb runs only when something calls it.
+Nothing here waits for a timer: tmb runs only when something calls it.
 
-| Cause | Path | State |
-|---|---|---|
-| A check fails at close | close refused naming the check; the worker fixes and closes again | Shipped |
-| Review fail, truest | the task reopens in its worktree; a worker reworks it and closes again for a new review | Shipped |
-| Review fail, feature branch | the planner starts fix tasks on the branch; the new tip is reviewed again | Shipped |
-| Two review fails in a row | no worker starts on the task until the planner records the root cause | Planned |
-| Fold or rebase conflict | the step is undone and names the files; the task stays open until settled | Shipped |
-| Base branch moved under a feature branch | the engine merges it in before the review; a conflict changes nothing and is settled in a task | Shipped (trustmybot/tmb#169) |
-| Rebased truest commit whose change differs | one new review of the rebased commit | Shipped |
-| A check or a comment fails an open pull request | the planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived | Shipped (trustmybot/tmb#168); bringing the comments in is Planned (3.5) |
-| Pull request closed without a merge | the branch is recorded as closed and named at session start; a new pull request or a rework task reopens it | Shipped (trustmybot/tmb#131, trustmybot/tmb#152) |
-| Wrong approach, or nobody will finish | the task is dropped with a reason; a new task names the one it replaces | Shipped (trustmybot/tmb#170) |
-| Nobody will merge the feature branch | the branch is dropped with a reason and kept in git | Shipped (trustmybot/tmb#214) |
-| A run started and never ended | named at session start and by the health check; the planner decides | Shipped (trustmybot/tmb#160) |
-| Worker runs out of turns | it commits a checkpoint and hands back; the next run resumes | Planned |
-| Broken environment or contradictory spec | the worker stops and reports; the task is marked failed and the planner reopens it | Stop and report: shipped in the worker's role. Failed state: Planned |
-| Design drift | the planner amends the spec and reopens, or redesigns as a new task | Planned; today drop and replace |
-| Work merged outside the flow | its open tasks close, each recorded as a bypass when no review passed | Planned; today the push gate refuses the uncovered push |
+| Cause | Path |
+|---|---|
+| A check fails at close | close refused naming the check; the worker fixes and closes again |
+| Review fail, truest | the task reopens in its worktree; a worker reworks it and closes again for a new review |
+| Review fail, feature branch | the planner starts fix tasks on the branch; the new tip is reviewed again |
+| Two review fails in a row | **Planned:** no worker starts on the task until the planner records the root cause |
+| Fold or rebase conflict | the step is undone and names the files; the task stays open until settled |
+| Base branch moved under a feature branch | the engine merges it in before the review; a conflict changes nothing and is settled in a task |
+| Rebased truest commit whose change differs | one new review of the rebased commit |
+| A check or a comment fails an open pull request | the planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned:** bringing the comments in (3.5) |
+| Pull request closed without a merge | the branch is recorded as closed and named at session start; a new pull request or a rework task reopens it |
+| Wrong approach, or nobody will finish | the task is dropped with a reason; a new task names the one it replaces |
+| Nobody will merge the feature branch | the branch is dropped with a reason and kept in git |
+| A run started and never ended | named at session start and by the health check; the planner decides |
+| Worker runs out of turns | **Planned:** it commits a checkpoint and hands back; the next run resumes |
+| Broken environment or contradictory spec | the worker stops and reports. **Planned:** the task is marked failed and the planner reopens it |
+| Design drift | the planner drops the task and replaces it. **Planned:** the planner amends the spec and reopens |
+| Work merged outside the flow | the push gate refuses the uncovered push. **Planned:** its open tasks close, each recorded as a bypass when no review passed |
 
 - **Rework is bounded** (Planned). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
 - **Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
 
 ## 3.5 PR comment triage
 
-Planned (trustmybot/tmb#70). Today the Human or the planner reads the pull request, and the planner starts fix tasks on its branch by hand.
+Planned (trustmybot/tmb#70).
 
 ```mermaid
 flowchart TD

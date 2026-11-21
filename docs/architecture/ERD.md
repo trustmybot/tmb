@@ -9,7 +9,7 @@ Two SQLite files per project, both in the project's `.tmb/` folder and gitignore
 
 In a workspace of several repos, the repos share one record, and each repo has its own graph file at `.tmb/graphs/<repo>.db`.
 
-**This page is written by hand from the two schemas as they stand today.** Planned: a generator with a freshness test that fails when the page drifts, as the plugin had. Until then, a schema change updates this page in the same pull request.
+**This page lists every table and column of the two schemas.** A schema change updates this page in the same pull request. Planned: a generator with a freshness test that fails when the page drifts.
 
 ## Overview
 

@@ -39,7 +39,7 @@ These differences from real hardware are where the design decisions sit.
 3. **Write through, never write back.** Context is volatile, so a decision reaches the record when it is made. Evicting then loses nothing. A decision is anything a later step reads back, such as a status change, a verdict or a spec, and it is written before the work moves on. A change of state is added as an event, never written over, so the history stays.
 4. **Evict at boundaries.** A session ends when its dispatched work has returned and been closed or parked. The one timer that matters is prompt cache expiry: the next call then pays full price for the whole context, so a cold restart is usually cheaper.
 
-tmb does not trim the output of shell commands on its way into context: it watches no shell command (decided by the Human, 2026-11-21: gate the outcome, no babysitting). What keeps context small is the size of what tmb's own tools return.
+tmb does not trim the output of shell commands on its way into context: it watches no shell command. What keeps context small is the size of what tmb's own tools return.
 
 ## Loading from cold
 
@@ -50,7 +50,7 @@ tmb does not trim the output of shell commands on its way into context: it watch
 
 ## Search
 
-Search is ranked word search plus the code graph. tmb ships no embedding model. Agent search comes first: a skill (Planned) teaches the planner to search with several word queries and follow the graph, and misses are measured on real questions. Embeddings come only if the misses are real (the Human, 2026-11-21: "Agent search, measure").
+Search is ranked word search plus the code graph. tmb ships no embedding model. Agent search comes first: a skill (Planned) teaches the planner to search with several word queries and follow the graph, and misses are measured on real questions. Embeddings come only if the misses are real.
 
 ```mermaid
 flowchart TD
@@ -68,8 +68,8 @@ flowchart TD
 
 - **Record search** returns ranked snippets from issue titles and bodies, notes and decisions. Every word of the query must match.
 - **Code search** is by name, by path and by the words in a name or a summary, ranked. It asks for every word first and falls back to any word. See [WORLD_MODEL.md](WORLD_MODEL.md).
-- **Agent search first.** A skill teaches the planner to search with several word queries and to follow the graph from each hit. Planned: tmb ships no skills yet.
-- **Embeddings only on evidence.** Search by meaning is added only if measured misses show that word search and the graph do not find what is there. Graph misses are recorded for that measurement; misses of record search are not recorded yet.
+- **Agent search first.** A skill (Planned) teaches the planner to search with several word queries and to follow the graph from each hit.
+- **Embeddings only on evidence.** Search by meaning is added only if measured misses show that word search and the graph do not find what is there. Graph misses are recorded for that measurement; misses of record search are not.
 
 ## Where the record lives
 

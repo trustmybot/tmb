@@ -4,8 +4,6 @@ Every case of flow 3.9 in [FLOWS.md](FLOWS.md): how agile work builds up on a lo
 
 The review mode decides who reviews a change and when. Who merges is a separate question: the Human does.
 
-Agile mode is built: the feature branch, the close without a review, the review of the whole branch, the gate on its one pull request and the Human's waiver. [Shipped and planned](#shipped-and-planned) marks each piece.
-
 ## Why a feature branch
 
 Agility is agile mode's one goal: the feature reaches a state the Human can try, change or drop sooner, with fewer reviews and CI runs on the way.
@@ -226,25 +224,7 @@ flowchart TD
 - **The start decides.** A task opened under one mode finishes under it.
 - **A truest repo starts no feature branch.** A task there is cut from the base branch and goes into review at its close.
 
-## Shipped and planned
+## Planned
 
-| Piece | State |
-|---|---|
-| Review mode chosen by the Human, agile recommended, no task before it is set | Shipped |
-| One mode per repo in a workspace, following the workspace's when it names none | Shipped |
-| Review mode recorded on each task at its start | Shipped |
-| Feature branch per milestone: tasks cut from it and folded into it locally, backup push | Shipped |
-| Close on the checks alone, with the report of files outside the spec and of the main folder | Shipped |
-| The base branch merged into the feature branch before its review | Shipped |
-| Feature branch review: one reviewer, a group per task, a verdict on the tip | Shipped |
-| Gate on the one pull request, the push gate behind it, and the audited waiver | Shipped |
-| More tasks on a branch whose pull request is open; a closed branch taken up again; dropping a branch | Shipped |
-| A project with no remote | Shipped |
-| Planner and reviewer prompts for agile mode | Shipped |
-| The review queue: the tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel | Planned |
-| Comments on an open pull request brought into the record and sorted into tasks | Planned (trustmybot/tmb#70) |
-
-### Open, for the Human
-
-- **Review states per task** (queued, batch-reviewed, waived), a review of one agile task on request, and a health-check line for agile tasks closed with neither a review nor a waiver. The plugin had them. tmb covers the branch's tip instead.
-- **Built, and still proposed for the Human's review:** the merge of the base branch before the review; new work, not only fixes, on a branch whose pull request is open (trustmybot/tmb#260); holding unreviewed commits back from an open pull request; dropping a feature branch; the fallback to the workspace's mode and the one question for the repos' own modes.
+- **The review queue.** The tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel.
+- **Comments on an open pull request** brought into the record and sorted into tasks (trustmybot/tmb#70).

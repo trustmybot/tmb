@@ -2,7 +2,7 @@
 
 This page lists the issue labels on the trustmybot/tmb GitHub board, which is tmb's own board. They fall in six groups written in lower case with a slash: `type/`, `priority/`, `area/`, `status/`, `decision/` and `theme/`. [ISSUES.md](../architecture/ISSUES.md) holds the design.
 
-**This page is written by hand from the labels on GitHub as they stand today** (`gh label list --repo trustmybot/tmb`). Planned: one labels file in the repo that this page and the board are both made from, as the plugin had.
+**This page lists the labels on GitHub** (`gh label list --repo trustmybot/tmb`). Planned: one labels file in the repo that this page and the board are both made from.
 
 ## Rule: one type, one priority, one area
 
@@ -87,7 +87,7 @@ To add, rename or remove a label, change it on GitHub and change this page in th
 | The bug form's Area answer | Optional, and a guess: Workflow, Record, Code graph, Roles, Host setup, Dashboard, Install and update. The maintainer sets the `area/` label. |
 | `.github/workflows/feedback-labels.yml` | On an issue opened with the marker `tmb feedback` leaves in its body, adds the labels of the form the marker names. A report filed through GitHub's CLI carries no labels of its own (trustmybot/tmb#122). |
 | A labels file, a sync to GitHub, a generated list | Planned. |
-| A workflow that turns the form's Area and Impact answers into labels, and adds or removes `status/needs-triage` by itself | Planned. Today a maintainer does both by hand. |
+| A workflow that turns the form's Area and Impact answers into labels, and adds or removes `status/needs-triage` by itself | Planned. |
 | Tests that compare the forms and this page with the labels | Planned. |
 
 ## Filing with labels

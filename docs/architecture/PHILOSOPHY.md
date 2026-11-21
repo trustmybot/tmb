@@ -2,8 +2,6 @@
 
 The principles behind how tmb is shaped. Each is the reason a design looks the way it does; the other pages here show how it is built. How tmb keeps its own design, relationships and logic apart is in the [README](README.md).
 
-Principles 1 to 7 come from the TMB plugin, whose harness tmb keeps. Principles 8 to 10 are why tmb exists: the plugin served one agent program, and it watched every step.
-
 ## 1. Ideas become goals, goals become tasks
 
 Work starts as the Human's idea and reaches code only through two conversions, each recorded where the next actor will look.
@@ -52,7 +50,7 @@ The record is the only source of truth. Context is a disposable cache of it: eve
 
 ## 8. Any host, through adapters
 
-The plugin's harness was good, and its scope was too narrow: it served one agent program, and nobody can build a plugin for every model. tmb is one compiled program per platform. The engine never names a host. Everything a host needs is in its adapter, and a new host is a new adapter with no change to the engine. [HOSTS.md](HOSTS.md) covers it.
+A harness built as a plugin serves one agent program, and nobody can build a plugin for every model. So tmb is one compiled program per platform, which also leaves room for a desktop program (Planned, trustmybot/tmb#79). The engine never names a host. Everything a host needs is in its adapter, and a new host is a new adapter with no change to the engine. [HOSTS.md](HOSTS.md) covers it.
 
 ```mermaid
 flowchart LR
@@ -67,11 +65,11 @@ flowchart LR
 - **The host runs the agents.** tmb starts no agent, runs no model and manages no parallel sessions. The work runs on the Human's own login to the host.
 - **Roles are written once**, host-neutral. The adapter turns them into the host's format.
 - **An adapter holds no rules.** One that grows a rule is a defect.
-- **The same functions on every host.** What the plugin shipped as host commands, tmb ships as terminal commands and agent tools.
+- **The same functions on every host.** tmb ships them as terminal commands and agent tools, not as host commands.
 
 ## 9. Gate the outcome, never babysit
 
-The plugin was too heavy because it watched every step. tmb keeps the same workflow, with task specs written by the planner, and checks only what is delivered, as CI does. There is no guard on each edit and no reading of shell commands.
+A harness that watches every step is heavy. tmb checks only what is delivered, as CI does: the planner writes each task's spec, the agents work unwatched, and the checkpoints judge the result. There is no guard on each edit and no reading of shell commands.
 
 ```mermaid
 flowchart LR

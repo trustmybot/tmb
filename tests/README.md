@@ -165,7 +165,7 @@ Each flow of the plugin's workflow simulation is ported once tmb has built what 
 | 06 Push gate | [push-gate.test.ts](integration/push-gate.test.ts). git's own pre-push hook judges every push, one typed by hand too, so it runs as an integration test with a real origin. |
 | 08 Retry and escalation | [review-gate.test.ts](workflow/review-gate.test.ts) ports review, fail and rework. tmb keeps no retry count, so escalation is the planner's call, not a rule. |
 | 09 Cold restart | [flow-09-cold-restart.test.ts](workflow/flow-09-cold-restart.test.ts). Its checks that only the reviewer records a verdict are in [review-gate.test.ts](workflow/review-gate.test.ts). |
-| 10 Roundtable | Not planned: the roundtable is not carried over ([README.md](../docs/architecture/README.md#not-carried-over)). |
+| 10 Roundtable | Not planned: tmb has no roundtable. |
 | 11 Concurrent sibling tasks | [flow-11-concurrent-siblings.test.ts](workflow/flow-11-concurrent-siblings.test.ts). Two open tasks may share a file, which the plugin refused: [shared-files.test.ts](workflow/shared-files.test.ts) folds changes to different lines and stops the later close on the same lines. |
 | 12 Spec amend | Not planned: no level of the build order changes a started task's spec. |
 | 13 Issue update | [flow-13-issue-update.test.ts](workflow/flow-13-issue-update.test.ts). An issue in tmb's record has no labels, so only the milestone, title and body move. |

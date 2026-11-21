@@ -2,7 +2,7 @@
 
 tmb's settings are a fixed list of six keys, kept in the record. There is no settings table: each change to a setting is one entry in the record's audit trail, named `setting:<key>`, and the newest entry is the value in force. The planner reads them with `settings_get` and writes them with `settings_set`; `tmb init` and `tmb onboard` write them from the terminal; `tmb config` shows them. Hooks only read them. The user's guide to each is in the [reference](../reference/README.md#set-up-a-project).
 
-**This page is written by hand from `src/engine/settings.ts` as it stands today.** Planned: a generator with a freshness test, as the plugin had.
+**This page lists every key in `src/engine/settings.ts`.** Planned: a generator with a freshness test.
 
 ## Keys
 

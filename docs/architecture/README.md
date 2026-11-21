@@ -49,7 +49,7 @@ tmb's own repo keeps each fact in exactly one of three layers, at the level of d
 
 A fact belongs in the lowest layer that can hold it. A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay here. When a page here starts naming symbols, the detail has drifted into the wrong layer: move it down, don't copy it. Two exceptions: a generated page guarded by a freshness test, such as [ERD.md](ERD.md) and [CONFIG_KEYS.md](CONFIG_KEYS.md); and the install and debugging sections of a detail page, which may name what a user types or sees (commands, settings, environment variables, messages and file locations), never internal functions or tables.
 
-This rule is how tmb develops itself. It comes from our experience of design and code drifting apart, not from research evidence that it prevents that drift, and users cannot opt in to it yet. In a user's project, tmb provides the bottom two layers: the code graph and the code.
+This rule is how tmb develops itself. It comes from our experience of design and code drifting apart, not from research evidence that it prevents that drift. In a user's project, tmb provides the bottom two layers: the code graph and the code.
 
 ## Reading guide
 
@@ -90,7 +90,7 @@ Looking for one answer instead?
 | What does the record store? | [ERD.md](ERD.md) |
 | Which project settings exist? | [CONFIG_KEYS.md](CONFIG_KEYS.md) |
 | What do I type? | The [reference](../reference/README.md) |
-| What does a word mean, and what did the plugin call it? | [Glossary](#glossary) |
+| What does a word mean? | [Glossary](#glossary) |
 | Where does function X live? | Not here: ask the code graph |
 
 ## Index
@@ -121,97 +121,59 @@ Looking for one answer instead?
 | Form | A standalone program. It is not a plugin of any agent. |
 | Language | TypeScript, shipped as one compiled file per platform. Nothing else, Node included, has to be installed first. |
 | Platforms | macOS, Windows and Linux. |
-| Hosts | Claude Code first, in its command line and its desktop app. No host is hardcoded: each is an adapter, as Codex is. |
+| Hosts | Claude Code, in its command line and its desktop app, and Codex. No host is hardcoded: each is an adapter. |
 | Login | The Human's subscription to the host. No API key is needed. |
 | Roles | The host's main agent is the planner. Workers and the reviewer are subagents the host starts. The engine briefs, records and gates them. |
+| Role prompts | Written once, host-neutral. The adapter turns them into each host's format. |
+| Commands | Every function is a `tmb ...` terminal command or an agent tool, the same on every host. |
+| Gate | tmb gates the outcome at task close, review and push. It puts no guard on each edit. |
 | Different models | Each role can use a different model. Agents from different vendors work on one task by connecting their hosts to the same record. |
 | Records | Shareable from the first schema: history is kept as events, every record names the role and host that made it, and ids never collide across machines. |
-| What tmb does not do | Start agents, run models or manage parallel sessions. The host does. |
+| What tmb does not do | Start agents, run models, manage parallel sessions or set up a sandbox. The host does. |
 | Network | The engine works with no internet access. Running fully offline with local models needs a host that supports them. |
 | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
 | Review modes | Agile and truest, a mode per repo. Agile is recommended; the Human chooses. |
-| Search | Ranked word search plus the code graph. No embedding model. Agent search comes first: a skill will teach the planner to search with several word queries and follow the graph (planned). Embeddings only if measured misses are real. |
-| Dashboard | A local web page. A desktop program with the dashboard built in is Planned (trustmybot/tmb#79). |
+| Search | Ranked word search plus the code graph. No embedding model. Agent search comes first: a skill teaches the planner to search with several word queries and follow the graph (Planned). Embeddings only if measured misses are real. |
+| Dashboard | A local web page that reads the engine's record. A desktop program with the dashboard built in is Planned (trustmybot/tmb#79). |
 | Remote | GitHub only. |
+| Sync with the remote | Planned (trustmybot/tmb#70). It brings pull request comments into the record and syncs issues both ways; issues that exist only on GitHub are not all copied in. |
+| Created agents | Planned. An agent a project creates is recorded and harnessed like the worker and the reviewer ([EXTENDING.md](EXTENDING.md)). |
 | License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
 | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
 
-## Reuse from the plugin
-
-tmb ships almost the same as the plugin. Most of the plugin's logic is host-neutral and carries over. What was tied to Claude Code is rebuilt behind the adapter, and what watched each step is replaced by checks at checkpoints.
-
-| Area | Verdict |
-|---|---|
-| Record store and its schema | Reuse, from a fresh first version with the dropped features' tables removed. |
-| Workflow logic: issues, tasks, starting a task, close, review, feature branches, integrate | Reuse, called directly by the engine. |
-| Code graph: parsing, symbols, graph, freshness, concepts | Reuse as is. |
-| Git's pre-push judge | Reuse as is. |
-| Git and pull request helpers | Reuse as is. |
-| Dashboard, server and pages | Reuse, reading the engine's database. |
-| Workflow tests that drive the tools end to end | Port as the engine's contract tests. |
-| Host slash commands: onboard, scan, dashboard | Rebuild as `tmb ...` terminal commands and agent tools. |
-| Role prompts | Rewrite once, host-neutral; the adapter turns them into each host's format. |
-| Guards on each edit and shell-command analysis | Not carried over. tmb gates the outcome at task close, review and push. |
-| Search by meaning | Not carried over: no embedding model. Ranked word search plus the code graph. |
-| Skills | Planned. tmb ships its own, loaded on demand. |
-| Retry and escalation | Partly built; the rest planned (trustmybot/tmb#165). |
-| Pull request comment triage, issue sync | Planned, inside the sync with the remote (trustmybot/tmb#70). The issue sync runs both ways; issues that exist only on GitHub are not all copied in. |
-| Cheatcodes | Planned (trustmybot/tmb#112). |
-| Desktop program | Planned (trustmybot/tmb#79). The plugin could not have one. |
-| Agent creation, consultants | Planned. A created agent is recorded and harnessed like the worker and the reviewer ([EXTENDING.md](EXTENDING.md)). |
-| Lanes | Not managed by tmb. The planner's prompt and tools help it run parallel sessions. |
-| Roundtable, sandbox setup | Not carried over. |
-
 ## Glossary
 
-The words tmb uses, and the plugin's word for the same thing. tmb prefers the name a developer already knows. The product name is lowercase: tmb.
-
-### Renamed
-
-| tmb | Plugin | Why |
-|---|---|---|
-| Code graph | World model | The common name for an index of symbols and their links. |
-| Index (`tmb index`) | Scan | What building a code graph is usually called. |
-| Init (`tmb init`) | The first half of onboard | The word git, npm and cargo use for preparing a folder. It asks nothing. |
-| Onboard (`tmb onboard`) | Onboard | Kept, for tmb's settings only. The planner also onboards a project by itself at the first session with empty settings. |
-| Planner | bro, as a role | Says what the role does. bro stays as the planner's name in conversation. |
-| Worker | swe | Says what the role does, for any kind of task. |
-| Reviewer | code-reviewer | Shorter. |
-| Docs task | No-code task | Says what it is. |
-| Base branch | Working branch, PR target | The name git hosts use for the branch a pull request merges into. |
-| Start a task | Provision a task | Plain. |
-| Host | Claude Code | tmb is not tied to one agent program. |
-
-### Kept
+The words tmb uses. tmb prefers the name a developer already knows. The product name is lowercase: tmb.
 
 | Word | Meaning |
 |---|---|
-| Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |
-| Agile mode | One review per feature branch. |
-| Truest mode | A review of every task before its push. |
-| In review | A truest task whose checks passed and whose review has not passed yet. |
-| Feature branch | A long-lived branch that collects a milestone's tasks. |
-| Issue | One goal of the Human's, with the discussion and decisions that shaped it. |
-| Task | One change that one agent can finish in one run, with its spec. |
-| Milestone | A group of issues the Human wants to judge as a whole. |
+| The Human | The developer tmb works for. |
+| Host | An agent program, such as Claude Code or Codex, that runs the agents. |
 | Harness | tmb as a whole: the record, the code graph, and the workflow with the gate that enforces it, around the agents a host runs. It is not the program that runs the model; that is the host. |
 | Engine | tmb without its adapters: the record, the code graph, the workflow and the gate. |
 | Host adapter | The one part of tmb that knows a host: its file formats, its events and its limits. |
 | Gate | What stops a step that the workflow does not allow. |
+| Planner | The role that plans, writes the spec and talks to the Human: the host's main agent. It is addressed as bro in conversation. |
+| Worker | The role that carries out one task, of any kind. |
+| Reviewer | The role that judges a diff and records a verdict. It edits nothing. |
+| Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |
+| Code graph | The index of a project's files, its symbols and the links between them. |
+| Index (`tmb index`) | Building the code graph. |
 | Concept | An agent-written note in the code graph, anchored to code. |
 | Area | A logical part of a project, such as login or billing: a named group of files in the code graph, written by the planner. "tests" is built in. |
+| Init (`tmb init`) | Preparing a project folder for tmb. It asks nothing. |
+| Onboard (`tmb onboard`) | Setting tmb's settings for a project. The planner also onboards a project by itself at the first session with empty settings. |
 | Workspace | A project folder that is no git repo and holds several repos sharing one record. |
-| The Human | The developer tmb works for. |
-
-### Not carried over
-
-- **Roundtable.**
-- **Sandbox setup.** tmb builds none.
-- **Lane, as a record.** tmb does not manage lanes. The planner's prompt and tools help it run parallel sessions ([RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes)).
-
-### Planned
-
-| Word | Meaning |
-|---|---|
-| Cheatcode | Planned (trustmybot/tmb#112). In the plugin, a published skill, tool server or plugin that bro found, vetted and installed for one agent after the Human's yes. In tmb the name stays and the scope grows: a skill is given to a role once, for every host in that role. |
+| Issue | One goal of the Human's, with the discussion and decisions that shaped it. |
+| Task | One change that one agent can finish in one run, with its spec. |
+| Docs task | A task that changes only docs or prompts. The planner writes it. |
+| Start a task | The engine cuts the task's branch and worktree, so a worker can be started on it. |
+| Milestone | A group of issues the Human wants to judge as a whole. |
+| Base branch | The branch a pull request merges into. |
+| Feature branch | A long-lived branch that collects a milestone's tasks. |
+| Agile mode | One review per feature branch. |
+| Truest mode | A review of every task before its push. |
+| In review | A truest task whose checks passed and whose review has not passed yet. |
+| Lane | One of several sessions working in a project at once, with the work it took. tmb keeps no lane record ([RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes)). |
 | Skill | Planned. Guidance tmb ships for a role, loaded on demand. |
+| Cheatcode | Planned (trustmybot/tmb#112). A published skill, tool server or host plugin that the planner finds, vets and installs after the Human's yes. A skill is given to a role once, for every host in that role. |

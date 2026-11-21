@@ -1,6 +1,6 @@
 # Hosts and adapters
 
-How tmb works with an agent program without being built for one, and how it holds its rules there. Serving any host is the reason tmb exists: the plugin lived inside Claude Code, and tmb is a program of its own that a host is wired to. The top-level rule of the design: the engine knows nothing about any host, and everything a host needs is in its adapter.
+How tmb works with an agent program without being built for one, and how it holds its rules there. Serving any host is the reason tmb exists: it is a program of its own that a host is wired to. The top-level rule of the design: the engine knows nothing about any host, and everything a host needs is in its adapter.
 
 The first five sections are the design. From [Containment](#containment) on, the page is detail for building and debugging.
 
@@ -64,7 +64,7 @@ Why this way:
 
 - **It runs on the Human's subscription.** The work is ordinary use of the host by its own user. Anthropic's terms do not allow a third-party program to route requests through a user's subscription login, so a design where tmb starts Claude itself would need an API key.
 - **It uses what the host already does well:** parallel subagents, a model and effort per role, isolation, and permission prompts shown to the Human.
-- **It works wherever the host runs.** Claude Code fires the same events in its command line and in its desktop app. tmb's own desktop program is planned (trustmybot/tmb#79).
+- **It works wherever the host runs.** Claude Code fires the same events in its command line and in its desktop app. Planned: tmb's own desktop program (trustmybot/tmb#79).
 
 Several workers at once, each on its own task and worktree, is the host's parallel subagents plus git: each task has its own branch, two open tasks may change the same file, and git settles it when their work is merged. A clash refuses the later task's close until it is resolved. The engine tells the planner which open tasks share a file, as information.
 
@@ -76,14 +76,14 @@ Several workers at once, each on its own task and worktree, is the host's parall
 | Set up | Registers tmb's tool server with the host, writes the role definitions in the host's format, and wires the host's events to the engine. Per project, when the Human runs init. |
 | Name what is left | Lists the steps only the Human can take, such as trusting the project, and any wiring that is missing. |
 | Translate events | Turns a host event into the engine's neutral question, and the engine's allow or deny into the host's answer. |
-| Report limits | Says what the host cannot do, such as deny a tool call or set a model per role. As built, each adapter states its limits and the engine does not read them. |
+| Report limits | Says what the host cannot do, such as deny a tool call or set a model per role. Each adapter states its limits; the engine does not read them. |
 | Reconnect | Says how a session picks up tmb's tools again after the tool server moved to a new build. |
 | Remove | Undoes exactly what setup added. |
 
-| Host | Status | Tools | Roles |
+| Host | Support | Tools | Roles |
 |---|---|---|---|
-| Claude Code, command line and desktop app | The only host init accepts | Tool server from the project's settings | Agent files in the project |
-| Codex | Adapter built, not run on a real Codex. What holds there and what does not: [What each host can deny](#what-each-host-can-deny). | Tool server from the project's config | Agent files in the project |
+| Claude Code, command line and desktop app | Supported | Tool server from the project's settings | Agent files in the project |
+| Codex | Can be set up, and init says it is not a supported host. What holds there and what does not: [What each host can deny](#what-each-host-can-deny). | Tool server from the project's config | Agent files in the project |
 | Others | Planned | | |
 
 The same three building blocks, a tool server, role files and events, exist in both hosts, which is what makes one adapter shape enough.
@@ -187,9 +187,8 @@ The few hooks tmb has. Each is one tmb event, whatever raised it.
 What does not hold on Codex:
 
 - **A worker's folder is not tied to its task**, and the engine does not check where a worker was started from.
-- **A call is judged under the role its host was set up with.** A Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a subagent's write from the planner's, so a reviewer subagent's write goes through. Open, for the Human.
+- **A call is judged under the role its host was set up with.** A Codex set up as the reviewer is held to the reviewer's rules. With Codex as the planner, the engine cannot tell a subagent's write from the planner's, so a reviewer subagent's write goes through. Open, for the Human: whether a reviewer subagent is allowed under a Codex planner.
 - **Setup cannot tell whether the hooks are trusted**, so it always lists that step. It never trusts a project or its hooks on the Human's behalf.
-- All of this was checked against Codex's docs only.
 
 **What a host cannot raise or deny, a later checkpoint catches.** The adapter reports it and nothing switches over: the close and the push check every change whatever the host raised.
 
@@ -279,7 +278,7 @@ On the machine, tmb is one program for every project, so two things live outside
 
 Tests hold each rule: a damaged, empty or newer record denies; init and remove leave the Human's entries alone, and remove takes out exactly what init added; a program updates only itself and keeps its own state; a step that is the Human's alone is refused without a terminal. Two lints run with them: the engine never names a host outside its adapter, and every test's machine-wide state is a scratch folder.
 
-Open, for the Human: a lint that fails on any write to the home folder. tmb has none.
+Open, for the Human: whether a lint fails on any write to the home folder.
 
 ## Unattended mode
 
@@ -294,8 +293,8 @@ A session with no one to answer, such as a run in CI, a scheduled job or an agen
 ## Different models on one task
 
 - **One vendor, several models.** The host already runs a different model per subagent. The adapter writes a role's model into the host's role definitions when the role names one. No role tmb ships names a model, so each runs on the host's default.
-- **Several vendors.** Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's. Built, and not run with a real second host.
-  - **A role per host.** Setup records the role each host takes in the project, the planner by default. Session start briefs a host in its role: a host set up as the reviewer is told which feature branches wait for a review, and that includes a branch whose pull request is open and whose new tip is not reviewed. Two hosts may both be planners, as two sessions of one host already are. Open, for the Human.
+- **Several vendors.** Each host connects to the same record in the same project and takes a role: Claude Code plans and writes, and Codex, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. The agents never talk to each other: the record is the handoff. Who starts the second host is the Human's or the first host's business, not tmb's.
+  - **A role per host.** Setup records the role each host takes in the project, the planner by default. Session start briefs a host in its role: a host set up as the reviewer is told which feature branches wait for a review, and that includes a branch whose pull request is open and whose new tip is not reviewed. Two hosts may both be planners, as two sessions of one host may. Open, for the Human: whether two planner hosts stay allowed.
   - **A reviewer that is a host's main agent.** Its run opens at that host's session start and ends with the verdict it records.
 - **Local models.** They arrive through a host that supports them. The adapter writes a role's model as given, and the model's provider is the host's own setup.
 
@@ -322,10 +321,10 @@ flowchart LR
 | Dashboard | The Human | A local web page over the record. |
 | Desktop program | The Human | Planned (trustmybot/tmb#79). |
 
-All of them call the same engine. tmb has no slash commands: what the plugin did with one is a terminal command or a tool the planner calls. The command line records every caller as the Human, so a step only the Human may take has two fences there (trustmybot/tmb#179):
+All of them call the same engine. tmb has no slash commands: each action is a terminal command or a tool the planner calls. The command line records every caller as the Human, so a step only the Human may take has two fences there (trustmybot/tmb#179):
 
 - **The steps:** waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
 - **A terminal and a typed yes.** The command line runs such a step only on a terminal, after the Human types yes. With no terminal it refuses and changes nothing.
 - **The host's guard.** Where the host lets tmb see an agent's shell command before it runs, as Claude Code and Codex do, the guard denies one that takes such a step, says why, and records the deny. Every other shell command passes and nothing is recorded. A host that cannot show tmb a shell command has the first fence only.
 - **One exception, for a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode where none is set, for the workspace or for one repo. It never changes a mode that is set, so an agent that turns unattended mode on for its own command cannot undo the Human's choice (trustmybot/tmb#223). Nothing else passes.
-- **What the fences are not.** They stop an agent that takes the plain path, and the record shows each deny. They are not proof: an agent that writes a script which opens its own terminal can pass both, and on Codex an agent's shell tool can open a terminal, so only the guard stands there. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Not planned. Open, for the Human.
+- **What the fences are not.** They stop an agent that takes the plain path, and the record shows each deny. They are not proof: an agent that writes a script which opens its own terminal can pass both, and on Codex an agent's shell tool can open a terminal, so only the guard stands there. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Open, for the Human: whether tmb builds one.

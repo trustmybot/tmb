@@ -4,7 +4,7 @@ This page lists every set of allowed values in the record and the code graph, an
 
 The engine, the role prompts and the planner decide what to do from these values, so a typo or an unannounced rename breaks them without a compile error.
 
-**This page is written by hand from the code as it stands today.** Planned: the [lint guard](#lint-guard) that compares it with the code, as the plugin had.
+**This page lists the values as the schemas and the code define them.** Planned: the [lint guard](#lint-guard) that compares it with the code.
 
 ## Where a vocabulary is enforced
 
@@ -281,7 +281,7 @@ Symbol and edge kinds are the one contract every language of the code graph meet
 
 ## Lint guard
 
-Planned. The plugin compared every table on this page with the code in both directions: a value the code uses had to be documented, and a documented value had to appear in code. tmb has no such check yet; today the link lint (`tests/lint/links.ts`) only checks this page's links.
+Planned: a lint that compares every table on this page with the code in both directions. A value the code uses must be documented, and a documented value must appear in code. The link lint (`tests/lint/links.ts`) checks only this page's links.
 
 ---
 

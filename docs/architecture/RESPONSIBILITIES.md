@@ -2,12 +2,12 @@
 
 What each tmb role is for, what it may and may not do, and why the roles are split this way. Each role's prompt sits in its own role file, written once in a host-neutral form; the engine's role checks sit in the code. Ask the code graph for either.
 
-| Role | Who | Plugin name |
-|---|---|---|
-| Human | The developer | Human |
-| Planner, addressed as bro | The host's main agent | bro |
-| Worker | A subagent the host starts | swe |
-| Reviewer | A subagent the host starts, or a second host set up as the reviewer | code-reviewer |
+| Role | Who |
+|---|---|
+| Human | The developer |
+| Planner, addressed as bro | The host's main agent |
+| Worker | A subagent the host starts |
+| Reviewer | A subagent the host starts, or a second host set up as the reviewer |
 
 ```mermaid
 flowchart LR
@@ -107,7 +107,7 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 
 #### Planned for lanes
 
-- **Session start says which session started each open task.** The record keeps no session, so every open task is listed without its holder.
+- **Session start says which session started each open task.**
 - **The planner's prompt guides parallel work.** The planner proposes a split and never starts sessions unasked. It reads each issue's likely files from the code graph and keeps issues that touch the same files in one session. It tells the Human which overlaps it could not remove, and the Human approves the split.
 
 ## Worker

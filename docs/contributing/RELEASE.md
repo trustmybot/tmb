@@ -59,7 +59,7 @@ flowchart TD
 | Update test | Checks an install updating itself on the same three systems. |
 | Package managers | Fills the Homebrew cask, the Scoop manifest and the winget manifests from `SHA256SUMS`, only when the release is the newest on its channel. It skips cleanly while the tap, the bucket or their token is missing; the winget manifests are kept with the run. |
 
-Not built: signing the macOS programs with a Developer ID and notarizing them. Until then a Homebrew install on macOS installs and then does not run, and the installer script is the only route there (trustmybot/tmb#91).
+A Homebrew install on macOS installs and then does not run, because the programs are signed ad hoc, so the installer script is the only route there. Planned (trustmybot/tmb#91): signing the macOS programs with a Developer ID and notarizing them.
 
 ## Release gate
 
@@ -77,7 +77,7 @@ None of them holds the publish back: the release run publishes once its own buil
 - There is no rc branch: an rc is the tag.
 - `agent-run.yml` runs the model steps on GitHub, by hand only, and needs the `CLAUDE_CODE_OAUTH_TOKEN` secret.
 
-Planned: a gate on GitHub that an rc must pass before it publishes, as the plugin's release gate was.
+Planned: a gate on GitHub that an rc must pass before it publishes.
 
 ## Release steps
 
@@ -99,5 +99,5 @@ Open, for the Human:
 
 - **Where the version is bumped.** A tag's version comes from the tag alone. `package.json` gives only the `X.Y.Z` of dev builds, and no script or workflow changes it.
 - **What reaches `main`, and how.** `main` holds releases only ([README.md](./README.md#branches)), but no workflow moves it, and none checks which branch a tag is on.
-- **Whether a stable tag must sit on the commit of a passed rc.** The plugin required it; nothing in tmb checks it.
-- **A changelog.** tmb keeps none.
+- **Whether a stable tag must sit on the commit of a passed rc.** Nothing checks it.
+- **Whether tmb keeps a changelog.**

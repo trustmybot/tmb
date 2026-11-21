@@ -6,18 +6,18 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 
 ## What is recorded
 
-| Record | Holds | State |
-|---|---|---|
-| Issue | A goal, its state and its milestone | Shipped |
-| Discussion | Notes and decisions on an issue. The newest decision is the one in force | Shipped |
-| Feature branch | A branch tasks fold into, its base, its state and its repo | Shipped |
-| Task | A spec, its kind, its state, its branch, its commit and its repo | Shipped |
-| Run | One worker or reviewer on one task or one review: start, end, how it ended, its cost | Shipped |
-| Check run | The checks run on a commit, each command and its result: start and end | Shipped |
-| Review | A reviewer's verdict on a commit or a feature branch, its findings, and the run that wrote it | Shipped |
-| Guard decision | Each allow and deny the gate gave at a checkpoint, and why | Shipped |
-| Audit entry | Every change to configuration and every Human waiver | Shipped |
-| Session | One host session, with its start, its end and its own cost | Planned (trustmybot/tmb#63, trustmybot/tmb#254) |
+| Record | Holds |
+|---|---|
+| Issue | A goal, its state and its milestone |
+| Discussion | Notes and decisions on an issue. The newest decision is the one in force |
+| Feature branch | A branch tasks fold into, its base, its state and its repo |
+| Task | A spec, its kind, its state, its branch, its commit and its repo |
+| Run | One worker or reviewer on one task or one review: start, end, how it ended, its cost |
+| Check run | The checks run on a commit, each command and its result: start and end |
+| Review | A reviewer's verdict on a commit or a feature branch, its findings, and the run that wrote it |
+| Guard decision | Each allow and deny the gate gave at a checkpoint, and why |
+| Audit entry | Every change to configuration and every Human waiver |
+| Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
 
 ```mermaid
 flowchart TD
@@ -54,11 +54,11 @@ flowchart TD
     R2 --> W["Review: the verdict"]
 ```
 
-The chart is one moment of a real tree. To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. Today the tree starts at the run; the session level and the link from a run to its session are Planned.
+The chart is one moment of a real tree. To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. The tree starts at the run. Planned: the session level and the link from a run to its session.
 
 ## Sessions
 
-Planned (trustmybot/tmb#63, trustmybot/tmb#254). Today a session has no record: a record names the role and host, not the session, so the work of two sessions on one project cannot be told apart.
+Planned (trustmybot/tmb#63, trustmybot/tmb#254). A record names the role and host, not the session; the session record is what tells the work of two sessions on one project apart.
 
 ```mermaid
 stateDiagram-v2
@@ -72,11 +72,11 @@ stateDiagram-v2
 - **One stable id** across a compaction, a clear and a resume.
 - **A session with a start and no end is a finding,** like a run.
 - **A session's own tokens** are recorded with the same four counts as a run's, apart from its runs' counts, so a total counts nothing twice.
-- **tmb still starts no session and assigns no work between sessions.** [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) covers parallel sessions.
+- **tmb starts no session and assigns no work between sessions.** [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) covers parallel sessions.
 
 ## Agent runs
 
-Shipped. One run is one start of a worker or the reviewer. The planner's own turns are not a run; they belong to the session record, which is Planned.
+One run is one start of a worker or the reviewer. The planner's own turns are not a run; they belong to the session record, which is Planned.
 
 ```mermaid
 stateDiagram-v2
@@ -110,15 +110,15 @@ stateDiagram-v2
     denied --> [*]
 ```
 
-- **Shipped: every decision is recorded,** allow and deny, with the event and the reason.
-- **Shipped: a gate never fails open on a broken record.** It denies when it cannot read or write the record, and allows only where tmb was never set up.
+- **Every decision is recorded,** allow and deny, with the event and the reason.
+- **A gate never fails open on a broken record.** It denies when it cannot read or write the record, and allows only where tmb was never set up.
 - **Not recorded:** a shell command tmb let pass. tmb reads a shell command only for a step only the Human may take, and records only the deny.
 - **Not events:** a task's start and close. The engine checks them when asked, and a refusal goes to the caller without a guard decision.
-- **Planned:** a start written before the hook's work, so a hook that hangs or crashes leaves a record. Today a decision is written once, when it is made.
+- **A decision is written once, when it is made.** Planned: a start written before the hook's work, so a hook that hangs or crashes leaves a record.
 
 ## Verification runs
 
-Shipped, as check runs. One run is one execution of a task's checks on one commit: at close, and again after a fold or a rebase moved the commit.
+Recorded as check runs. One run is one execution of a task's checks on one commit: at close, and again after a fold or a rebase moved the commit.
 
 ```mermaid
 stateDiagram-v2
@@ -149,7 +149,6 @@ flowchart TD
 
 - **Last activity needs no heartbeat.** It is the newest record under the run.
 - **Nothing is ended for the agent.** tmb lists what has no end and deletes nothing.
-- **Open, for the Human:** the plugin's sweep, which ends a record whose process is gone, and its stall probe, where the planner compares a run with past run times and probes it. Both watch a run rather than gate an outcome, and tmb does not start the agent's process.
 
 ## Nothing is skipped silently
 

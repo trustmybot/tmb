@@ -117,7 +117,7 @@ flowchart TD
 
 ## The push gate at git's own hook
 
-Built. git hands its pre-push hook the exact refs and commits of a push, so the gate reads no command text and no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
+git hands its pre-push hook the exact refs and commits of a push, so the gate reads no command text and no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
 
 ```mermaid
 flowchart TD
@@ -146,14 +146,14 @@ flowchart TD
 - **The Human's push is judged too.** The gate holds whoever typed the push. In truest mode a commit of no task goes to a branch other than the base freely, so the Human's own branches need no waiver.
 - **Every decision is recorded,** with who pushed. A push the engine makes for an agent names that agent; a push with no name is the Human's.
 - **The gate denies when it cannot read the record.** A record file that is there but empty counts as damaged. With no base branch set, no push is judged.
-- **The hook names its project.** Setup writes the project's folder into the hook, relative to the repo's top, so the gate never searches for it. A project may be one package of a monorepo, below the top where git runs the hook. One repo holds one tmb project for now: setup refuses a second one and says why.
+- **The hook names its project.** Setup writes the project's folder into the hook, relative to the repo's top, so the gate never searches for it. A project may be one package of a monorepo, below the top where git runs the hook. One repo holds one tmb project: setup refuses a second one and says why.
 - **A hook that is another tool's is left alone,** as husky and lefthook write. The gate is off there, and setup, every session start and the health check say so until the gate is on or the repo is exempt. With the Human's yes, tmb adds one line first in that hook, so the gate sees every pushed ref before the rest runs. The line is safe to commit: it calls the program by name, does nothing where the program is not installed, and hands the same refs on. tmb changes only a hook written for a shell; for one in another language it says how to call the gate by hand. A tool that rewrites its hook on every install drops the line, and the next session start says the gate is off again.
 - **Removing tmb deletes the hook it wrote,** or takes out its one line. A hook that is not tmb's stays.
 - **Linked worktrees share the hook.** A push from a task's worktree is judged as one from the repo it was cut from.
 - **A mark on GitHub.** A local hook can be skipped, so the gate also has a place on the server. Each verdict or waiver sets a commit status named tmb/review on that exact commit: success for a pass or a waiver, failure for a fail. The repo's branch protection can require it before a merge. tmb says whether the base branch requires it and how to turn that on, and never changes the protection settings: they are the Human's. A mark that could not be sent is sent at the next review, waiver or pull request, and never fails the review. It is sent with the Human's own GitHub command line, only when origin is a GitHub repo. It is a convention among people who can write to the repo, not proof.
 - **The remote host is the last line of defence.** tmb's hook does not replace the branch rules the Human sets there.
 
-Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70). Today the health check counts the commits on each base branch that went around tmb.
+The health check counts the commits on each base branch that went around tmb. Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
 
 ## Agile feature branches
 
@@ -181,7 +181,7 @@ flowchart TD
 
 - **What counts as a repo.** A folder whose git folder is a real folder. A linked worktree or a submodule is never one, so a task's worktree is not taken for a repo. Setup does not look inside a repo it found, a dot-folder or a dependency folder.
 - **The record keeps the set,** so no later step scans or guesses. Running setup again adds what appeared and drops what is gone, with a line for each.
-- **A project of one repo works as before,** even when it holds nested repos.
+- **A folder inside a git work tree is a project of one repo,** even when it holds nested repos.
 
 tmb then resolves "which repo does this step belong to" from the work, never from the folder a session runs in:
 
@@ -204,20 +204,6 @@ tmb then resolves "which repo does this step belong to" from the work, never fro
 
 A global default repo would force one repo to be "the" repo; it breaks as soon as a second joins. Recording the repo on the work lets sibling repos sit side by side with none treated as the main one.
 
-## Shipped and planned
+## Open, for the Human
 
-| Piece | State |
-|---|---|
-| Engine-made branches and worktrees, the fold, the backup push, the pull request step | Shipped |
-| The push gate at git's pre-push hook, in agile and truest mode | Shipped |
-| One line in another tool's hook, with the Human's yes | Shipped |
-| The review mark on GitHub | Shipped |
-| Rebase of a reviewed truest task before its first push, in its own worktree | Shipped |
-| Workspaces of several repos, with a policy and a review mode per repo | Shipped |
-| A skipped gate found by the sync with the remote | Planned (trustmybot/tmb#70) |
-
-### Open, for the Human
-
-- **Skipping the local rebase where the remote has a merge queue.** The plugin planned it; tmb has not said.
-- **The planner recommending a mode per repo from what the repo shows.** The plugin planned it; tmb asks the Human one question and recommends agile.
-- **Built, and still proposed for the Human's review:** a rebase that makes the same change keeps its pass, where the alternative is a fresh review after every rebase; a commit of no task goes to a branch other than the base freely, where the alternative refuses every uncovered commit on every branch.
+- **Whether a truest task skips the local rebase where the remote has a merge queue.**

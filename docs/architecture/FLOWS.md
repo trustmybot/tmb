@@ -2,7 +2,7 @@
 
 This file is the starting point for every flow. Each flow gets one chart of its ideal case, a short description, and a link to its detail page. The detail page holds every other case, failures included, and how to debug them. A flow whose chart says everything has no detail page. Who owns each quality check, and how a task hands from one owner to the next, is in [TASKS.md](TASKS.md#quality-layers).
 
-It is the ground truth for the workflow: it describes what ships and marks unshipped behaviour as planned, with its GitHub issue. A PR that changes a flow updates its chart here, and its detail page, in the same PR. Neither names an internal function, file or table. The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
+It is the ground truth for the workflow. Behaviour that is decided but not built is marked Planned, with its GitHub issue. A PR that changes a flow updates its chart here, and its detail page, in the same PR. Neither names an internal function, file or table. The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
 
 tmb gates the outcome and never watches each step. Its checks run at three checkpoints: a task's close, the review, and the push.
 
@@ -20,7 +20,7 @@ Flows are grouped by when they run, and numbered within their group.
 | 3. Agent task handling | 3.2 | [Docs task](#32-docs-task) | An ask that changes only docs or prompts | planner writes it; reviewer sees it in the same review | as 3.1, the task marked docs |
 | 3. Agent task handling | 3.3 | [Push gate](#33-push-gate) | Any push, tmb's own or typed by hand | reviewer records the verdict; git asks the engine | a verdict or waiver per reviewed commit, and a mark on GitHub |
 | 3. Agent task handling | 3.4 | [Retry and escalation](#34-retry-and-escalation) | A failed check, a review fail, a conflict or a run that never ended | planner ↔ the author | a task still open or reopened, fix tasks, or a dropped task |
-| 3. Agent task handling | 3.5 | [PR comment triage](#35-pr-comment-triage) | Review comments reach a PR tmb opened (planned, trustmybot/tmb#70) | planner → worker, or the planner itself | fix tasks on the PR's branch |
+| 3. Agent task handling | 3.5 | [PR comment triage](#35-pr-comment-triage) | Review comments reach a PR tmb opened (Planned, trustmybot/tmb#70) | planner → worker, or the planner itself | fix tasks on the PR's branch |
 | 3. Agent task handling | 3.6 | [Multi-repo workspaces](#36-multi-repo-workspaces) | `tmb init` in a folder that holds several repos | planner | one record; per repo a policy, a pre-push hook and a code graph |
 | 3. Agent task handling | 3.7 | [Bulk cleanup](#37-bulk-cleanup) | `tmb doctor --fix` | — (the Human) | leftovers removed, each on the Human's yes |
 | 3. Agent task handling | 3.8 | [Parallel lanes](#38-parallel-lanes) | Several independent streams of work, each too large for one turn | one planner per session, each with its own workers and reviewer | no lane record: the shared record, and one branch and worktree per task |
@@ -29,10 +29,10 @@ Flows are grouped by when they run, and numbered within their group.
 | 3. Agent task handling | 3.11 | [Project with no remote](#311-project-with-no-remote) | Reviewed work in a repo that has no remote | planner; the Human merges locally | a branch or task recorded ready, then merged |
 | 3. Agent task handling | 3.12 | [Unattended run](#312-unattended-run) | A session with no one to answer, such as CI | planner | each default it applied, recorded as a decision |
 | 3. Agent task handling | 3.13 | [Several hosts on one record](#313-several-hosts-on-one-record) | `tmb init` once per host, each with a role | a planner on one host, a reviewer on another | every record names the role and the host that made it |
-| 4. Extending the team | 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | A capability gap (planned, trustmybot/tmb#112) | planner (Human approves) | a skill given to a role |
-| 4. Extending the team | 4.2 | [Agent creation](#42-agent-creation) | A role the project has no agent for (planned) | planner | a project agent, recorded and harnessed like the worker |
-| 4. Extending the team | 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern needs encoding (planned) | planner | a project skill |
-| 4. Extending the team | 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion (planned) | planner → consultant | the consultant's analysis |
+| 4. Extending the team | 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | A capability gap (Planned, trustmybot/tmb#112) | planner (Human approves) | a skill given to a role |
+| 4. Extending the team | 4.2 | [Agent creation](#42-agent-creation) | A role the project has no agent for (Planned) | planner | a project agent, recorded and harnessed like the worker |
+| 4. Extending the team | 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern needs encoding (Planned) | planner | a project skill |
+| 4. Extending the team | 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion (Planned) | planner → consultant | the consultant's analysis |
 | 5. Reporting tmb bugs | 5.1 | [Bug report](#51-bug-report) | tmb itself breaks, or `tmb feedback` | planner (Human approves each report) | a record of each report filed and each form opened |
 
 ## 1. Install
@@ -137,7 +137,7 @@ flowchart LR
 
 ### 3.2 Docs task
 
-The planner writes a docs or prompts change itself, in a task worktree marked as docs. The planner judges the kind; the engine checks the call by file type at close and refuses a docs task that touched any other file. Its checks run at close like any task's, and the reviewer sees it in the same review as the code tasks. Planned: a doc-review skill the planner and the reviewer both grade with (tmb ships no skills yet).
+The planner writes a docs or prompts change itself, in a task worktree marked as docs. The planner judges the kind; the engine checks the call by file type at close and refuses a docs task that touched any other file. Its checks run at close like any task's, and the reviewer sees it in the same review as the code tasks. Planned: a doc-review skill the planner and the reviewer both grade with.
 
 ```mermaid
 flowchart LR
@@ -166,7 +166,7 @@ flowchart LR
 
 ### 3.4 Retry and escalation
 
-Work that fails goes back to its author without waiting on the Human. Nothing waits for a timer: tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`. Planned (trustmybot/tmb#165): after two review fails in a row, no worker starts on the task until the planner has recorded the cause; the rest of the plugin's retry rules are not built.
+Work that fails goes back to its author without waiting on the Human. Nothing waits for a timer: tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`. Planned (trustmybot/tmb#165): after two review fails in a row, no worker starts on the task until the planner has recorded the cause.
 
 ```mermaid
 flowchart LR
@@ -182,7 +182,7 @@ flowchart LR
 
 ### 3.5 PR comment triage
 
-Planned (trustmybot/tmb#70): a sync with the remote brings review comments into the record, and the planner sorts them into tasks. Today the planner starts fix tasks on the PR's branch itself. Either way no unreviewed commit reaches an open pull request: the new tip is pushed to the same pull request only after its review or a waiver.
+Planned (trustmybot/tmb#70): a sync with the remote brings review comments into the record, and the planner sorts them into tasks on the PR's branch. No unreviewed commit reaches an open pull request: the new tip is pushed to the same pull request only after its review or a waiver.
 
 ```mermaid
 flowchart LR
@@ -208,7 +208,7 @@ flowchart LR
 
 ### 3.7 Bulk cleanup
 
-tmb cleans up only what it wrote, and only on the Human's yes to each item. `tmb doctor` lists what is left on disk: old builds no session uses, entries of ended sessions, and worktrees and branches of closed and dropped tasks. A worktree holding work nobody committed stays. A tracked repo file is deleted through a task like any other change. Open, for the Human: the plugin's one-step delete that the planner runs on a prompt naming what to delete.
+tmb cleans up only what it wrote, and only on the Human's yes to each item. `tmb doctor` lists what is left on disk: old builds no session uses, entries of ended sessions, and worktrees and branches of closed and dropped tasks. A worktree holding work nobody committed stays. A tracked repo file is deleted through a task like any other change.
 
 ```mermaid
 flowchart LR
@@ -311,7 +311,7 @@ flowchart LR
 
 ## 4. Extending the team
 
-None of group 4 is built. tmb ships three roles: planner, worker and reviewer. [EXTENDING.md](EXTENDING.md) covers all four.
+All of group 4 is Planned. tmb ships three roles: planner, worker and reviewer. [EXTENDING.md](EXTENDING.md) covers all four flows.
 
 ### 4.1 Cheatcode lifecycle
 
@@ -340,7 +340,7 @@ flowchart LR
 
 ### 4.3 Skill creation
 
-Planned. tmb will ship its own skills, loaded on demand; today it ships none. A recurring pattern becomes a project skill the same way: the planner drafts, the Human approves.
+Planned. tmb ships its own skills, loaded on demand. A recurring pattern becomes a project skill the same way: the planner drafts, the Human approves.
 
 ```mermaid
 flowchart LR
@@ -364,7 +364,7 @@ flowchart LR
 
 ### 5.1 Bug report
 
-Nothing is ever sent by itself. The feedback program is on by default on dev and rc, and on stable the first run asks once; the setting is the person's, per machine. With it on, the planner may draft a report when tmb itself breaks. `tmb feedback` drafts one on request either way. A report is a public issue on tmb's source repo from the Human's own GitHub account, and holds no source code, file contents, prompts, agent messages or environment variables. The [reference](../reference/README.md#report-a-bug-in-tmb) covers its use. Planned: a check for an earlier or matching report before a new one is offered, as the plugin had.
+Nothing is ever sent by itself. The feedback program is on by default on dev and rc, and on stable the first run asks once; the setting is the person's, per machine. With it on, the planner may draft a report when tmb itself breaks. `tmb feedback` drafts one on request either way. A report is a public issue on tmb's source repo from the Human's own GitHub account, and holds no source code, file contents, prompts, agent messages or environment variables. The [reference](../reference/README.md#report-a-bug-in-tmb) covers its use. Planned: a check for an earlier or matching report before a new one is offered.
 
 ```mermaid
 flowchart LR

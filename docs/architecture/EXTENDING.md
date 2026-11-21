@@ -2,7 +2,7 @@
 
 How a project extends its team: published capabilities (cheatcodes), created agents, skills and consultants. This page holds every case of flows 4.1 to 4.4 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [RESPONSIBILITIES.md](RESPONSIBILITIES.md).
 
-tmb ships three roles and no skill. Everything else on this page is **Planned** ([Shipped and planned](#shipped-and-planned)).
+tmb ships three roles: planner, worker and reviewer. Everything else on this page is **Planned** ([Planned](#planned)).
 
 One rule holds for all four flows: the planner drafts or proposes, the Human approves each item, tmb records it, and each adapter writes it for its host. Nothing is written without the approval.
 
@@ -117,12 +117,12 @@ A created agent is in the harness from its first run, like the worker and the re
 - **A backbone role is never copied.** Attaching a skill or a cheatcode to the worker or the reviewer extends that role's lists; the adapters write the result.
 - **Every draft starts from one generic scaffold.** There is no per-role template; the clarifying questions tailor the draft.
 - **An approval covers one file and lapses.** A draft approved but not written within a short window needs a new approval.
-- **tmb never touches an agent file it did not write.** Shipped: setup leaves such a file alone and says so, and replaces only its own.
+- **tmb never touches an agent file it did not write.** Setup leaves such a file alone and says so, and replaces only its own.
 - **A consultant holds no workflow state.** Its run and its analysis are recorded; it starts no task, closes none and records no verdict.
 
 ## tmb's own skills
 
-**Planned.** A tmb skill holds one situational procedure of tmb's own harness, loaded on demand, so each role's always-loaded prompt stays short. The placement test in [JUDGMENT_LAYER.md](../prompt-engineering/JUDGMENT_LAYER.md) decides what goes where: judgment needed on every run stays in the role's prompt, a procedure needed only in some situations goes to a skill, and deterministic logic goes to code. Today each procedure sits in a role's prompt.
+**Planned.** A tmb skill holds one situational procedure of tmb's own harness, loaded on demand, so each role's always-loaded prompt stays short. The placement test in [JUDGMENT_LAYER.md](../prompt-engineering/JUDGMENT_LAYER.md) decides what goes where: judgment needed on every run stays in the role's prompt, a procedure needed only in some situations goes to a skill, and deterministic logic goes to code.
 
 ```mermaid
 flowchart LR
@@ -153,7 +153,7 @@ The procedures in tmb's flows that a skill would hold. **The whole table is Plan
 
 ## Cheatcodes
 
-**Planned (trustmybot/tmb#112): nothing in this section is built.**
+**Planned (trustmybot/tmb#112).**
 
 ### Judgment and code
 
@@ -225,15 +225,10 @@ Acquisition must be reversible. An uninstall reverses each recorded attachment, 
 
 Removing is safer than adding, so the planner proposes an uninstall and the Human confirms it; no gate holds it. When an open task depends on the cheatcode, the planner says so before removing it. Uninstalling a standalone skill removes its file and its name from every role it was attached to, on every host.
 
-## Shipped and planned
+## Planned
 
-| Part | State |
-|---|---|
-| Three roles, written once and written to each host by its adapter | Shipped |
-| Setup leaves an agent file tmb did not write alone | Shipped |
-| tmb's own skills | Planned |
-| Skill creation and attachment to a role | Planned |
-| Cheatcodes | Planned (trustmybot/tmb#112) |
-| Agent creation, recorded and harnessed | Planned |
-| Consultants, as created agents | Planned |
-| Roundtable | Not carried over |
+- tmb's own skills.
+- Skill creation and attachment to a role.
+- Cheatcodes (trustmybot/tmb#112).
+- Agent creation, recorded and harnessed.
+- Consultants, as created agents.
