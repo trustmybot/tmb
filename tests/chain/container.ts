@@ -1,6 +1,6 @@
 // Runs the chain in one empty Linux container, under Docker or Podman:
 //
-//   bun tests/chain/container.ts [--out <dir>] [--with-model]
+//   bun tests/chain/container.ts [--out <dir>] [--with-model] [--from <step> | --only <step>]
 //
 // Builds tmb for Linux on this machine's CPU, builds the image from tests/chain/Dockerfile, and
 // runs tests/chain/run.ts in the container with the checkout mounted read-only. The work folder
@@ -8,7 +8,8 @@
 // Linux VM that runs Colima or a Podman machine on a Mac shares only the home folder. With --with-model the session steps run too; the model login
 // (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY) is passed through from this environment by name,
 // so its value is never written in a command line, the image or a saved state.
-// TMB_CHAIN_ENGINE picks docker or podman; the first found is used otherwise.
+// --from and --only open the state saved before that step by an earlier run into the same --out,
+// as tests/chain/run.ts says. TMB_CHAIN_ENGINE picks docker or podman; the first found is used otherwise.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { homedir } from "node:os";
@@ -23,6 +24,8 @@ const { values } = parseArgs({
   options: {
     out: { type: "string" },
     "with-model": { type: "boolean", default: false },
+    from: { type: "string" },
+    only: { type: "string" },
   },
 });
 
@@ -73,6 +76,8 @@ const run = [
   "--tmb-file",
   "/out/tmb-linux",
   ...(withModel ? ["--with-model"] : []),
+  ...(values.from !== undefined ? ["--from", values.from] : []),
+  ...(values.only !== undefined ? ["--only", values.only] : []),
 ];
 console.log(`$ ${engine} ${run.join(" ")}`);
 const result = spawnSync(engine, run, { stdio: "inherit" });

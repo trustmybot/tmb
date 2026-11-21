@@ -42,7 +42,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chain-logs
-          path: ${{ runner.temp }}/chain/work/logs
+          path: |
+            ${{ runner.temp }}/chain/work/logs
+            ${{ runner.temp }}/chain/work/states
+      # The states saved before each step of the last passing run on dev, to run a step alone
+      # from (tests/README.md says how).
+      - if: success() && github.ref == 'refs/heads/dev'
+        uses: actions/upload-artifact@v4
+        with:
+          name: chain-states
+          path: ${{ runner.temp }}/chain/work/states
+          retention-days: 30
 
   # Each channel's install updating itself, against a local release repo, on the platforms
   # the test job does not run on (trustmybot/tmb#57). Runs on version tags only, so a
