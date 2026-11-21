@@ -32,6 +32,7 @@ Decided by bro, for the Human's review (trustmybot/tmb#133, trustmybot/tmb#135).
 
 - **A run ends as finished or stopped.** A worker's run is finished when its task left the open state during the run. A reviewer's run is finished when it recorded a review. Every other end is stopped, a reviewer that gave no verdict included.
 - **Cost is tokens, per model:** input, output, cache read and cache write. The host's adapter gives them. For Claude Code they come from the subagent's transcript, each message counted once. A run whose transcript cannot be read has no cost, and that is not an error.
+- **A session's own tokens are not recorded yet.** Only worker and reviewer runs have a cost; the planner's session, and each of several sessions working on one project, has none. Planned (trustmybot/tmb#254, v1.x), asked for by the Human on 2026-11-20: each host session is recorded with the same four counts, apart from its runs' counts so that a total counts nothing twice. The design is proposed, for the Human's review.
 - **tmb records no price.** Prices change and a subscription has none per run.
 - **A run names its task or its feature branch.** A review of a whole feature branch has no task, so its run is linked to the branch it reviewed. A review names the run that wrote it.
 
