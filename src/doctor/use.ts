@@ -5,14 +5,14 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { findPluginDb, MIGRATION_AUDIT } from "../adapters/claude-code/migrate-plugin.ts";
+import { findPluginDb } from "../adapters/index.ts";
 import { detectBaseBranch } from "../engine/base-branch.ts";
 import { runGit } from "../engine/git.ts";
 import { parseRemoteUrl } from "../engine/github.ts";
 import { inGitWorkTree, repoDirOf, scanRepos, unnamedRepos, workingRepos } from "../engine/repos.ts";
 import type { Settings } from "../engine/settings.ts";
 import type { Store } from "../engine/store/index.ts";
-import { tasksWithNoRepo } from "../engine/task-repos.ts";
+import { MIGRATION_AUDIT, tasksWithNoRepo } from "../engine/task-repos.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
 
 const finding = (check: string, rest: Omit<Finding, "check" | "scope">): Finding => ({ check, scope: "project", ...rest });
