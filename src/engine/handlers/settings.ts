@@ -2,6 +2,7 @@
 // it recommends when a session starts with them empty, and changes one when the Human asks.
 // The review mode is the exception: the planner sets it only to the Human's answer.
 // The Human sets them with `tmb onboard`; both write the same audit entries.
+import { runningName } from "../../program.ts";
 import { detectBaseBranch } from "../base-branch.ts";
 import { detectChecks } from "../check-detection.ts";
 import { inGitWorkTree, repoDirOf, scanRepos } from "../repos.ts";
@@ -147,12 +148,12 @@ function mergedRepos(current: RepoPolicies, value: unknown): RepoPolicies {
   }
   for (const name of Object.keys(given)) {
     if (current[name] === undefined) {
-      throw new HandlerError("not_found", `no repo ${JSON.stringify(name)} in this workspace; its repos are ${Object.keys(current).join(", ") || "none"}, and \`tmb init\` finds new ones`);
+      throw new HandlerError("not_found", `no repo ${JSON.stringify(name)} in this workspace; its repos are ${Object.keys(current).join(", ") || "none"}, and \`${runningName()} init\` finds new ones`);
     }
   }
   for (const name of Object.keys(given)) {
     if (current[name]!.git === false) {
-      throw new HandlerError("refused", `the folder ${name} is not a repo, so it takes no policy; once it is a repo, tmb init records it as one`);
+      throw new HandlerError("refused", `the folder ${name} is not a repo, so it takes no policy; once it is a repo, ${runningName()} init records it as one`);
     }
     const kept = current[name]!.review_mode;
     if (modes.get(name) === undefined && kept !== undefined) given[name] = { ...given[name]!, review_mode: kept };
@@ -179,14 +180,14 @@ export function settingsSet(store: Store, actor: Actor, input: unknown, context:
   if (context.unattended === true && named.includes("review_mode") && values.review_mode !== readSettings(store).review_mode) {
     throw new HandlerError(
       "refused",
-      "the review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --review-mode <mode>`, once they type yes on their terminal)",
+      `the review mode is the Human's choice, and no one can answer in this run; the Human sets it with \`${runningName()} onboard\` (\`${runningName()} onboard --review-mode <mode>\`, once they type yes on their terminal)`,
     );
   }
   const nextRepos = repos !== null && named.includes("repos") ? mergedRepos(repos, values.repos) : null;
   if (context.unattended === true && nextRepos !== null && reviewModeChanges(repos, nextRepos).length > 0) {
     throw new HandlerError(
       "refused",
-      "a repo's review mode is the Human's choice, and no one can answer in this run; the Human sets it with `tmb onboard` (`tmb onboard --repo <repo> --review-mode <mode> --yes` without a question)",
+      `a repo's review mode is the Human's choice, and no one can answer in this run; the Human sets it with \`${runningName()} onboard\` (\`${runningName()} onboard --repo <repo> --review-mode <mode> --yes\` without a question)`,
     );
   }
   const changed: SetName[] = [];

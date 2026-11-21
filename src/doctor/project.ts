@@ -12,6 +12,7 @@ import { baseCommit } from "../engine/graph/git-source.ts";
 import { keptCheckouts, removeTaskCheckout } from "../engine/handlers/fold.ts";
 import { emptySettings } from "../engine/handlers/settings.ts";
 import { tiedProgram } from "../engine/program-tie.ts";
+import { runningName } from "../program.ts";
 import { PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "../engine/project.ts";
 import { addToForeignHook, FOREIGN_GAP, foreignHooks, handCallLine, pushGateGaps } from "../engine/push-gate.ts";
 import { repoDirOf, unnamedRepos, unnamedReposFix, workingRepos } from "../engine/repos.ts";
@@ -67,7 +68,7 @@ export function repairRecord(dbPath: string, now: Date): string {
     }
   } catch (error) {
     rmSync(recovered, { force: true });
-    return `Could not repair the record: ${oneLine(error)}. It is unchanged. Move it away to keep it, then \`tmb init\` makes a new one.`;
+    return `Could not repair the record: ${oneLine(error)}. It is unchanged. Move it away to keep it, then \`${runningName()} init\` makes a new one.`;
   }
   const aside = moveAside(dbPath, `broken-${stamp(now)}`);
   renameSync(recovered, dbPath);
@@ -411,7 +412,7 @@ export function guarded(check: string, scope: Finding["scope"], run: () => Findi
     const result = run();
     return Array.isArray(result) ? result : [result];
   } catch (error) {
-    return [{ check, scope, status: "fail", summary: `the check itself failed: ${oneLine(error)}`, bug: true, fix: { say: "this looks like tmb's own bug: `tmb feedback` drafts a report" } }];
+    return [{ check, scope, status: "fail", summary: `the check itself failed: ${oneLine(error)}`, bug: true, fix: { say: `this looks like tmb's own bug: \`${runningName()} feedback\` drafts a report` } }];
   }
 }
 

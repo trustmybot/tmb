@@ -13,6 +13,7 @@ import type { Decision } from "./decide.ts";
 import { runGit } from "./git.ts";
 import { coveredCommits } from "./handlers/reviews.ts";
 import { truestTaskCommits } from "./handlers/truest.ts";
+import { runningName } from "../program.ts";
 import { openProjectStore, projectDbPath } from "./project.ts";
 import { TRUEST } from "./handlers/common.ts";
 import { repoDirOf, repoOf } from "./repos.ts";
@@ -76,7 +77,7 @@ function judgeRef(store: Store, projectDir: string, remote: string, base: string
   return [
     `it brings ${found.lines.length} commit${found.lines.length === 1 ? "" : "s"} onto the base branch ${base} at ${short(ref.localSha)} that no feature branch tip the reviewer passed, or the Human waived, holds:`,
     ...shown,
-    "In agile mode work reaches the base branch through a feature branch: the reviewer passes it at its tip (or the Human runs `tmb feature waive <name> --reason <text>`), then its pull request opens with feature_pr (`tmb feature pr <name> --title <text>`).",
+    `In agile mode work reaches the base branch through a feature branch: the reviewer passes it at its tip (or the Human runs \`${runningName()} feature waive <name> --reason <text>\`), then its pull request opens with feature_pr (\`${runningName()} feature pr <name> --title <text>\`).`,
   ].join("\n");
 }
 
@@ -101,7 +102,7 @@ function judgeTruestRef(store: Store, projectDir: string, remote: string, base: 
   return [
     `it brings ${lines.length} commit${lines.length === 1 ? "" : "s"} ${what} at ${short(ref.localSha)} that no task commit the reviewer passed, or the Human waived, holds:`,
     ...shown,
-    "In truest mode every task is reviewed before its push: the reviewer passes the task at its commit (or the Human runs `tmb task waive <id> --reason <text>`), then tmb pushes it and opens its pull request with task_pr (`tmb task pr <id> --title <text>`).",
+    `In truest mode every task is reviewed before its push: the reviewer passes the task at its commit (or the Human runs \`${runningName()} task waive <id> --reason <text>\`), then tmb pushes it and opens its pull request with task_pr (\`${runningName()} task pr <id> --title <text>\`).`,
   ].join("\n");
 }
 
@@ -121,7 +122,7 @@ export function judgePush(projectDir: string, remote: string, stdin: string, pus
   const opened = openProjectStore(projectDir, { create: false });
   if (!opened.ok) {
     if (opened.error.failure === "missing") {
-      return { decision: "allow", reason: `${NO_RECORD} in ${projectDir}, so the push gate judged nothing; run \`tmb init\` there, or \`tmb remove\` to take the hook away` };
+      return { decision: "allow", reason: `${NO_RECORD} in ${projectDir}, so the push gate judged nothing; run \`${runningName()} init\` there, or \`${runningName()} remove\` to take the hook away` };
     }
     return denied(remote, `tmb cannot read the project's record, so it allows nothing: ${opened.error.message}`);
   }
@@ -351,7 +352,7 @@ function runsAddedLineFirst(text: string): boolean {
 
 /** What init and refresh say about a hook that is not tmb's: the gate is off there, and how to turn it on. */
 function foreignHookLine(dir: string, file: string): string {
-  return `The push gate is off in ${dir}: git's pre-push hook ${file} is not tmb's, so it was left alone. \`tmb onboard --add-push-gate\` or \`tmb doctor --fix\` adds tmb's one line to it, with your yes.`;
+  return `The push gate is off in ${dir}: git's pre-push hook ${file} is not tmb's, so it was left alone. \`${runningName()} onboard --add-push-gate\` or \`${runningName()} doctor --fix\` adds tmb's one line to it, with your yes.`;
 }
 
 /**
@@ -422,7 +423,7 @@ export function addToForeignHook(hook: ForeignHook, program: string, projectDir:
   const at = lines[0]?.startsWith("#!") ? 1 : 0;
   lines.splice(at, 0, addedLine(program, hook.dir, projectDir));
   writeFileSync(hook.file, lines.join("\n") + (lines[lines.length - 1] === "" ? "" : "\n"));
-  return `Added tmb's line first in git's pre-push hook ${hook.file}: every push from ${hook.dir} asks tmb first, the rest of the hook reads the same ref lines, and \`tmb remove\` takes the line out.`;
+  return `Added tmb's line first in git's pre-push hook ${hook.file}: every push from ${hook.dir} asks tmb first, the rest of the hook reads the same ref lines, and \`${runningName()} remove\` takes the line out.`;
 }
 
 /**
@@ -442,7 +443,7 @@ export function pushGateOffLine(projectDir: string): string | null {
     const off = foreignHooks(projectDir, repos);
     if (off.length === 0) return null;
     const where = off.map((hook) => `${hook.dir} (its hook ${hook.file} is another tool's)`).join(", ");
-    return `The push gate is off in ${where}: a push from there reaches the remote without tmb's review. \`tmb onboard --add-push-gate\` or \`tmb doctor --fix\` adds tmb's one line to the hook, with the Human's yes.`;
+    return `The push gate is off in ${where}: a push from there reaches the remote without tmb's review. \`${runningName()} onboard --add-push-gate\` or \`${runningName()} doctor --fix\` adds tmb's one line to the hook, with the Human's yes.`;
   } catch {
     return null;
   }

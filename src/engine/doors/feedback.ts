@@ -67,13 +67,13 @@ function openRecord(projectDir: string): Store | null {
 export async function runFeedbackCommand(args: string[], env: FeedbackEnv, io: FeedbackIo): Promise<number> {
   const flags = args.filter((arg) => arg.startsWith("-"));
   if (flags.length > 0) {
-    io.err(`tmb feedback takes no flags, got ${flags.join(" ")}`);
+    io.err(`${env.program.name} feedback takes no flags, got ${flags.join(" ")}`);
     return 2;
   }
   const [first, ...rest] = args;
   if (first === "on" || first === "off" || first === "status") {
     if (rest.length > 0) {
-      io.err(`tmb feedback ${first} takes no arguments, got ${rest.join(" ")}`);
+      io.err(`${env.program.name} feedback ${first} takes no arguments, got ${rest.join(" ")}`);
       return 2;
     }
     if (first !== "status") setFeedback(env.stateDir, channelFor(env), first, env.now());
@@ -107,7 +107,7 @@ async function draftAndAsk(given: string, env: FeedbackEnv, io: FeedbackIo): Pro
     if (draft.form.source === "built-in copy") io.out(`tmb could not read the bug form from ${env.repo.owner}/${env.repo.name} (${draft.form.fallbackReason}); it used the copy built into it.`);
     io.out(`The draft is saved at ${draft.file}.`);
     if (io.ask === null) {
-      io.out("No terminal to ask on, so nothing was sent. Run tmb feedback on a terminal to send a report.");
+      io.out(`No terminal to ask on, so nothing was sent. Run ${env.program.name} feedback on a terminal to send a report.`);
       return 0;
     }
     io.out(routeLine(env).line);

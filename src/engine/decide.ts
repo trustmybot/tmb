@@ -5,6 +5,7 @@
 // reviewer host's main agent writes nothing. tmb reads a shell command only for a step only the
 // Human may take (trustmybot/tmb#179): git's pre-push hook holds every push, whatever was typed.
 // A record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
+import { runningName } from "../program.ts";
 import { adoptWorktree } from "./handlers/adopt.ts";
 import { humanOnlyInShell, shellDenyReason } from "./human-only.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
@@ -77,13 +78,16 @@ function recordedEvent(event: TmbEvent): string {
 
 const WORKER: Role = "worker";
 const REVIEWER: Role = "reviewer";
-const HOW_TO_START = `Start the task first with the task_start tool, or \`tmb task start\` from the command line, then start the worker with the ${taskStartLine("<id>")} line from its brief in the start prompt.`;
+
+function howToStart(): string {
+  return `Start the task first with the task_start tool, or \`${runningName()} task start\` from the command line, then start the worker with the ${taskStartLine("<id>")} line from its brief in the start prompt.`;
+}
 
 /** A worker starts only when its start prompt names an open task whose worktree is ready; the start is recorded as a run. */
 function workerStart(store: Store, event: TmbEvent): Decision {
   const deny = (why: string): Decision => ({
     decision: "deny",
-    reason: `A worker starts only on an open task whose worktree is ready, named in its start prompt as ${taskStartLine("<id>")}. ${why} ${HOW_TO_START}`,
+    reason: `A worker starts only on an open task whose worktree is ready, named in its start prompt as ${taskStartLine("<id>")}. ${why} ${howToStart()}`,
   });
   const taskId = taskIdInPrompt(event.action);
   if (taskId === null) return deny("This start prompt names no task.");
