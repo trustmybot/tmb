@@ -170,7 +170,7 @@ Once the project is set up:
 
 ## Unattended runs
 
-When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults, names each default it used, and stops with the reason when a default is not safe. The review mode is never one of those defaults: with none set, the run's first task is refused ([The review mode is yours](#the-review-mode-is-yours)). Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
+When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults and names each default it used. A question it has a recommended answer for counts as answered by that recommendation: it records that as a decision on the issue, names it in its answer, and goes on to start the feature branch and its first task. It stops only when no default is safe, and says why. The review mode is never one of those defaults: with none set, the run's first task is refused ([The review mode is yours](#the-review-mode-is-yours)). Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
 
 ## Help and mistyped commands
 
