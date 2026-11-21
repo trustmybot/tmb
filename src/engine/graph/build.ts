@@ -6,6 +6,7 @@ import { basename, posix } from "node:path";
 import { type Extraction, extractFile, inSymbolScope, languageOf, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
+import { languageNamed } from "./languages/registry.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
@@ -15,8 +16,9 @@ import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 3;
+export const EXTRACTOR_VERSION = 4;
 const MAX_PARSE_BYTES = 1_000_000;
+const MINIFIED = "minified; not parsed";
 const MAX_ERROR_CHARS = 200;
 
 export type BuildStats = {
@@ -120,6 +122,10 @@ async function planCommit(
     if (plan.lang !== null && plan.extraction === null && plan.error === null) {
       if (plan.entry.size > MAX_PARSE_BYTES) {
         plan.error = `larger than ${MAX_PARSE_BYTES} bytes; not parsed`;
+      } else if (text !== null && languageNamed(plan.lang)?.minified?.(text) === true) {
+        // A minified bundle stays a file of the graph, counted and found by path, but adds no symbol.
+        plan.error = MINIFIED;
+        cache.run(plan.entry.blob, plan.lang, EXTRACTOR_VERSION, null, MINIFIED);
       } else if (text !== null) {
         const result = parseOne(parsers, plan.entry, plan.lang, text);
         plan.extraction = result.extraction;

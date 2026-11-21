@@ -132,5 +132,8 @@ export interface LanguageModule {
   grammar?: string;
   // Its comment marker, for the file's leading comment: `#` or `--`, or `//` and `/* */`.
   comment: 'hash' | 'slash';
+  // Whether a file's text is machine-minified, so it is kept as a file but not parsed
+  // (trustmybot/tmb#232); absent when the language has no minified form.
+  minified?(text: string): boolean;
   extract(file: SourceFile, out: Collector): void;
 }
