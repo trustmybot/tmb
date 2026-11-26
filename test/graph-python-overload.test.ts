@@ -142,6 +142,64 @@ for (const [title, way, layer] of WAYS) {
       db.close();
     });
 
+    // Stubs with no definition after them, as in a `Protocol`, are one node together: a method
+    // with only a declaration, held by its class. A call the rules prove reaches it links to it.
+    test("stubs with no definition after them are one node together, held by its class, and a call links to it", async () => {
+      const db = await built(
+        {
+          "loom/__init__.py": "",
+          "loom/thread.py": lines(
+            "from typing import Protocol, overload", // 1
+            "import typing as ty", // 2
+            "", // 3
+            "", // 4
+            "class Spool(Protocol):", // 5
+            "    @overload", // 6
+            "    def wind(self, n: int) -> int: ...", // 7
+            "    @overload", // 8
+            "    def wind(self, n: str) -> str: ...", // 9
+            "", // 10
+            "    def twist(self) -> int:", // 11
+            "        return self.wind(3)", // 12
+            "", // 13
+            "", // 14
+            "class Bobbin(Spool):", // 15
+            "    def turn(self) -> int:", // 16
+            "        return self.wind(4)", // 17
+            "", // 18
+            "", // 19
+            "@ty.overload", // 20
+            "def knot(a: int) -> int: ...", // 21
+            "@ty.overload", // 22
+            "def knot(a: str) -> str: ...", // 23
+          ),
+          "loom/frame.py": lines("from loom.thread import Spool", "", "", "def weave(s: Spool) -> int:", "    return s.wind(5)"),
+        },
+        way,
+        layer,
+      );
+      expect(nodes(db, layer, "loom/thread.py")).toEqual([
+        { name: "Spool", kind: "class", start: 5, end: 12 },
+        { name: "Spool.wind", kind: "method", start: 6, end: 9 },
+        { name: "Spool.twist", kind: "method", start: 11, end: 12 },
+        { name: "Bobbin", kind: "class", start: 15, end: 17 },
+        { name: "Bobbin.turn", kind: "method", start: 16, end: 17 },
+        { name: "knot", kind: "function", start: 20, end: 23 },
+      ]);
+      const parent = db.query(`SELECT p.qualified_name AS name FROM symbols s JOIN symbols p ON p.id = s.parent_id WHERE s.layer = ? AND s.path = 'loom/thread.py' AND s.qualified_name = 'Spool.wind'`).get(layer) as { name: string } | null;
+      expect(parent?.name).toBe("Spool");
+      // On the object itself, in its class and in a class that inherits it: both ways prove it.
+      expect(callsOf(db, layer, "loom/thread.py:Spool.twist")).toEqual([{ name: "wind", line: 12, dst: "loom/thread.py:Spool.wind", dst_start: 6, state: "linked" }]);
+      expect(callsOf(db, layer, "loom/thread.py:Bobbin.turn")).toEqual([{ name: "wind", line: 17, dst: "loom/thread.py:Spool.wind", dst_start: 6, state: "linked" }]);
+      // On a parameter whose type is written: the language's tool proves it; the built-in rules do not.
+      expect(callsOf(db, layer, "loom/frame.py:weave")).toEqual([
+        way === "language-tool"
+          ? { name: "wind", line: 5, dst: "loom/thread.py:Spool.wind", dst_start: 6, state: "linked" }
+          : { name: "wind", line: 5, dst: null, dst_start: null, state: "not_known" },
+      ]);
+      db.close();
+    });
+
     test("a decorator that only shares the name is not typing's: each of its definitions stays a node", async () => {
       const db = await built(
         {
