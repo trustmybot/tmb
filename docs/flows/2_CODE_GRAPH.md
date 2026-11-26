@@ -47,7 +47,7 @@ A multi-repo workspace indexes each repo from its own base branch, so a lookup m
 
 ## Task overlay
 
-The base graph holds only what has reached the base branch. A layer makes work that is not there yet readable through the graph, without touching the base: one per open task, and one per open feature branch (trustmybot/tmb#182).
+The base graph holds only what has reached the base branch. A layer makes work that is not there yet readable through the graph, without touching the base: one per open task, and one per open feature branch.
 
 ```mermaid
 flowchart TD

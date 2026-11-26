@@ -24,7 +24,7 @@ How work on this repo is done.
 
 ## CI
 
-CI is split so that it never slows a lane down (trustmybot/tmb#164).
+CI is split so that it never slows a lane down.
 
 - **Pull requests and pushes to `dev` run only the fast Linux jobs:** `test` (typecheck, `bun test` and the link lint) and `chain` (the whole chain in a container, without its model steps, trustmybot/tmb#260). `test` is the one required check. The one exception is `install-smoke`, which runs on a pull request that changes the install smoke test itself.
 - **Version tags (`vX.Y.Z-rc.N` and `vX.Y.Z`) run the heavy jobs:** `update-scenario` on macOS and Windows, `packaging-probe` on macOS, Linux and Windows, and the release build and install tests.
@@ -43,5 +43,5 @@ The design in [docs/architecture](../architecture/README.md) is the ground truth
 - **The labels are listed in [LABELS.md](LABELS.md).**
 - **A maintainer finishes the labels.** Every issue carries one `type/`, one `priority/` and one `area/` label. The area a reporter picks in the form is a guess; the maintainer sets the label, then removes `status/needs-triage` and sets the milestone.
 - **A bug report names the version.** The form asks for what `tmb --version` prints, which names the channel too.
-- **The forms are the one place the rules for a report live.** `tmb feedback` fills in the bug form as it stands on the default branch, so a change to the form changes what tmb reports (trustmybot/tmb#122). A workflow, `.github/workflows/feedback-labels.yml`, adds the form's labels to a report that `tmb feedback` filed through GitHub's CLI.
+- **The forms are the one place the rules for a report live.** `tmb feedback` fills in the bug form as it stands on the default branch, so a change to the form changes what tmb reports. A workflow, `.github/workflows/feedback-labels.yml`, adds the form's labels to a report that `tmb feedback` filed through GitHub's CLI.
 - **A field's `id` in a form is kept.** `tmb feedback` fills fields by their `id`. A field may be added or removed; one that stays keeps its `id`.

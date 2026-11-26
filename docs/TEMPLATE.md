@@ -48,6 +48,7 @@ The rule in one or two sentences.
 | **One word per thing.** Use the glossary's word every time. | "the record" everywhere | "the record", "the DB", "the store" for one thing |
 | **Latest design only.** Rewrite in place. No history, versions or schedule. | "The default is Auto." | "The default was Dark until we changed it." |
 | **Mark what is unbuilt or unsettled.** | "Planned (trustmybot/tmb#305)", "Open, for the Human" | Unbuilt design written as if it exists |
+| **Name an issue only while it is open.** When the design is built, the mark and the issue's id both go. | "A minified file is kept as a file and not parsed." | "(trustmybot/tmb#232)" after a built rule: that is history, and it lives in git |
 | **One fact, one place.** State a fact once and link to it. | "Details are in MEMORY.md." | The same rule copied into three pages |
 
 ## The logic chain
@@ -105,5 +106,5 @@ A page is as short as its design allows. Cut words before cutting rules.
 | Each section | It has one rule of one or two sentences and at least one example |
 | Wording | No sentence needs a second reading |
 | Terms | Each one matches the glossary |
-| State | Unbuilt design is marked Planned with its issue |
+| State | Unbuilt design is marked Planned with its issue. Built design names no issue |
 | Links | The link check passes |

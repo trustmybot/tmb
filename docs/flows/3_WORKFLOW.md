@@ -189,7 +189,7 @@ flowchart TD
 - **Docs tasks are in the same review.** A docs task that changed behaviour is a blocking finding, and that part is redone as a code task.
 - **The brief says whether the branch holds the base.** Nothing refuses a review of a branch that does not; the brief is how the planner and the reviewer know.
 - **The verdict is on one commit.** tmb takes it only on the branch's current tip.
-- **A second host can be the reviewer.** A host set up as the project's reviewer is told at session start which branches wait for a review ([HOSTS.md](../architecture/HOSTS.md)).
+- **A second host can be the reviewer.** A host set up as the project's reviewer is told at session start which branches wait for a review ([ADAPTERS.md](../architecture/ADAPTERS.md)).
 
 ### Review state
 

@@ -32,7 +32,7 @@ What stands in their place, each at a checkpoint:
 | The close | Runs the checks on the committed work, and reports what changed outside the spec and in the main folder |
 | The review | Judges the diff |
 | The push gate | Judges every push, an agent's or one typed by hand: git's own pre-push hook asks the engine ([below](#the-push-gate-at-gits-own-hook)) |
-| One host event | A worker's start is refused without a ready task ([HOSTS.md](../architecture/HOSTS.md#containment)) |
+| One host event | A worker's start is refused without a ready task ([ENGINE.md](../architecture/ENGINE.md#containment)) |
 
 ## Where the work sits at each stage
 
@@ -86,7 +86,7 @@ The engine provisions: starting a task cuts its branch and adds its worktree in 
 
 - **A failed start leaves nothing.** When git cannot add the worktree, nothing is recorded and what was made is removed.
 - **A worker starts only on a ready task.** The gate refuses a worker start that names no open task with its worktree on disk.
-- **A worker's own folder is adopted.** A host may start each worker in a worktree of the host's making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([HOSTS.md](../architecture/HOSTS.md)).
+- **A worker's own folder is adopted.** A host may start each worker in a worktree of the host's making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([ADAPTERS.md](../architecture/ADAPTERS.md)).
 
 ## Closing a task
 

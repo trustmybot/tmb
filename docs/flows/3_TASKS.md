@@ -16,7 +16,7 @@ flowchart LR
     G -. fails .-> X
 ```
 
-**tmb gates the outcome.** It does not watch a task's steps: no guard on each edit, no reading of shell commands, no per-step metering. It checks at three checkpoints, like CI: the checks at close, the review, and the push gate (trustmybot/tmb#98).
+**tmb gates the outcome.** It does not watch a task's steps: no guard on each edit, no reading of shell commands, no per-step metering. It checks at three checkpoints, like CI: the checks at close, the review, and the push gate.
 
 **Every record a task leaves lives in the record,** the cold store [MEMORY.md](../architecture/MEMORY.md) describes. An agent reads it back from there, never from chat. [TRAJECTORY.md](../architecture/TRAJECTORY.md) lists what is recorded.
 
@@ -162,7 +162,7 @@ flowchart TD
 | Ask, record, spec | Human → planner | judgment | as in 3.1 |
 | Name the kind | planner | judgment | the planner judges whether a change is docs. A project declares no list of docs paths: such a list is wrong for the next project and the next file |
 | Author | planner | judgment | the planner writes in the task's worktree. No edit is refused on the way |
-| Close | engine | deterministic | 3.1's checks, plus a check by file type: only prose, data and image types on a fixed list, and files with no extension such as a licence, may change. A type the list does not name counts as code (trustmybot/tmb#185). tmb does not read the file to guess. The list is in the [reference](../reference/README.md#what-a-docs-task-may-change) |
+| Close | engine | deterministic | 3.1's checks, plus a check by file type: only prose, data and image types on a fixed list, and files with no extension such as a licence, may change. A type the list does not name counts as code. tmb does not read the file to guess. The list is in the [reference](../reference/README.md#what-a-docs-task-may-change) |
 | Review | reviewer | judgment | seen in the same review as the code tasks. The engine cannot tell whether a config or data change alters behaviour; a docs task that did is a blocking finding |
 | Pull request, merge | engine, then Human | as in 3.1 | as in 3.1 |
 
@@ -219,9 +219,9 @@ flowchart TD
 
 ### Around the gate
 
-- **A mark on GitHub** (trustmybot/tmb#101). A local hook can be skipped, so each verdict or waiver also sets a commit status on that exact commit. The repo's branch protection can require it; tmb says whether it does and never changes protection settings. A mark that could not be sent is recorded and sent later; it never fails the review. It is a convention, not proof.
-- **Another tool's hook** (trustmybot/tmb#184). Where a repo already has a pre-push hook, tmb leaves it alone and says the gate is off there at every session start. With the Human's yes, tmb adds one line first in that hook; removal takes out that line alone.
-- **One project per repo.** The hook names its project, so the gate never searches. A project may be one package of a monorepo (trustmybot/tmb#178).
+- **A mark on GitHub**. A local hook can be skipped, so each verdict or waiver also sets a commit status on that exact commit. The repo's branch protection can require it; tmb says whether it does and never changes protection settings. A mark that could not be sent is recorded and sent later; it never fails the review. It is a convention, not proof.
+- **Another tool's hook**. Where a repo already has a pre-push hook, tmb leaves it alone and says the gate is off there at every session start. With the Human's yes, tmb adds one line first in that hook; removal takes out that line alone.
+- **One project per repo.** The hook names its project, so the gate never searches. A project may be one package of a monorepo.
 - **Planned:** a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
 - **Planned: freeze** (trustmybot/tmb#64). The Human stops all work in a project with one request: task and agent starts, closes and pull requests are denied until it is lifted. Reads stay allowed.
 
@@ -305,8 +305,8 @@ stateDiagram-v2
 
 - **Closed and dropped are final.** Rework on closed agile work is a new fix task on the feature branch. A dropped task's work reaches no branch; a new task can name the dropped task it replaces, so a chain of retries reads as one line.
 - **In review keeps its worktree.** Nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
-- **Ready is for a repo with no remote** (trustmybot/tmb#183). Nothing is pushed and no pull request opens; the Human merges locally with the command tmb gives. tmb counts the work as merged when the local base branch holds the tip, or when merging it would change nothing, as after a squash by hand. A ready task the Human will not merge is dropped.
-- **Dropping keeps what holds work.** The worktree goes unless it holds uncommitted work, and the branch stays while it holds commits (trustmybot/tmb#170).
+- **Ready is for a repo with no remote**. Nothing is pushed and no pull request opens; the Human merges locally with the command tmb gives. tmb counts the work as merged when the local base branch holds the tip, or when merging it would change nothing, as after a squash by hand. A ready task the Human will not merge is dropped.
+- **Dropping keeps what holds work.** The worktree goes unless it holds uncommitted work, and the branch stays while it holds commits.
 - **Agile review state is on the branch, not the task.** An agile task closes unreviewed, with its mode recorded. The pass or waiver is recorded for the feature branch's tip ([3_WORKFLOW.md](3_WORKFLOW.md)).
 - **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the audit trail. The planner never waives.
 - **A rebase with the same change keeps its pass.** The checks run again; a change that differs needs a fresh review. An open pull request is never rebased.

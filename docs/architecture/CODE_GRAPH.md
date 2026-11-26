@@ -107,7 +107,7 @@ flowchart TD
     E -- yes --> F["Every function a node, unnamed ones included"]
 ```
 
-- **Every function is a node, unnamed ones included** (trustmybot/tmb#140), in TypeScript and JavaScript ([Languages](#languages)). Each symbol links to what contains it: a function, a class or the file.
+- **Every function is a node, unnamed ones included**, in TypeScript and JavaScript ([Languages](#languages)). Each symbol links to what contains it: a function, a class or the file.
   - **What an unnamed function is.** A function written as a value with no name: an arrow function or a function expression in TypeScript and JavaScript, a `lambda` in Python (Planned, trustmybot/tmb#141). A nested helper that has a name is a named function, not this.
   - **Example 1.** In `items.map(x => x.price)` the callback is an unnamed function. Its node is named by where it is used, here the callback of `map`, or else by its line.
   - **Example 2.** `function outer() { function helper() {} }`: `helper` is a named function inside `outer`.
@@ -115,12 +115,12 @@ flowchart TD
 - **Unnamed functions never show to a reader.** They stay out of search, and a lookup names the nearest named function instead.
   - **Example.** A test calls `total()` inside `it("adds", () => { ... })`. The answer to "who calls `total`" names the nearest named function around the callback, not the callback.
   - **Its links can leave the file.** Nothing in another file can call a function with no name, but the calls it makes can reach any file, so they need this owner.
-- **A coverage test holds it at 100%** (trustmybot/tmb#247). [Benchmark](#benchmark) has the test and its targets.
+- **A coverage test holds it at 100%**. [Benchmark](#benchmark) has the test and its targets.
 - **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and indexing prints how many there are. "Not parsed" means only a file in a language tmb reads that failed to parse.
-- **What the graph does not read is named and counted** (trustmybot/tmb#234).
+- **What the graph does not read is named and counted**.
   - **Example 1.** A lookup finds nothing. Its answer names the unread languages, so "not there" is never mistaken for "not read".
   - **Example 2.** A lookup of a file in an unread language says the file is there and its language is not read.
-- **A minified file is kept as a file and not parsed** (trustmybot/tmb#232), whatever its name. The test is the one used by [GitHub Linguist](https://github.com/github-linguist/linguist), the library GitHub uses to tell a repo's languages and to mark vendored and generated files: lines that average more than 110 characters. It holds for TypeScript and JavaScript.
+- **A minified file is kept as a file and not parsed**, whatever its name. The test is the one used by [GitHub Linguist](https://github.com/github-linguist/linguist), the library GitHub uses to tell a repo's languages and to mark vendored and generated files: lines that average more than 110 characters. It holds for TypeScript and JavaScript.
   - **Why.** One bundle of one line can add thousands of functions and answer a search first.
 
 | What is not read | Rule |
@@ -130,7 +130,7 @@ flowchart TD
 | Unread languages | Named from a copy of Linguist's programming languages, plus Vue and Svelte. Where languages share a file ending and Linguist's rules settle nothing, the file is named as one of them |
 | Not counted | Prose, data, settings and images; code in a file ending tmb does not know |
 
-**A file's language comes from Linguist's data** (trustmybot/tmb#154). tmb carries a copy of Linguist's language list and its rules for shared file endings, taken from a Linguist release. It asks in Linguist's own order: the file's name, its first line naming an interpreter, its ending, then the rules for a shared ending.
+**A file's language comes from Linguist's data**. tmb carries a copy of Linguist's language list and its rules for shared file endings, taken from a Linguist release. It asks in Linguist's own order: the file's name, its first line naming an interpreter, its ending, then the rules for a shared ending.
 
 - **Example 1.** `Makefile` is Makefile by its name. `api.proto` is Protocol Buffer by its ending.
 - **Example 2.** `run` has no ending and starts with `#!/usr/bin/env python3`. It is Python.
@@ -200,7 +200,7 @@ How two languages write each kind:
 
 ### Languages
 
-Each language is a module of its own (trustmybot/tmb#157). Every module answers the same questions for the engine, and one list names the modules, so adding a language touches nothing else. A language's parser loads only when a file in that language is read.
+Each language is a module of its own. Every module answers the same questions for the engine, and one list names the modules, so adding a language touches nothing else. A language's parser loads only when a file in that language is read.
 
 | Module | Every function a node | Lookup the way the language does it |
 |---|---|---|
@@ -245,12 +245,12 @@ flowchart TD
   - **Example 1.** `const cart: Cart = load()` then `cart.total()`: link to `Cart.total`. `ctx: Context<Env>` then `ctx.text()`: link to `Context.text`.
   - **Example 2.** `(c) => c.text()`, where the type of `c` comes from the call the function is passed to. No type is written, so there is no link. The language's tool links it.
   - **Edge case.** Another function in the file declares `c: Context`. That proves nothing about this `c`.
-- **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is a function or a file-level name of the repo, the call links to it, whatever the name holds. If it is anything else, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
+- **A name is looked up the way the language looks it up**, in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is a function or a file-level name of the repo, the call links to it, whatever the name holds. If it is anything else, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
   - A name imported inside a Python function holds only in that function. A name imported under a new name is looked up in the file that import names.
   - Left with no link by the built-in rules, and linked by the language's tool: a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
-- **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147). A TypeScript or JavaScript import that is not a relative path is resolved the way the TypeScript compiler does it: through the nearest project settings file above the importing file, read at the indexed commit. An import of a package that lives in the same repo links to that package's entry file. Two packages of the same name are not linked.
+- **Imports through a path alias or a package name resolve to their files**. A TypeScript or JavaScript import that is not a relative path is resolved the way the TypeScript compiler does it: through the nearest project settings file above the importing file, read at the indexed commit. An import of a package that lives in the same repo links to that package's entry file. Two packages of the same name are not linked.
   - **Example.** `import { total } from "@app/cart"` and `import { total } from "../cart"` reach the same file, so both link to the one `total` symbol. An alias adds a name, never a second symbol.
-- **A name that reaches a file through a re-export links to where it is declared** (trustmybot/tmb#233). A re-export is proof. The import's link to the re-exporting file stays.
+- **A name that reaches a file through a re-export links to where it is declared**. A re-export is proof. The import's link to the re-exporting file stays.
 
 | Re-exports | Followed | Not followed |
 |---|---|---|
@@ -258,14 +258,14 @@ flowchart TD
 | Python | A top-level `from .a import f`, with or without a new name; `from .a import *`, which follows `__all__` when it is a plain list of names and otherwise the public top-level names | An import under `if` or `try`; an `__all__` built by code; `import pkg` followed by `pkg.f()`, which is not a re-export |
 | Ties | A name the file declares or exports by name wins over a star | A name two stars bring from different declarations stays unresolved |
 
-- **Every link between files is checked against the TypeScript compiler** (trustmybot/tmb#242). [Benchmark](#benchmark) has the test.
+- **Every link between files is checked against the TypeScript compiler**. [Benchmark](#benchmark) has the test.
 - **An import that names a folder of files makes no import link.** Import links run from file to file. The calls into that folder's files carry the dependency.
   - **Example.** Go's `import "shop/cart"` names a package, which is every file in the folder `cart`. `cart.Total()` links to the function; the import line links to nothing.
 - **Misses are counted.** Each build counts the imports that name the repo's own code and link to no file, and indexing prints the count.
 
 ### The three states of a call
 
-Every call is in exactly one state (trustmybot/tmb#252), and a function's answer gives the count of each.
+Every call is in exactly one state, and a function's answer gives the count of each.
 
 | State | Meaning | Example |
 |---|---|---|
@@ -304,7 +304,7 @@ flowchart LR
 - **The promise is the same for both.** A link is made only on proof. In way B the proof is the compiler's own answer for that name.
 - **The nodes are the same for both.** The built-in parser decides which symbols exist. A way adds links and never adds or removes a node, so the two are compared link by link.
 - **The language's tool is the default.** Where a language has a tool, way B makes its links. The built-in rules serve a language with no tool and are the fallback. tmb does not try to beat a language's own compiler, and a user trusts the compiler's answer more than tmb's.
-- **Which tool: the official compiler first, then a reputable open source tool.** The choice is made by an A/B test on the benchmark, not by the word "official". Planned (trustmybot/tmb#338).
+- **Which tool: the official compiler first, then a reputable open source tool.** The choice is made by an A/B test on the benchmark, not by the word "official".
   - **Example 1.** TypeScript and JavaScript have an official compiler that knows types. It is the first candidate, and it is tested against the open source tools.
   - **Example 2.** Python's own compiler knows no types. Its candidates are the reputable type checkers, tested against each other.
   - **Edge case.** The official tool scores worse than an open source one. The open source one is used.
@@ -508,7 +508,7 @@ A concept is a flow or a rule, written by an agent. It is the bridge from a desi
 
 ## Areas
 
-An area is a logical part of the project, such as login or billing, with a one-line purpose. With areas the planner can say which part a piece of code belongs to, and tests are one area (trustmybot/tmb#146).
+An area is a logical part of the project, such as login or billing, with a one-line purpose. With areas the planner can say which part a piece of code belongs to, and tests are one area.
 
 **Planned: an area holds functions, not only files** (trustmybot/tmb#308). Folders match the design only in a well-kept codebase, so an area is a group of nodes at function level. A path pattern stays as the shortcut for whole files, and one file may hold functions of several areas.
 
@@ -573,13 +573,13 @@ flowchart LR
 
 - **The planner** reads the map at cold start and asks "where does X live" directly. A scope gives it a draft of a task's files: the hits for the task's objective, plus the callers, importers and tests of the symbols it names.
 - **The reviewer starts from git's diff.** The diff says what changed, and no graph tool repeats it. The reviewer asks the graph only what the diff cannot say: what calls a changed function, and which tests cover it.
-- **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a multi-repo workspace it opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
+- **The dashboard has a Code page**: folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a multi-repo workspace it opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
 - **The command line reads the same graph** as the tools ([the reference](../reference/README.md#the-record-from-the-command-line)).
 
 How an answer is shaped:
 
 - **Answers stay shallow.** Search by name first, callers before callees, one step by default.
-- **Each caller and each callee is listed once, with its lines** (trustmybot/tmb#235), in the tools' answers, on the command line and on the dashboard. A row shows at most 10 lines and counts the rest. The cap of 50 counts distinct rows, and the answer says how many were cut.
+- **Each caller and each callee is listed once, with its lines**, in the tools' answers, on the command line and on the dashboard. A row shows at most 10 lines and counts the rest. The cap of 50 counts distinct rows, and the answer says how many were cut.
   - **Example.** A test file full of unnamed callbacks is one caller with many lines, not one row per call.
   - **Edge case.** A call and a construction of the same target are two rows.
 - **Honest limits.** Agents do not always use a graph when one is offered, and a symbol lookup can cost more than a plain text search for a simple question. So the graph is used where it earns its cost: scoping a task, and finding what a change may break. Plain search stays available for everything else. An agent records every miss or wrong answer of the graph, so its value can be measured.
@@ -607,10 +607,10 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 
 | Measure | Target | How it is held |
 |---|---|---|
-| Functions found | 100% | A test (trustmybot/tmb#247): the compiler lists every function, and the graph must match that list one to one |
-| Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes is wrong, in the same file or across files |
+| Functions found | 100% | A test: the compiler lists every function, and the graph must match that list one to one |
+| Links right | 100% | A test, in TypeScript and JavaScript, on every pull request: no link the graph makes is wrong, in the same file or across files |
 | Links found | Close to 100% of the calls that can be proven | Scored per way and per language for every release. The score may not fall, except to remove links that were not proven |
-| Calls accounted for | 100% | A test (trustmybot/tmb#252): in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
+| Calls accounted for | 100% | A test: in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
 
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
   - **Edge case.** A fix removes links that were right by luck and not by proof. Links found falls, and the fall is accepted: the new score is recorded with the issue that removed them, and links right must still be 100%.
@@ -981,7 +981,6 @@ All are FTS5 virtual tables.
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
-| The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
 | Every C and C++ function a node | trustmybot/tmb#387 |

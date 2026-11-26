@@ -72,7 +72,7 @@ flowchart LR
 ```
 
 - **Example.** The Human opens the host in a prepared project. The host raises its session start, and the engine answers with the role, the rules and the open work from the record.
-- **Details.** [1_INSTALL.md](1_INSTALL.md) covers each case and how to debug it; [HOSTS.md](../architecture/HOSTS.md) covers what an adapter writes.
+- **Details.** [1_INSTALL.md](1_INSTALL.md) covers each case and how to debug it; [ADAPTERS.md](../architecture/ADAPTERS.md) covers what an adapter writes.
 
 ### 1.2 Updates and channels
 
@@ -380,7 +380,7 @@ flowchart LR
 ```
 
 - **Edge case.** A choice the role leaves to the Human alone, such as the review mode, is never a default.
-- **Details.** [HOSTS.md](../architecture/HOSTS.md) covers it.
+- **Details.** [ENGINE.md](../architecture/ENGINE.md#unattended-mode) covers it.
 
 ### 3.13 Several hosts on one record
 
@@ -398,7 +398,7 @@ flowchart LR
 ```
 
 - **What tmb leaves out.** Who starts the second host is the Human's or the first host's business, not tmb's.
-- **Details.** [HOSTS.md](../architecture/HOSTS.md) covers hosts, adapters and each host's limits.
+- **Details.** [ADAPTERS.md](../architecture/ADAPTERS.md) covers hosts, adapters and each host's limits.
 
 ## 4. Extending the team
 

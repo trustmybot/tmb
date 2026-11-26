@@ -115,7 +115,7 @@ When the folder you run `tmb init` in is a git work tree, or inside one, the pro
 - Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each.
 - Indexes each repo's code graph from its own base branch.
 
-A project set up by a build from before workspaces names no repos, though its folder holds several. Run `tmb init` there again: it finds and stores them as above. Until then `tmb onboard --repo` is refused, `tmb index` is refused and names the repos it found, and no push is gated. `tmb doctor` says so: the push gate is off, the repos are not set and no code graph can be built, each naming the repos and init run again as the fix; the planner's session start says the gate is off (trustmybot/tmb#258). The push hook init writes is shared by every worktree of that repo, so a session already working there meets the gate at its next push.
+A project set up by a build from before workspaces names no repos, though its folder holds several. Run `tmb init` there again: it finds and stores them as above. Until then `tmb onboard --repo` is refused, `tmb index` is refused and names the repos it found, and no push is gated. `tmb doctor` says so: the push gate is off, the repos are not set and no code graph can be built, each naming the repos and init run again as the fix; the planner's session start says the gate is off. The push hook init writes is shared by every worktree of that repo, so a session already working there meets the gate at its next push.
 
 `tmb onboard --repo <name>` sets one repo: `--base <branch>` and `--check <command>` set its base branch and checks, `--exempt` makes tmb do no work in it, and `--review-mode <mode>` gives it a review mode of its own; `--review-mode workspace` takes that away, so the repo follows the workspace's mode again. A repo's review mode is a [step only you may take](#steps-only-you-may-take), as the workspace's is. With one repo tmb works in, `--repo` may be left out. On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. It asks for the workspace's review mode once, then asks once whether any repo takes its own, and asks each repo only on a yes. The planner sets the same with `settings_set` and `repos`; a repo it names keeps no part of its old policy except its review mode, which stays unless the planner names one or `workspace`, and repos it does not name keep theirs. A repo's review mode is refused in unattended mode.
 
@@ -302,7 +302,7 @@ A task closes only when its worktree has no uncommitted changes and has at least
 
 When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode it was started in and the commit it folded. tmb then removes the task's worktree and branch, unless files are left in the worktree (see below), and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
 
-What tmb does with a closed task's worktree depends on what is left in it (trustmybot/tmb#132):
+What tmb does with a closed task's worktree depends on what is left in it:
 
 | Left in the worktree | tmb |
 |---|---|
@@ -319,7 +319,7 @@ What tmb does with a closed task's worktree depends on what is left in it (trust
 
 ### What a docs task may change
 
-A docs task's close is refused, naming each file, when its change touches a file whose type is not below. A type not listed counts as code, so a change to it goes in a code task (trustmybot/tmb#185).
+A docs task's close is refused, naming each file, when its change touches a file whose type is not below. A type not listed counts as code, so a change to it goes in a code task.
 
 | Kind | Types |
 |---|---|
@@ -365,8 +365,8 @@ It keeps the record in `.tmb/`, because that is your data; delete the folder you
 
 ## Steps only you may take
 
-Some commands are yours alone (trustmybot/tmb#179): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, and `tmb remove`. `tmb update` is not one.
+Some commands are yours alone: `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, and `tmb remove`. `tmb update` is not one.
 
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.
-- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`), only while none is set (trustmybot/tmb#223). An agent can turn unattended mode on for its own command, so a mode you chose is changed only on a terminal, where you type yes.
+- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`), only while none is set. An agent can turn unattended mode on for its own command, so a mode you chose is changed only on a terminal, where you type yes.

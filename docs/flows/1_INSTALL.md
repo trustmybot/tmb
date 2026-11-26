@@ -24,7 +24,7 @@ flowchart TD
 
 tmb is one compiled program per platform, not a plugin of any host. The installer script is the only supported way to install it.
 
-- **What the program holds.** The engine, the command line, the tool server, the dashboard's pages and every host adapter ([HOSTS.md](../architecture/HOSTS.md)). Nothing else has to be installed first: no Node, no package install.
+- **What the program holds.** The engine, the command line, the tool server, the dashboard's pages and every host adapter ([ADAPTERS.md](../architecture/ADAPTERS.md)). Nothing else has to be installed first: no Node, no package install.
 - **One program for the whole machine.** Only the record and the host wiring are per project.
 - **The installer script** needs no login. It checks the download against the published checksums and refuses on a mismatch.
 - **The packaging test comes first.** One compiled file must run on all three platforms with no network, open the record, parse code and answer a tool call from a host.
@@ -43,7 +43,7 @@ tmb is one compiled program per platform, not a plugin of any host. The installe
 
 **A project runs the program that initialised it.** Its host events, its tool server and git's push hook call that program.
 
-- **Example 1.** Every printed command names the running program: a project set up by `tmb-dev` is told to run `tmb-dev init`. A test builds tmb as `tmb-dev` and fails on any printed `tmb <command>` (trustmybot/tmb#268).
+- **Example 1.** Every printed command names the running program: a project set up by `tmb-dev` is told to run `tmb-dev init`. A test builds tmb as `tmb-dev` and fails on any printed `tmb <command>`.
 - **Edge case.** Running another program's `init` moves the project, in either direction, whenever that program can read the record. The record's audit trail keeps every move.
 
 **Releases are plain downloads.** Release files go to one public repo, separate from the source repo. Each release carries a `VERSION` file and its checksums.
@@ -57,7 +57,7 @@ tmb is one compiled program per platform, not a plugin of any host. The installe
 |---|---|---|---|
 | macOS | arm64, x64 | `install.sh` | Signed ad hoc; see macOS signing below |
 | Linux | x64, arm64 | `install.sh` | |
-| Windows | x64, native | `install.ps1` | git's hooks run under Git for Windows' own sh (trustmybot/tmb#221) |
+| Windows | x64, native | `install.ps1` | git's hooks run under Git for Windows' own sh |
 
 After each release, CI runs the published installer on all three.
 
@@ -81,12 +81,12 @@ tmb's own installer and updater come first. The installer scripts stay; package 
 
 ## What init writes
 
-`tmb init` prepares a project and asks nothing: it never waits for input, on a terminal or not (trustmybot/tmb#162). It finds the installed host and has its adapter wire tmb in.
+`tmb init` prepares a project and asks nothing: it never waits for input, on a terminal or not. It finds the installed host and has its adapter wire tmb in.
 
 | Init writes | Where |
 |---|---|
 | The record | `.tmb/` in the project |
-| The tool server's registration, the event wiring and the role files | The host's own project files, through its adapter ([HOSTS.md](../architecture/HOSTS.md)) |
+| The tool server's registration, the event wiring and the role files | The host's own project files, through its adapter ([ADAPTERS.md](../architecture/ADAPTERS.md)) |
 | git's pre-push hook | Each repo tmb works in |
 | The code graph | `.tmb/`, one graph per repo |
 | Ignore lines for the above | `.gitignore` |
@@ -94,10 +94,10 @@ tmb's own installer and updater come first. The installer scripts stay; package 
 - **Settings stay empty.** Init ends by saying so and how they get filled ([2_ONBOARD.md](2_ONBOARD.md)).
 - **No host installed.** Init stops, names the hosts it supports and changes nothing.
 - **Run again, init replaces only what tmb wrote.** It takes out what this version does not wire: role files for roles it does not have, and hooks under an event it does not use. The Human's own entries stay.
-- **Files marked as written by `tmb setup` are recognised as tmb's** (trustmybot/tmb#89).
+- **Files marked as written by `tmb setup` are recognised as tmb's**.
 - **The push gate.** Init installs git's pre-push hook; session start does not. There is no switch that turns it off; a repo marked exempt gets none.
-  - **Edge case.** A repo whose pre-push hook is another tool's keeps that hook. The gate is off there until the Human says yes to tmb's one line in it. Init, every session start and `tmb doctor` name the repo until then (trustmybot/tmb#184).
-- **A plugin project's records are carried over by `tmb migrate`**, a one-way copy that leaves the plugin's database unchanged (trustmybot/tmb#17). A plugin project of several repos goes into one workspace record, each repo to the workspace repo of the same name or one the Human names. tmb never guesses a repo (trustmybot/tmb#193).
+  - **Edge case.** A repo whose pre-push hook is another tool's keeps that hook. The gate is off there until the Human says yes to tmb's one line in it. Init, every session start and `tmb doctor` name the repo until then.
+- **A plugin project's records are carried over by `tmb migrate`**, a one-way copy that leaves the plugin's database unchanged. A plugin project of several repos goes into one workspace record, each repo to the workspace repo of the same name or one the Human names. tmb never guesses a repo.
 
 ## Session start
 
@@ -105,7 +105,7 @@ The role comes from the engine, every time. The host raises its session start ev
 
 - **Example 1.** A host raises the event again on resume, clear or compaction. It gets the same answer, so a session resumes from the record and needs nothing from the conversation before it.
 - **Example 2.** Empty settings start first contact ([2_ONBOARD.md](2_ONBOARD.md)).
-- **Edge case.** The engine cannot read the record. A session start never fails and never blocks: it gives the role and one line naming the problem, and the gates deny until it is fixed ([HOSTS.md](../architecture/HOSTS.md#gates-fail-closed)).
+- **Edge case.** The engine cannot read the record. A session start never fails and never blocks: it gives the role and one line naming the problem, and the gates deny until it is fixed ([ENGINE.md](../architecture/ENGINE.md#gates-fail-closed)).
 
 What else a session start does:
 
@@ -114,7 +114,7 @@ What else a session start does:
 | Which record | The nearest record in the session's folder or a folder above it. |
 | One line per finding | The planner is told, in one line each: a host-file refresh, what `tmb doctor` would find ("N things need a look"), each pull request that ended since the last session, and a repo whose push gate is off. It runs only doctor's quick checks, asks git and not GitHub, and says nothing when there is nothing to say. |
 | It tidies | With no task open or in review, tmb tries again to remove the worktrees closed and dropped tasks kept. |
-| Unattended runs | A run with no one to answer is told so first ([HOSTS.md](../architecture/HOSTS.md#unattended-mode)). |
+| Unattended runs | A run with no one to answer is told so first ([ENGINE.md](../architecture/ENGINE.md#unattended-mode)). |
 | The host's own instruction file | tmb never writes it. |
 
 ## Upgrade
@@ -144,13 +144,13 @@ flowchart TD
 
 ### An update installs at once
 
-An update installs at once, whatever is running (trustmybot/tmb#159): at a session's end or on `tmb update`.
+An update installs at once, whatever is running: at a session's end or on `tmb update`.
 
 - `tmb update --check` only looks.
 - `TMB_NO_UPDATE=1` turns updates off.
 - A tmb run from source never updates itself.
 - `tmb --version` prints the program's name, its version, its source commit and its channel.
-- **An old build is never deleted by itself.** tmb says how many old builds no session uses and their size. `tmb doctor` lists them and deletes them on the Human's yes (trustmybot/tmb#160).
+- **An old build is never deleted by itself.** tmb says how many old builds no session uses and their size. `tmb doctor` lists them and deletes them on the Human's yes.
 
 ### A running session keeps its build
 
@@ -162,10 +162,10 @@ So does its project. Every tmb call there runs that build: the host's events, th
 
 ### The record follows the program
 
-A newer tmb that opens a record upgrades it by itself (trustmybot/tmb#128): every pending step in one transaction, so the record is never left between versions.
+A newer tmb that opens a record upgrades it by itself: every pending step in one transaction, so the record is never left between versions.
 
 - **No backup is taken before an upgrade.**
-- **Edge case.** An older tmb refuses a record a newer one reshaped. It names the program that wrote it and the command that moves on, never a version number (trustmybot/tmb#173). Such a project never holds this tmb's update back.
+- **Edge case.** An older tmb refuses a record a newer one reshaped. It names the program that wrote it and the command that moves on, never a version number. Such a project never holds this tmb's update back.
 
 ### The host files follow at a session start
 

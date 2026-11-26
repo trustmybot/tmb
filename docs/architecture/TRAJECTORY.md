@@ -77,8 +77,8 @@ flowchart TD
 The chart is one moment of a real tree. To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. The tree starts at the run. Planned: the session level and the link from a run to its session.
 
 - **Example 1.** A push tmb makes for an agent is that agent's.
-- **Example 2.** A push typed by hand is the Human's (trustmybot/tmb#134).
-- **Edge case.** Every command-line call is the Human's. That is why a step only the Human may take needs a terminal and a typed yes ([HOSTS.md](HOSTS.md)).
+- **Example 2.** A push typed by hand is the Human's.
+- **Edge case.** Every command-line call is the Human's. That is why a step only the Human may take needs a terminal and a typed yes ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
 
 ## 4. The engine is the only writer
 
@@ -92,7 +92,7 @@ Agents, the command line and the dashboard change the record only through the en
 
 ## 5. A run is one start of a worker or the reviewer
 
-A run ends as finished or stopped (trustmybot/tmb#133).
+A run ends as finished or stopped.
 
 ```mermaid
 stateDiagram-v2
@@ -106,7 +106,7 @@ stateDiagram-v2
 ```
 
 - **Example.** A reviewer gives no verdict. Its run is stopped.
-- **Edge case.** The gate allows a start and the host then fails to make the agent. No agent ran, so no stop would come to end the run. The run is stopped (trustmybot/tmb#285).
+- **Edge case.** The gate allows a start and the host then fails to make the agent. No agent ran, so no stop would come to end the run. The run is stopped.
 - **A denied start opens no run.** It is recorded as a guard decision with its reason, so "why did the worker never start?" has a record.
 - **The planner's own turns are not a run.** They belong to the session record, which is Planned.
 - **A reviewer that is a host's main agent** has no subagent start. Its run opens at that host's session start and ends with its verdict.
@@ -180,7 +180,7 @@ A step that did not run is recorded as not run, with the reason.
 
 ## 10. Stuck work is listed, never ended
 
-tmb has no watcher and no timer: it runs only when something calls it (trustmybot/tmb#160).
+tmb has no watcher and no timer: it runs only when something calls it.
 
 ```mermaid
 flowchart TD

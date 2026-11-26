@@ -34,10 +34,10 @@ What first contact settles, and who settles it.
 | The project | No question. The record is the nearest one in the folder or above it. `tmb doctor` shows other records above or below. Init refuses a second project in a repo whose push hook already names another. | init | nothing |
 | The remote | No question. tmb reads each repo's remote when it needs it: with none, nothing is pushed and no pull request opens ([3_GIT.md](3_GIT.md)). | engine | nothing |
 | The base branch | Per repo: origin's default branch, else the current branch, else `main`. The review mode decides the branches ([3_WORKFLOW.md](3_WORKFLOW.md)). | init in a multi-repo workspace, else the planner; or `tmb onboard` | each repo's base branch |
-| The host's role | Planner unless the Human names the reviewer; one role per host ([HOSTS.md](../architecture/HOSTS.md#different-models-on-one-task)). | init, or `tmb onboard` | the host and its role |
+| The host's role | Planner unless the Human names the reviewer; one role per host ([ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task)). | init, or `tmb onboard` | the host and its role |
 | Bug reports | The feedback program ([1_INSTALL.md](1_INSTALL.md#bug-reports)): on with a notice on dev and rc; on stable the planner asks once per machine. | init's last lines, or the planner | the person's setting, per machine and channel |
-| The review mode | Agile or truest, the Human's choice. tmb recommends agile and never picks. In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own (trustmybot/tmb#216). | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
-| The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it (trustmybot/tmb#184). A repo marked exempt gets none. | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
+| The review mode | Agile or truest, the Human's choice. tmb recommends agile and never picks. In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own. | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
+| The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it. A repo marked exempt gets none. | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
 | The checks | Found in the project and stored as a setting, not as a file in the repo ([The repo's checks](#the-repos-checks)). | the planner, or `tmb onboard` | the checks, per repo in a multi-repo workspace |
 | The areas | Once the code graph is built, the planner proposes named parts of the project, one line each, and writes those the Human keeps ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
@@ -45,7 +45,7 @@ What first contact settles, and who settles it.
 
 ## Init asks nothing
 
-Init never waits for input, on a terminal or not (trustmybot/tmb#162). It sets the host and its role. Every other setting stays empty.
+Init never waits for input, on a terminal or not. It sets the host and its role. Every other setting stays empty.
 
 - **Example.** In a multi-repo workspace init also sets each repo's base branch and the checks found in it.
 - **Repos come from init.** Init records every top-level folder of a workspace, repo or not, and finds repos up to two folders down. Later steps never scan or guess ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
@@ -60,11 +60,11 @@ When a planner's session starts and the base branch, the review mode or the chec
 
 ## The review mode is the Human's choice
 
-The review mode decides how many tokens a project uses, so only the Human may set it (trustmybot/tmb#114, [HOSTS.md](../architecture/HOSTS.md#ways-into-the-engine)). No task starts until it is set.
+The review mode decides how many tokens a project uses, so only the Human may set it ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)). No task starts until it is set.
 
 - **Three ways set it:** the planner's question, `tmb onboard` on a terminal, or its review-mode flag with a typed yes. The record keeps which.
 - **Edge case 1.** An unattended run leaves the mode unset. The first task is refused, and the refusal names `tmb onboard`.
-- **Edge case 2.** One exception: a run with no terminal may set a mode where none is set, never change one (trustmybot/tmb#223).
+- **Edge case 2.** One exception: a run with no terminal may set a mode where none is set, never change one.
 
 ## The repo's checks
 

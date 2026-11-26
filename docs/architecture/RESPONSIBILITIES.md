@@ -36,7 +36,7 @@ Each layer owns one level of quality, and no layer repeats another's check. [3_T
 
 - **Workflow backbone, always available.** Init writes the worker and the reviewer into the project in the host's own format. Removal deletes exactly those files.
 - **Edge case.** A role file of the same name is not tmb's. tmb leaves it alone: it replaces only role files it wrote.
-- **The host starts them.** tmb starts no agent, runs no model and never reads a login. The work runs as ordinary use of the host by its own user ([HOSTS.md](HOSTS.md)).
+- **The host starts them.** tmb starts no agent, runs no model and never reads a login. The work runs as ordinary use of the host by its own user ([ADAPTERS.md](ADAPTERS.md)).
 - **Identity and context.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned.
 - **Agents the project creates.** Planned: recorded and harnessed like the worker and the reviewer ([Agents a project creates](#agents-a-project-creates)).
 
@@ -115,7 +115,7 @@ flowchart TD
 - **Edge case.** tmb cannot prove which agent called. So a verdict also needs an open reviewer run on that host.
 - **The reviewer edits nothing, on any host.** Its role file gives it no tool that edits a file, and tmb watches no file write. The Planned git check (trustmybot/tmb#303, under [Reviewer](#reviewer)) covers a write from its shell, and a host that does not name the agent on a call.
 - **A model per role.** The adapter writes a role's model and effort into its role file when one is set. The host runs it.
-- **The Human's steps have one fence.** The command line runs one only on a terminal, after a typed yes. An agent's shell has no terminal, so the step is refused there. The fence stops an agent on the plain path. It is not proof ([HOSTS.md](HOSTS.md#ways-into-the-engine)).
+- **The Human's steps have one fence.** The command line runs one only on a terminal, after a typed yes. An agent's shell has no terminal, so the step is refused there. The fence stops an agent on the plain path. It is not proof ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
 - **Edge case.** A host cannot deny an action. The engine's own layers still hold: checks at close and git's pre-push hook.
 
 ## Parallel lanes
@@ -161,7 +161,7 @@ flowchart TD
 - The list of running sessions.
 - Permission prompts shown to the Human.
 
-Two sessions of one host may both be planners. Two hosts may share a project too, each in its own role ([HOSTS.md](HOSTS.md)).
+Two sessions of one host may both be planners. Two hosts may share a project too, each in its own role ([ADAPTERS.md](ADAPTERS.md)).
 
 ### What tmb leaves out
 

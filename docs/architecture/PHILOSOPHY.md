@@ -104,7 +104,7 @@ The record is the only source of truth. An agent's context is a disposable copy 
 
 ## 8. Any host, through adapters
 
-tmb is one compiled program, not a plugin of one agent program. The engine never names a host. Everything a host needs is in its adapter. Details are in [HOSTS.md](HOSTS.md).
+tmb is one compiled program, not a plugin of one agent program. The engine never names a host. Everything a host needs is in its adapter. Details are in [ADAPTERS.md](ADAPTERS.md).
 
 ```mermaid
 flowchart LR
