@@ -1,0 +1,204 @@
+[
+ {
+  "id": "min",
+  "dialect": "sqlite",
+  "covers": "the minimal case: DDL and DML on two tables",
+  "sql": "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total NUMERIC);\nINSERT INTO orders (user_id, total) VALUES (1, 9.5);\nSELECT o.id, u.name FROM orders o JOIN users u ON u.id = o.user_id;\nUPDATE orders SET total = 10 WHERE id = 1;",
+  "expect": [
+   "define:orders",
+   "write:orders",
+   "read:orders",
+   "read:users"
+  ]
+ },
+ {
+  "id": "cte",
+  "dialect": "sqlite",
+  "covers": "a CTE name is no table",
+  "sql": "WITH recent AS (SELECT * FROM orders WHERE created > ?) SELECT r.id, u.name FROM recent r JOIN users u ON u.id = r.user_id",
+  "expect": [
+   "read:orders",
+   "read:users"
+  ]
+ },
+ {
+  "id": "subquery-delete",
+  "dialect": "sqlite",
+  "covers": "a subquery in a DELETE reads",
+  "sql": "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE banned = 1)",
+  "expect": [
+   "write:sessions",
+   "read:users"
+  ]
+ },
+ {
+  "id": "schema",
+  "dialect": "sqlite",
+  "covers": "schema-qualified names",
+  "sql": "SELECT * FROM main.orders o JOIN aux.customers c ON c.id = o.cid",
+  "expect": [
+   "read:orders",
+   "read:customers"
+  ]
+ },
+ {
+  "id": "quoted",
+  "dialect": "sqlite",
+  "covers": "quoted identifiers with spaces, double quotes and brackets",
+  "sql": "INSERT INTO \"order items\" (\"order\", qty) SELECT \"order\", 1 FROM [legacy orders]",
+  "expect": [
+   "write:order items",
+   "read:legacy orders"
+  ]
+ },
+ {
+  "id": "insert-or-replace",
+  "dialect": "sqlite",
+  "covers": "SQLite's INSERT OR REPLACE",
+  "sql": "INSERT OR REPLACE INTO settings (k, v) VALUES (?, ?)",
+  "expect": [
+   "write:settings"
+  ]
+ },
+ {
+  "id": "upsert",
+  "dialect": "sqlite",
+  "covers": "upsert with a named parameter",
+  "sql": "INSERT INTO counters (k, n) VALUES (:k, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1",
+  "expect": [
+   "write:counters"
+  ]
+ },
+ {
+  "id": "trigger",
+  "dialect": "sqlite",
+  "covers": "a trigger: its table, and its body's reads and writes",
+  "sql": "CREATE TRIGGER orders_audit AFTER UPDATE ON orders BEGIN INSERT INTO audit_log (order_id) VALUES (new.id); UPDATE stats SET n = n + 1; END;",
+  "expect": [
+   "trigger:orders",
+   "write:audit_log",
+   "write:stats"
+  ]
+ },
+ {
+  "id": "index",
+  "dialect": "sqlite",
+  "covers": "an index is no node; the statement changes its table",
+  "sql": "CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (user_id)",
+  "expect": [
+   "write:orders"
+  ]
+ },
+ {
+  "id": "unique-index-schema",
+  "dialect": "sqlite",
+  "covers": "a unique index named with a schema",
+  "sql": "CREATE UNIQUE INDEX main.ux_users_email ON users(email)",
+  "expect": [
+   "write:users"
+  ]
+ },
+ {
+  "id": "virtual-table",
+  "dialect": "sqlite",
+  "covers": "SQLite's virtual table",
+  "sql": "CREATE VIRTUAL TABLE docs_fts USING fts5(title, body, content='docs')",
+  "expect": [
+   "define:docs_fts"
+  ]
+ },
+ {
+  "id": "alter",
+  "dialect": "sqlite",
+  "covers": "ALTER TABLE",
+  "sql": "ALTER TABLE orders ADD COLUMN note TEXT",
+  "expect": [
+   "write:orders"
+  ]
+ },
+ {
+  "id": "drop",
+  "dialect": "sqlite",
+  "covers": "DROP TABLE",
+  "sql": "DROP TABLE IF EXISTS tmp_orders",
+  "expect": [
+   "write:tmp_orders"
+  ]
+ },
+ {
+  "id": "view",
+  "dialect": "sqlite",
+  "covers": "a view is defined and reads its table",
+  "sql": "CREATE VIEW open_orders AS SELECT * FROM orders WHERE status = 'open'",
+  "expect": [
+   "define:open_orders",
+   "read:orders"
+  ]
+ },
+ {
+  "id": "update-from",
+  "dialect": "sqlite",
+  "covers": "UPDATE \u2026 FROM",
+  "sql": "UPDATE inventory SET qty = qty - s.n FROM sales s WHERE s.item = inventory.item",
+  "expect": [
+   "write:inventory",
+   "read:sales"
+  ]
+ },
+ {
+  "id": "keyword-names",
+  "dialect": "sqlite",
+  "covers": "keywords quoted as names",
+  "sql": "SELECT \"from\", \"select\" FROM \"update\"",
+  "expect": [
+   "read:update"
+  ]
+ },
+ {
+  "id": "returning",
+  "dialect": "sqlite",
+  "covers": "DELETE \u2026 RETURNING",
+  "sql": "DELETE FROM jobs WHERE id = ? RETURNING id",
+  "expect": [
+   "write:jobs"
+  ]
+ },
+ {
+  "id": "union",
+  "dialect": "sqlite",
+  "covers": "a set operation",
+  "sql": "SELECT id FROM a UNION ALL SELECT id FROM b",
+  "expect": [
+   "read:a",
+   "read:b"
+  ]
+ },
+ {
+  "id": "exists",
+  "dialect": "sqlite",
+  "covers": "a correlated EXISTS",
+  "sql": "SELECT * FROM users u WHERE EXISTS (SELECT 1 FROM orders o WHERE o.uid = u.id)",
+  "expect": [
+   "read:users",
+   "read:orders"
+  ]
+ },
+ {
+  "id": "comment",
+  "dialect": "sqlite",
+  "covers": "SQL in a comment is no statement",
+  "sql": "-- SELECT * FROM ghost\nSELECT 1 FROM real_table",
+  "expect": [
+   "read:real_table"
+  ]
+ },
+ {
+  "id": "string-literal",
+  "dialect": "sqlite",
+  "covers": "FROM inside a string literal",
+  "sql": "SELECT 'copied from backup' AS note FROM notes",
+  "expect": [
+   "read:notes"
+  ]
+ }
+]

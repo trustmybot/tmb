@@ -1,0 +1,107 @@
+[
+ {
+  "id": "str-table-hole",
+  "dialect": "sqlite",
+  "covers": "an f-string table: the name is not in the code",
+  "sql": "SELECT count(*) FROM tmb_hole_0 WHERE id = ?",
+  "expect": [
+   "read:?"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-value-hole",
+  "dialect": "sqlite",
+  "covers": "a hole in a value",
+  "sql": "SELECT * FROM orders WHERE id = tmb_hole_0",
+  "expect": [
+   "read:orders"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-clause-hole",
+  "dialect": "sqlite",
+  "covers": "a hole that holds a whole clause",
+  "sql": "SELECT * FROM orders tmb_hole_0",
+  "expect": [
+   "read:orders"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-where-hole",
+  "dialect": "sqlite",
+  "covers": "a hole that holds a WHERE condition",
+  "sql": "SELECT * FROM orders WHERE tmb_hole_0 ORDER BY id",
+  "expect": [
+   "read:orders"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-bracket-hole",
+  "dialect": "sqlite",
+  "covers": "a bracketed hole table",
+  "sql": "select * from [tmb_hole_0] where rowid = ?",
+  "expect": [
+   "read:?"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-fragment-where",
+  "dialect": "sqlite",
+  "covers": "a fragment that names no table",
+  "sql": "WHERE user_id = ? AND status = 'open'",
+  "expect": [],
+  "inString": true
+ },
+ {
+  "id": "str-fragment-from",
+  "dialect": "sqlite",
+  "covers": "a fragment that names tables",
+  "sql": "FROM orders JOIN users ON users.id = orders.uid",
+  "expect": [
+   "read:orders",
+   "read:users"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-pyformat",
+  "dialect": "sqlite",
+  "covers": "a %s field",
+  "sql": "INSERT INTO logs (msg) VALUES (tmb_hole_0)",
+  "expect": [
+   "write:logs"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-insert-hole",
+  "dialect": "sqlite",
+  "covers": "an insert into a hole table",
+  "sql": "INSERT INTO tmb_hole_0 (a, b) VALUES (?, ?)",
+  "expect": [
+   "write:?"
+  ],
+  "inString": true
+ },
+ {
+  "id": "str-english",
+  "dialect": "sqlite",
+  "covers": "English that starts like SQL",
+  "sql": "Select the rows to update from the list",
+  "expect": [],
+  "inString": true
+ },
+ {
+  "id": "str-english-upper",
+  "dialect": "sqlite",
+  "covers": "an upper-case message",
+  "sql": "UPDATE failed: could not read FROM disk",
+  "expect": [],
+  "inString": true
+ }
+]

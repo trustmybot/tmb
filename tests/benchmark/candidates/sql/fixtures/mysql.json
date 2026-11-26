@@ -1,0 +1,49 @@
+[
+ {
+  "id": "my-backticks",
+  "dialect": "mysql",
+  "covers": "backticks and ON DUPLICATE KEY",
+  "sql": "INSERT INTO `orders` (`id`) VALUES (1) ON DUPLICATE KEY UPDATE id = id",
+  "expect": [
+   "write:orders"
+  ]
+ },
+ {
+  "id": "my-replace",
+  "dialect": "mysql",
+  "covers": "REPLACE INTO",
+  "sql": "REPLACE INTO cache (k, v) VALUES ('a', 'b')",
+  "expect": [
+   "write:cache"
+  ]
+ },
+ {
+  "id": "my-update-join",
+  "dialect": "mysql",
+  "covers": "a multi-table UPDATE",
+  "sql": "UPDATE orders o JOIN users u ON u.id = o.uid SET o.flag = 1 WHERE u.vip = 1",
+  "expect": [
+   "write:orders",
+   "read:users"
+  ]
+ },
+ {
+  "id": "my-delete-join",
+  "dialect": "mysql",
+  "covers": "a multi-table DELETE",
+  "sql": "DELETE o FROM orders o JOIN users u ON u.id = o.uid WHERE u.gone = 1",
+  "expect": [
+   "write:orders",
+   "read:users"
+  ]
+ },
+ {
+  "id": "my-db-qualified",
+  "dialect": "mysql",
+  "covers": "a database-qualified name",
+  "sql": "SELECT * FROM shop.orders",
+  "expect": [
+   "read:orders"
+  ]
+ }
+]

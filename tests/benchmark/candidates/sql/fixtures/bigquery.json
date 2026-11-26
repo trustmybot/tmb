@@ -1,0 +1,31 @@
+[
+ {
+  "id": "bq-backtick-path",
+  "dialect": "bigquery",
+  "covers": "a project.dataset.table path in one backtick pair, a named parameter",
+  "sql": "SELECT user_id FROM `proj.analytics.events` WHERE dt = @day",
+  "expect": [
+   "read:events"
+  ]
+ },
+ {
+  "id": "bq-merge",
+  "dialect": "bigquery",
+  "covers": "MERGE",
+  "sql": "MERGE dataset.target T USING dataset.source S ON T.id = S.id WHEN MATCHED THEN UPDATE SET v = S.v WHEN NOT MATCHED THEN INSERT (id, v) VALUES (S.id, S.v)",
+  "expect": [
+   "write:target",
+   "read:source"
+  ]
+ },
+ {
+  "id": "bq-ctas",
+  "dialect": "bigquery",
+  "covers": "CREATE TABLE \u2026 AS SELECT",
+  "sql": "CREATE OR REPLACE TABLE ds.daily AS SELECT * FROM ds.raw",
+  "expect": [
+   "define:daily",
+   "read:raw"
+  ]
+ }
+]

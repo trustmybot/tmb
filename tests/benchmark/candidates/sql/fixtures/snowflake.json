@@ -1,0 +1,30 @@
+[
+ {
+  "id": "sf-copy",
+  "dialect": "snowflake",
+  "covers": "COPY INTO from a stage: the stage is object storage, not a table",
+  "sql": "COPY INTO raw.events FROM @stage/events/ FILE_FORMAT = (TYPE = 'JSON')",
+  "expect": [
+   "write:events"
+  ]
+ },
+ {
+  "id": "sf-flatten",
+  "dialect": "snowflake",
+  "covers": "a three-part name and LATERAL FLATTEN",
+  "sql": "SELECT * FROM db.sch.orders o, LATERAL FLATTEN(input => o.items) f",
+  "expect": [
+   "read:orders"
+  ]
+ },
+ {
+  "id": "sf-insert-overwrite",
+  "dialect": "snowflake",
+  "covers": "INSERT OVERWRITE",
+  "sql": "INSERT OVERWRITE INTO sales_summary SELECT region, SUM(amount) FROM sales GROUP BY region",
+  "expect": [
+   "write:sales_summary",
+   "read:sales"
+  ]
+ }
+]

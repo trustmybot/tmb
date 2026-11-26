@@ -1,0 +1,31 @@
+[
+ {
+  "id": "ts-brackets",
+  "dialect": "tsql",
+  "covers": "bracketed names, a table hint, a variable",
+  "sql": "SELECT TOP 10 * FROM [dbo].[Orders] WITH (NOLOCK) WHERE Id = @id",
+  "expect": [
+   "read:orders"
+  ]
+ },
+ {
+  "id": "ts-temp",
+  "dialect": "tsql",
+  "covers": "a temp table",
+  "sql": "INSERT INTO #tmp SELECT * FROM dbo.Users",
+  "expect": [
+   "write:#tmp",
+   "read:users"
+  ]
+ },
+ {
+  "id": "ts-update-from",
+  "dialect": "tsql",
+  "covers": "UPDATE through an alias",
+  "sql": "UPDATE o SET o.Total = 0 FROM dbo.Orders o JOIN dbo.Users u ON u.Id = o.UserId",
+  "expect": [
+   "write:orders",
+   "read:users"
+  ]
+ }
+]

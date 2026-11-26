@@ -1,0 +1,74 @@
+[
+ {
+  "id": "pg-insert-returning",
+  "dialect": "postgres",
+  "covers": "$n parameters, a cast, a schema",
+  "sql": "INSERT INTO public.events (kind, payload) VALUES ($1, $2::jsonb) RETURNING id",
+  "expect": [
+   "write:events"
+  ]
+ },
+ {
+  "id": "pg-update",
+  "dialect": "postgres",
+  "covers": "$n parameters",
+  "sql": "UPDATE accounts SET balance = balance - $1 WHERE id = $2",
+  "expect": [
+   "write:accounts"
+  ]
+ },
+ {
+  "id": "pg-recursive",
+  "dialect": "postgres",
+  "covers": "a recursive CTE that names itself",
+  "sql": "WITH RECURSIVE tree AS (SELECT id, parent_id FROM nodes WHERE id = $1 UNION ALL SELECT n.id, n.parent_id FROM nodes n JOIN tree t ON n.parent_id = t.id) SELECT * FROM tree",
+  "expect": [
+   "read:nodes"
+  ]
+ },
+ {
+  "id": "pg-trigger",
+  "dialect": "postgres",
+  "covers": "a trigger that runs a function",
+  "sql": "CREATE TRIGGER set_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION touch_updated()",
+  "expect": [
+   "trigger:accounts"
+  ]
+ },
+ {
+  "id": "pg-create",
+  "dialect": "postgres",
+  "covers": "CREATE TABLE in a schema",
+  "sql": "CREATE TABLE IF NOT EXISTS app.users (id serial PRIMARY KEY, email text UNIQUE)",
+  "expect": [
+   "define:users"
+  ]
+ },
+ {
+  "id": "pg-truncate",
+  "dialect": "postgres",
+  "covers": "TRUNCATE",
+  "sql": "TRUNCATE TABLE staging_rows",
+  "expect": [
+   "write:staging_rows"
+  ]
+ },
+ {
+  "id": "pg-index",
+  "dialect": "postgres",
+  "covers": "an index built concurrently",
+  "sql": "CREATE INDEX CONCURRENTLY idx_events_payload ON public.events USING gin (payload)",
+  "expect": [
+   "write:events"
+  ]
+ },
+ {
+  "id": "pg-function-from",
+  "dialect": "postgres",
+  "covers": "a function in FROM is no table",
+  "sql": "SELECT * FROM generate_series(1, 10) g JOIN items i ON i.n = g",
+  "expect": [
+   "read:items"
+  ]
+ }
+]
