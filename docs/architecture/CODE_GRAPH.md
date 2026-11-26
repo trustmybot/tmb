@@ -213,6 +213,23 @@ flowchart TD
 - **Every link between files is checked against the TypeScript compiler** (trustmybot/tmb#242). [Benchmark](#benchmark) has the test.
 - **Misses are counted.** Each build counts the imports that name the repo's own code and link to no file, and indexing prints the count.
 
+### The three states of a call
+
+Every call is in exactly one state (trustmybot/tmb#252), and a function's answer gives the count of each.
+
+| State | Meaning | Example |
+|---|---|---|
+| Linked | Proven to reach a symbol in the repo | `total()` declared in the same file |
+| Outside | Proven to reach code outside the repo: an installed package or the language's built-ins | `import pkg` then `pkg.f()`; `JSON.parse()` |
+| Not known | Neither is proven. The agent searches by text for these | `c.total()` where the type of `c` is not written |
+
+- **What a call is.** A place where the code runs a callable: a call, a construction with `new` or by a class's name, a tagged template, a dynamic import, a call to the parent's constructor, and a decorator.
+  - **Not a call.** Naming a parent class, and a JSX element. They are uses, and belong with what depends on a symbol beyond calls (trustmybot/tmb#148).
+- **Who owns a call.** The nearest callable around it. A call in a field's initial value belongs to the type. A call in an unnamed function is answered under the nearest named one.
+- **A built-in is outside only when nothing nearer declares the name.** The scope and the repo are looked up first, so a repo function named `parse` is never taken for the built-in.
+- **The lists of built-ins are generated, never written by hand.** Each language module's list comes from the language's own tool, and a test fails when it is stale.
+- **Edge case.** A language with no lookup of its own (bash, Perl, SQL): its calls get no state and are counted apart, so 100% holds for the languages that have one.
+
 The design for links is trustmybot/tmb#250. Its next steps are in [Planned](#planned).
 
 ## Two ways to make links
@@ -356,7 +373,7 @@ The graph is measured against a second, independent parser, the TypeScript compi
 | Functions found | 100% | A test (trustmybot/tmb#247): the compiler lists every function, and the graph must match that list one to one |
 | Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes between files is wrong |
 | Links found | Close to 100% of the calls that can be proven. Planned (trustmybot/tmb#244, trustmybot/tmb#311) | Scored per way and per language for every release. The score may not fall |
-| Calls accounted for | 100%. Planned (trustmybot/tmb#252) | Every call is in one of three states: linked, to code outside the repo, or not known |
+| Calls accounted for | 100% | A test (trustmybot/tmb#252): in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
 
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
 - **Example.** A file has 10 calls: 6 linked, 3 to an outside package, 1 not known. Links found is 6 of 7. Calls accounted for is 10 of 10.
@@ -714,7 +731,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
-| A function says how many of its calls are not linked: linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest | trustmybot/tmb#252 |
 | A method call linked when the object's type is written in the same function or class: the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used, because they cost much and find little | trustmybot/tmb#249 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A file's language comes from Linguist's list | trustmybot/tmb#154 |
