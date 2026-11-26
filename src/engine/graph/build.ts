@@ -20,7 +20,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 32;
+export const EXTRACTOR_VERSION = 33;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -325,7 +325,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       });
       extraction.edges.forEach((edge, i) => {
         if (edge.call !== 1 || edge.pos === undefined) return;
-        calls.push({ path: file, pos: edge.pos, name: edge.dst_name });
+        calls.push({ path: file, pos: edge.pos, name: edge.dst_name, ...(edge.inMacro === 1 ? { inMacro: true as const } : {}) });
         callRows.push(edgeOffset + i);
       });
     }
@@ -483,12 +483,28 @@ function applyLayer(
   const sources = writeDataSources(db, layer, pending.map((p) => p.edge));
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
-  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
+  // A name written as a call in a macro's input that its language's tool does not answer as a call is
+  // dropped (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"). With no tool to ask, it
+  // is a call that is not known, and no link is made from it.
+  const dropped = (edge: Extraction["edges"][number], index: number): boolean => {
+    const answer = edge.inMacro === 1 ? byTool.answers.get(index) : undefined;
+    return answer !== undefined && "call" in answer;
+  };
+  const resolver = new Resolver(
+    candidates,
+    // A name in a macro's input is linked by no rule: only the tool links it.
+    pending.flatMap(({ file, edge }) => (edge.inMacro === 1 ? [] : [{ from: file, edge }])),
+    new ImportConfig(configs),
+    exports,
+  );
   const insertEdge = db.prepare(
     "INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, pos, hint, call_state, way) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   let unresolved = 0;
+  let written = 0;
   pending.forEach(({ file, symbolIndex, edge }, index) => {
+    if (dropped(edge, index)) return;
+    written++;
     if (edge.data !== undefined) {
       // A link to a data source ends at the layer's one node of its kind and name.
       insertEdge.run(layer, ids[symbolIndex]!, sources.get(dataSourceKey(edge.data, edge.dst_name))!, edge.dst_name, edge.kind, "exact", edge.line, null, null, null, BUILT_IN);
@@ -499,10 +515,19 @@ function applyLayer(
     const linked = answer !== undefined && "nodes" in answer ? answer.nodes : null;
     // A call the language's own rules prove goes to a symbol of its file links to it (ExtractedEdge.target).
     const proven: Link | null = edge.target === undefined ? null : { dst: symbolIndex - edge.src + edge.target, how: "exact" };
-    const link: Link | null = answer === undefined ? (proven ?? resolver.resolve(file, edge)) : linked !== null ? { dst: linked[0], how: "exact" } : null;
+    const unasked = edge.inMacro === 1 && answer === undefined;
+    const link: Link | null = unasked ? null : answer === undefined ? (proven ?? resolver.resolve(file, edge)) : linked !== null ? { dst: linked[0], how: "exact" } : null;
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
     // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
-    const state = answer !== undefined ? ("state" in answer ? answer.state : "linked") : edge.call === 1 ? callState(resolver, file, edge, link) : null;
+    const state = unasked
+      ? "not_known"
+      : answer !== undefined
+        ? "state" in answer
+          ? answer.state
+          : "linked"
+        : edge.call === 1
+          ? callState(resolver, file, edge, link)
+          : null;
     const way = answer === undefined ? BUILT_IN : LANGUAGE_TOOL;
     insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.pos ?? null, edge.hint, state, way);
     // A call that can go to more than one node links to each (trustmybot/tmb#344): one row per
@@ -528,7 +553,7 @@ function applyLayer(
     commit,
     files: plans.length,
     symbols: ids.length + sources.size,
-    edges: pending.length,
+    edges: written,
     unresolved,
     unresolvedImports,
     functions,

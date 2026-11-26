@@ -6,11 +6,14 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { layerRow, openGraphDb } from "../src/engine/graph/db.ts";
+import { readAnswers, runRustAnalyzer } from "../src/engine/graph/languages/rust/tool.ts";
+import { loadParsers } from "../src/engine/graph/loader.ts";
+import { referenceCounts, rustReference } from "../tests/benchmark/rust.ts";
 
 setDefaultTimeout(30_000);
 
@@ -79,6 +82,7 @@ const LIB = lines(
   "// `cfg(any())` holds for no build, so this file is never compiled (The Rust Reference, \"Conditional compilation\").", // 3
   "#[cfg(any())]", //                                            4
   "mod leftout;", //                                             5
+  "pub mod sieve;", //                                           6
 );
 
 const ORCHARD = lines(
@@ -164,6 +168,67 @@ const LEFT_OUT = lines(
   "}", //                                                        7
 );
 
+// Calls written in a macro's input (CODE_GRAPH.md, "Inside a macro, the tool says what is a call").
+// The parser sees tokens there; rust-analyzer expands the macro and says what each name is.
+const SIEVE = lines(
+  "macro_rules! both {", //                                      1
+  "    ($a:expr, $b:expr) => {", //                              2
+  "        $a + $b", //                                          3
+  "    };", //                                                   4
+  "}", //                                                        5
+  "", //                                                         6
+  "macro_rules! named {", //                                     7
+  "    ($f:ident) => {", //                                      8
+  "        $f()", //                                             9
+  "    };", //                                                   10
+  "}", //                                                        11
+  "", //                                                         12
+  "pub struct Grain(pub u32);", //                               13
+  "", //                                                         14
+  "pub fn weigh(n: u32) -> u32 {", //                            15
+  "    n", //                                                    16
+  "}", //                                                        17
+  "", //                                                         18
+  "pub fn tare() -> u32 {", //                                   19
+  "    0", //                                                    20
+  "}", //                                                        21
+  "", //                                                         22
+  "pub fn sift(xs: Vec<u32>) -> u32 {", //                       23
+  "    let a = both!(weigh(1), tare());", //                     24
+  "    assert_eq!(weigh(2), xs.len() as u32);", //               25
+  "    let g = vec![Grain(3)];", //                              26
+  "    let b = named!(tare);", //                                27
+  "    assert!(matches!(Some(1), Some(_)));", //                 28
+  "    let s = stringify!(weigh(9));", //                        29
+  "    let each = |x: u32| format!(\"{}\", weigh(x));", //        30
+  "    let w = vec![format!(\"{}\", tare())];", //                31
+  "    assert_eq!(weigh(1, 2), 0);", //                          32
+  "    a + b + g.len() as u32 + s.len() as u32 + each(1).len() as u32 + w.len() as u32", // 33
+  "}", //                                                        34
+  "", //                                                         35
+  "macro_rules! make {", //                                      36
+  "    ($v:expr) => {", //                                       37
+  "        pub fn made() -> u32 {", //                           38
+  "            $v", //                                           39
+  "        }", //                                                40
+  "    };", //                                                   41
+  "}", //                                                        42
+  "", //                                                         43
+  "make!(tare());", //                                           44
+  "", //                                                         45
+  "pub struct Bran;", //                                         46
+  "impl Bran {", //                                              47
+  "    pub fn default() -> u32 {", //                            48
+  "        1", //                                                49
+  "    }", //                                                    50
+  "}", //                                                        51
+  "", //                                                         52
+  "pub fn chaff() -> u32 {", //                                  53
+  "    assert_eq!(Bran::default(), 1);", //                      54
+  "    0", //                                                    55
+  "}", //                                                        56
+);
+
 const MAIN = lines(
   "fn main() {", //                                              1
   "    grove::orchard::gather(&[]);", //                         2
@@ -203,6 +268,7 @@ async function built(links: "language-tool" | "built-in" = "language-tool"): Pro
     "src/orchard.rs": ORCHARD,
     "src/crates.rs": CRATES,
     "src/leftout.rs": LEFT_OUT,
+    "src/sieve.rs": SIEVE,
     "src/main.rs": MAIN,
   });
   const db = openGraphDb(project, null);
@@ -287,6 +353,138 @@ describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust", () => {
       db.close();
     }
   });
+});
+
+const SIEVE_FILE = "src/sieve.rs";
+const SIFT = `${SIEVE_FILE}:sift`;
+const WEIGH = `${SIEVE_FILE}:weigh`;
+const TARE = `${SIEVE_FILE}:tare`;
+
+/** The calls of src/sieve.rs on a line, as `name state`. */
+const onLine = (rows: CallRow[], line: number): string[] =>
+  rows.filter((r) => r.src.startsWith(`${SIEVE_FILE}:`) && r.line === line).map((r) => `${r.dst_name} ${r.call_state}`);
+
+// CODE_GRAPH.md, "Inside a macro, the tool says what is a call": the parser cannot see into a
+// macro's input; way B asks the tool about each name there, and a name the tool does not answer as
+// a call is dropped. A name written as a call there (the name, then a parenthesized group: The Rust
+// Reference, "Call expressions" and "Method-call expressions") is a call when rust-analyzer says the
+// name is a function or a method. A tuple struct or a variant is written the same way in a pattern
+// (`matches!(x, Some(_))`), so the tool's answer does not make it a call.
+describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust: a call in a macro's input", () => {
+  test("a function or a method written as a call in a macro's input is a call, linked or outside as the tool answers, in the function the macro is written in", async () => {
+    const { db } = await built();
+    try {
+      const rows = calls(db, "b");
+      expect(call(rows, SIFT, "weigh", 24)).toMatchObject({ dst: WEIGH, call_state: "linked" });
+      expect(call(rows, SIFT, "tare", 24)).toMatchObject({ dst: TARE, call_state: "linked" });
+      expect(call(rows, SIFT, "weigh", 25)).toMatchObject({ dst: WEIGH, call_state: "linked" });
+      expect(call(rows, SIFT, "len", 25)).toMatchObject({ dst: null, call_state: "outside" });
+      // A macro in a macro's input: `format!` inside `vec!`.
+      expect(call(rows, SIFT, "tare", 31)).toMatchObject({ dst: TARE, call_state: "linked" });
+      // A weak keyword is a name (The Rust Reference, "Keywords"): `default` is no strict keyword.
+      expect(call(rows, `${SIEVE_FILE}:chaff`, "default", 54)).toMatchObject({ dst: `${SIEVE_FILE}:Bran.default`, call_state: "linked" });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a call in a macro's input belongs to the nearest callable around the macro: a closure, else the file", async () => {
+    const { db } = await built();
+    try {
+      const rows = calls(db, "b");
+      expect(call(rows, `${SIEVE_FILE}:function at line 30`, "weigh", 30)).toMatchObject({ dst: WEIGH, call_state: "linked" });
+      expect(call(rows, `${SIEVE_FILE}:${SIEVE_FILE}`, "tare", 44)).toMatchObject({ dst: TARE, call_state: "linked" });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a name the tool does not answer as a call is dropped: a tuple struct or a variant, a name not written as a call, a name the macro does not make code of", async () => {
+    const { db } = await built();
+    try {
+      const rows = calls(db, "b");
+      expect(onLine(rows, 26)).toEqual([]);
+      expect(onLine(rows, 27)).toEqual([]);
+      expect(onLine(rows, 28)).toEqual([]);
+      expect(onLine(rows, 29)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a call in a macro's input that rust-analyzer reports an error in is not known", async () => {
+    const { db } = await built();
+    try {
+      expect(call(calls(db, "b"), SIFT, "weigh", 32)).toMatchObject({ dst: null, call_state: "not_known" });
+    } finally {
+      db.close();
+    }
+  });
+
+  // CODE_GRAPH.md, Benchmark: calls accounted for, "linked plus outside plus not known equals the
+  // calls the compiler finds", counts the calls in a macro's input the tool answers as calls.
+  test("the benchmark's reference counts the calls in a macro's input the tool answers as calls, in their functions, and way B has each one", async () => {
+    const { db } = await built();
+    try {
+      const texts = new Map<string, string>();
+      for (const file of git(project, "ls-files", "*.rs").split("\n")) texts.set(file, readFileSync(path.join(project, file), "utf8"));
+      const parser = (await loadParsers(["rust"])).get("rust")!;
+      const ra = runRustAnalyzer({ files: texts, configs: new Map(), read: (file) => (file === "Cargo.toml" ? CARGO_TOML : undefined) });
+      const answers = readAnswers(texts, ra, parser);
+      try {
+        const want = referenceCounts(rustReference(texts), answers).calls;
+        // sift's own: `each`, `len` four times on line 33; in macros, `weigh` and `tare` on 24,
+        // `weigh` and `len` on 25, `tare` on 31, `weigh` on 32.
+        expect(want.get(`${SIEVE_FILE}:23-34`)).toBe(11);
+        // `Bran::default()` in `assert_eq!`.
+        expect(want.get(`${SIEVE_FILE}:53-56`)).toBe(1);
+        expect(want.get(`${SIEVE_FILE}:30-30`)).toBe(1);
+        expect(want.get(`${SIEVE_FILE}:`)).toBe(1);
+        const rows = db
+          .query("SELECT s.path AS path, s.kind AS kind, s.start_line AS start, s.end_line AS end FROM edges e JOIN symbols s ON s.id = e.src_id WHERE e.layer = 'b' AND e.call_state IS NOT NULL")
+          .all() as { path: string; kind: string; start: number; end: number }[];
+        const graph = new Map<string, number>();
+        for (const r of rows) {
+          const key = `${r.path}:${r.kind === "function" || r.kind === "method" ? `${r.start}-${r.end}` : ""}`;
+          graph.set(key, (graph.get(key) ?? 0) + 1);
+        }
+        expect(Object.fromEntries(graph)).toEqual(Object.fromEntries(want));
+      } finally {
+        answers.close();
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+});
+
+// CODE_GRAPH.md, "Inside a macro, the tool says what is a call", edge cases 1 and 2: the built-in
+// rules have no tool to ask, so each name in a macro's input followed by a group in parentheses is
+// a call that is not known, with no link, in the callable around the macro. A tuple struct or a
+// variant written so is one more such call. `default` is a name; `named!(tare)` writes no call.
+test("the built-in rules keep each name written as a call in a macro's input as a call that is not known, with no link", async () => {
+  const { db } = await built("built-in");
+  try {
+    const rows = calls(db, "b");
+    const notKnown = (src: string, name: string, line: number) => expect(call(rows, src, name, line)).toMatchObject({ dst: null, call_state: "not_known" });
+    notKnown(SIFT, "weigh", 24);
+    notKnown(SIFT, "tare", 24);
+    notKnown(SIFT, "weigh", 25);
+    notKnown(SIFT, "len", 25);
+    notKnown(SIFT, "Grain", 26);
+    notKnown(SIFT, "weigh", 29);
+    notKnown(`${SIEVE_FILE}:function at line 30`, "weigh", 30);
+    notKnown(SIFT, "tare", 31);
+    notKnown(SIFT, "weigh", 32);
+    notKnown(`${SIEVE_FILE}:${SIEVE_FILE}`, "tare", 44);
+    notKnown(`${SIEVE_FILE}:chaff`, "default", 54);
+    expect(onLine(rows, 27)).toEqual([]);
+    // `Some` twice on line 28: `Some(1)` and `Some(_)`.
+    expect(onLine(rows, 28)).toEqual(["Some not_known", "Some not_known"]);
+  } finally {
+    db.close();
+  }
 });
 
 test("without rust-analyzer on PATH, way B for Rust does not run: the built-in rules make the links, and the layer names what is missing", async () => {

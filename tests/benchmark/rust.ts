@@ -8,7 +8,11 @@
 //   CLOSURE_EXPR. A FN starts at its first doc comment or attribute (DOC_COMMENT, ATTR), else at
 //   its first token that is no comment;
 // - a call: each CALL_EXPR and METHOD_CALL_EXPR, in the innermost function around it, else in the
-//   file. A macro's input is a token tree to both parsers: neither finds a call in it;
+//   file. A macro's input is a token tree to both parsers, so its calls are asked of rust-analyzer,
+//   as way B asks it (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"): each IDENT
+//   in a MACRO_CALL's TOKEN_TREE, nested ones included, that a TOKEN_TREE opening with L_PAREN
+//   follows, is a call when the symbol rust-analyzer gives at it is a function or a method; it is
+//   in the innermost function around the macro, else in the file;
 // - a call's name: a method call's own name; else, when the callee is a path, its last segment.
 //   A callee that is no path names nothing, and its call is no link of the reference.
 import type { Database } from "bun:sqlite";
@@ -28,8 +32,9 @@ const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["rust"]);
 /**
  * The version of the Rust reference, raised when the reference changes what it counts.
  * 2: links are judged against rust-analyzer.
+ * 3: the names written as calls in a macro's input that rust-analyzer answers as calls are calls.
  */
-export const REFERENCE_VERSION = 2;
+export const REFERENCE_VERSION = 3;
 
 /** How each way builds the graph, as the program builds it. */
 const BUILD: Record<Way, BuildOptions> = {
@@ -50,6 +55,10 @@ const NAME_REF = "NAME_REF";
 const PATH_EXPR = "PATH_EXPR";
 const PATH = "PATH";
 const PATH_SEGMENT = "PATH_SEGMENT";
+const MACRO_CALL = "MACRO_CALL";
+const TOKEN_TREE = "TOKEN_TREE";
+const IDENT = "IDENT";
+const L_PAREN = "L_PAREN";
 
 /** How a call names what it calls: a bare name, a path of segments, or a method's name. */
 export type CallShape = "name" | "path" | "method";
@@ -57,7 +66,10 @@ export type CallShape = "name" | "path" | "method";
 /** A call the reference names: where its name is written (a UTF-16 offset, as the graph's), its line, its name and its shape. */
 export type NamedCall = { pos: number; line: number; name: string; shape: CallShape };
 
-type FileAnswer = { functions: string[]; calls: Record<string, number>; named: NamedCall[] } | { error: string };
+/** A name written as a call in a macro's input: where, its line, its name, and the function it is in ("" for the file). */
+export type MacroName = { pos: number; line: number; name: string; owner: string };
+
+type FileAnswer = { functions: string[]; calls: Record<string, number>; named: NamedCall[]; inMacro: MacroName[] } | { error: string };
 export type RustReference = { version: string; files: Record<string, FileAnswer> };
 
 /** One line of `rust-analyzer parse`'s tree: `  KIND@start..end` with byte offsets, two spaces a level. */
@@ -116,6 +128,22 @@ export function fileAnswer(text: string, tree: string): FileAnswer {
   const functions: string[] = [];
   const calls: Record<string, number> = {};
   const named: NamedCall[] = [];
+  const inMacro: MacroName[] = [];
+  // Whether the IDENT at `i` is followed, past trivia, by a TOKEN_TREE that opens with L_PAREN.
+  const writtenAsCall = (i: number): boolean => {
+    const depth = nodes[i]!.depth;
+    let j = i + 1;
+    while (j < nodes.length && nodes[j]!.depth === depth && TRIVIA.has(nodes[j]!.kind)) j++;
+    const next = nodes[j];
+    const first = nodes[j + 1];
+    return next !== undefined && next.depth === depth && next.kind === TOKEN_TREE && first !== undefined && first.depth === depth + 1 && first.kind === L_PAREN;
+  };
+  // Whether the open ancestors are TOKEN_TREEs in a MACRO_CALL.
+  const inMacroInput = (): boolean => {
+    let k = stack.length - 1;
+    while (k >= 0 && stack[k]!.line.kind === TOKEN_TREE) k--;
+    return k < stack.length - 1 && k >= 0 && stack[k]!.line.kind === MACRO_CALL;
+  };
   // The open ancestors of each line, and the function each is in.
   const stack: { line: TreeLine; fn: string | null }[] = [];
   for (let i = 0; i < nodes.length; i++) {
@@ -143,9 +171,12 @@ export function fileAnswer(text: string, tree: string): FileAnswer {
         named.push({ pos: utf16(ref.start), line: lineOf(ref.start), name: bytes.subarray(ref.start, ref.end).toString("utf8"), shape: name.shape });
       }
     }
+    if (n.kind === IDENT && inMacroInput() && writtenAsCall(i)) {
+      inMacro.push({ pos: utf16(n.start), line: lineOf(n.start), name: bytes.subarray(n.start, n.end).toString("utf8"), owner: fn ?? "" });
+    }
     stack.push({ line: n, fn });
   }
-  return { functions, calls, named };
+  return { functions, calls, named, inMacro };
 }
 
 /** rust-analyzer's version, or null when it is not on PATH. */
@@ -168,8 +199,12 @@ export function rustReference(texts: ReadonlyMap<string, string>, tool = "rust-a
   return { version, files };
 }
 
-/** The reference's functions by file and its calls by function, `file:start-end`, or for the file, `file:`; and the files it cannot parse. */
-export function referenceCounts(ref: RustReference): { functions: Map<string, string[]>; calls: Map<string, number>; errors: string[] } {
+/**
+ * The reference's functions by file and its calls by function, `file:start-end`, or for the file,
+ * `file:`; and the files it cannot parse. With rust-analyzer's answers, the names written as calls
+ * in a macro's input that it answers as calls are calls too.
+ */
+export function referenceCounts(ref: RustReference, answers?: Answers): { functions: Map<string, string[]>; calls: Map<string, number>; errors: string[] } {
   const functions = new Map<string, string[]>();
   const calls = new Map<string, number>();
   const errors: string[] = [];
@@ -180,6 +215,12 @@ export function referenceCounts(ref: RustReference): { functions: Map<string, st
     }
     functions.set(file, answer.functions);
     for (const [owner, n] of Object.entries(answer.calls)) calls.set(`${file}:${owner}`, n);
+    if (answers === undefined) continue;
+    for (const m of answer.inMacro) {
+      if (answers.asCall(file, m.pos, m.name.length) === null) continue;
+      const key = `${file}:${m.owner}`;
+      calls.set(key, (calls.get(key) ?? 0) + 1);
+    }
   }
   return { functions, calls, errors };
 }
@@ -191,13 +232,16 @@ export const CAUSES: Record<CallShape, string> = {
   method: "a method, called through a value",
 };
 
+/** The cause of a call in a macro's input, which the parser reads as tokens. */
+export const IN_MACRO_CAUSE = "a function or a method, called in a macro's input";
+
 /** The file `file` of the commit `sha`, or undefined when it has none. */
 function fileAt(repoDir: string, sha: string, file: string): string | undefined {
   const run = spawnSync("git", ["show", `${sha}:${file}`], { cwd: repoDir, encoding: "utf8", maxBuffer: 1024 * 1024 * 1024 });
   return run.status === 0 ? run.stdout : undefined;
 }
 
-type Answers = { at(file: string, pos: number, length: number): Answer };
+type Answers = { at(file: string, pos: number, length: number): Answer; asCall(file: string, pos: number, length: number): Answer | null };
 
 /** The names a call may be recorded by: as written, and as the name it is. */
 const namesOf = (name: string): string[] => [...new Set([name, identifierName(name)])];
@@ -216,6 +260,16 @@ function referenceCalls(ref: RustReference, files: ReadonlySet<string>, answers:
       }
       states.repo++;
       calls.push({ file, line: c.line, pos: c.pos, names: namesOf(c.name), decls: [{ file: a.repo.file, spans: [{ start: a.repo.line, end: a.repo.line }] }], cause: CAUSES[c.shape] });
+    }
+    for (const m of answer.inMacro) {
+      const a = answers.asCall(file, m.pos, m.name.length);
+      if (a === null) continue;
+      if (!("repo" in a)) {
+        states["outside" in a ? "outside" : "notKnown"]++;
+        continue;
+      }
+      states.repo++;
+      calls.push({ file, line: m.line, pos: m.pos, names: namesOf(m.name), decls: [{ file: a.repo.file, spans: [{ start: a.repo.line, end: a.repo.line }] }], cause: IN_MACRO_CAUSE });
     }
   }
   return { calls, states };
@@ -294,12 +348,12 @@ export async function measureRust(repoDir: string, sha: string, way: Way): Promi
     const t = performance.now();
     const texts = languageTexts(repoDir, sha, LANGUAGES);
     const ref = rustReference(texts);
-    const { functions, calls, errors } = referenceCounts(ref);
     // rust-analyzer as way B runs it: the commit's files, with Cargo's manifests read from it.
     const isManifest = (file: string) => (MANIFESTS as readonly string[]).includes(path.posix.basename(file));
     const ra = runRustAnalyzer({ files: texts, configs: new Map(), read: (file) => (isManifest(file) ? fileAt(repoDir, sha, file) : undefined) });
     const answers = readAnswers(texts, ra, parser);
     try {
+      const { functions, calls, errors } = referenceCounts(ref, answers);
       const read = new Set([...parsedFiles(db)].filter((f) => texts.has(f)));
       const graph = graphCallCounts(db, read);
       // A call in a file rust-analyzer's parser cannot read has no reference to be accounted against.
