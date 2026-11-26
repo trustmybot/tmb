@@ -24,7 +24,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
 import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
-import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION, WAY_B_NOT_BUILT as JAVA_WAY_B_NOT_BUILT } from "./java.ts";
+import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION } from "./java.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
 import { measureRust, REFERENCE_VERSION as RUST_REFERENCE_VERSION, WAY_B_NOT_BUILT as RUST_WAY_B_NOT_BUILT } from "./rust.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
@@ -53,7 +53,7 @@ const INSTALLED: Record<string, Record<Way, string>> = {
     B: "nothing for pyright: tmb carries it; the repo's own virtual environment, for its calls of packages to be outside",
   },
   go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
-  java: { A: "nothing: tmb's own parser", B: JAVA_WAY_B_NOT_BUILT },
+  java: { A: "nothing: tmb's own parser", B: "a JDK, whose `java` runs the adapter tmb carries; no class path, so the repo's calls of its libraries are not known" },
   rust: { A: "nothing: tmb's own parser", B: RUST_WAY_B_NOT_BUILT },
 };
 
@@ -87,9 +87,7 @@ async function measureAll(): Promise<Run> {
           : r.language === "go"
             ? await measureGo(where.folder, sha, way)
             : r.language === "java"
-              ? way === "A"
-                ? await measureJava(where.folder, sha)
-                : { scores: notBuilt(JAVA_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" }
+              ? await measureJava(where.folder, sha, way)
               : way === "A"
                 ? await measureRust(where.folder, sha)
                 : { scores: notBuilt(RUST_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" };
