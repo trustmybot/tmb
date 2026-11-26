@@ -14,6 +14,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ts5 from "typescript5";
+import type TS from "typescript5";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { BASE_LAYER, GRAPH_SCHEMA_VERSION, graphDbPath, layerRow, openGraphDb } from "../src/engine/graph/db.ts";
 import { indexProject, openView } from "../src/engine/graph/fresh.ts";
@@ -451,7 +452,7 @@ describe("the compiler's default library", () => {
     const texts = new Map([["main.ts", "export const n = onlyCarried();\n"]]);
     const program = commitProgram(ts5, project, texts.keys(), { texts, installed: false, library: new Map([[name, carried]]) }, options);
     const sf = program.getSourceFile(path.join(project, "main.ts"))!;
-    const call = (sf.statements[0] as import("typescript5").VariableStatement).declarationList.declarations[0]!.initializer as import("typescript5").CallExpression;
+    const call = (sf.statements[0] as TS.VariableStatement).declarationList.declarations[0]!.initializer as TS.CallExpression;
     const decl = program.getTypeChecker().getSymbolAtLocation(call.expression)?.declarations?.[0];
     expect(decl?.getSourceFile().text).toBe(carried);
   });
