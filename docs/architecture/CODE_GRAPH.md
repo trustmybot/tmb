@@ -291,7 +291,7 @@ flowchart LR
 - **Way B makes the call links.** Another use of a name, such as a value passed on or a parent class, keeps its built-in link and records the built-in rules. Way B's answer for those comes with what depends on a symbol beyond calls (trustmybot/tmb#148).
 - **The tool's declaration is matched to a node by place.** Same file, same name, overlapping lines. When two nodes fit, the one that starts on the same line wins. A declaration that fits no node leaves the call not known.
   - **Example.** The compiler says `c.total()` is declared at lines 40 to 52 of `cart.ts`. The node `Cart.total` covers those lines, so the call links to it.
-- **A call that can go to more than one declaration links to each one that is a node.** It is linked when at least one is. This holds only where the language's rule proves each one, such as a union, an overload or a merged declaration; several declarations that merely share the name stay unlinked. Planned (trustmybot/tmb#344): today such a call is not known.
+- **A call that can go to more than one declaration links to each one that is a node.** It is linked when at least one is. This holds only where the language's rule proves each one, such as a union, an intersection, an overload or a merged declaration; several declarations that merely share the name stay unlinked. Planned (trustmybot/tmb#344): today such a call is not known.
   - **Example.** `element?.toString()`, where `element` is either a class of the repo or a built-in. The call links to the repo's `toString`.
 - **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. The position is where the name it calls is written, else where the call starts.
   - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
@@ -306,7 +306,7 @@ flowchart LR
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
-- **Way B per language.** Each tool was chosen by its own A/B test. Python is Planned (trustmybot/tmb#347); Go (trustmybot/tmb#352), Java (trustmybot/tmb#353), Rust (trustmybot/tmb#354), and C and C++ (trustmybot/tmb#355) are Planned.
+- **Way B per language.** Each tool was chosen by its own A/B test. Go (trustmybot/tmb#352), Java (trustmybot/tmb#353), Rust (trustmybot/tmb#354), and C and C++ (trustmybot/tmb#355) are Planned.
 
 | Language | Tool | Whose copy | Needs from the user |
 |---|---|---|---|
@@ -328,9 +328,10 @@ flowchart LR
   - **Example 2.** A call under `if TYPE_CHECKING:` is a call like any other. A call in code the tool finds unreachable gets no answer from it, so it is not known.
   - **Edge case.** The tool answers for a different call than the one asked, such as the enclosing call when the called thing is a subscript or another call's result. That is no answer for this call, so it is not known.
 - **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor. An enum variant or a conversion written like a call, such as Go's `Celsius(x)`, links to its type the same way.
-- **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it.
+- **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it. Planned (trustmybot/tmb#367): today a TypeScript method with no body is no node.
+  - **Example.** TypeScript: `interface Store { get(key: string): string }` gives the node `Store.get`, and `store.get(k)` on a `Store` links to it.
 - **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
-- **Overload stubs are one function.** A call that the tool resolves to a function's `@overload` stubs links to the function itself, the one definition that runs.
+- **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. A call that the tool resolves to a function's `@overload` stubs links to the function itself. Planned (trustmybot/tmb#368): today each Python stub is a node, so way A leaves such a call unlinked.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known.
   - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so.
 - **Way B for Go reads the packages already on the machine.** Go's module cache is its installed packages. The helper runs the user's `go` with downloads off and with the user's own Go settings.
@@ -890,7 +891,8 @@ All are FTS5 virtual tables.
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
-| Way B for Python, with pyright | trustmybot/tmb#347 |
+| A TypeScript method with no body is a node | trustmybot/tmb#367 |
+| Python overload stubs are no nodes | trustmybot/tmb#368 |
 | Go, Java, Rust, C and C++, each with its tool | trustmybot/tmb#352, #353, #354, #355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
