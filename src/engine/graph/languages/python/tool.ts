@@ -21,11 +21,12 @@
 // environment is the one the project's config names, pyright's own `venvPath` and `venv`, else the
 // one folder at the top of the working tree that is one; two or more with no config naming one
 // are none, and so is a folder the config names that is not there; the answer's freshness says so. With no environment, a call into a package is not
-// known.
+// known. A layer it built records pyright's version, the environments at the top of the repo and
+// what the environment it read installs; a read that finds any changed rebuilds it (trustmybot/tmb#325).
 import { type Dirent, existsSync, readdirSync, type Stats, statSync } from "node:fs";
 import path from "node:path";
-import { type Exporting, loadCarried, PYRIGHT_DIR, TYPESHED_ROOT } from "./carried.ts";
-import type { LanguageTool, OpenedTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
+import { CARRIED_VERSION, type Exporting, loadCarried, PYRIGHT_DIR, TYPESHED_ROOT } from "./carried.ts";
+import type { BuiltWith, LanguageTool, OpenedTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
@@ -39,6 +40,9 @@ const ENVIRONMENT_MARK = "pyvenv.cfg";
 /** The files of the commit pyright reads besides the `.py` files: the language's stubs and pyright's settings. */
 const STUB_EXTENSION = ".pyi";
 const SETTINGS_FILES = new Set(["pyproject.toml", "pyrightconfig.json"]);
+
+/** The folder of an environment that holds its installed packages. */
+const SITE_PACKAGES = "site-packages";
 
 /**
  * The kinds of pyright's syntax tree that place a declaration and a call, as pyright 1.1.414, the
@@ -210,7 +214,13 @@ function commitFileSystem(real: Record<string, any>, root: string, commit: Serve
 }
 
 /** pyright's answers for the graph's calls, one per call, in order. */
-function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, input: ToolInput, note: (text: string) => void): ToolAnswer[] {
+function answerCalls(
+  { part, stdlib: stdlibFiles }: Pyright,
+  repoDir: string,
+  input: ToolInput,
+  note: (text: string) => void,
+  readFrom: (places: readonly string[]) => void,
+): ToolAnswer[] {
   const root = path.resolve(repoDir);
   // Which environment (CODE_GRAPH.md): the one the project's config names, else the one folder at
   // the top of the repo that is one; two or more with no config naming one are none.
@@ -270,6 +280,9 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
     // A folder the config names that is not there is no environment, and the freshness says so.
     const missing = set !== null && !within(set, root) && !isFolder(set);
     environment = set === null || within(set, root) || missing ? null : set;
+    // The packages are read from the environment, and one the config names is watched for even
+    // while it is not there.
+    if (set !== null && !within(set, root)) readFrom([set]);
     if (missing) note(`the environment the project's config names (${within(root, set) ? path.relative(root, set).split(path.sep).join("/") : set}) is not there, so none is read: a call into a package is not known`);
     else if (environment === null && tops.length > 1) note(`${tops.length} virtual environments at the top of the repo (${tops.join(", ")}) and no config naming one, so none is read: a call into a package is not known`);
     // An environment inside the repo is listed in its folder, and its files are not the repo's.
@@ -421,6 +434,46 @@ export const pyright: LanguageTool = {
   async open(repoDir: string): Promise<OpenedTool> {
     const loaded = await carriedPyright();
     if ("unavailable" in loaded) return loaded;
-    return { answer: (input: ToolInput, note: (text: string) => void) => answerCalls(loaded, repoDir, input, note) };
+    return {
+      answer: (input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(loaded, repoDir, input, note, readFrom),
+    };
+  },
+  // pyright is the one tmb carries, so its version is tmb's own. The installed packages are those
+  // of the environment it read, and which folders at the top of the repo are environments, which
+  // decides the environment when the project's config names none.
+  builtWith(repoDir: string, places: readonly string[]): BuiltWith {
+    const tops = topEnvironments(path.resolve(repoDir));
+    return { tool: CARRIED_VERSION, packages: [`environments: ${tops.join(" ")}`, ...places.map(installedIn)].join("\n") };
   },
 };
+
+/**
+ * The folders of a virtual environment that hold its installed packages: `site-packages` under
+ * `lib/<python>` (`lib64` too) on POSIX and under `Lib` on Windows, as Python's install schemes lay
+ * a virtual environment out (sysconfig, "venv").
+ */
+function sitePackagesOf(environment: string): string[] {
+  const out: string[] = [];
+  for (const lib of ["lib", "lib64", "Lib"]) {
+    const dir = path.join(environment, lib);
+    if (isFolder(path.join(dir, SITE_PACKAGES))) out.push(path.join(dir, SITE_PACKAGES));
+    let inner: string[];
+    try {
+      inner = readdirSync(dir).sort();
+    } catch {
+      continue;
+    }
+    for (const name of inner) if (isFolder(path.join(dir, name, SITE_PACKAGES))) out.push(path.join(dir, name, SITE_PACKAGES));
+  }
+  return out;
+}
+
+/**
+ * What an environment has installed: the entries of each of its `site-packages` folders, each
+ * package, module and record of an installed project (a `.dist-info` folder named for the project
+ * and its version, PyPA "Recording installed projects"). An environment that is not there has none.
+ */
+function installedIn(environment: string): string {
+  const each = sitePackagesOf(environment).map((dir) => `${dir}: ${readdirSync(dir).sort().join(" ")}`);
+  return `${environment}: ${each.length === 0 ? "none" : each.join("; ")}`;
+}

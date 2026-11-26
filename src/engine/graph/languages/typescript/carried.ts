@@ -7,8 +7,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import compilerFile from "typescript5/lib/typescript.js" with { type: "file" };
+import carriedPackage from "typescript5/package.json" with { type: "json" };
 import type { TypeScriptModule } from "./compiler.ts";
 import { packedLibrary } from "./library.ts" with { type: "macro" };
+
+/** The version of the compiler tmb carries, as its package names it. */
+export const CARRIED_VERSION: string = carriedPackage.version;
 
 /** The default library, packed when tmb is built. */
 const PACKED_LIBRARY: string = packedLibrary();

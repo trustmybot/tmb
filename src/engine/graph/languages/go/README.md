@@ -25,5 +25,6 @@ The code graph's rules for `.go` files. They are read through tree-sitter's Go g
 - It is not known in every other case: a local, a parameter or a field, an error the type checker reports inside the call, a package it could not load whole, or a file the build leaves out.
 - The helper needs Go 1.22 or later (`ast.Unparen`). If it fails, the built-in rules make the links, and the layer's note says why.
 - Without `go` on PATH, way B for Go does not run. The built-in rules make the links, and the layer's note names what is missing.
+- The layer records what it was built with: `go version`, and, for each module version the repo's `go.sum` files list, whether the module cache holds it. A read that finds either changed rebuilds the layer (trustmybot/tmb#325).
 
 The coverage test compares the functions and calls with Go's own parser, `go/parser`, through [go_reference.go](../../../../../tests/benchmark/go_reference.go).

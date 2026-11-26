@@ -40,7 +40,19 @@ export type CommitFiles = {
    * read from here, never from the compiler's folder on disk. Without it they are read from disk.
    */
   library?: ReadonlyMap<string, string>;
+  /**
+   * Told each installed packages' folder the compiler looks in, there or not, with `installed`:
+   * the places way B's answers rest on beyond the commit (trustmybot/tmb#325).
+   */
+  lookedIn?: (dir: string) => void;
 };
+
+/** The installed packages' folder a path is in or is, the last one on its way down; null when it is in none. */
+function installedFolderOf(dir: string): string | null {
+  const parts = dir.split(path.sep);
+  const at = parts.lastIndexOf(INSTALLED_DIR);
+  return at < 0 ? null : parts.slice(0, at + 1).join(path.sep);
+}
 
 /** Where a file of the repo or of the disk is read: the commit, or the disk. */
 type RepoPlace = { from: "commit"; rel: string } | { from: "disk" };
@@ -74,6 +86,12 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
     library !== undefined && path.dirname(file) === libraryDir && library.has(path.basename(file)) ? { from: "library", name: path.basename(file) } : placeOf(root, file, files.installed);
   const textOf = (p: Exclude<Place, { from: "disk" }>): string | undefined => (p.from === "library" ? library?.get(p.name) : files.texts.get(p.rel));
   const { getSourceFile } = host;
+  /** Each installed packages' folder the compiler asks about is a place its answers rest on. */
+  const asked = (dir: string): void => {
+    if (!files.installed || files.lookedIn === undefined) return;
+    const folder = installedFolderOf(dir);
+    if (folder !== null) files.lookedIn(folder);
+  };
   return {
     ...host,
     getCurrentDirectory: () => root,
@@ -87,6 +105,7 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
     },
     directoryExists: (dir) => {
       if (library !== undefined && dir === libraryDir) return true;
+      asked(dir);
       const p = at(dir);
       if (p.from === "disk") return ts.sys.directoryExists(dir);
       if (p.from === "library") return false;
@@ -94,7 +113,10 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
       // The installed packages' folder, which git does not hold.
       return files.installed && path.basename(dir) === INSTALLED_DIR && ts.sys.directoryExists(dir);
     },
-    getDirectories: (dir) => (at(dir).from === "disk" ? ts.sys.getDirectories(dir) : []),
+    getDirectories: (dir) => {
+      asked(dir);
+      return at(dir).from === "disk" ? ts.sys.getDirectories(dir) : [];
+    },
     realpath: (file) => (at(file).from === "disk" && ts.sys.realpath !== undefined ? ts.sys.realpath(file) : file),
     getSourceFile: (file, version, onError) => {
       const p = at(file);

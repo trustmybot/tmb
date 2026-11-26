@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ADAPTER from "./javac_links.java" with { type: "text" };
-import type { LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
+import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 /** The longest the adapter's output may be. */
 const MAX_OUTPUT_BYTES = 1024 * 1024 * 1024;
@@ -45,12 +45,13 @@ export type AdapterCall = {
 
 export type AdapterOutput = { java: string; errors: number; firstErrors: string[]; calls: AdapterCall[] };
 
-/** Whether the `java` on PATH runs, or why not. */
-function javaOnPath(): true | { unavailable: string } {
+/** The `java` on PATH, as `java -version` reports it, or why it does not run. */
+function javaVersion(): { version: string } | { unavailable: string } {
   const run = spawnSync("java", ["-version"], { encoding: "utf8" });
   if (run.error !== undefined) return { unavailable: "no `java` on PATH" };
   if (run.status !== 0) return { unavailable: `\`java -version\` failed: ${run.stderr.trim()}` };
-  return true;
+  // The JDK reports its version on standard error.
+  return { version: `${run.stdout}${run.stderr}`.trim() };
 }
 
 /** Runs the adapter on the repo's Java files at the commit, written to a scratch folder, and returns its answer. */
@@ -122,8 +123,14 @@ export function answerCalls(input: ToolInput, out: AdapterOutput): ToolAnswer[] 
 export const javacTool: LanguageTool = {
   name: "javac",
   open() {
-    const java = javaOnPath();
-    if (java !== true) return java;
+    const java = javaVersion();
+    if ("unavailable" in java) return java;
     return { answer: (input: ToolInput) => answerCalls(input, runAdapter(input)) };
+  },
+  // The tool is the user's JDK, as it reports its version. javac reads no class path, so its
+  // answers rest on no installed package.
+  builtWith(): BuiltWith {
+    const java = javaVersion();
+    return { tool: "unavailable" in java ? `cannot run: ${java.unavailable}` : java.version, packages: "" };
   },
 };
