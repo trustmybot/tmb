@@ -292,6 +292,9 @@ flowchart LR
   - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
 - **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
 - **Way B follows the project's own configs.** A file is resolved under the config that owns it. Planned (trustmybot/tmb#324): today only the root config is read.
+  - **Example.** A repo has a root config and one in `benchmarks/`. A file in `benchmarks/` is resolved by that folder's config, with whatever it extends.
+  - **Edge case.** A file under no config gets the compiler's own defaults. tmb picks none of its own.
+  - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
 - **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Python uses pyright, which tmb carries the same way (Planned, trustmybot/tmb#347). Each other language's tool is chosen by its own A/B test (trustmybot/tmb#346).
@@ -862,6 +865,5 @@ All are FTS5 virtual tables.
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A file's language comes from Linguist's list | trustmybot/tmb#154 |
-| A same-repo package whose entry is build output links to its source, only where the package's TypeScript settings state both the source and the output folder | trustmybot/tmb#236 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
 | The planner keeps concepts and areas written: a rule for when it writes them, and a view of the code not yet placed | trustmybot/tmb#310 |
