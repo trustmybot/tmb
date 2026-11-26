@@ -35,6 +35,10 @@ flowchart LR
 - **The docs never ship.** No role prompt, skill, tool or message that tmb puts in a user's project reads, embeds or cites a page here. A rule an agent must follow is written into its prompt directly. Planned: a check that fails the build when a shipped prompt names these docs (trustmybot/tmb#307).
 - **In this repo the docs are read as any project's design docs are.** An agent developing tmb reads them because tmb is the project it works on, not because tmb's prompts point to them.
 
+## How a page is written
+
+Every page follows [TEMPLATE.md](TEMPLATE.md): high to low, one or two plain sentences per rule, then examples from the easy case to an edge case.
+
 ## Where to start
 
 1. [architecture/README.md](architecture/README.md), then [PHILOSOPHY.md](architecture/PHILOSOPHY.md): what tmb is.
