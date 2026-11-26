@@ -289,6 +289,8 @@ flowchart LR
 - **Way B makes the call links.** Another use of a name, such as a value passed on or a parent class, keeps its built-in link and records the built-in rules. Way B's answer for those comes with what depends on a symbol beyond calls (trustmybot/tmb#148).
 - **The tool's declaration is matched to a node by place.** Same file, same name, overlapping lines. When two nodes fit, the one that starts on the same line wins. A declaration that fits no node leaves the call not known.
   - **Example.** The compiler says `c.total()` is declared at lines 40 to 52 of `cart.ts`. The node `Cart.total` covers those lines, so the call links to it.
+- **A call that can go to more than one declaration links to each one that is a node.** It is linked when at least one is.
+  - **Example.** `element?.toString()`, where `element` is either a class of the repo or a built-in. The call links to the repo's `toString`.
 - **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. The position is where the name it calls is written, else where the call starts.
   - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
 - **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
@@ -454,6 +456,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
 - **Example.** A file has 10 calls: 6 linked, 3 to an outside package, 1 not known. Links found is 6 of 7. Calls accounted for is 10 of 10.
+- **Every link is judged, in the same file or across files.** Planned (trustmybot/tmb#343): today only links across files are judged.
 - **Way B needs a second judge.** In TypeScript the reference is the compiler, which is also way B's source. Way B's links right is judged on Python and on samples checked by hand.
 - **A link the compiler places outside the repo is wrong.** The graph links only the repo's own code, so a link to a repo symbol for a name the compiler declares only outside the repo fails the test.
 - **When a link is right.** It names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
@@ -820,6 +823,7 @@ All are FTS5 virtual tables.
 | The language's tool is the default way | trustmybot/tmb#337 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
+| The benchmark judges same-file links | trustmybot/tmb#343 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
