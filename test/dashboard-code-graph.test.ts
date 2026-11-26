@@ -216,6 +216,17 @@ describe("a small project", () => {
     expect(view.callees.map((c) => c.qualifiedName)).toEqual(["applyDiscount"]);
   });
 
+  test("a function shows its calls by state, and an unnamed one its own (trustmybot/tmb#252)", () => {
+    const cart = file(db, layer, "src/shop/cart.ts")!;
+    const by = (name: string) => cart.symbols.find((s) => s.qualifiedName === name)!;
+    // Cart.total writes `.map(…)` and `.reduce(…)`, on no proven type; its callback calls applyDiscount.
+    expect(by("Cart.total").calls).toEqual({ linked: 0, outside: 0, notKnown: 2 });
+    expect(by("callback of `map`").calls).toEqual({ linked: 1, outside: 0, notKnown: 0 });
+    const view = functionView(db, layer, by("Cart.total").id)!;
+    expect(view.card.calls).toEqual({ linked: 1, outside: 0, notKnown: 2 });
+    expect(view.card.callsNote).toContain("Calls not known: 2 of 3.");
+  });
+
   test("search finds a function by part of its name, named ones first", () => {
     expect(search(db, layer, "applyDisc").map((h) => h.qualifiedName)).toEqual(["applyDiscount"]);
     expect(search(db, layer, "cart").map((h) => h.qualifiedName)).toEqual(["Cart", "makeCart", "Cart.total", "callback of `test` 'a cart'"]);

@@ -16,6 +16,11 @@ const SCRIPT_KIND: Record<string, ts.ScriptKind> = {
   jsx: ts.ScriptKind.JSX,
 };
 
+/** How the compiler reads a file, by its extension. */
+export function scriptKind(relPath: string): ts.ScriptKind {
+  return SCRIPT_KIND[relPath.slice(relPath.lastIndexOf(".") + 1).toLowerCase()] ?? ts.ScriptKind.TS;
+}
+
 /** The languages this check covers: TypeScript, TSX and JavaScript. */
 export function coveredLanguage(relPath: string): SourceLanguage | null {
   const lang = languageOf(relPath, () => "");
@@ -24,8 +29,7 @@ export function coveredLanguage(relPath: string): SourceLanguage | null {
 
 /** Each function with a body the TypeScript compiler finds, as `start-end` lines. */
 export function compilerFunctions(relPath: string, text: string): string[] {
-  const ext = relPath.slice(relPath.lastIndexOf(".") + 1).toLowerCase();
-  const file = ts.createSourceFile(relPath, text, ts.ScriptTarget.Latest, true, SCRIPT_KIND[ext] ?? ts.ScriptKind.TS);
+  const file = ts.createSourceFile(relPath, text, ts.ScriptTarget.Latest, true, scriptKind(relPath));
   const out: string[] = [];
   const line = (pos: number) => file.getLineAndCharacterOfPosition(pos).line + 1;
   const visit = (node: ts.Node): void => {

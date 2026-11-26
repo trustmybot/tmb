@@ -89,7 +89,27 @@ export interface ExtractedEdge {
   // Where the language finds the name before the file's own names and imports
   // (trustmybot/tmb#246); absent when nothing around the reference binds it.
   bound?: Bound;
+  // 1 on a call written in the symbol it starts from: a call or a construction as the language's
+  // grammar writes one, whatever its callee (trustmybot/tmb#252). Absent on every other reference,
+  // such as a function passed as a value or a class a class extends.
+  call?: 1;
+  // On a call: where the language's lookup ends for its name, or for the name of the object it is
+  // called on, when that is no definition of the repo it could link.
+  outside?: Outside;
 }
+
+// Where a call's lookup ends outside the file's own definitions (trustmybot/tmb#252):
+// - builtin: `name` is one of the language's built-ins, and nothing around the call or in the
+//   file binds it; on `x.f()`, the built-in `x` declares a callable `f`;
+// - import: the name, or the object it is called on, is an import of `module`, as the file writes
+//   it, and not one relative to the file. The resolver decides whether that module is a package
+//   outside the repo: by the repo's import settings, or, when `searched` is given, by the paths at
+//   which the language finds the module in any folder it searches (`a/b.py`; a folder ends in
+//   `/`): outside only when no file of the repo is at one of them.
+export type Outside = { kind: 'builtin'; name: string } | { kind: 'import'; module: string; searched?: readonly string[] };
+
+/** What a call edge adds to a reference. */
+export type CallMark = { outside?: Outside };
 
 // How a name is bound around a reference, the first place the language looks:
 // - function: a function or class declared in a function or block around it,
@@ -143,8 +163,8 @@ export class Collector {
     return this.symbols.length - 1;
   }
 
-  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound): void {
-    this.edges.push({ src, kind, dst_name: dstName, line, hint, ...(bound ? { bound } : {}) });
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, call?: CallMark): void {
+    this.edges.push({ src, kind, dst_name: dstName, line, hint, ...(bound ? { bound } : {}), ...(call ? { call: 1 as const, ...(call.outside ? { outside: call.outside } : {}) } : {}) });
   }
 
   export(e: ExtractedExport): void {

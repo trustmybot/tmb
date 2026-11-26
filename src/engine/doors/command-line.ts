@@ -30,7 +30,7 @@ import type { Concept } from "../graph/concepts.ts";
 import { indexProject } from "../graph/fresh.ts";
 import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
-import type { Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
+import type { CallCounts, Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
 import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
 import { runningName } from "../../program.ts";
 import { openProjectStore } from "../project.ts";
@@ -558,6 +558,12 @@ function refLines(title: string, refs: RefRow[], more: number): string[] {
   return lines;
 }
 
+/** "calls written: 5 (3 linked, 1 outside the repo, 1 not known)" (trustmybot/tmb#252). */
+export function callCountsText(calls: CallCounts): string {
+  const total = calls.linked + calls.outside + calls.notKnown;
+  return `calls written: ${total} (${calls.linked} linked, ${calls.outside} outside the repo, ${calls.notKnown} not known)`;
+}
+
 function formatCard(card: SymbolCard): string {
   const s = card.symbol;
   const lines = [`${s.kind} ${s.qualifiedName}  ${s.path}:${s.startLine ?? "?"}-${s.endLine ?? "?"}`];
@@ -567,6 +573,8 @@ function formatCard(card: SymbolCard): string {
   const calls = card.callees.filter((c) => c.edge !== "imports");
   if (calls.length > 0) lines.push("  calls:", ...calls.map((c) => `    ${c.name}  ${c.target ? `${c.target.path}` : "unresolved"}  at ${linesText(c)}`));
   if (card.more.callees > 0) lines.push(`    …and ${card.more.callees} more`);
+  if (card.calls.linked + card.calls.outside + card.calls.notKnown > 0) lines.push(`  ${callCountsText(card.calls)}`);
+  if (card.callsNote) lines.push(`  ${card.callsNote}`);
   if (card.tests.length > 0) lines.push("  tests:", ...card.tests.map((t) => `    ${t}`));
   if (card.unresolved.count > 0) lines.push(`  ${card.unresolved.count} unresolved references name it but are not proven to mean it.`);
   if (card.concepts.length > 0) lines.push(`  concepts: ${card.concepts.map((c) => `${c.name} (${c.status})`).join(", ")}`);
