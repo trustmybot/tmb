@@ -352,8 +352,8 @@ flowchart LR
 - **SQL in a string is found by parsing it.** Any string that starts like a statement is given to the parser, in any letter case. An interpolated value becomes a placeholder. A table counts only when the statement parses cleanly.
   - **Example 1.** `"select * from orders where id = " + id` parses, so it is a read of `orders`.
   - **Example 2.** The label `"Insert row"` starts like a statement and does not parse, so it gives nothing.
-  - **Edge case.** The string does not say which dialect it is. The parser tries every dialect. The tables count when the general dialect and more than half of the dialects parse the string, and all that parse it name the same tables.
-  - **Edge case.** The label `"Delete row"` is a statement in a few lenient dialects only, so it gives nothing. A label that is a statement in every dialect, such as `"Select one from the list"`, still gives a false table: a known gap.
+  - **Edge case.** The string does not say which dialect it is. The parser tries every dialect. The tables count when every dialect that parses the string names the same ones.
+  - **Edge case.** A label that is also a valid statement, such as `"Delete row"` or `"Select one from the list"`, gives a false table. Planned (trustmybot/tmb#350): the store the code uses names the dialect, so a label that is no statement in that dialect gives nothing.
 - **A pipeline's own graph is not rebuilt.** A tool that runs steps as a graph draws it itself. The functions its steps run are ordinary code nodes.
   - **Example.** A scheduled pipeline has five steps. The graph holds the five functions and what each reads and writes, not the order the pipeline runs them in.
 
