@@ -24,13 +24,30 @@ type Span = { start: number; end: number };
 const OUTSIDE = "a declaration outside the repo";
 
 /** What the compiler says one call or construction's callee is. */
-type Answer =
+export type Answer =
   | { kind: "declared"; decls: { file: string; spans: Span[] }[]; importFile: string | null }
   | { kind: "external" }
   | { kind: "unknown" };
 
 /** The compiler's answers for the references to a name on one line of a file. */
 export type CompilerLookup = (file: string, line: number, name: string) => Answer[];
+
+/**
+ * One call or construction the compiler finds in a file: the lines the graph may record it on (the
+ * callee's and the call's first), the names it may record it by (the callee's, and the name an
+ * import under a new name declares it as), and the compiler's answer for the callee.
+ */
+export type CompilerCall = {
+  file: string;
+  node: ts.CallExpression | ts.NewExpression | ts.TaggedTemplateExpression;
+  callee: ts.Identifier | ts.PrivateIdentifier | null;
+  lines: number[];
+  names: string[];
+  answer: Answer;
+};
+
+/** The compiler's program of a repo at a commit: its answer for a name on a line, and every call of a file. */
+export type CompilerProgram = { lookup: CompilerLookup; calls: (file: string) => CompilerCall[]; checker: ts.TypeChecker };
 
 /** One link of the graph: the call's file and line, the name it calls, and the declaration it links. */
 export type GraphLink = { src: string; line: number; name: string; dst: string; start: number; end: number; kind: string };
@@ -116,6 +133,11 @@ type Ref = { name: string; node: ts.Identifier | ts.PrivateIdentifier };
  * its own line and on the call's first line, where the graph records a call that spans lines.
  */
 export function compilerLookup(repoDir: string, commit: string, texts = commitTexts(repoDir, commit)): CompilerLookup {
+  return compilerProgram(repoDir, commit, texts).lookup;
+}
+
+/** The compiler's program of the repo at `commit`, read from git as the graph reads it. */
+export function compilerProgram(repoDir: string, commit: string, texts = commitTexts(repoDir, commit)): CompilerProgram {
   const root = path.resolve(repoDir);
   const options: ts.CompilerOptions = {
     allowJs: true,
@@ -188,12 +210,7 @@ export function compilerLookup(repoDir: string, commit: string, texts = commitTe
     byFile.set(file, refs);
     const sf = program.getSourceFile(path.join(root, file));
     if (sf === undefined) return refs;
-    // `import { a as b }`: the graph names a reference to `b` by the name `a` it is declared as.
-    const original = new Map<string, string>();
-    for (const stmt of sf.statements) {
-      const bindings = ts.isImportDeclaration(stmt) ? stmt.importClause?.namedBindings : undefined;
-      if (bindings !== undefined && ts.isNamedImports(bindings)) for (const el of bindings.elements) if (el.propertyName !== undefined) original.set(el.name.text, el.propertyName.text);
-    }
+    const original = originalNames(sf);
     const put = (line: number, name: string, ref: Ref) => {
       const key = `${line}\u0000${name}`;
       const here = refs.get(key) ?? [];
@@ -220,15 +237,46 @@ export function compilerLookup(repoDir: string, commit: string, texts = commitTe
   };
 
   const answers = new Map<ts.Node, Answer>();
-  return (file, line, name) => {
-    // Every reference to the name on the line: the graph's link is for one of them, which one the
-    // line does not say when it holds several (`[f].map((f) => f())`).
-    return (refsOf(file).get(`${line}\u0000${name}`) ?? []).map((r) => {
-      let a = answers.get(r.node);
-      if (a === undefined) answers.set(r.node, (a = answer(r.node)));
-      return a;
-    });
+  const answerOf = (node: ts.Identifier | ts.PrivateIdentifier): Answer => {
+    let a = answers.get(node);
+    if (a === undefined) answers.set(node, (a = answer(node)));
+    return a;
   };
+  // Every reference to the name on the line: the graph's link is for one of them, which one the
+  // line does not say when it holds several (`[f].map((f) => f())`).
+  const lookup: CompilerLookup = (file, line, name) => (refsOf(file).get(`${line}\u0000${name}`) ?? []).map((r) => answerOf(r.node));
+
+  const calls = (file: string): CompilerCall[] => {
+    const sf = program.getSourceFile(path.join(root, file));
+    if (sf === undefined) return [];
+    const original = originalNames(sf);
+    const out: CompilerCall[] = [];
+    const visit = (node: ts.Node): void => {
+      if (isCall(node)) {
+        const callee = calleeOf(node);
+        const lines = [lineOf(sf, node.getStart(sf))];
+        if (callee !== null && !lines.includes(lineOf(sf, callee.getStart(sf)))) lines.push(lineOf(sf, callee.getStart(sf)));
+        const names = callee === null ? [] : [callee.text];
+        const imported = callee === null ? undefined : original.get(callee.text);
+        if (imported !== undefined) names.push(imported);
+        out.push({ file, node, callee, lines, names, answer: callee === null ? { kind: "unknown" } : answerOf(callee) });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return out;
+  };
+  return { lookup, calls, checker };
+}
+
+/** `import { a as b }`: the graph names a reference to `b` by the name `a` it is declared as. */
+function originalNames(sf: ts.SourceFile): Map<string, string> {
+  const original = new Map<string, string>();
+  for (const stmt of sf.statements) {
+    const bindings = ts.isImportDeclaration(stmt) ? stmt.importClause?.namedBindings : undefined;
+    if (bindings !== undefined && ts.isNamedImports(bindings)) for (const el of bindings.elements) if (el.propertyName !== undefined) original.set(el.name.text, el.propertyName.text);
+  }
+  return original;
 }
 
 /** Every cross-file `calls` and `instantiates` link of a layer resolved `exact`, between TypeScript or JavaScript files. */
@@ -288,10 +336,12 @@ export type CallReport = {
   differ: string[];
   /** Calls the graph puts outside the repo that the compiler finds declared in the repo. */
   outsideWrong: string[];
+  /** How many calls each function, `file:start-end`, or file, `file:`, holds: the graph's states and the compiler's calls. */
+  byFunction: { graph: Map<string, number>; compiler: Map<string, number> };
 };
 
 /** A call or a construction, as the compiler writes it: what the graph counts as a call. */
-const isCall = (node: ts.Node) => ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node);
+const isCall = (node: ts.Node): node is ts.CallExpression | ts.NewExpression | ts.TaggedTemplateExpression => ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node);
 
 /**
  * How many calls the compiler finds in each function with a body, `start-end`, or else for the
@@ -361,6 +411,7 @@ export function checkCalls(db: Database, texts: ReadonlyMap<string, string>, loo
     linksFound: linked + notKnown === 0 ? 0 : linked / (linked + notKnown),
     differ: differ.sort(),
     outsideWrong,
+    byFunction: { graph, compiler },
   };
 }
 
@@ -375,38 +426,49 @@ export async function checkRepo(repoDir: string, commit = "HEAD"): Promise<{ lin
   if (sha === null) throw new Error(`${repoDir} has no commit ${commit}`);
   const scratch = mkdtempSync(path.join(tmpdir(), "tmb-links-"));
   try {
-    let t = performance.now();
+    const t = performance.now();
     const db = openGraphDb(scratch);
     try {
       await buildLayer(db, repoDir, sha, BASE_LAYER, { force: true });
-      const links = graphLinks(db);
       const graphMs = performance.now() - t;
-      t = performance.now();
+      const compilerStart = performance.now();
       const texts = commitTexts(repoDir, sha);
-      const lookup = compilerLookup(repoDir, sha, texts);
-      const report: LinkReport = {
-        links: links.length,
-        right: 0,
-        wrong: [],
-        notJudged: { unknown: 0, noReference: 0 },
-        reexports: { right: 0, wrong: 0 },
-        ms: { graph: Math.round(graphMs), compiler: 0 },
-      };
-      for (const link of links) {
-        const { verdict, reexport, compiler } = judge(link, lookup);
-        if (verdict === "right") report.right++;
-        else if (verdict === "wrong") report.wrong.push(`${link.src}:${link.line} ${link.kind} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end}; the compiler: ${compiler}`);
-        else if (verdict === "unknown") report.notJudged.unknown++;
-        else report.notJudged.noReference++;
-        if (reexport && verdict === "right") report.reexports.right++;
-        if (reexport && verdict === "wrong") report.reexports.wrong++;
-      }
-      report.ms.compiler = Math.round(performance.now() - t);
-      return { links: report, calls: checkCalls(db, texts, lookup) };
+      const { links, calls } = checkLayer(db, compilerProgram(repoDir, sha, texts), texts);
+      links.ms = { graph: Math.round(graphMs), compiler: Math.round(performance.now() - compilerStart) };
+      return { links, calls };
     } finally {
       db.close();
     }
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * Checks every link and every call state of one built layer against the compiler's program of the
+ * same commit. The time the compiler's answers take is in `links.ms.compiler`; the graph's is left
+ * to the caller, who built it.
+ */
+export function checkLayer(db: Database, program: CompilerProgram, texts: ReadonlyMap<string, string>, layer = BASE_LAYER): { links: LinkReport; calls: CallReport } {
+  const t = performance.now();
+  const links = graphLinks(db, layer);
+  const report: LinkReport = {
+    links: links.length,
+    right: 0,
+    wrong: [],
+    notJudged: { unknown: 0, noReference: 0 },
+    reexports: { right: 0, wrong: 0 },
+    ms: { graph: 0, compiler: 0 },
+  };
+  for (const link of links) {
+    const { verdict, reexport, compiler } = judge(link, program.lookup);
+    if (verdict === "right") report.right++;
+    else if (verdict === "wrong") report.wrong.push(`${link.src}:${link.line} ${link.kind} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end}; the compiler: ${compiler}`);
+    else if (verdict === "unknown") report.notJudged.unknown++;
+    else report.notJudged.noReference++;
+    if (reexport && verdict === "right") report.reexports.right++;
+    if (reexport && verdict === "wrong") report.reexports.wrong++;
+  }
+  report.ms.compiler = Math.round(performance.now() - t);
+  return { links: report, calls: checkCalls(db, texts, program.lookup, layer) };
 }
