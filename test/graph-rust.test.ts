@@ -570,6 +570,37 @@ describe("Rust's own parser", () => {
     ]);
   });
 
+  // CODE_GRAPH.md, "Inside a macro, the tool says what is a call": a macro's input is tokens to the
+  // parser, so the reference lists each name written there as a call (a name, then a parenthesized
+  // group: The Rust Reference, "Call expressions", "Method-call expressions"), with the function the
+  // macro is written in, for the tool to say which are calls. A `macro_rules!` body is no macro's
+  // input, nor is an attribute's (The Rust Reference, "Macros By Example", "Attributes").
+  test.skipIf(!raFound)("rust-analyzer's parser lists the names written as calls in a macro's input, each in the function around the macro (skipped without rust-analyzer on PATH)", () => {
+    const text = lines(
+      "fn g() {", //                                                    1
+      "    assert_eq!(a::h(1), x.len());", //                            2
+      "    m![r#match (2), k];", //                                      3
+      "    let _ = |y| p!(q(y));", //                                    4
+      "}", //                                                           5
+      "m! { static X: u32 = z(); }", //                                 6
+      "macro_rules! d { ($f:ident) => { $f(1) }; }", //                 7
+      "#[cfg(feature(x))]", //                                          8
+      "fn w() {}", //                                                   9
+    );
+    const ref = rustReference(new Map([["src/a.rs", text]]));
+    const answer = ref.files["src/a.rs"];
+    if (answer === undefined || "error" in answer) throw new Error(JSON.stringify(answer));
+    expect(answer.inMacro).toEqual([
+      { pos: at(text, "h(1)"), line: 2, name: "h", owner: "1-5" },
+      { pos: at(text, "len"), line: 2, name: "len", owner: "1-5" },
+      { pos: at(text, "r#match"), line: 3, name: "r#match", owner: "1-5" },
+      { pos: at(text, "q(y)"), line: 4, name: "q", owner: "4-4" },
+      { pos: at(text, "z()"), line: 6, name: "z", owner: "" },
+    ]);
+    // None of them is among the parser's own calls.
+    expect(answer.calls).toEqual({});
+  });
+
   test.skipIf(!raFound)("each call rust-analyzer's parser names is the graph's call at that position, of that name (skipped without rust-analyzer on PATH)", async () => {
     const db = await built();
     try {

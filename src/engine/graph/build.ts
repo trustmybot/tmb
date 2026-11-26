@@ -20,7 +20,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 32;
+export const EXTRACTOR_VERSION = 33;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -325,7 +325,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       });
       extraction.edges.forEach((edge, i) => {
         if (edge.call !== 1 || edge.pos === undefined) return;
-        calls.push({ path: file, pos: edge.pos, name: edge.dst_name });
+        calls.push({ path: file, pos: edge.pos, name: edge.dst_name, ...(edge.inMacro === 1 ? { inMacro: true as const } : {}) });
         callRows.push(edgeOffset + i);
       });
     }
@@ -344,6 +344,8 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       builtWith[tool.name] = builtWithEntry(tool, repoDir, places);
     }
     answered.forEach((answer, i) => {
+      // A name in a macro's input that the tool does not answer as a call is dropped (applyLayer).
+      if ("call" in answer) return;
       if (!("nodes" in answer)) answers.set(callRows[i]!, answer);
       else {
         const [first, ...more] = answer.nodes;
@@ -483,12 +485,23 @@ function applyLayer(
   const sources = writeDataSources(db, layer, pending.map((p) => p.edge));
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
-  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
+  // A name written as a call in a macro's input is a call only when its language's tool answered it
+  // as one (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"); the rest are dropped.
+  const dropped = (edge: Extraction["edges"][number], index: number): boolean => edge.inMacro === 1 && !byTool.answers.has(index);
+  const resolver = new Resolver(
+    candidates,
+    pending.flatMap(({ file, edge }, index) => (dropped(edge, index) ? [] : [{ from: file, edge }])),
+    new ImportConfig(configs),
+    exports,
+  );
   const insertEdge = db.prepare(
     "INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, pos, hint, call_state, way) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   let unresolved = 0;
+  let written = 0;
   pending.forEach(({ file, symbolIndex, edge }, index) => {
+    if (dropped(edge, index)) return;
+    written++;
     if (edge.data !== undefined) {
       // A link to a data source ends at the layer's one node of its kind and name.
       insertEdge.run(layer, ids[symbolIndex]!, sources.get(dataSourceKey(edge.data, edge.dst_name))!, edge.dst_name, edge.kind, "exact", edge.line, null, null, null, BUILT_IN);
@@ -528,7 +541,7 @@ function applyLayer(
     commit,
     files: plans.length,
     symbols: ids.length + sources.size,
-    edges: pending.length,
+    edges: written,
     unresolved,
     unresolvedImports,
     functions,

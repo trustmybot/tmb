@@ -116,6 +116,10 @@ export interface ExtractedEdge {
   // index into Extraction.symbols. That symbol is its link, with no lookup by name; absent when the
   // language's rules prove none.
   target?: number;
+  // 1 on a name written as a call inside a macro's input, which the parser cannot see as code
+  // (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"). It is a call only when the
+  // language's tool answers it as one; with no tool to ask, or one that does not, it is dropped.
+  inMacro?: 1;
 }
 
 // Where a call's lookup ends outside the file's own definitions (trustmybot/tmb#252):
@@ -135,7 +139,8 @@ export type CallMark = { outside?: Outside; target?: number };
 // parser reports it, where the name it calls is written, else, when it calls no name, where the
 // call starts. A name is one token, so its place is the same in every parser of the language,
 // whatever each makes of the operators around it, and no two calls share it.
-export type CallAt = CallMark & { pos: number };
+// `inMacro` marks a name written as a call in a macro's input (ExtractedEdge.inMacro).
+export type CallAt = CallMark & { pos: number; inMacro?: 1 };
 
 // How a name is bound around a reference, the first place the language looks:
 // - function: a function or class declared in a function or block around it,
@@ -209,7 +214,13 @@ export class Collector {
       ...(bound ? { bound } : {}),
       ...(local ? { local } : {}),
       ...(call
-        ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}), ...(call.target !== undefined ? { target: call.target } : {}) }
+        ? {
+            call: 1 as const,
+            pos: call.pos,
+            ...(call.outside ? { outside: call.outside } : {}),
+            ...(call.target !== undefined ? { target: call.target } : {}),
+            ...(call.inMacro ? { inMacro: call.inMacro } : {}),
+          }
         : at !== undefined
           ? { pos: at }
           : {}),
@@ -268,11 +279,13 @@ export interface ToolNode {
 }
 
 // A call the graph holds, as the built-in parser found it: its file, its position (CallAt) and
-// the name it calls.
+// the name it calls. `inMacro` is set on a name written as a call in a macro's input, which the
+// parser cannot see as code: the tool says whether it is a call (ExtractedEdge.inMacro).
 export interface ToolCall {
   path: string;
   pos: number;
   name: string;
+  inMacro?: true;
 }
 
 // What a repo gives its tool: the text of every file of the tool's languages at the commit, the
@@ -290,8 +303,9 @@ export interface ToolInput {
 
 // The tool's answer for one call (CODE_GRAPH.md, "Two ways to make links"): linked to each node, by
 // its index in ToolInput.nodes, of the declarations the language proves the call can go to, one or
-// more (trustmybot/tmb#344); else outside the repo, or not known.
-export type ToolAnswer = { nodes: readonly [number, ...number[]] } | { state: 'outside' | 'not_known' };
+// more (trustmybot/tmb#344); else outside the repo, or not known. For a name in a macro's input
+// (ToolCall.inMacro), `{ call: false }` says the tool does not answer it as a call: it is dropped.
+export type ToolAnswer = { nodes: readonly [number, ...number[]] } | { state: 'outside' | 'not_known' } | { call: false };
 
 // A language's own tool, opened for one repo. tmb installs nothing: a tool tmb carries is always
 // the one used; one that cannot run in the repo says why. Opening may wait (a tool that loads its
