@@ -23,7 +23,7 @@ const BUILD: Record<Way, BuildOptions> = {
 };
 
 /** The version of the Python reference, raised when the reference changes what it counts. */
-export const REFERENCE_VERSION = 1;
+export const REFERENCE_VERSION = 2;
 
 const SCRIPT = path.join(import.meta.dir, "python_reference.py");
 
