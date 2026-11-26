@@ -2,8 +2,9 @@
   "command": "bun tests/benchmark/run.ts --write",
   "referenceVersions": {
     "typescript": 2,
-    "python": 2,
-    "go": 2
+    "python": 1,
+    "go": 2,
+    "java": 1
   },
   "entries": [
     {
@@ -155,14 +156,14 @@
       "ways": {
         "A": {
           "functionsFound": {
-            "n": 839,
-            "of": 1470
+            "n": 857,
+            "of": 1488
           },
           "linksRight": {
             "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "n": 384,
+            "n": 376,
             "of": 3102
           },
           "linksFoundByReference": {
@@ -178,8 +179,8 @@
         },
         "B": {
           "functionsFound": {
-            "n": 839,
-            "of": 1470
+            "n": 857,
+            "of": 1488
           },
           "linksRight": {
             "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
@@ -314,6 +315,57 @@
             "of": 9085
           },
           "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "jsoup",
+      "language": "java",
+      "commit": "d90d57521d931db7bf7ee464a4c0a1a9293db088",
+      "reference": "javac 21.0.13.1+2-LTS parser",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 5418,
+            "of": 5418
+          },
+          "linksRight": {
+            "notScored": "not judged: Java's links have no reference yet (javac, trustmybot/tmb#353)"
+          },
+          "linksFoundByState": {
+            "n": 1145,
+            "of": 36578
+          },
+          "linksFoundByReference": {
+            "notScored": "not judged: Java's links have no reference yet (javac, trustmybot/tmb#353)"
+          },
+          "callsAccountedFor": {
+            "n": 36992,
+            "of": 36992
+          },
+          "missesByCause": {
+            "notScored": "not judged: Java's links have no reference yet (javac, trustmybot/tmb#353)"
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (javac, trustmybot/tmb#353)"
+          },
+          "linksRight": {
+            "notScored": "not built (javac, trustmybot/tmb#353)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (javac, trustmybot/tmb#353)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (javac, trustmybot/tmb#353)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (javac, trustmybot/tmb#353)"
+          },
+          "missesByCause": {
+            "notScored": "not built (javac, trustmybot/tmb#353)"
+          }
         }
       }
     }

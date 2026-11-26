@@ -19,7 +19,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 25;
+export const EXTRACTOR_VERSION = 26;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -431,7 +431,9 @@ function applyLayer(
     // A call its language's tool answered takes the tool's answer, and nothing else (trustmybot/tmb#311).
     const answer = byTool.answers.get(index);
     const linked = answer !== undefined && "nodes" in answer ? answer.nodes : null;
-    const link: Link | null = answer === undefined ? resolver.resolve(file, edge) : linked !== null ? { dst: linked[0], how: "exact" } : null;
+    // A call the language's own rules prove goes to a symbol of its file links to it (ExtractedEdge.target).
+    const proven: Link | null = edge.target === undefined ? null : { dst: symbolIndex - edge.src + edge.target, how: "exact" };
+    const link: Link | null = answer === undefined ? (proven ?? resolver.resolve(file, edge)) : linked !== null ? { dst: linked[0], how: "exact" } : null;
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
     // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
     const state = answer !== undefined ? ("state" in answer ? answer.state : "linked") : edge.call === 1 ? callState(resolver, file, edge, link) : null;
