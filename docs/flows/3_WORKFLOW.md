@@ -87,7 +87,7 @@ flowchart TD
     P --> Z[Human merges; tmb records the branch as merged]
 ```
 
-- **One feature branch per milestone.** It collects every task of the milestone. A request that adds to the work of an open branch is its next task there; a new branch is only for separate work. In a workspace, a feature branch belongs to one repo, and its tasks work in that repo. Feature names are unique in the record.
+- **One feature branch per milestone.** It collects every task of the milestone. A request that adds to the work of an open branch is its next task there; a new branch is only for separate work. In a multi-repo workspace, a feature branch belongs to one repo, and its tasks work in that repo. Feature names are unique in the record.
 - **It starts from the remote's base branch,** fetched first. The engine uses the local base branch instead when that holds a commit the remote lacks, when there is no remote, or when the remote is out of reach.
 - **Tasks fold into it.** Each task branch is cut from the feature branch's tip and folds back into it once the task closes, so the next task builds on the last.
 - **Pushed only as a backup.** No pull request opens before the review, so no CI runs on the branch.

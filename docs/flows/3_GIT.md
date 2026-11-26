@@ -160,16 +160,16 @@ In agile mode a long-lived feature branch stands between the task branches and t
 
 ## Multi-repo workspaces
 
-A project is a set of repos sharing one record. Setup decides which shape it is:
+A project is a set of repos sharing one record. Its workspace is the folder where the Human ran `tmb init`, and the record is kept there. Setup decides which shape the workspace has:
 
 ```mermaid
 flowchart TD
     A[Setup runs in a folder] --> B{In a git work tree?}
-    B -- yes --> ONE[A project of one repo: the folder itself]
+    B -- yes --> ONE[A workspace of one repo: the folder itself]
     B -- no --> C{Holds git repos, up to two folders down?}
     C -- no --> GI[Setup makes the folder a git repo and says so]
     GI --> ONE
-    C -- yes --> WS[A workspace: its repos share one record in that folder]
+    C -- yes --> WS[A multi-repo workspace: its repos share one record in that folder]
     WS --> F{Each top-level folder}
     F -- "a repo" --> R["Recorded with its own policy: base branch and checks"]
     F -- "no repo, and holds none" --> NR[Recorded as not a repo; left alone]
@@ -180,12 +180,12 @@ flowchart TD
 
 - **What counts as a repo.** A folder whose git folder is a real folder. A linked worktree or a submodule is never one, so a task's worktree is not taken for a repo. Setup does not look inside a repo it found, a dot-folder or a dependency folder.
 - **The record keeps the set,** so no later step scans or guesses. Running setup again adds what appeared and drops what is gone, with a line for each.
-- **A folder inside a git work tree is a project of one repo,** even when it holds nested repos.
+- **A workspace inside a git work tree is a project of one repo,** even when it holds nested repos.
 
 tmb then resolves "which repo does this step belong to" from the work, never from the folder a session runs in:
 
 1. **A feature branch or a task records its repo.** With one managed repo it may be left out; with several, a start that names none is refused with the list. An agile task works in its feature branch's repo. Every later step runs there: the cut, the worktree, the checks, the fold, the backup push and the pull request.
-2. **Policy is per repo.** Each repo has its own base branch and checks, taken from its own git at setup: origin's default branch, else the current branch. A policy set before is kept. Each repo pushes to its own origin and opens pull requests on its own remote repo. The project-wide base branch and checks are not read in a workspace.
+2. **Policy is per repo.** Each repo has its own base branch and checks, taken from its own git at setup: origin's default branch, else the current branch. A policy set before is kept. Each repo pushes to its own origin and opens pull requests on its own remote repo. The project-wide base branch and checks are not read in a multi-repo workspace.
 3. **One record.** Task worktrees stay under the workspace, so a worker finds the shared record. Feature names are unique in the record. Issues live in the record and name no repo.
 4. **Each repo has a mode.**
 

@@ -36,4 +36,59 @@ A page with no number is not a flow page. Three flows are detailed in architectu
 - **A flow step links to the part that owns it.** A gate's rules are in the architecture page; the flow shows where the gate sits in the sequence.
 - **An architecture page links to the flows a part serves,** by flow number.
 - **A flow page names no function, file or table of the code.** The code graph answers what enforces a step.
-- **Where they disagree, [FLOWS.md](FLOWS.md) and the high-level architecture pages win,** and the detail page is fixed.
+- **Where two pages disagree, the question goes to the Human,** and both are changed to agree ([docs/README.md](../README.md#when-two-things-disagree)).
+
+## Reading guide
+
+Start with [FLOWS.md](FLOWS.md), then open the detail page of the flow you need.
+
+| Question | Read |
+|---|---|
+| What happens when the Human asks for Y? | [FLOWS.md](FLOWS.md) |
+| How is tmb installed and updated, and what do I check when it is missing or degraded? | [1_INSTALL.md](1_INSTALL.md) |
+| What does first contact ask, and what does it record? | [2_ONBOARD.md](2_ONBOARD.md) |
+| How does the planner learn a repo's checks? | [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) |
+| How does the planner know where code lives? | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) |
+| Who owns which quality check? | [3_TASKS.md](3_TASKS.md#quality-layers) |
+| Why is my task stuck? | [3_TASKS.md](3_TASKS.md) |
+| What does agile review mode skip, and when is the skipped review done? | [3_WORKFLOW.md](3_WORKFLOW.md) |
+| Which branch is the work on, and which repo? | [3_GIT.md](3_GIT.md) |
+| How does a project gain an agent, a skill or a second opinion? | [4_EXTENDING.md](4_EXTENDING.md) |
+| How will the planner add a published skill? | [4_EXTENDING.md](4_EXTENDING.md#cheatcodes) |
+
+## Decisions
+
+The decisions about the steps. The first column names the page that holds the detail. Decisions about tmb's parts are in [the architecture folder](../architecture/README.md#decisions).
+
+| From | Topic | Decision |
+|---|---|---|
+| [1_INSTALL](1_INSTALL.md) | Platforms | macOS, Windows and Linux. |
+| [1_INSTALL](1_INSTALL.md) | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
+| [1_INSTALL](1_INSTALL.md) | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
+| [3_WORKFLOW](3_WORKFLOW.md) | Review modes | Agile and truest, a mode per repo. Agile is recommended; the Human chooses. |
+| [3_TASKS](3_TASKS.md) | Sync with the remote | Planned (trustmybot/tmb#70). It brings pull request comments into the record and syncs issues both ways; issues that exist only on GitHub are not all copied in. |
+| [4_EXTENDING](4_EXTENDING.md) | Created agents | Planned. An agent a project creates is recorded and harnessed like the worker and the reviewer. |
+
+## Glossary
+
+The words for the steps. The first column names the page a word comes from. The words for tmb's parts are in [the architecture glossary](../architecture/README.md#glossary).
+
+| From | Word | Meaning |
+|---|---|---|
+| [2_ONBOARD](2_ONBOARD.md) | Init (`tmb init`) | Preparing a project folder for tmb. It asks nothing. |
+| [2_ONBOARD](2_ONBOARD.md) | Onboard (`tmb onboard`) | Setting tmb's settings for a project. The planner also onboards a project by itself at the first session with empty settings. |
+| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Code graph | The index of a project's files, its symbols and the links between them. |
+| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Index (`tmb index`) | Building the code graph. |
+| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Area | One component of a project, such as login or billing, mapped to its files: the design in space. A named group of files, written by the planner. "tests" is built in. |
+| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Concept | One flow or rule of the design, mapped to the code that carries it out: the design in time. An ordered list of anchors to functions or files, written by an agent. It may cross areas. |
+| [3_TASKS](3_TASKS.md) | Task | One change that one agent can finish in one run, with its spec. |
+| [3_TASKS](3_TASKS.md) | Docs task | A task that changes only docs or prompts. The planner writes it. |
+| [3_TASKS](3_TASKS.md) | Start a task | The engine cuts the task's branch and worktree, so a worker can be started on it. |
+| [3_WORKFLOW](3_WORKFLOW.md) | Agile mode | One review per feature branch. |
+| [3_WORKFLOW](3_WORKFLOW.md) | Truest mode | A review of every task before its push. |
+| [3_WORKFLOW](3_WORKFLOW.md) | In review | A truest task whose checks passed and whose review has not passed yet. |
+| [3_GIT](3_GIT.md) | Workspace | The folder where the Human ran `tmb init`: the root of a project, holding its record. It may be a git repo itself, or hold several repos that share the record (a multi-repo workspace). |
+| [3_GIT](3_GIT.md) | Base branch | The branch a pull request merges into. |
+| [3_GIT](3_GIT.md) | Feature branch | A long-lived branch that collects a milestone's tasks. |
+| [4_EXTENDING](4_EXTENDING.md) | Skill | Planned. Guidance tmb ships for a role, loaded on demand. |
+| [4_EXTENDING](4_EXTENDING.md) | Cheatcode | Planned (trustmybot/tmb#112). A published skill, tool server or host plugin that the planner finds, vets and installs after the Human's yes. A skill is given to a role once, for every host in that role. |

@@ -8,7 +8,7 @@ This page covers purpose, boundaries and the reasons behind the design. Its tabl
 
 ## Substrate
 
-The code graph is not part of the record. It lives in its own file beside it, one per repo in a workspace, and every row but the agent-written ones can be rebuilt from git.
+The code graph is not part of the record. It lives in its own file beside it, one per repo in a multi-repo workspace, and every row but the agent-written ones can be rebuilt from git.
 
 - **It can always be rebuilt.** Everything except concepts and areas is derived from git. A rebuild throws the rest away, builds it again, keeps the concepts and areas and re-checks each against the new graph. One whose code is gone is marked broken, never dropped.
 - **Indexing is not trajectory.** The record holds no entry for an index run. The graph file keeps, for each repo, the commit it was built at, when, and what it holds.
@@ -218,7 +218,7 @@ flowchart LR
 ```
 
 - **The planner** reads the map at cold start and asks "where does X live" directly. A scope gives it a draft of a task's files: the hits for the task's objective, plus the callers, importers and tests of the symbols it names.
-- **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a workspace it opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
+- **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a multi-repo workspace it opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
 - **The command line reads the same graph** as the tools ([the reference](../reference/README.md#the-record-from-the-command-line)).
 
 ## Benchmark

@@ -48,7 +48,7 @@ flowchart LR
 
 ## Many agents, started by the host
 
-The host starts the workers and the reviewer as its own subagents. tmb does not start the host's models and never reads, stores or passes on a login.
+The host starts every agent but the planner as its own subagent: tmb's worker and reviewer, and any agent the project adds. tmb does not start the host's models and never reads, stores or passes on a login.
 
 | Step | Who |
 |---|---|

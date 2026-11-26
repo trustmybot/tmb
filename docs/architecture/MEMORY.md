@@ -86,7 +86,7 @@ flowchart TD
 ```
 
 - **The nearest record wins**, so a session that moved into a subfolder, or into one repo of a workspace, still finds its project. A `.tmb` folder with no database in it is passed over.
-- **The code graph is not in the record.** It has its own file beside it, `.tmb/graph.db`, or in a workspace one per repo, `.tmb/graphs/<repo>.db` ([2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md#substrate)).
+- **The code graph is not in the record.** It has its own file beside it, `.tmb/graph.db`, or in a multi-repo workspace one per repo, `.tmb/graphs/<repo>.db` ([2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md#substrate)).
 - **The engine is the only writer and the only migrator.** Agents, the command line and the dashboard change the record only through it. A record an older tmb wrote is upgraded by the next tmb command.
 - **Other records are shown, not merged.** The health check lists records in a folder above the project or below it.
 

@@ -68,7 +68,7 @@ flowchart LR
 
 ### 1.3 Move a plugin project
 
-A project of the TMB plugin starts fresh in tmb. `tmb migrate` is a one-way copy of its records and leaves the plugin's database unchanged. In a workspace each plugin repo goes to the repo of the same name, or to one the Human names; tmb never guesses. The [reference](../reference/README.md#move-a-plugin-project) covers its use.
+A project of the TMB plugin starts fresh in tmb. `tmb migrate` is a one-way copy of its records and leaves the plugin's database unchanged. In a multi-repo workspace each plugin repo goes to the repo of the same name, or to one the Human names; tmb never guesses. The [reference](../reference/README.md#move-a-plugin-project) covers its use.
 
 ```mermaid
 flowchart LR
@@ -108,7 +108,7 @@ flowchart LR
 
 ### 2.3 Environment profile
 
-tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a workspace, and they run at every task's close. [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) covers what is read.
+tmb suggests a repo's checks from the files its stack leaves behind. It is a suggestion only: the planner applies it at first contact, and the Human or the planner can replace it. The checks are a project setting, per repo in a multi-repo workspace, and they run at every task's close. [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) covers what is read.
 
 ```mermaid
 flowchart LR
@@ -196,7 +196,7 @@ flowchart LR
 
 ### 3.6 Multi-repo workspaces
 
-A project is a set of repos sharing one record. A project folder that is a git work tree is a project of one repo. A folder that is not one, and holds repos, is a workspace: tmb runs from it and its repos share the record there. Only managed repos get the workflow; an exempt repo and a folder that is no repo are listed and left alone. The repo comes from the work, never from the folder a session runs in. [3_GIT.md](3_GIT.md#multi-repo-workspaces) covers how each operation resolves to its repo.
+A workspace is the folder where the Human ran `tmb init`: it holds the project's record. A workspace that is a git work tree is a project of one repo. One that is not, and holds repos, is a multi-repo workspace: tmb runs from it and its repos share the record there. Only managed repos get the workflow; an exempt repo and a folder that is no repo are listed and left alone. The repo comes from the work, never from the folder a session runs in. [3_GIT.md](3_GIT.md#multi-repo-workspaces) covers how each operation resolves to its repo.
 
 ```mermaid
 flowchart LR

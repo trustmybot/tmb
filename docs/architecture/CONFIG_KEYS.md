@@ -10,10 +10,10 @@ tmb's settings are a fixed list of six keys, kept in the record. There is no set
 |---|---|---|---|---|
 | `host` | string: a host id | unset until `tmb init`, which stores the host it wired | `tmb init`; `tmb onboard --host <id>` names another wired host | The host the project is set up for. |
 | `host_roles` | object: `{"<host id>": "planner" \| "reviewer"}` | a host with no entry is `planner` | `tmb init --role`, `tmb onboard --role` | The role each host's main agent takes: it plans, or it only reviews. A worker is always a subagent. |
-| `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a workspace, where each repo has its own in `repos`. |
+| `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a multi-repo workspace, where each repo has its own in `repos`. |
 | `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its push. No task starts while it is unset. |
-| `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a workspace. |
-| `repos` | object: `{"<repo path>": policy}` | unset in a single-repo project. In a workspace `tmb init` fills it with the repos it finds | `tmb init`; the planner via `settings_set`; `tmb onboard --repo <name>` | One policy per folder of a workspace, by its path from the workspace folder. |
+| `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a multi-repo workspace. |
+| `repos` | object: `{"<repo path>": policy}` | unset in a single-repo project. In a multi-repo workspace `tmb init` fills it with the repos it finds | `tmb init`; the planner via `settings_set`; `tmb onboard --repo <name>` | One policy per folder of a workspace, by its path from the workspace folder. |
 
 A value equal to the one in force records nothing. An unknown key, a blank text or a value of the wrong shape is refused.
 
@@ -49,9 +49,9 @@ Two more audit entries record how a review mode was chosen, beside the setting i
 | `review_mode_chosen` | Which way the Human chose the workspace's mode: `init` (kept for old records), `onboard` or `planner`. |
 | `repo_review_mode_chosen` | The same for one repo's own mode: the repo, its mode and the way. |
 
-## Branch policy is per repo in a workspace
+## Branch policy is per repo in a multi-repo workspace
 
-In a single-repo project the branch policy is the two project keys, `base_branch` and `checks`. In a workspace they are not used: each repo has its own in `repos`, and `settings_set` refuses the project keys there. There is no branching model key: a repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
+In a single-repo project the branch policy is the two project keys, `base_branch` and `checks`. In a multi-repo workspace they are not used: each repo has its own in `repos`, and `settings_set` refuses the project keys there. There is no branching model key: a repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
 
 ## Kept per machine, not in the record
 

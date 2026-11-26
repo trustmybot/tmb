@@ -282,7 +282,7 @@ tmb has no watcher, so a stuck task is found at the next session start or by `tm
 | Symptom | Where to look |
 |---|---|
 | No task will start | The review mode is not set: the Human runs `tmb onboard`. Or the issue is closed |
-| The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a workspace, start it from inside the task's repo; the deny names the folder |
+| The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a multi-repo workspace, start it from inside the task's repo; the deny names the folder |
 | The task will not close | The refusal names it: a failing check, uncommitted work, a conflict with the feature branch, no checks set, or, for a docs task, a file that is not a docs type |
 | The reviewer's verdict is refused | No reviewer run is open, the commit is not the branch's current tip, or the task is not in review at that commit |
 | The pull request will not open | No pass or waiver covers the tip or the commit. The Human waives with `tmb feature waive` or `tmb task waive` |
