@@ -366,7 +366,16 @@ How an answer is shaped:
 
 ## Benchmark
 
-The graph is measured against a second, independent parser, the TypeScript compiler, on tmb's own repo and on one public repo, hono at a fixed commit.
+The graph is measured against each language's own tool, on tmb's own repo and on public repos at fixed commits.
+
+| Language | Repos | Reference for functions | Reference for links |
+|---|---|---|---|
+| TypeScript and JavaScript | tmb, hono | The TypeScript compiler | The TypeScript compiler |
+| Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
+
+- **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
+- **A language with no module is not scored.** It joins the benchmark when its module does (trustmybot/tmb#141).
+- **The repos are named only in the benchmark.** No code of the graph names one ([Two ways to make links](#two-ways-to-make-links)).
 
 | Measure | Target | How it is held |
 |---|---|---|
