@@ -279,7 +279,7 @@ flowchart LR
 
 - **The promise is the same for both.** A link is made only on proof. In way B the proof is the compiler's own answer for that name.
 - **The nodes are the same for both.** The built-in parser decides which symbols exist. A way adds links and never adds or removes a node, so the two are compared link by link.
-- **The language's tool is the default.** Where a language has a tool, way B makes its links. The built-in rules serve a language with no tool and are the fallback. tmb does not try to beat a language's own compiler, and a user trusts the compiler's answer more than tmb's. Planned (trustmybot/tmb#337): today the default is the built-in rules.
+- **The language's tool is the default.** Where a language has a tool, way B makes its links. The built-in rules serve a language with no tool and are the fallback. tmb does not try to beat a language's own compiler, and a user trusts the compiler's answer more than tmb's.
 - **Which tool: the official compiler first, then a reputable open source tool.** The choice is made by an A/B test on the benchmark, not by the word "official". Planned (trustmybot/tmb#338).
   - **Example 1.** TypeScript and JavaScript have an official compiler that knows types. It is the first candidate, and it is tested against the open source tools.
   - **Example 2.** Python's own compiler knows no types. Its candidates are the reputable type checkers, tested against each other.
@@ -840,7 +840,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Way A links a call to a file-level name that holds a callable, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
-| The language's tool is the default way | trustmybot/tmb#337 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | The benchmark judges same-file links | trustmybot/tmb#343 |
