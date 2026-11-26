@@ -5,7 +5,9 @@
     "python": 2,
     "go": 2,
     "java": 2,
-    "rust": 2
+    "rust": 2,
+    "c": 1,
+    "cpp": 1
   },
   "entries": [
     {
@@ -435,6 +437,116 @@
             "of": 14228
           },
           "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "libuv",
+      "language": "c",
+      "commit": "840404ce8ba7cc0204be52389a6cfff9f2c90fb6",
+      "reference": "Apple clang version 17.0.0 (clang-1700.0.13.5), libclang",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 2119,
+            "of": 2146
+          },
+          "linksRight": {
+            "n": 891,
+            "of": 891
+          },
+          "linksFoundByState": {
+            "n": 2074,
+            "of": 27306
+          },
+          "linksFoundByReference": {
+            "n": 891,
+            "of": 7951
+          },
+          "callsAccountedFor": {
+            "n": 9690,
+            "of": 9761
+          },
+          "missesByCause": {
+            "a function called by its name": 7001,
+            "a member called on an object": 59
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "linksRight": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "missesByCause": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          }
+        }
+      }
+    },
+    {
+      "repo": "leveldb",
+      "language": "cpp",
+      "commit": "29465588d3dfdc80fba5e198037582b8fdb5dd60",
+      "reference": "Apple clang version 17.0.0 (clang-1700.0.13.5), libclang",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 1607,
+            "of": 1811
+          },
+          "linksRight": {
+            "n": 399,
+            "of": 399
+          },
+          "linksFoundByState": {
+            "n": 464,
+            "of": 9566
+          },
+          "linksFoundByReference": {
+            "n": 399,
+            "of": 5760
+          },
+          "callsAccountedFor": {
+            "n": 7049,
+            "of": 7284
+          },
+          "missesByCause": {
+            "a member called on an object": 2450,
+            "a function called by its name": 2226,
+            "a construction": 401,
+            "a function called by a qualified name": 284
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "linksRight": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          },
+          "missesByCause": {
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
+          }
         }
       }
     }
