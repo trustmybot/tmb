@@ -207,8 +207,9 @@ describe("indexing a project", () => {
     }
   }
 
-  test("a `.ts` file that holds `<TS` is XML, as on GitHub, and a linguist-language line makes it TypeScript", async () => {
-    const qt = "const nodes: Array<TS.Node> = [];\nexport function walk() { return nodes; }\n";
+  test("a `.ts` file that holds a Qt `TS` tag is XML, as on GitHub, and a linguist-language line makes it TypeScript", async () => {
+    // Written in two parts, so this file does not hold the tag itself and stays TypeScript.
+    const qt = `const nodes: Array${"<"}TS.Node> = [];\nexport function walk() { return nodes; }\n`;
     const { langs } = await indexed({
       ".gitattributes": "src/typed.ts linguist-language=TypeScript\n",
       "src/strings.ts": qt,
@@ -279,6 +280,13 @@ describe("Linguist's data", () => {
     for (const [name, sha] of Object.entries(LINGUIST_RELEASE.files)) {
       expect(createHash("sha256").update(readFileSync(path.join(LINGUIST_DIR, "data", name))).digest("hex")).toBe(sha);
     }
+  });
+
+  test("a rule JavaScript cannot run as Ruby does gives no answer, and no later rule answers in its place", () => {
+    const languages = "Alpha:\n  type: programming\n  extensions: [\".zq\"]\nBeta:\n  type: programming\n  extensions: [\".zq\"]\n";
+    const heuristics = "disambiguations:\n- extensions: ['.zq']\n  rules:\n  - language: Alpha\n    pattern: '[[:alpha:]]+;'\n  - language: Beta\n";
+    const table = new Linguist({ languages, heuristics, generic: "extensions: []\n" });
+    expect(table.detect("x.zq", () => "abc;\n").languages).toEqual(["Alpha", "Beta"]);
   });
 
   test("a list that cannot be read stops tmb with Linguist's file named", () => {
