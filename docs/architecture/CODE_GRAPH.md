@@ -312,7 +312,7 @@ flowchart LR
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
-- **Way B per language.** Each tool was chosen by its own A/B test. Java (trustmybot/tmb#353), Rust (trustmybot/tmb#354), and C and C++ (trustmybot/tmb#355) are Planned.
+- **Way B per language.** Each tool was chosen by its own A/B test. Rust (trustmybot/tmb#354), and C and C++ (trustmybot/tmb#355) are Planned.
 
 | Language | Tool | Whose copy | Needs from the user |
 |---|---|---|---|
@@ -523,7 +523,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | TypeScript and JavaScript | tmb, hono | The TypeScript compiler | The TypeScript compiler |
 | Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
 | Go | gin | Go's own parser | Go's type checker |
-| Java | jsoup | javac | Planned (trustmybot/tmb#353): javac |
+| Java | jsoup | javac | javac |
 
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
 - **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
@@ -907,7 +907,8 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| Java, Rust, C and C++, each with its tool | trustmybot/tmb#353, #354, #355 |
+| A Java anonymous class creation links to its type | trustmybot/tmb#376 |
+| Rust, C and C++, each with its tool | trustmybot/tmb#354, #355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
