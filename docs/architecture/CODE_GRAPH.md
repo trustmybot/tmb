@@ -127,7 +127,7 @@ flowchart TD
 |---|---|
 | Left out by rule | Folders named `dist`, `node_modules` or `vendor`, as on Linguist's list of vendored paths; source maps; files named as minified; lockfiles |
 | Read all the same | A folder named `build`: the graph is built from git, so build output that git ignores is never in it |
-| Unread languages | Named from a copy of Linguist's programming languages, plus Vue and Svelte. Where languages share a file ending, Linguist's first one is named |
+| Unread languages | Named from a copy of Linguist's programming languages, plus Vue and Svelte. Where languages share a file ending and Linguist's rules settle nothing, the file is named as one of them |
 | Not counted | Prose, data, settings and images; code in a file ending tmb does not know |
 
 **Planned (trustmybot/tmb#154): a file's language comes from Linguist's data.** tmb carries a copy of Linguist's language list and its rules for shared file endings, taken from a Linguist release. It asks in Linguist's own order: the file's name, its first line naming an interpreter, its ending, then the rules for a shared ending.
@@ -135,10 +135,11 @@ flowchart TD
 - **Example 1.** `Makefile` is Makefile by its name. `api.proto` is Protocol Buffer by its ending.
 - **Example 2.** `run` has no ending and starts with `#!/usr/bin/env python3`. It is Python.
 - **Example 3.** `legacy.pl` could be Perl or Prolog. It holds `use strict;`, which Linguist's rule reads as Perl.
-- **Edge case 1.** The rules settle nothing and one of the candidates is a language tmb reads. The file is read as that language: `mod.rs` is Rust. A file tmb read before is never dropped for want of an answer.
-- **Edge case 2.** The rules settle nothing and tmb reads none of the candidates. The file's language is named as "one of" them. It is never guessed.
-- **Edge case 3.** A rule names another language for a file tmb would read: a `.ts` file that holds `<TS` is XML to Linguist. Linguist's answer stands, as it does on GitHub.
-- **The repo's `.gitattributes` wins.** A `linguist-language` line there sets the language, the same line that fixes it on GitHub. It is the way out of edge case 3.
+- **Edge case 1.** The rules settle nothing and the file's ending is one a language module names as its own. That module reads it: `mod.rs` is Rust. Each module names its endings, and an ending belongs to one module, so a file the graph reads is never dropped for want of an answer.
+- **Edge case 2.** The rules settle nothing and no module names the ending as its own. The file's language is named as "one of" the candidates. It is never guessed: an `.inc` file could be C++, PHP or Pascal, and is not parsed as C++ because C++ is on the list.
+- **Edge case 3.** An empty file has no first line and nothing for a rule to match. Its name and ending decide: an empty `__init__.py` is Python.
+- **Edge case 4.** A rule names another language for a file tmb would read: a `.ts` file that holds `<TS` is XML to Linguist. Linguist's answer stands, as it does on GitHub.
+- **The repo's `.gitattributes` wins.** A `linguist-language` line there sets the language, the same line that fixes it on GitHub. It is the way out of edge case 4.
 - **A dialect keeps its module.** Linguist names a `.sql` file SQL, PLpgSQL, TSQL, PLSQL or SQLPL. The SQL module reads it under any of the five names.
 - **What is left out by rule does not change.** Linguist's longer list of vendored paths is not applied: it would drop files the graph reads now.
 - **Checked against Linguist's own samples.** tmb's copy of the rules must name no sample a language other than Linguist's. Where a rule cannot run in tmb, it gives no answer, never a different one.
