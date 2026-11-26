@@ -1,0 +1,12 @@
+[package]
+name = "rustc-calls"
+version = "0.1.0"
+edition = "2024"
+description = "Asks rustc itself, through its rustc_private API, what each call resolves to and which functions a crate declares. Built and run with the nightly whose rustc-dev it links (measured: rustc 1.102.0-nightly 6c709eb42 2026-11-25)."
+
+[dependencies]
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[workspace]
