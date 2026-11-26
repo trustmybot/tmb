@@ -173,7 +173,7 @@ How two languages write each kind:
 - **The language's scope rule decides what is file-level data.** A name the whole file can see is a node, wherever it is written.
   - **Example 1.** TypeScript: `for (const x of xs)` at file level hides `x` from the rest of the file, so `x` is a local.
   - **Example 2.** TypeScript: `var x` inside a file-level block is seen by the whole file, so `x` is a node. Python: a file-level `for x in xs` binds a module name, so `x` is a node.
-  - **Edge case.** A TypeScript `namespace` holds members, so it is a type, and a variable in it is a field (trustmybot/tmb#312).
+  - **Edge case.** A TypeScript `namespace` holds members, so it is a type, and a variable in it is a field (trustmybot/tmb#312). A Rust `mod` written inside a file is the same: a type node that holds its functions.
 - **A member is always inside its type.** A method, a constructor, an accessor and a field are never standalone nodes: each is held by its type and named through it, as `Cart.total`.
 - **Example 1.** A class `Cart` with a method `total` gives two nodes in either language: the type `Cart` and the method `Cart.total`.
 - **Example 2.** Python's `@property def items(self)` is read as `cart.items`, with no call marks. It is an accessor, so it is a method node. The data behind it, `self._items`, is the field.
