@@ -1,0 +1,3 @@
+# Linguist's heuristic for `.ts` takes a file with `<TS` in it for a Qt translation file (XML);
+# this one is TypeScript that names the compiler's `TS.` namespace in a type argument.
+src/engine/graph/languages/typescript/compiler.ts linguist-language=TypeScript

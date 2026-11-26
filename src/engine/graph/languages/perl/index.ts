@@ -196,8 +196,8 @@ function extractPerl(src: string, out: Collector): void {
 
 export const perl: LanguageModule = {
   name: 'perl',
-  extensions: ['pl', 'pm'],
-  shebang: /^#!.*\bperl\b/,
+  linguist: ['Perl'],
+  endings: ['.pl', '.pm'],
   comment: 'hash',
   extract: (file, out) => extractPerl(file.src, out),
 };

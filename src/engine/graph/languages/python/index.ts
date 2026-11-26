@@ -5,7 +5,7 @@ import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '..
 import { clip, DOC_MAX, docOf, md5, memberHint, named, normalizedHash, oneLine, signatureOf, spliced, syntaxTree } from '../kit.ts';
 import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { BUILTINS } from './builtins.ts';
-import { pyright } from './tool.ts';
+import { pyright, STUB_EXTENSION } from './tool.ts';
 
 // The character a Python escape sequence stands for (The Python Language Reference, "Escape
 // sequences"); an unknown one stays as written.
@@ -700,9 +700,12 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
 
 export const python: LanguageModule = {
   name: 'python',
-  extensions: ['py'],
+  linguist: ['Python'],
+  endings: ['.py'],
   grammar: pythonWasm,
   comment: 'hash',
   extract: (file, out) => extractPython(syntaxTree(file), file.src, out, file.module),
   tool: pyright,
+  // A stub (`.pyi`) declares the types of a module that another file runs; its tool reads it.
+  declarationsOnly: (relPath) => relPath.endsWith(STUB_EXTENSION),
 };

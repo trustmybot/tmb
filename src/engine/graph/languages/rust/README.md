@@ -1,6 +1,6 @@
 # Rust
 
-The code graph's rules for `.rs` files. They are read through tree-sitter's Rust grammar ([index.ts](index.ts)). Each rule names the page of [the Rust Reference](https://doc.rust-lang.org/reference/) it reads.
+The code graph's rules for the files GitHub Linguist's list and rules call Rust (trustmybot/tmb#154): `.rs` files that Linguist's heuristics tell from RenderScript, and `.rs.in` files. They are read through tree-sitter's Rust grammar ([index.ts](index.ts)). Each rule names the page of [the Rust Reference](https://doc.rust-lang.org/reference/) it reads.
 
 ## What it reads
 

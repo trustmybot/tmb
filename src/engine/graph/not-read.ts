@@ -36,7 +36,7 @@ export function layerNotRead(db: Database, layer: string): NotRead {
 
 /** The file at this path when the graph has it and does not read its language, else null. */
 export function unreadFile(db: Database, layer: string, path: string): UnreadFile | null {
-  const language = unreadLanguageOf(path);
+  const language = unreadLanguageOf(path, new Set(layerNotRead(db, layer).languages.map((l) => l.name)));
   if (language === null) return null;
   const row = db.query("SELECT 1 FROM files WHERE layer = ? AND path = ? AND lang IS NULL").get(layer, path);
   return row === null ? null : { path, language };

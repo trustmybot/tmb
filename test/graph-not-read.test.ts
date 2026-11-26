@@ -7,9 +7,9 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { GRAPH_SCHEMA_VERSION, openGraphDb } from "../src/engine/graph/db.ts";
-import { leftOutRule } from "../src/engine/graph/extract.ts";
+import { fileLanguages, leftOutRule } from "../src/engine/graph/extract.ts";
 import { indexProject, openView } from "../src/engine/graph/fresh.ts";
-import { unreadLanguageOf } from "../src/engine/graph/languages/unread.ts";
+import { unreadLanguage, unreadLanguageOf } from "../src/engine/graph/languages/unread.ts";
 import { notReadLines, notReadSummary } from "../src/engine/graph/not-read.ts";
 import { graphFind, graphScope, graphSymbol } from "../src/engine/handlers/graph.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
@@ -62,16 +62,30 @@ afterEach(() => {
   rmSync(project, { recursive: true, force: true });
 });
 
-test("languages by Linguist's programming endings; the first-listed language wins a shared ending", () => {
-  expect(unreadLanguageOf("cmd/Root.kt")).toBe("Kotlin");
-  expect(unreadLanguageOf("src/main.rb")).toBe("Ruby");
-  expect(unreadLanguageOf("lib/x.m")).toBe("MATLAB");
-  expect(unreadLanguageOf("App.vue")).toBe("Vue");
-  expect(unreadLanguageOf("src/a.ts")).toBeNull();
+test("a file is counted under the language Linguist names for it when it is code no module reads (trustmybot/tmb#154)", () => {
+  const unread = (file: string, text = "") => unreadLanguage(fileLanguages(file, () => text), file);
+  expect(unread("cmd/Root.kt")).toBe("Kotlin");
+  expect(unread("src/main.rb")).toBe("Ruby");
+  expect(unread("lib/x.m", "@interface Gauge : NSObject\n@end\n")).toBe("Objective-C");
+  // Vue is markup to Linguist, but holds script.
+  expect(unread("App.vue")).toBe("Vue");
+  expect(unread("src/a.ts")).toBeNull();
   // C and C++ are read (trustmybot/tmb#355).
-  expect(unreadLanguageOf("include/x.h")).toBeNull();
-  expect(unreadLanguageOf("src/x.cc")).toBeNull();
-  expect(unreadLanguageOf("README.md")).toBeNull();
+  expect(unread("include/x.h", "int x(void);\n")).toBeNull();
+  expect(unread("src/x.cc")).toBeNull();
+  expect(unread("README.md", "# demo\n")).toBeNull();
+  // Linguist's rules leave a `.pl` file with neither Perl's nor Prolog's marks undecided: Perl's module reads it.
+  expect(unread("logic/facts.pl", "x.\n")).toBeNull();
+  // Undecided between languages no module reads: one of them.
+  expect(unread("lib/facts.ecl", "x\n")).toBe("one of ECL, ECLiPSe");
+});
+
+test("by its name alone, a path is in the first of its languages that the layer counted", () => {
+  const counted = new Set(["Kotlin", "Objective-C"]);
+  expect(unreadLanguageOf("cmd/Root.kt", counted)).toBe("Kotlin");
+  expect(unreadLanguageOf("lib/x.m", counted)).toBe("Objective-C");
+  expect(unreadLanguageOf("src/main.rb", counted)).toBeNull();
+  expect(unreadLanguageOf("README.md", counted)).toBeNull();
 });
 
 test("Linguist's vendor rules: dist/ and vendor/ are left out, build/ is not", () => {

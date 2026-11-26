@@ -123,7 +123,8 @@ deploy_site
 `,
   "db/schema.sql": `CREATE TABLE orders (id INTEGER PRIMARY KEY, total INTEGER);
 `,
-  "scripts/legacy.pl": `sub legacy_total {
+  "scripts/legacy.pl": `use strict;
+sub legacy_total {
   return 0;
 }
 `,

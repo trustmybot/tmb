@@ -10,9 +10,9 @@ import { extractFamily, parseFamily } from './family.ts';
 
 export const c: LanguageModule = {
   name: 'c',
-  // Linguist's endings for C (languages.yml, commit cfd7a0113aa1). C++ shares `.h`, and reads a
-  // header whose text it claims (cpp/index.ts); C reads the rest.
-  extensions: ['c', 'cats', 'h', 'idc'],
+  // A `.h` file is C, C++ or Objective-C by Linguist's heuristics for the ending (trustmybot/tmb#154).
+  linguist: ['C'],
+  endings: ['.c', '.cats', '.h', '.idc'],
   grammar: cWasm,
   comment: 'slash',
   parse: parseFamily('c'),

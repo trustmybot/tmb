@@ -4,7 +4,7 @@ The code graph's rules for C files. They are read through tree-sitter's C gramma
 
 ## Which files
 
-- `.c`, `.cats` and `.idc` files are C. A `.h` file is C++ when its text has a construct only C++ has, by Linguist's heuristic (`#include <vector>`, `template <`, `namespace x`, `std::` and the like); else it is C. A header written for both languages is read as C unless it has one of them.
+- A file is C when GitHub Linguist's list and rules say so (trustmybot/tmb#154): `.c`, `.cats`, `.h.in` and `.idc` files. A `.h` file is decided by Linguist's heuristics for the ending: Objective-C when its text has a construct only Objective-C has, else C++ when it has one only C++ has (`#include <vector>`, `template <`, `namespace x`, `std::` and the like), else C. A header written for both languages is read as C unless it has one of them.
 
 ## What it reads
 

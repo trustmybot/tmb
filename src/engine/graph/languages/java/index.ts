@@ -432,7 +432,8 @@ function extractJava(root: Node, src: string, out: Collector, moduleSymbol: numb
 
 export const java: LanguageModule = {
   name: 'java',
-  extensions: ['java'],
+  linguist: ['Java'],
+  endings: ['.java'],
   grammar: javaWasm,
   comment: 'slash',
   extract: (file, out) => extractJava(syntaxTree(file), file.src, out, file.module),

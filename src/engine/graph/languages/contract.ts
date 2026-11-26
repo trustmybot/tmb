@@ -246,13 +246,20 @@ export interface SourceFile {
 export interface LanguageModule {
   // Its name: the `lang` of each file of it in the graph.
   name: string;
-  // The file extensions it reads, lowercase and without the dot.
-  extensions: readonly string[];
-  // An extensionless file whose first line matches is in this language.
-  shebang?: RegExp;
-  // Of the languages that share a file ending, as C and C++ share `.h`, one claims the files whose
-  // text its rule matches; the one with no such rule reads the rest.
-  claims?(text: string): boolean;
+  // The languages of GitHub Linguist's list it reads, by Linguist's names (trustmybot/tmb#154):
+  // a file is read by the module whose language Linguist settles the file on.
+  linguist: readonly string[];
+  // The file endings that are its own, lower case with the dot. An ending belongs to one module.
+  // A file Linguist's rules leave several languages is read by the module that owns its ending,
+  // when that module reads one of them; with no owner it is not parsed (CODE_GRAPH.md, edge cases 1
+  // and 2).
+  endings: readonly string[];
+  // Dialects Linguist names apart that it reads too, in a file with one of its own endings: a
+  // dialect's other endings are not read.
+  dialects?: readonly string[];
+  // Whether a file of its language only declares what another file runs, such as a stub: it is
+  // kept as a file of that language with no symbols (trustmybot/tmb#390).
+  declarationsOnly?(relPath: string): boolean;
   // The path of its embedded tree-sitter grammar; absent for a language read by patterns.
   grammar?: string;
   // Its comment marker, for the file's leading comment: `#` or `--`, or `//` and `/* */`.

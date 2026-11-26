@@ -90,7 +90,10 @@ export function sqlInCode(text: string, owner: number, first: number, last: numb
 
 export const sql: LanguageModule = {
   name: 'sql',
-  extensions: ['sql'],
+  linguist: ['SQL'],
+  endings: ['.sql'],
+  // Linguist's names for the dialects of Postgres, SQL Server, Oracle and DB2, which its rules tell apart in an `.sql` file.
+  dialects: ['PLpgSQL', 'TSQL', 'PLSQL', 'SQLPL'],
   comment: 'hash',
   extract: (file, out) => {
     for (const statement of readSql(file.src, '')) {

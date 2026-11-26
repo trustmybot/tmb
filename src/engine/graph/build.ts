@@ -4,12 +4,14 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { basename, posix } from "node:path";
-import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { GITATTRIBUTES, GitAttributes } from "../linguist/gitattributes.ts";
+import { HEURISTICS_CONSIDER } from "../linguist/index.ts";
+import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, moduleOfLanguages, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { commitReader, listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
 import { LANGUAGES, languageNamed } from "./languages/registry.ts";
-import { unreadLanguageOf } from "./languages/unread.ts";
+import { unreadLanguage } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, callState, type Link, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
@@ -20,7 +22,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 33;
+export const EXTRACTOR_VERSION = 34;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -83,6 +85,8 @@ export const FUNCTION_KINDS: ReadonlySet<string> = new Set(["function", "method"
 
 type FilePlan = {
   entry: TreeEntry;
+  /** The languages Linguist's rules leave the file (trustmybot/tmb#154): one when they settle it. */
+  languages: string[];
   lang: SourceLanguage | null;
   extraction: Extraction | null;
   error: string | null;
@@ -116,49 +120,77 @@ function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text
   }
 }
 
+/** The Linguist attributes the `.gitattributes` files of a commit's tree give its paths (trustmybot/tmb#154). */
+export function commitAttributes(repoDir: string, tree: readonly TreeEntry[]): GitAttributes {
+  const files = tree.filter((e) => e.path === GITATTRIBUTES || e.path.endsWith(`/${GITATTRIBUTES}`));
+  if (files.length === 0) return new GitAttributes(new Map());
+  const texts = readBlobs(repoDir, files.map((e) => e.blob));
+  return new GitAttributes(new Map(files.flatMap((e) => (texts.has(e.blob) ? [[e.path, texts.get(e.blob)!] as const] : []))));
+}
+
 /** Reads and parses every file of `commit`, reusing the parse of each blob seen before. */
 async function planCommit(
   db: Database,
   repoDir: string,
   commit: string,
-): Promise<{ plans: FilePlan[]; readmes: Map<string, string>; configs: Map<string, string>; parsed: number; reused: number; leftOut: Map<string, number> }> {
+): Promise<{
+  plans: FilePlan[];
+  readmes: Map<string, string>;
+  configs: Map<string, string>;
+  parsed: number;
+  reused: number;
+  leftOut: Map<string, number>;
+  attributes: GitAttributes;
+}> {
   const leftOut = new Map<string, number>();
-  const entries = listTree(repoDir, commit).filter((entry) => {
-    const rule = leftOutRule(entry.path);
+  const tree = listTree(repoDir, commit);
+  const attributes = commitAttributes(repoDir, tree);
+  const entries = tree.filter((entry) => {
+    const rule = leftOutRule(entry.path, attributes.of(entry.path));
     if (rule !== null) leftOut.set(rule, (leftOut.get(rule) ?? 0) + 1);
     return rule === null;
   });
-  const byExtension = new Map<string, SourceLanguage | null>();
+  const waiting = new Set<string>();
   const needText: string[] = [];
+  const needStart: string[] = [];
   const plans: FilePlan[] = [];
   const readmes = new Map<string, string>();
   let reused = 0;
   for (const entry of entries) {
-    // A file whose language its text decides (an extensionless script, a `.h` header) waits for its text.
+    // A file whose language its text decides (a script with no known name, a `.h` header) waits for its text.
     let headless = false;
-    const lang = languageOf(entry.path, () => {
-      headless = true;
-      return "";
-    });
-    byExtension.set(entry.path, headless ? null : lang);
-    const cached = lang !== null && !headless ? cachedParse(db, entry.blob, lang) : null;
+    const languages = fileLanguages(
+      entry.path,
+      () => {
+        headless = true;
+        return "";
+      },
+      attributes.of(entry.path),
+    );
+    const lang = headless ? null : moduleOfLanguages(entry.path, languages);
+    if (headless) waiting.add(entry.path);
+    const cached = lang !== null ? cachedParse(db, entry.blob, lang) : null;
     if (cached) reused++;
-    plans.push({ entry, lang: headless ? null : lang, extraction: cached?.extraction ?? null, error: cached?.error ?? null, summary: "" });
+    plans.push({ entry, languages: headless ? [] : languages, lang, extraction: cached?.extraction ?? null, error: cached?.error ?? null, summary: "" });
     const parseable = entry.size <= MAX_PARSE_BYTES;
     const wantsText =
       parseable && ((lang !== null && !cached) || headless || isReadme(entry.path) || /\.(md|markdown)$/i.test(entry.path) || isImportConfigPath(entry.path));
     if (wantsText) needText.push(entry.blob);
+    // A file too large to parse still has its language: Linguist reads its start (HEURISTICS_CONSIDER).
+    else if (headless) needStart.push(entry.blob);
   }
   const texts = readBlobs(repoDir, needText);
+  const starts = readBlobs(repoDir, needStart);
   const configs = new Map<string, string>();
   for (const { entry } of plans) {
     const text = isImportConfigPath(entry.path) ? texts.get(entry.blob) : undefined;
     if (text !== undefined) configs.set(entry.path, text);
   }
   for (const plan of plans) {
-    const text = texts.get(plan.entry.blob) ?? null;
-    if (plan.lang === null && text !== null && byExtension.get(plan.entry.path) === null) {
-      plan.lang = languageOf(plan.entry.path, () => text);
+    const text = texts.get(plan.entry.blob) ?? starts.get(plan.entry.blob)?.slice(0, HEURISTICS_CONSIDER) ?? null;
+    if (waiting.has(plan.entry.path)) {
+      plan.languages = fileLanguages(plan.entry.path, text === null ? null : () => text, attributes.of(plan.entry.path));
+      plan.lang = moduleOfLanguages(plan.entry.path, plan.languages);
       const cached = plan.lang !== null ? cachedParse(db, plan.entry.blob, plan.lang) : null;
       if (cached) {
         reused++;
@@ -193,7 +225,7 @@ async function planCommit(
     plan.summary = fileSummary(plan.entry.path, moduleDoc, text);
     if (isReadme(plan.entry.path) && text !== null) readmes.set(dirOf(plan.entry.path), readmeSummary(text));
   }
-  return { plans, readmes, configs, parsed, reused, leftOut };
+  return { plans, readmes, configs, parsed, reused, leftOut, attributes };
 }
 
 /**
@@ -273,7 +305,7 @@ const ownName = (qualifiedName: string): string => qualifiedName.slice(qualified
  * language with no tool, and one whose tool cannot run in this repo, keeps the built-in rules'
  * links, and the note says so. Read before the layer is written, so no write waits on the tool.
  */
-async function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>): Promise<ToolLinks> {
+async function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>, attributes: GitAttributes): Promise<ToolLinks> {
   const present = new Set(plans.filter((p) => p.extraction !== null && p.lang !== null).map((p) => p.lang as SourceLanguage));
   const tools = new Map<LanguageTool, SourceLanguage[]>();
   for (const language of LANGUAGES) if (language.tool) tools.set(language.tool, [...(tools.get(language.tool) ?? []), language.name]);
@@ -297,14 +329,16 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
     const tree = listTree(repoDir, commit);
     const read = commitReader(repoDir, tree);
     const parsed = tree.filter((e) => e.size <= MAX_PARSE_BYTES && leftOutRule(e.path) !== NODE_MODULES_RULE);
-    const entries = parsed.filter((e) => mine.has(languageOf(e.path, () => "") ?? ""));
+    // A file Linguist could put in one of the tool's languages by its name is read, and kept when its text puts it there.
+    const names = new Set(langs.flatMap((lang) => languageNamed(lang)?.linguist ?? []));
+    const entries = parsed.filter((e) => tool.reads?.(e.path) !== true && fileLanguages(e.path, null, attributes.of(e.path)).some((name) => names.has(name)));
     // The other files the tool reads, such as its settings files, beside the project's.
     const extra = parsed.filter((e) => tool.reads?.(e.path) === true && !configs.has(e.path));
     const blobs = readBlobs(repoDir, [...entries, ...extra].map((e) => e.blob));
     const files = new Map<string, string>();
     for (const e of entries) {
       const text = blobs.get(e.blob);
-      if (text !== undefined) files.set(e.path, text);
+      if (text !== undefined && mine.has(languageOf(e.path, () => text, attributes.of(e.path)) ?? "")) files.set(e.path, text);
     }
     const toolConfigs = new Map(configs);
     for (const e of extra) {
@@ -540,7 +574,7 @@ function applyLayer(
   const unresolvedImports = resolver.unresolvedImports;
   const unread = new Map<string, number>();
   for (const plan of plans) {
-    const language = plan.lang === null ? unreadLanguageOf(plan.entry.path) : null;
+    const language = plan.lang === null ? unreadLanguage(plan.languages, plan.entry.path) : null;
     if (language !== null) unread.set(language, (unread.get(language) ?? 0) + 1);
   }
   const notRead: NotRead = {
@@ -601,10 +635,10 @@ export type BuildOptions = {
  * layer then re-checks every concept.
  */
 export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: BuildOptions = {}): Promise<BuildStats> {
-  const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
+  const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut, attributes } = await planCommit(db, repoDir, commit);
   // Built-in, not DEFAULT_LINK_WAY: a caller that names no way gets the built-in rules, so the links-right check judges way A on its own; the callers that read settings apply graph_links.
   const links = options.links ?? BUILT_IN;
-  const byTool = links === LANGUAGE_TOOL ? await toolLinks(repoDir, commit, plans, configs) : NO_TOOL_LINKS;
+  const byTool = links === LANGUAGE_TOOL ? await toolLinks(repoDir, commit, plans, configs, attributes) : NO_TOOL_LINKS;
   const stats = db
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.
