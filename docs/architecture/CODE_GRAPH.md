@@ -358,7 +358,7 @@ flowchart LR
   - **Edge case 1.** A named type that lists its methods holds them, whatever keyword declares it: `type Store = { get(): string }` gives `Store.get` too.
   - **Edge case 2.** A class and an interface of one name both list `get`. The class's `get` is the definition, so it is the one node.
   - **Edge case 3.** A function with only a declaration, `declare function f()`, is no node. The code that runs is elsewhere, and nothing in the file proves where.
-- **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. A name there that is followed by a group in parentheses has the shape of a call. Way B asks the tool about each such name: it is a call when the tool answers a function or a method, and it is dropped otherwise. Planned (trustmybot/tmb#383): today neither way finds a call inside a macro's input, and calls accounted for does not count them.
+- **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. A name there that is followed by a group in parentheses has the shape of a call. Way B asks the tool about each such name: it is a call when the tool answers a function or a method, and it is dropped otherwise.
   - **Example 1.** `println!("{}", total(cart))`. The tool answers that `total` is a function, so the call links to it.
   - **Example 2.** `assert_eq!(parse(x), Some(Item(1)))`. `parse` is a call. `Some` and `Item` are a variant and a tuple struct to the tool, so they are dropped.
   - **Edge case 1.** The built-in rules have no tool to ask. They keep each such name as a call that is not known, and make no link from it. `Item(1)` is then one more not-known call: the rules cannot tell it from a call.
@@ -940,7 +940,6 @@ All are FTS5 virtual tables.
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
-| Calls inside a macro's input | trustmybot/tmb#383 |
 | Every C and C++ function a node | trustmybot/tmb#387 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
