@@ -22,7 +22,7 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 
 | Record | Holds |
 |---|---|
-| Issue | A goal, its state and its milestone |
+| Issue | A goal, its state and its milestone. **Planned** (trustmybot/tmb#402): its priority, type, labels and links to other issues |
 | Discussion | Notes and decisions on an issue. The newest decision is the one in force; one that conflicts with an earlier decision is confirmed by the Human first |
 | Feature branch | A branch tasks fold into, its base, its state and its repo |
 | Task | A spec, its kind, its state, its branch, its commit and its repo |
@@ -33,6 +33,7 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 | Audit entry | Every change to configuration and every Human waiver |
 | Doc | **Planned** (trustmybot/tmb#302). One design document: where it lives, in a repo or outside it such as a wiki, what it is for, and its repo |
 | Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
+| Pull request | **Planned** (trustmybot/tmb#405). One pull request, what it carries and its state on the remote |
 
 ```mermaid
 flowchart TD
@@ -57,7 +58,7 @@ A run and a check run each write their start before any work. The end is a secon
 
 ## 3. Every record names what it belongs to and who made it
 
-Each record points at its parent, so the work forms a tree. Each record also names its maker: the Human, or the role and host that acted.
+Each record points at its parent, so the work forms a tree. Each record also names its maker: the Human, or the role and host that acted. Planned: the session that acted (trustmybot/tmb#63), and tmb itself as a maker for what it only learned from the remote (trustmybot/tmb#404).
 
 | Record | Names |
 |---|---|
@@ -251,6 +252,7 @@ Every table, and every change to one, meets these two requirements.
 
 - **Trajectory.** The record exists to keep the trajectory of work. Every table either records a step in it (a fact) or describes something that takes part in it (a dimension). Anything else does not belong in it.
 - **Consistency.** Naming is consistent. A projection table is plural and its record kind is the singular: `tasks` → `task`, `check_runs` → `check_run`. Every projection row carries its id, `created_by` (the JSON actor of its first event) and `created_at` (that event's time). Ids are ULIDs, never autoincrement.
+- **Room to grow.** Planned (trustmybot/tmb#404). A new session, host, vendor, role or record kind is new rows, never a reshaped table. The schema checks shape only, and lists of values are checked by the engine ([Planned changes](#planned-changes)).
 
 ### Diagram
 
@@ -546,7 +548,169 @@ Table constraints:
 | `key` | TEXT | nullable |  | PK |
 | `value` | TEXT | NOT NULL |  | CHECK `json_valid(value)` |
 
-### Planned: `docs`
+### Planned changes
+
+**The record must fit more than one session, more than one host and more than one vendor without a reshaped table.** Each change below is planned, and none is built.
+
+- **Example 1.** Two sessions work on one project. Each record names its session, so the work of one is told from the other's.
+- **Example 2.** One vendor's host plans and another's reviews. A run names the host that ran it, so the review is seen to come from the second vendor.
+- **Example 3.** A pull request is merged in the browser. tmb writes that as its own event, so history shows what tmb did and what it only learned.
+- **Edge case.** A project creates an agent with a new role. The role is a new value, not a schema change.
+
+```mermaid
+erDiagram
+    sessions |o--o{ sessions : "parent"
+    sessions ||--o{ runs : "started"
+    sessions |o--o{ tasks : "started"
+    sessions |o--o{ guard_decisions : "asked in"
+    runs |o--o{ runs : "resumed from"
+    runs |o--o{ guard_decisions : "about"
+    issues ||--o{ issue_links : "from"
+    issues ||--o{ issue_links : "to"
+    features |o--o{ pull_requests : "carried by"
+    tasks |o--o{ pull_requests : "carried by"
+    tasks |o--o{ reviews : "judged"
+    docs |o--o{ tasks : "implemented by"
+```
+
+| Change | Tables | Why | Issue |
+|---|---|---|---|
+| Settings leave the record | `audit` keeps the trail; the values go to a config file | The record is for trajectory only, and a text file is readable when the database is not | trustmybot/tmb#305 |
+| Value lists move to the engine | `events` | A list checked in the schema cannot change without copying the table | trustmybot/tmb#404 |
+| tmb is an actor | `events` | The syncer and a migration write what no person or agent did | trustmybot/tmb#404 |
+| A session is a record | new `sessions`; `events`, `runs`, `tasks`, `guard_decisions` name it | Parallel sessions and a session's own cost | trustmybot/tmb#63, trustmybot/tmb#254 |
+| A run keeps every measure | `runs` | Runs are compared one by one, across hosts | trustmybot/tmb#256, trustmybot/tmb#406 |
+| An issue keeps priority, type, labels and links | `issues`, new `issue_links` | The planner orders work, and the syncer matches the remote issue | trustmybot/tmb#402 |
+| A pull request is a record | new `pull_requests`; the two `pr_url` columns go | Its state on the remote needs a place | trustmybot/tmb#405 |
+| A review and a guard decision name their parent | `reviews`, `guard_decisions` | Today a review's target is text and a guard decision names nothing | trustmybot/tmb#406 |
+| A design document is a record | new `docs` | The planner finds the design wherever it lives | trustmybot/tmb#302 |
+| Search covers tasks and docs | `search` | A spec and a design are searched like an issue | trustmybot/tmb#406, trustmybot/tmb#302 |
+
+#### Planned: `events`
+
+| Column | Change |
+|---|---|
+| `record_kind` | The list is checked by the engine, not by a CHECK. It gains `session`, `pull_request`, `issue_link` and `doc` |
+| `actor_kind` | Gains `tmb`, for a write no person or agent made. A `tmb` actor names its source, such as the syncer |
+| `actor_role` | The list is checked by the engine, so a role a project creates is a new value |
+| `actor_session` | New, nullable. The session that acted; NULL for the Human at a terminal and for tmb |
+
+- **Edge case.** A write with an unknown record kind or role is still refused, by the engine. The lists are in [ENUMS.md](../contributing/ENUMS.md).
+
+#### Planned: `sessions`
+
+One row per host session. A projection: record kind `session`.
+
+| Column | Type | Null | Holds |
+|---|---|---|---|
+| `id` | TEXT | PK | A ULID, stable across a compaction, a clear and a resume |
+| `host` | TEXT | NOT NULL | The host's id |
+| `host_session_id` | TEXT | NOT NULL | The host's own id for the session, an opaque text. UNIQUE with `host` |
+| `role` | TEXT | NOT NULL | The role the host's main agent took |
+| `parent_id` | TEXT | nullable | FK → `sessions.id`. The session that started this one |
+| `started_at` | TEXT | NOT NULL |  |
+| `ended_at` | TEXT | nullable | NULL while active. A resume clears it |
+| `cost` | TEXT | nullable | Tokens per model, the session's own, without its runs' |
+| `tmb_version` | TEXT | NOT NULL | The tmb program that served it |
+| `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
+
+- **Example.** A Claude Code session plans and a Codex session reviews. That is two rows with two hosts and two roles, in one record.
+- **Edge case.** A planner starts another planner. The second row names the first in `parent_id`.
+- **No lanes table.** A lane is a session; what it holds is the tasks and runs that name it.
+
+#### Planned: `runs`
+
+| Column | Change |
+|---|---|
+| `session_id` | New. FK → `sessions.id`. The session that started the run |
+| `host` | New. The host that ran the agent. It can differ from the host of the session that started it |
+| `resumed_from` | New. FK → `runs.id` |
+| `outcome` | Gains the fixed causes: completed, failed, escalated, ended as stuck |
+| `stop_cause`, `stop_detail` | New. Why a run stopped early |
+| `effort`, `tool_calls`, `tools` | New. The effort it was given, its number of tool calls, and per tool the calls and result sizes |
+| `usage_source` | New. Where the token count came from, "not measured" included |
+| `tmb_version` | New |
+
+#### Planned: `issues` and `issue_links`
+
+| Column on `issues` | Type | Holds |
+|---|---|---|
+| `priority` | TEXT, nullable | `urgent`, `high`, `medium` or `low` |
+| `type` | TEXT, nullable | The kind of work, such as bug or feature |
+| `labels` | TEXT, NOT NULL, default `'[]'` | A JSON list of free labels, such as an area or a theme |
+| `repo` | TEXT, nullable | The repo the issue belongs to, named as `tasks.repo` names its own |
+| `remote_url` | TEXT, nullable, UNIQUE | The issue's address on the remote |
+
+`issue_links` is one row per link. A projection: record kind `issue_link`.
+
+| Column | Type | Null | Holds |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `issue_id` | TEXT | NOT NULL | FK → `issues.id`. The issue the link is on |
+| `kind` | TEXT | NOT NULL | `parent`, `blocked_by` or `duplicate_of` |
+| `target_id` | TEXT | NOT NULL | FK → `issues.id`. UNIQUE with `issue_id` and `kind` |
+| `removed_at` | TEXT | nullable | A removed link keeps its row |
+| `created_by`, `created_at` | TEXT | NOT NULL |  |
+
+- **Example.** Issue B is blocked by issue A. While A is open, the planner is shown B as blocked.
+- **Edge case.** An issue links to itself, or two issues block each other. The engine refuses the write.
+
+What a GitHub issue has, and what the record takes:
+
+| On GitHub | In the record | Why |
+|---|---|---|
+| Priority, a built-in field | `issues.priority`, the same four values | The planner orders work by it. On the remote it is the field, not a label (trustmybot/tmb#403) |
+| Type | `issues.type` | One fact per issue, so a column and not a label |
+| Labels | `issues.labels` | Free words a project chooses |
+| Milestone | `issues.milestone`, as built | A feature branch is the work of a milestone |
+| Relationships: parent, blocked by, duplicate | `issue_links` | The order of work depends on them |
+| Assignees | Left out | A session and a run say who works on it |
+| Projects | Left out | A board is a view, and the dashboard is tmb's |
+| Status, effort, start and target dates | Left out | State comes from tasks, effort belongs to a run, and the record holds no schedule |
+| "Relates to" | Left out | It changes no order of work |
+
+- **Open, for the Human:** whether `type/` labels on the remote move to GitHub's issue types, as priority moves to the field.
+- **Open, for the Human:** whether a milestone needs its own table, for its state and description, or stays a name.
+
+#### Planned: `pull_requests`
+
+One row per pull request. A projection: record kind `pull_request`.
+
+| Column | Type | Null | Holds |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `url` | TEXT | NOT NULL | UNIQUE |
+| `repo` | TEXT | nullable | Named as `tasks.repo` names its own |
+| `feature_id` | TEXT | nullable | FK → `features.id` |
+| `task_id` | TEXT | nullable | FK → `tasks.id`. Exactly one of `feature_id` and `task_id` is set |
+| `state` | TEXT | NOT NULL | `open`, `merged` or `closed` |
+| `head_commit` | TEXT | nullable | The commit at its tip when last seen |
+| `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
+
+- **Example.** tmb opens a pull request: a row made by the planner. The Human merges it in the browser: an update made by tmb, from the syncer.
+- **`features.pr_url` and `tasks.pr_url` go.**
+
+#### Planned: `tasks`, `reviews` and `guard_decisions`
+
+| Table | Change |
+|---|---|
+| `tasks` | Gains `session_id` (FK → `sessions.id`), the session that started it, and `doc_id` (FK → `docs.id`), the design it implements. Loses `pr_url` |
+| `reviews` | `target_kind` and `target` go. Gains `task_id` (FK → `tasks.id`) for a review of one task. Exactly one of `task_id` and `feature_id` is set, and `commit_sha` is NOT NULL |
+| `guard_decisions` | Gains `session_id` (FK → `sessions.id`) and `run_id` (FK → `runs.id`), both nullable |
+
+- **Example.** "Why did this worker never start?" is one lookup: the guard decisions of its session.
+- **Edge case.** A push typed by hand has no session and no run. Its guard decision names neither.
+
+**Proposed and left out.** Each is a table the plugin had or a split that was weighed.
+
+| Not added | Why |
+|---|---|
+| A table per review finding | A finding has no state of its own; the next review judges the next commit |
+| A table for handoffs between sessions | The record is the handoff |
+| A table for agents a project creates | Creating one is an event, and its file is the host's ([ROLES.md](ROLES.md#agents-a-project-creates)) |
+| A milestone table | A name is enough until a milestone needs a state. Open, above |
+
+#### Planned: `docs`
 
 Planned (trustmybot/tmb#302). One row per design document, so the planner finds the design whether it lives in the repo, outside it such as on a wiki, or in the record itself. A projection like the others: record kind `doc`, folded from its events.
 
@@ -622,7 +786,7 @@ There are no embedding tables: search is ranked word search plus the code graph.
 - Every discussion and task belongs to one issue. A task may also belong to a feature branch, and may name the dropped task it replaces.
 - A run links to what it worked on: a task, or a feature branch for a branch review. A review names the feature branch and commit it judged, and the run that wrote it.
 - A feature branch and a task record the repo they were cut in; NULL is the project folder itself.
-- Settings are not a table: each change to a setting is an `audit` row, and the newest row is the value in force ([`CONFIG.md`](CONFIG.md)).
+- Settings are not a table: each change to a setting is an `audit` row, and the newest row is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305): the values move to a config file, and the record keeps only the trail of changes.
 - A few references are soft: `reviews.target`, `tasks.branch` and every commit column hold a name or a SHA with no declared foreign key.
 
 ### Rules the data keeps

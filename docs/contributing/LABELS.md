@@ -35,6 +35,8 @@ To add, rename or remove a label, change it on GitHub and change this page in th
 
 ### Priority — exactly one
 
+Planned (trustmybot/tmb#403): priority moves to GitHub's built-in Priority field, with the same four values, and these four labels go.
+
 | Label | Means |
 |---|---|
 | `priority/urgent` | Critical priority — broken-in-prod class |
