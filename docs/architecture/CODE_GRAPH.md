@@ -297,12 +297,30 @@ flowchart LR
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
-- **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Python uses pyright, which tmb carries the same way (Planned, trustmybot/tmb#347). Each other language's tool is chosen by its own A/B test (trustmybot/tmb#346).
+- **Way B per language.** Each tool was chosen by its own A/B test. Python is Planned (trustmybot/tmb#347); Go, Java, Rust, C and C++ are Planned (trustmybot/tmb#346).
+
+| Language | Tool | Whose copy | Needs from the user |
+|---|---|---|---|
+| TypeScript, JavaScript | The TypeScript compiler | tmb carries it | Nothing |
+| Python | pyright | tmb carries it | Nothing |
+| Go | go/types, Go's own type checker | tmb carries a small helper | The `go` command |
+| Java | javac | The user's JDK, with a small adapter tmb carries | A JDK |
+| Rust | rust-analyzer | The user's | rust-analyzer and the Rust toolchain |
+| C, C++ | clangd | The user's | clangd and the project's compile database |
+
+- **A tool tmb cannot carry is the user's own copy.** A tool that is a large program per platform, or needs a runtime, is used from the user's machine. tmb installs nothing. Without it, way A builds the graph and the answer says so.
+  - **Example.** A Rust repo on a machine with no rust-analyzer. The graph is built by the built-in rules, and the freshness line names the missing tool.
+  - **Edge case.** C and C++ without the project's compile database. The tool guesses and gives wrong links, so way B does not run.
+- **Way B runs no code of the repo and downloads nothing.** It runs the language's tool and nothing the repo ships: no build script, macro program, annotation processor or build tool. What the tool cannot know without them is not known.
+  - **Example.** A Go repo whose modules are not on disk. The calls inside the repo are linked; a call into a missing module is not known.
+- **An answer given on an error is no answer.** When the tool reports an error at a call, such as an argument whose type is missing, the call is not known, even if the tool names a target.
 - **The tool's answer stands.** tmb neither adds to it nor corrects it. A link the tool proves is made, whatever the proof rests on, and a call the tool does not answer is not known.
   - **Example 1.** `cli: Group` is later given a subclass of `Group`. The tool answers with the declared type, so `cli.add()` links to `Group.add`. A call through a base class links to the base's method the same way.
   - **Example 2.** A call in unreachable code or under `if TYPE_CHECKING:`. It is a call like any other: the tool's answer, or not known.
   - **Edge case.** The tool answers for a different call than the one asked, such as the enclosing call when the called thing is a subscript or another call's result. That is no answer for this call, so it is not known.
-- **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor.
+- **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor. An enum variant or a conversion written like a call, such as Go's `Celsius(x)`, links to its type the same way.
+- **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it.
+- **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
 - **Overload stubs are one function.** A call that the tool resolves to a function's `@overload` stubs links to the function itself, the one definition that runs.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known.
 - **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
