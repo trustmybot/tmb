@@ -337,7 +337,7 @@ flowchart LR
 - **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
 - **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. A call that the tool resolves to a function's `@overload` stubs links to the function itself. Planned (trustmybot/tmb#368): today each Python stub is a node, so way A leaves such a call unlinked.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known: tmb carries the tool's stubs for the standard library only.
-  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. The config's choice is read the way the tool reads it, also when it names a folder outside the repo; a folder that is not there counts as no environment, and freshness says so. Planned (trustmybot/tmb#365): today the single folder is tried first, and several environments are not reported.
+  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. The config's choice is read the way the tool reads it, also when it names a folder outside the repo; a folder that is not there counts as no environment, and freshness says so.
 - **Way B for Go reads the packages already on the machine.** Go's module cache is its installed packages. The helper runs the user's `go` with downloads off and with the user's own Go settings.
   - **Example.** A call into a module in the cache is outside. A call into a module that is not there is not known.
   - **Edge case 1.** A file that needs a C compiler to be read (cgo) is left out of the tool's run. Its functions are nodes, and its calls are not known.
@@ -524,7 +524,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | Measure | Target | How it is held |
 |---|---|---|
 | Functions found | 100% | A test (trustmybot/tmb#247): the compiler lists every function, and the graph must match that list one to one |
-| Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes between files is wrong |
+| Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes is wrong, in the same file or across files |
 | Links found | Close to 100% of the calls that can be proven | Scored per way and per language for every release. The score may not fall, except to remove links that were not proven |
 | Calls accounted for | 100% | A test (trustmybot/tmb#252): in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
 
@@ -895,7 +895,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| The project's config names the Python environment first | trustmybot/tmb#365 |
 | A receiver's type is read from its own declaration | trustmybot/tmb#364 |
 | A TypeScript method with no body is a node | trustmybot/tmb#367 |
 | Python overload stubs are no nodes | trustmybot/tmb#368 |
