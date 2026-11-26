@@ -462,7 +462,9 @@ flowchart LR
 - **A data source is one node: its kind and its name.** It has no members and no links to another data source. The links are reads and writes, from the code that touches it.
   - **Example 1.** A task changes the table `orders`. The graph answers which functions read or write `orders`, so the worker reads those and not the whole repo.
   - **Example 2.** A function sends a file to a bucket named in a setting. The name is not in the code, so the link goes to the store alone: object storage.
-  - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a function node, with a link to its table. Planned (trustmybot/tmb#397): today it is stored under a kind of its own.
+  - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a function node, with a link to its table.
+  - **Edge case.** The store runs a trigger; no code calls it by name. So no call ever links to a trigger, even one that shares its name.
+  - **Edge case.** A trigger written in a string inside a method is still a function, and the method is its parent. Its kind follows SQL, where it is declared outside any type.
 - **Whatever a statement names as a table is a table node.** The graph does not judge which tables matter.
   - **Example 1.** A view, a virtual table and a system table such as `sqlite_master` are each a table node.
   - **Example 2.** `CREATE TABLE orders` and `CREATE INDEX … ON orders` change `orders`, so each is a write to `orders`. The index itself is no node.
@@ -620,7 +622,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 
 | Measure | Target | How it is held |
 |---|---|---|
-| Functions found | 100% | A test: the compiler lists every function, and the graph must match that list one to one |
+| Functions found | 100% | A test: the compiler lists every function, and the graph must match that list one to one. A node of another language found inside a string, such as SQL in a TypeScript string, is not counted: the compiler does not read it |
 | Links right | 100% | A test, in TypeScript and JavaScript, on every pull request: no link the graph makes is wrong, in the same file or across files |
 | Links found | Close to 100% of the calls that can be proven | Scored per way and per language for every release. The score may not fall, except to remove links that were not proven |
 | Calls accounted for | 100% | A test: in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
@@ -1037,7 +1039,6 @@ All are FTS5 virtual tables.
 | A language's tool is installed once per machine | trustmybot/tmb#393, trustmybot/tmb#394, trustmybot/tmb#395 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
-| A trigger is stored as a function | trustmybot/tmb#397 |
 | Python's benchmark reference is a type checker | trustmybot/tmb#399 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
