@@ -302,7 +302,7 @@ flowchart LR
 - **What is left to the host.** Starting sessions and messaging between them are the host's features.
 - **Edge case.** Two tasks may change the same file. git settles it at the merge, and a clash holds back the later task's close.
 - **Planned.** Guidance for running parallel sessions in the planner's prompt; which session made each entry (trustmybot/tmb#63); a freeze that stops every session at once (trustmybot/tmb#64).
-- **Details.** [RESPONSIBILITIES.md](../architecture/RESPONSIBILITIES.md#parallel-lanes) holds every case.
+- **Details.** [ROLES.md](../architecture/ROLES.md#parallel-lanes) holds every case.
 
 ### 3.9 Agile mode
 

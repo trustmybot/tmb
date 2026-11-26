@@ -1,4 +1,4 @@
-# Design philosophy
+# Design principles
 
 The ten principles behind tmb's design. Each has one rule and a few examples, from the easy case to an edge case.
 

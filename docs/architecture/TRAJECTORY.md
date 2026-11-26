@@ -169,7 +169,7 @@ stateDiagram-v2
 - **One stable id** across a compaction, a clear and a resume.
 - **A session with a start and no end is a finding,** like a run.
 - **A session's own tokens** are recorded with the same four counts as a run's, apart from its runs' counts, so a total counts nothing twice.
-- **tmb starts no session and assigns no work between sessions.** [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) covers parallel sessions.
+- **tmb starts no session and assigns no work between sessions.** [ROLES.md](ROLES.md#parallel-lanes) covers parallel sessions.
 
 ## 9. Nothing is skipped silently
 
@@ -635,7 +635,7 @@ There are no embedding tables: search is ranked word search plus the code graph.
 - **Checks are recorded, not re-run.** Each run of a task's checks is a `check_runs` row with each command it ran and the commit it ran at.
 - **Cost is metered, not stored as totals.** A run's `cost` holds the tokens it used per model, filled when the run ends.
 - **Nothing is dropped silently.** A dropped task or feature branch keeps its row and its `drop_reason`.
-- **Roles are enforced by the engine, not the schema.** Each operation checks which role may call it ([`RESPONSIBILITIES.md`](RESPONSIBILITIES.md)).
+- **Roles are enforced by the engine, not the schema.** Each operation checks which role may call it ([`ROLES.md`](ROLES.md)).
 
 ### Schema migration policy
 

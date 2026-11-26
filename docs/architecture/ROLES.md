@@ -1,4 +1,4 @@
-# Agent responsibilities
+# Agent roles
 
 What each tmb role is for, what it may and may not do, and why the roles are split this way. Each role's prompt sits in its own role file, written once in a host-neutral form. The engine's role checks sit in the code. Ask the code graph for either.
 

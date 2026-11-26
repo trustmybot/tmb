@@ -41,9 +41,9 @@ Every page follows [TEMPLATE.md](TEMPLATE.md): sections in the order of the desi
 
 ## Where to start
 
-1. [architecture/README.md](architecture/README.md), then [PHILOSOPHY.md](architecture/PHILOSOPHY.md): what tmb is.
+1. [architecture/README.md](architecture/README.md), then [PRINCIPLES.md](architecture/PRINCIPLES.md): what tmb is.
 2. [flows/FLOWS.md](flows/FLOWS.md): one chart per flow.
-3. [RESPONSIBILITIES.md](architecture/RESPONSIBILITIES.md): who does what.
+3. [ROLES.md](architecture/ROLES.md): who does what.
 
 These four are the high-level pages the Human reviews. Every other page is the detail under them.
 

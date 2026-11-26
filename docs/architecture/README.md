@@ -66,7 +66,7 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 
 | Kind | Pages | For |
 |---|---|---|
-| **High-level design** | This page, [PHILOSOPHY.md](PHILOSOPHY.md), [RESPONSIBILITIES.md](RESPONSIBILITIES.md) | What tmb is and who does what. Short and chart-first. The Human reviews these. |
+| **High-level design** | This page, [PRINCIPLES.md](PRINCIPLES.md), [ROLES.md](ROLES.md) | What tmb is and who does what. Short and chart-first. The Human reviews these. |
 | **Low-level design** | Every other page | The detail under a high-level page: every other case, failures, and how to debug them. For building and debugging tmb. |
 
 - **Two folders.** `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. [`docs/flows/`](../flows/README.md) holds the design in time: the steps tmb takes.
@@ -77,8 +77,8 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 
 New to tmb? Read in this order:
 
-1. [PHILOSOPHY.md](PHILOSOPHY.md) — why tmb is built the way it is.
-2. [RESPONSIBILITIES.md](RESPONSIBILITIES.md) — who does each step.
+1. [PRINCIPLES.md](PRINCIPLES.md) — why tmb is built the way it is.
+2. [ROLES.md](ROLES.md) — who does each step.
 3. [ADAPTERS.md](ADAPTERS.md) and [ENGINE.md](ENGINE.md) — how tmb works with any host through an adapter, and how the engine is reached and where it judges.
 4. [MEMORY.md](MEMORY.md) and [TRAJECTORY.md](TRAJECTORY.md) — what agents remember and what is recorded.
 5. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from.
@@ -87,9 +87,9 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 
 | Question | Read |
 |---|---|
-| Why does tmb do X at all? | [PHILOSOPHY.md](PHILOSOPHY.md) |
-| Which agent may do Z? | [RESPONSIBILITIES.md](RESPONSIBILITIES.md) |
-| How do several sessions work in parallel? | [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) |
+| Why does tmb do X at all? | [PRINCIPLES.md](PRINCIPLES.md) |
+| Which agent may do Z? | [ROLES.md](ROLES.md) |
+| How do several sessions work in parallel? | [ROLES.md](ROLES.md#parallel-lanes) |
 | How does tmb work with a host such as Claude Code without being built for it? | [ADAPTERS.md](ADAPTERS.md) |
 | May tmb write to this path? | [ENGINE.md](ENGINE.md#containment) |
 | What does an agent see at the start of a turn? | [MEMORY.md](MEMORY.md) |
@@ -105,8 +105,8 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 
 ## Index
 
-- [PHILOSOPHY.md](PHILOSOPHY.md) — The principles behind the design: how an idea becomes tasks, the dev-vs-user-runtime boundary, one owner per quality check, code over prompts for enforcement, clean removal, hot and cold memory, any host, gating the outcome, and git before a new wheel.
-- [RESPONSIBILITIES.md](RESPONSIBILITIES.md) — What each shipped role is for, what it may and may not do, and why the roles are split this way.
+- [PRINCIPLES.md](PRINCIPLES.md) — The principles behind the design: how an idea becomes tasks, the dev-vs-user-runtime boundary, one owner per quality check, code over prompts for enforcement, clean removal, hot and cold memory, any host, gating the outcome, and git before a new wheel.
+- [ROLES.md](ROLES.md) — What each shipped role is for, what it may and may not do, and why the roles are split this way.
 - [ADAPTERS.md](ADAPTERS.md) — How tmb works with an agent program without being built for one: the adapter, how subagents start, what each host can and cannot do, and several hosts on one record.
 - [ENGINE.md](ENGINE.md) — The engine: the ways into it, the Human's fence, unattended mode, its events and checkpoints, and containment (what tmb writes and where, and how its gates fail).
 - [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold storage in the record, hot session context, and pinned prompts, with the cost of each tier.
@@ -121,10 +121,10 @@ The decisions about tmb's parts. The first column names the page that holds the 
 
 | From | Topic | Decision |
 |---|---|---|
-| [PHILOSOPHY](PHILOSOPHY.md) | Form | A standalone program. It is not a plugin of any agent. |
+| [PRINCIPLES](PRINCIPLES.md) | Form | A standalone program. It is not a plugin of any agent. |
 | This page | Language | TypeScript, shipped as one compiled file per platform. Nothing else, Node included, has to be installed first. |
-| [PHILOSOPHY](PHILOSOPHY.md) | Gate | tmb gates the outcome at task close, review and push. It puts no guard on each edit. |
-| [RESPONSIBILITIES](RESPONSIBILITIES.md) | Roles | The host's main agent is the planner. The worker, the reviewer and any agent a project adds are subagents the host starts. The engine briefs, records and gates them. |
+| [PRINCIPLES](PRINCIPLES.md) | Gate | tmb gates the outcome at task close, review and push. It puts no guard on each edit. |
+| [ROLES](ROLES.md) | Roles | The host's main agent is the planner. The worker, the reviewer and any agent a project adds are subagents the host starts. The engine briefs, records and gates them. |
 | [ADAPTERS](ADAPTERS.md) | Hosts | Claude Code, in its command line and its desktop app. No host is hardcoded: each is an adapter. |
 | [ADAPTERS](ADAPTERS.md) | Login | The Human's subscription to the host. No API key is needed. |
 | [ADAPTERS](ADAPTERS.md) | Role prompts | Written once, host-neutral. The adapter turns them into each host's format. |
@@ -146,12 +146,12 @@ The words for tmb's parts. tmb prefers the name a developer already knows. The p
 |---|---|---|
 | This page | Harness | The workflow and the gate that enforces it, inside the engine. It briefs the agents and gates the outcome. It is not the program that runs the model; that is the host. |
 | This page | Engine | tmb without its adapters: the harness, the trajectory and the code graph. |
-| [PHILOSOPHY](PHILOSOPHY.md) | Gate | What stops a step that the workflow does not allow. |
-| [RESPONSIBILITIES](RESPONSIBILITIES.md) | The Human | The developer tmb works for. |
-| [RESPONSIBILITIES](RESPONSIBILITIES.md) | Planner | The role that plans, writes the spec and talks to the Human: the host's main agent. It is addressed as bro in conversation. |
-| [RESPONSIBILITIES](RESPONSIBILITIES.md) | Worker | The role that carries out one task, of any kind. |
-| [RESPONSIBILITIES](RESPONSIBILITIES.md) | Reviewer | The role that judges a diff and records a verdict. It edits nothing. |
-| [RESPONSIBILITIES](RESPONSIBILITIES.md) | Lane | One of several sessions working in a project at once, with the work it took. tmb keeps no lane record. |
+| [PRINCIPLES](PRINCIPLES.md) | Gate | What stops a step that the workflow does not allow. |
+| [ROLES](ROLES.md) | The Human | The developer tmb works for. |
+| [ROLES](ROLES.md) | Planner | The role that plans, writes the spec and talks to the Human: the host's main agent. It is addressed as bro in conversation. |
+| [ROLES](ROLES.md) | Worker | The role that carries out one task, of any kind. |
+| [ROLES](ROLES.md) | Reviewer | The role that judges a diff and records a verdict. It edits nothing. |
+| [ROLES](ROLES.md) | Lane | One of several sessions working in a project at once, with the work it took. tmb keeps no lane record. |
 | [ADAPTERS](ADAPTERS.md) | Host | An agent program, such as Claude Code, that runs the agents. |
 | [ADAPTERS](ADAPTERS.md) | Host adapter | The one part of tmb that knows a host: its file formats, its events and its limits. |
 | [TRAJECTORY](TRAJECTORY.md) | Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |

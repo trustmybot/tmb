@@ -658,7 +658,7 @@ flowchart LR
 | Reason | What it means |
 |---|---|
 | Many programs open it at once | Several sessions, the dashboard and git's hook read and write the same graph. SQLite lets many programs read while one writes. The embedded graph database tested (Kuzu) and DuckDB let one program hold the file, so every other session had no graph |
-| Nothing to install or run | SQLite is inside the tmb program. A graph database is a server to run, or a native engine to install beside tmb that can be missing or crash, and tmb runs no background program ([PHILOSOPHY.md](PHILOSOPHY.md#9-gate-the-outcome-never-babysit)) |
+| Nothing to install or run | SQLite is inside the tmb program. A graph database is a server to run, or a native engine to install beside tmb that can be missing or crash, and tmb runs no background program ([PRINCIPLES.md](PRINCIPLES.md#9-gate-the-outcome-never-babysit)) |
 | One file per repo | The graph is a cache built from git. It is thrown away and rebuilt as one file, and it works offline |
 | One step per write | A whole layer is applied in one transaction, so a reader sees the old graph or the new one |
 | Search is built in | Search by name uses SQLite's own text index |

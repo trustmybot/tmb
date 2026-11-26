@@ -177,7 +177,7 @@ In tmb the session-start hook is the only one that injects context: it puts the 
 ## See also
 
 - [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md) — how to write and grade the layer 6 prompts.
-- [`RESPONSIBILITIES.md`](../architecture/RESPONSIBILITIES.md) — agent roles and boundaries.
+- [`ROLES.md`](../architecture/ROLES.md) — agent roles and boundaries.
 - [`FLOWS.md`](../flows/FLOWS.md) — workflows: who acts, what each step guarantees, and the state each flow leaves.
 - [the schema in `TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema) — schema.
 - [`common.ts`](../../src/engine/handlers/common.ts) — defines the `requireRole` check behind layer 1; each tool's allowed roles are set at its `requireRole(...)` call in [`handlers/*.ts`](../../src/engine/handlers/).

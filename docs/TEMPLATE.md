@@ -2,7 +2,7 @@
 
 What every page in these docs looks like. A good page lets the Human understand a design in minutes: its sections follow the logic of the design, each section goes from high to low, and each rule is one or two plain sentences with examples.
 
-The model page is [PHILOSOPHY.md](architecture/PHILOSOPHY.md). When in doubt, copy its shape.
+The model page is [PRINCIPLES.md](architecture/PRINCIPLES.md). When in doubt, copy its shape.
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,7 @@ flowchart LR
     N --> X["What guards or limits it"]
 ```
 
-- **Example 1.** PHILOSOPHY.md starts with "Idea to goal, goal to tasks": all work begins there. "One owner per check" comes later, because checks only make sense once there are tasks to check.
+- **Example 1.** PRINCIPLES.md starts with "Idea to goal, goal to tasks": all work begins there. "One owner per check" comes later, because checks only make sense once there are tasks to check.
 - **Example 2.** A flow page follows time: install, then onboard, then a task, then review, then push.
 - **Example 3.** A page about a part follows dependency: what the part is, what it holds, who reads it, then how it fails.
 - **Edge case.** Two sections do not depend on each other. Put the one the reader meets first in real use first.

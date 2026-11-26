@@ -28,7 +28,7 @@ flowchart LR
 | 3. Agent task handling | [3_GIT.md](3_GIT.md) | Where the work sits in git at each step |
 | 4. Extending the team | [4_EXTENDING.md](4_EXTENDING.md) | Agents, skills and cheatcodes a project adds |
 
-A page with no number is not a flow page. Three flows are detailed in architecture pages, because a part owns them more than a sequence does: parallel lanes in [RESPONSIBILITIES.md](../architecture/RESPONSIBILITIES.md#parallel-lanes), the unattended run in [ENGINE.md](../architecture/ENGINE.md#unattended-mode), and several hosts in [ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task).
+A page with no number is not a flow page. Three flows are detailed in architecture pages, because a part owns them more than a sequence does: parallel lanes in [ROLES.md](../architecture/ROLES.md#parallel-lanes), the unattended run in [ENGINE.md](../architecture/ENGINE.md#unattended-mode), and several hosts in [ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task).
 
 ## Reading guide
 
