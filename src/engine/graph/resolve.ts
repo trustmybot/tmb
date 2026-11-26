@@ -32,6 +32,14 @@ export type Candidate = {
 export type Link = { dst: number; how: "exact" | "name" };
 
 const CALLABLE = new Set<SymbolKind>(["function", "method", "class", "sh_function"]);
+/**
+ * File-level data: a name a statement of the file declares outside any type or function
+ * (CODE_GRAPH.md, "Kinds of symbol"). A call whose name the language's lookup ends at such a
+ * declaration, in the file's own scope or through an import, is linked to it: the declaration is
+ * the proof, so no type is needed (trustmybot/tmb#332). Only a call is linked so; any other use of
+ * the name is not.
+ */
+const FILE_DATA = new Set<SymbolKind>(["const"]);
 const TABLE_EDGES = new Set<EdgeKind>(["reads_table", "writes_table", "indexes", "triggers_on"]);
 /** Edges that name a key, not a symbol: they are never linked. */
 export const NAME_ONLY_EDGES: ReadonlySet<EdgeKind> = new Set<EdgeKind>(["reads_config", "covers"]);
@@ -255,10 +263,13 @@ export class Resolver {
     return { origin: unproven ? null : origin, cut };
   }
 
-  /** The top-level callable `name` declared in `origin`, when it is a declaration: never a class's method of that name. */
-  private callableAt(origin: Origin | null): number | undefined {
+  /**
+   * The top-level symbol `name` declared in `origin` that a reference may name, when it is a
+   * declaration: a callable, or file-level data for a call. Never a class's method of that name.
+   */
+  private declarationAt(origin: Origin | null, call: boolean): number | undefined {
     if (origin === null || "namespace" in origin) return undefined;
-    return sole((this.byName.get(origin.name) ?? []).filter((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && CALLABLE.has(c.kind)))?.id;
+    return sole((this.byName.get(origin.name) ?? []).filter((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && namable(c.kind, call)))?.id;
   }
 
   /** The classes named `name` that `path` declares. */
@@ -375,9 +386,11 @@ export class Resolver {
       const only = real.length === 1 ? real[0] : real.length === 0 && cands.length === 1 ? cands[0] : undefined;
       return link(only?.id, "exact");
     }
+    const call = edge.call === 1;
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
-    // A bare or imported name is never a class's method of that name (trustmybot/tmb#242).
-    const declared = cands.filter((c) => c.reach === undefined && c.kind !== "method");
+    // A bare or imported name is never a class's method of that name (trustmybot/tmb#242). A call
+    // of it may name file-level data too (trustmybot/tmb#332).
+    const declared = (this.byName.get(edge.dst_name) ?? []).filter((c) => namable(c.kind, call) && c.reach === undefined && c.kind !== "method");
     // A name bound around the reference is looked up there first, and only there (trustmybot/tmb#246).
     if (edge.bound === "value") return null;
     if (edge.bound === "self") {
@@ -388,7 +401,7 @@ export class Resolver {
       const file = this.importTarget(from, { ...edge, kind: "imports" }).file;
       if (file === null) return null;
       const there = declared.filter((c) => c.path === file);
-      return link(there.length > 0 ? sole(there)?.id : this.callableAt(this.originOf(file, edge.dst_name)), "exact");
+      return link(there.length > 0 ? sole(there)?.id : this.declarationAt(this.originOf(file, edge.dst_name), call), "exact");
     }
     if (edge.bound === "function") {
       const at = cands.filter((c) => c.path === from && c.reach !== "member" && String(c.line) === edge.hint);
@@ -400,7 +413,7 @@ export class Resolver {
       // `ns.f()` on a name imported from a file that exports it as `export * as ns from`.
       const imported = this.importBindings.get(from)?.get(edge.hint);
       const namespace = imported?.file ? this.originOf(imported.file, imported.name) : null;
-      if (namespace !== null && "namespace" in namespace) return link(this.callableAt(this.originOf(namespace.namespace, edge.dst_name)), "exact");
+      if (namespace !== null && "namespace" in namespace) return link(this.declarationAt(this.originOf(namespace.namespace, edge.dst_name), call), "exact");
       // A receiver's type is only a name: the call links only when that name is proven to be a
       // class of this repo, defined in this file or imported from a file of it.
       const cls = this.classOf(from, edge.hint);
@@ -409,6 +422,9 @@ export class Resolver {
     }
     // A name the file declares twice names neither on proof (trustmybot/tmb#287).
     const same = declared.filter((c) => c.path === from);
+    // Data the file binds by an import as well is bound twice, and which binding holds depends on
+    // the order they run in, which the graph does not keep: neither is proof (trustmybot/tmb#332).
+    if (same.some((c) => FILE_DATA.has(c.kind)) && this.importBindings.get(from)?.has(edge.dst_name)) return null;
     if (same.length > 0) return link(sole(same)?.id, "exact");
     // A function nested in another is linked by its bare name from inside its parent, and only when
     // no other nested function of that name is in reach there.
@@ -418,7 +434,7 @@ export class Resolver {
     if (viaImport) {
       const direct = declared.filter((c) => c.path === viaImport);
       // A name the imported file re-exports is linked where it is declared (trustmybot/tmb#233).
-      return link(direct.length > 0 ? sole(direct)?.id : this.callableAt(this.originOf(viaImport, edge.dst_name)), "exact");
+      return link(direct.length > 0 ? sole(direct)?.id : this.declarationAt(this.originOf(viaImport, edge.dst_name), call), "exact");
     }
     const viaSource = (this.sourced.get(from) ?? []).map((p) => declared.find((c) => c.path === p)).find(Boolean);
     return link(viaSource?.id, "exact");
@@ -447,4 +463,9 @@ export function callState(resolver: Resolver, from: string, edge: ExtractedEdge,
 
 function link(dst: number | undefined, how: Link["how"]): Link | null {
   return dst === undefined ? null : { dst, how };
+}
+
+/** Whether a reference may name a symbol of `kind`: a callable always, file-level data only from a call. */
+function namable(kind: SymbolKind, call: boolean): boolean {
+  return CALLABLE.has(kind) || (call && FILE_DATA.has(kind));
 }

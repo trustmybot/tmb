@@ -20,7 +20,7 @@ tree-sitter-typescript 0.23 reads a `<` that starts a line as type arguments of 
 
 ## How a call's name is looked up
 
-As the language looks it up (trustmybot/tmb#246): the function's own names and parameters, the functions and blocks around it, then the file and its imports. The first place that has the name decides. A parameter or a variable there is no function of the repo, so the call is not linked. A function declared there is linked.
+As the language looks it up (trustmybot/tmb#246): the function's own names and parameters, the functions and blocks around it, then the file and its imports. The first place that has the name decides. A parameter or a variable of a function or block there is no node of the repo, so the call is not linked. A function declared there is linked. At the file, a call is linked to a function the file declares, and to file-level data too: each name a `const`, `let` or `var` statement of the file declares, a destructuring included, whatever its value (trustmybot/tmb#332). That holds through an import, an import under a new name and a re-export as well. A name a loop, a block or a `catch` binds at file level is no node, so its call is not linked.
 
 A name imported as `import { a as b }` is looked up by `a` in the file that import names, never through another import of an `a`. That holds for a class under its new name too: as the object of a call (`b.m()`), as a parent (`extends b`) and as a declared type (trustmybot/tmb#287). A bare or imported name never links a class's method of that name (trustmybot/tmb#242).
 

@@ -13,15 +13,15 @@
             "of": 5463
           },
           "linksRight": {
-            "n": 4788,
-            "of": 4788
+            "n": 4804,
+            "of": 4804
           },
           "linksFoundByState": {
-            "n": 9968,
+            "n": 10463,
             "of": 20446
           },
           "linksFoundByReference": {
-            "n": 9965,
+            "n": 10460,
             "of": 10909
           },
           "callsAccountedFor": {
@@ -29,10 +29,8 @@
             "of": 30077
           },
           "missesByCause": {
-            "a name bound by destructuring (`const { f } = …`), called": 464,
             "a method on a name whose type is not written": 281,
             "a method on an expression (a chain, a call's result, an index)": 135,
-            "a name of data whose value is no function written there, called": 31,
             "a method on a module's or class's name": 19,
             "a method on a name whose type is written": 14
           }
@@ -75,15 +73,15 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 6121,
-            "of": 6121
+            "n": 6229,
+            "of": 6229
           },
           "linksFoundByState": {
-            "n": 7639,
+            "n": 7763,
             "of": 41520
           },
           "linksFoundByReference": {
-            "n": 7637,
+            "n": 7761,
             "of": 10711
           },
           "callsAccountedFor": {
@@ -96,9 +94,6 @@
             "a method on an expression (a chain, a call's result, an index)": 373,
             "a method on a name whose type is written": 161,
             "a method on a module's or class's name": 132,
-            "a name of data whose value is no function written there, called": 80,
-            "a tagged template": 28,
-            "a name bound by destructuring (`const { f } = …`), called": 16,
             "a function's name called directly": 11,
             "a call on the parent (`super`)": 2,
             "a construction by a class's name": 2,
@@ -199,7 +194,7 @@
             "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "n": 4144,
+            "n": 4228,
             "of": 18996
           },
           "linksFoundByReference": {
