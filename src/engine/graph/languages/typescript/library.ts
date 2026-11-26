@@ -1,11 +1,12 @@
 // The TypeScript compiler's default library, the declaration files of the language's built-ins
 // (`lib.es5.d.ts`, `lib.dom.d.ts`, …), which ship beside the compiler in its package's `lib`
-// folder. Way B (tool.ts) imports this as a Bun macro, `with { type: "macro" }`: it runs when tmb
-// is built, so the program carries the files' text, and a compiled tmb needs no compiler on disk.
+// folder. carried.ts imports this as a Bun macro, `with { type: "macro" }`: it runs when tmb is
+// built, so the program carries the files' text, and a compiled tmb needs no compiler on disk.
+// The text is carried packed, so the program's start reads one short string, not the library.
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-/** The compiler tmb carries, as a package name: the one tool.ts loads. */
+/** The compiler tmb carries, as a package name: the one carried.ts carries. */
 const CARRIED_PACKAGE = "typescript5";
 /** The folder of the compiler's package that holds its default library. */
 const LIBRARY_DIR = "lib";
@@ -21,4 +22,9 @@ export function compilerLibrary(): Record<string, string> {
     if (name.startsWith(LIBRARY_PREFIX) && name.endsWith(LIBRARY_SUFFIX)) library[name] = readFileSync(path.join(dir, name), "utf8");
   }
   return library;
+}
+
+/** The default library, packed: its files by name as JSON, gzipped, in base64. */
+export function packedLibrary(): string {
+  return Buffer.from(Bun.gzipSync(JSON.stringify(compilerLibrary()))).toString("base64");
 }

@@ -12,15 +12,15 @@
 //
 // tmb carries the TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"): way B needs no
 // install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one
-// answer. The program holds the compiler's code and its default library (library.ts); a repo's own
-// `typescript` package is never loaded. The repo's files are read from the commit; its installed
+// answer. The program holds the compiler's code and its default library (carried.ts), loaded only
+// when way B builds a graph; a repo's own `typescript` package is never loaded. The repo's files are read from the commit; its installed
 // packages, which git does not hold, from its `node_modules` folder when there is one, and without
 // them a call of a package is not known.
 import path from "node:path";
 import type TS from "typescript5";
+import { loadCarried } from "./carried.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
 import { baseOptions, calleeOf, type CommitFiles, commitProgram, isCallNode, originalNames, projectOptions, type TypeScriptModule } from "./compiler.ts";
-import { compilerLibrary } from "./library.ts" with { type: "macro" };
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
@@ -33,10 +33,7 @@ let carried: Carried | undefined;
 function carriedCompiler(): Carried | { unavailable: string } {
   if (carried !== undefined) return carried;
   try {
-    // A plain require of the package by its name, so the build bundles it into the program; it is
-    // the package library.ts reads the default library from.
-    const ts = require("typescript5") as TypeScriptModule;
-    carried = { ts, library: new Map(Object.entries(compilerLibrary())) };
+    carried = loadCarried();
     return carried;
   } catch (error) {
     return { unavailable: `the compiler tmb carries did not load (${error instanceof Error ? error.message : String(error)})` };
