@@ -7,6 +7,7 @@ import ts from "typescript5";
 import type { BuildOptions } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER } from "../../src/engine/graph/db.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
+import { isBodilessMethod } from "../../src/engine/graph/languages/typescript/compiler.ts";
 import { compilerFunctions, coveredLanguage } from "../../src/engine/graph/languages/typescript/coverage.ts";
 import { checkLayer, type CompilerCall, type CompilerLookup, compilerProgram, commitTexts, type GraphLink, graphLinks, judge } from "../../src/engine/graph/languages/typescript/links.ts";
 import { graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
@@ -19,8 +20,9 @@ export const REFERENCE = `TypeScript compiler ${ts.version}`;
 /**
  * The version of the TypeScript reference, raised when the reference changes what it counts.
  * 2: each file is resolved under the program of the config that owns it, as way B resolves it.
+ * 3: a method that has only a declaration is a function, and a call to it a link (trustmybot/tmb#367).
  */
-export const REFERENCE_VERSION = 2;
+export const REFERENCE_VERSION = 3;
 
 /**
  * How each way builds the graph, as the program builds it: way B uses the compiler tmb carries,
@@ -128,16 +130,17 @@ export function causeOf(call: CompilerCall, checker: ts.TypeChecker): string {
 /**
  * Whether the compiler declares a call's callee as a node of the graph, by "Kinds of symbol" in
  * CODE_GRAPH.md, so a link could reach it: a callable with a body (a function written as a
- * variable's, a field's or a property's value included), a type, or file-level data, a name a
- * statement of the file declares, each name a destructuring binds included. A local is no node: a
- * parameter, or a variable whose value is no function written there, bound inside a callable or
- * by a loop, a block or a catch at the top of the file. Nor is a signature with no body, a field
- * (Planned), or a property of an object written by a name alone (`{ f }`).
+ * variable's, a field's or a property's value included), a method that has only a declaration
+ * (trustmybot/tmb#367), a type, or file-level data, a name a statement of the file declares, each
+ * name a destructuring binds included. A local is no node: a parameter, or a variable whose value
+ * is no function written there, bound inside a callable or by a loop, a block or a catch at the
+ * top of the file. Nor is any other signature with no body, a field (Planned), or a property of an
+ * object written by a name alone (`{ f }`).
  */
 export function declaresANode(call: CompilerCall, checker: ts.TypeChecker): boolean {
   if (call.callee === null) return false;
   return (symbolOf(call.callee, checker)?.declarations ?? []).some((d) => {
-    if (ts.isFunctionLike(d)) return "body" in d && d.body !== undefined;
+    if (ts.isFunctionLike(d)) return ("body" in d && d.body !== undefined) || isBodilessMethod(ts, d);
     if (ts.isClassLike(d)) return true;
     if (ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d)) return isFunctionValue(d.initializer);
     if (ts.isVariableDeclaration(d)) return isFunctionValue(d.initializer) || fileLevel(d);

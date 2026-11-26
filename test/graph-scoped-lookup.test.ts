@@ -212,8 +212,10 @@ test("a call on `this` links a method of the class, else of its parent in anothe
   expect(await linkAt("ts/client.ts", 21, "sameFileParent")).toBe("ts/client.ts:Local.sameFileParent");
 });
 
-test("a call on `this` to an abstract method, or outside a class, is not linked", async () => {
-  expect(await linkAt("ts/client.ts", 25, "area")).toBeNull();
+// An abstract method has only a declaration, so it is a node (trustmybot/tmb#367), and a call on
+// the object itself links to it as to any method of its class.
+test("a call on `this` to an abstract method links to it; one outside a class is not linked", async () => {
+  expect(await linkAt("ts/client.ts", 25, "area")).toBe("ts/client.ts:Shape.area");
   expect(await linkAt("ts/client.ts", 31, "helper")).toBeNull();
 });
 

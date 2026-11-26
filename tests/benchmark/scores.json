@@ -1,7 +1,7 @@
 {
   "command": "bun tests/benchmark/run.ts --write",
   "referenceVersions": {
-    "typescript": 2,
+    "typescript": 3,
     "python": 2,
     "go": 2,
     "java": 1
@@ -15,8 +15,8 @@
       "ways": {
         "A": {
           "functionsFound": {
-            "n": 5463,
-            "of": 5463
+            "n": 5484,
+            "of": 5484
           },
           "linksRight": {
             "n": 10517,
@@ -28,11 +28,11 @@
           },
           "linksFoundByReference": {
             "n": 10221,
-            "of": 10912,
+            "of": 10951,
             "fallAccepted": {
-              "issue": 364,
+              "issue": 367,
               "was": {
-                "n": 10463,
+                "n": 10221,
                 "of": 10912
               }
             }
@@ -42,29 +42,29 @@
             "of": 30077
           },
           "missesByCause": {
-            "a method on a name whose type is not written": 523,
-            "a method on an expression (a chain, a call's result, an index)": 135,
-            "a method on a module's or class's name": 19,
-            "a method on a name whose type is written": 14
+            "a method on a name whose type is not written": 528,
+            "a method on an expression (a chain, a call's result, an index)": 140,
+            "a method on a name whose type is written": 43,
+            "a method on a module's or class's name": 19
           }
         },
         "B": {
           "functionsFound": {
-            "n": 5463,
-            "of": 5463
+            "n": 5484,
+            "of": 5484
           },
           "linksRight": {
-            "n": 11208,
-            "of": 11208,
+            "n": 11247,
+            "of": 11247,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10912,
+            "n": 10969,
             "of": 11431
           },
           "linksFoundByReference": {
-            "n": 10912,
-            "of": 10912
+            "n": 10951,
+            "of": 10951
           },
           "callsAccountedFor": {
             "n": 30077,
@@ -82,24 +82,24 @@
       "ways": {
         "A": {
           "functionsFound": {
-            "n": 10267,
-            "of": 10267
+            "n": 10320,
+            "of": 10320
           },
           "linksRight": {
-            "n": 7897,
-            "of": 7897
+            "n": 7908,
+            "of": 7908
           },
           "linksFoundByState": {
-            "n": 7043,
+            "n": 7054,
             "of": 41520
           },
           "linksFoundByReference": {
-            "n": 7028,
-            "of": 10701,
+            "n": 7039,
+            "of": 11133,
             "fallAccepted": {
-              "issue": 364,
+              "issue": 367,
               "was": {
-                "n": 7754,
+                "n": 7028,
                 "of": 10701
               }
             }
@@ -109,10 +109,10 @@
             "of": 45912
           },
           "missesByCause": {
-            "a method on a name whose type is not written": 1916,
+            "a method on a name whose type is not written": 2145,
             "a method on a name made by `new`, its type not written": 1076,
-            "a method on an expression (a chain, a call's result, an index)": 374,
-            "a method on a name whose type is written": 159,
+            "a method on an expression (a chain, a call's result, an index)": 385,
+            "a method on a name whose type is written": 340,
             "a method on a module's or class's name": 132,
             "a function's name called directly": 11,
             "a call on the parent (`super`)": 2,
@@ -122,21 +122,21 @@
         },
         "B": {
           "functionsFound": {
-            "n": 10267,
-            "of": 10267
+            "n": 10320,
+            "of": 10320
           },
           "linksRight": {
-            "n": 11568,
-            "of": 11568,
+            "n": 12000,
+            "of": 12000,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10700,
+            "n": 11132,
             "of": 37598
           },
           "linksFoundByReference": {
-            "n": 10700,
-            "of": 10701
+            "n": 11132,
+            "of": 11133
           },
           "callsAccountedFor": {
             "n": 45912,
