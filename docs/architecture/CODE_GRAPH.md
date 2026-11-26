@@ -168,6 +168,7 @@ How two languages write each kind:
 - **A symbol's lines start at its first decorator** and end at its last line, in every language, so a decorated symbol is one node and matches the reference's.
   - **A symbol's lines are its whole declaration.** A function written as the value of a field or of a file-level name is one callable node, and it starts where that declaration starts: its first decorator, else its first modifier or its name.
   - **Example.** `@bind() onChange = () => {}` starts at `@bind()`. A field whose type is written over three lines before the `=` starts at the field's name, not at the arrow.
+  - **Example 2.** Go's file-level `var f = func() {}`, one name bound to one function, is the function `f`.
   - **Edge case.** The reference lists the function alone, starting at its arrow. The benchmark pairs the two when the reference's function is the declaration's value. It does not move the node's start.
 - **The language's scope rule decides what is file-level data.** A name the whole file can see is a node, wherever it is written.
   - **Example 1.** TypeScript: `for (const x of xs)` at file level hides `x` from the rest of the file, so `x` is a local.
@@ -179,6 +180,8 @@ How two languages write each kind:
 - **Example 3.** Planned: `Cart.items` as a field node, so "who reads or writes `Cart.items`" has an answer.
 - **Edge case 1.** A field whose value is a function, `onChange = () => {}`. It is called like a method, so it is a callable node.
 - **Edge case 2.** A Python field has no declaration: `self.owner = owner` in any method creates it. The field's node is that name on the class, and each assignment is a write link.
+- **Edge case 3.** A method written outside its type's body, as Go's `func (c Cart) Total()` or a C++ `Cart::total` in another file. It is still named through its type, `Cart.Total`. It is held by the type when the same file declares the type, else by its file.
+- **Edge case 4.** A method listed in a type that has no name, as Go's `func f(x interface{ M() })`. No type node can hold it, so it is no node.
 - **Why it stops at callables and fields.** A local cannot be reached from another callable, so no question across the code needs it.
 
 ### Languages
@@ -234,6 +237,8 @@ flowchart TD
 | Ties | A name the file declares or exports by name wins over a star | A name two stars bring from different declarations stays unresolved |
 
 - **Every link between files is checked against the TypeScript compiler** (trustmybot/tmb#242). [Benchmark](#benchmark) has the test.
+- **An import that names a folder of files makes no import link.** Import links run from file to file. The calls into that folder's files carry the dependency.
+  - **Example.** Go's `import "shop/cart"` names a package, which is every file in the folder `cart`. `cart.Total()` links to the function; the import line links to nothing.
 - **Misses are counted.** Each build counts the imports that name the repo's own code and link to no file, and indexing prints the count.
 
 ### The three states of a call
@@ -498,6 +503,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 |---|---|---|---|
 | TypeScript and JavaScript | tmb, hono | The TypeScript compiler | The TypeScript compiler |
 | Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
+| Go | gin | Go's own parser | Planned (trustmybot/tmb#352): Go's type checker |
 
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
 - **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
@@ -514,7 +520,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
 - **Example.** A file has 10 calls: 6 linked, 3 to an outside package, 1 not known. Links found is 6 of 7. Calls accounted for is 10 of 10.
-- **Every link is judged, in the same file or across files.** Planned (trustmybot/tmb#343): today only links across files are judged.
+- **Every link is judged, in the same file or across files.**
 - **Way B needs a second judge.** In TypeScript the reference is the compiler, which is also way B's source. Way B's links right is judged on Python and on samples checked by hand.
 - **A link the compiler places outside the repo is wrong.** The graph links only the repo's own code, so a link to a repo symbol for a name the compiler declares only outside the repo fails the test.
 - **When a link is right.** It names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
@@ -878,7 +884,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| The benchmark judges same-file links | trustmybot/tmb#343 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
 | Way B for Python, with pyright | trustmybot/tmb#347 |
 | Go, Java, Rust, C and C++, each with its tool | trustmybot/tmb#352, #353, #354, #355 |
