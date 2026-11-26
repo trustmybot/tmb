@@ -30,11 +30,12 @@
 // clangd runs with no background index, so it writes nothing into the repo, and with no
 // `--query-driver`, so it runs no compiler of the repo's. Without `clangd` on PATH, way B for C and
 // C++ cannot run, and the built-in rules make the links.
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import type { LanguageTool, OpenedTool, ToolAnswer, ToolInput } from "../contract.ts";
+import type { BuiltWith, LanguageTool, OpenedTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
@@ -144,12 +145,23 @@ export function findDatabase(repoDir: string): Database | { unavailable: string 
   return { folder: path.dirname(file), files };
 }
 
-/** Whether the `clangd` on PATH runs, or why not. */
-function clangdOnPath(): true | { unavailable: string } {
+/** The `clangd` on PATH, as the first line of `clangd --version` names it, or why it does not run. */
+function clangdVersion(): { version: string } | { unavailable: string } {
   const run = spawnSync("clangd", ["--version"], { encoding: "utf8" });
   if (run.error !== undefined) return { unavailable: "no `clangd` on PATH" };
   if (run.status !== 0) return { unavailable: `\`clangd --version\` failed: ${run.stderr.trim()}` };
-  return true;
+  return { version: run.stdout.trim().split("\n")[0]!.trim() };
+}
+
+/** The compile database clangd would read in the repo, as its place and the hash of its text, or "none". */
+function databaseState(repoDir: string): string {
+  const place = DATABASE_PLACES.find((p) => existsSync(path.join(repoDir, p)));
+  if (place === undefined) return "none";
+  try {
+    return `${place} sha256:${createHash("sha256").update(readFileSync(path.join(repoDir, place))).digest("hex")}`;
+  } catch {
+    return `${place} unreadable`;
+  }
 }
 
 type Position = { line: number; character: number };
@@ -298,7 +310,14 @@ const lastPart = (container: string | undefined): string => (container ?? "").re
  * The answer for one call from clangd's symbol at its position (see the head of the file): `nodes`
  * are the graph's nodes by file.
  */
-export function answerOf(root: string, nodes: ReadonlyMap<string, Place[]>, name: string, symbols: readonly SymbolDetails[] | null, definitions: readonly Location[] | null): ToolAnswer {
+export function answerOf(
+  root: string,
+  nodes: ReadonlyMap<string, Place[]>,
+  name: string,
+  symbols: readonly SymbolDetails[] | null,
+  definitions: readonly Location[] | null,
+  outside?: Set<string>,
+): ToolAnswer {
   // A using-declaration names the declarations it brings in (C++ [namespace.udecl]): clangd gives
   // both, and the call goes to what it names. clang's USR marks one with `@UD@`.
   const named = (symbols ?? []).filter((s) => !s.usr?.includes("@UD@"));
@@ -313,7 +332,9 @@ export function answerOf(root: string, nodes: ReadonlyMap<string, Place[]>, name
   if (file === null) {
     // Declared outside the repo: outside, unless the repo defines it.
     const def = definition === undefined ? null : repoPath(root, definition.uri);
-    return def === null ? OUTSIDE : NOT_KNOWN;
+    if (def !== null) return NOT_KNOWN;
+    outside?.add(fileURLToPath(where.uri));
+    return OUTSIDE;
   }
   const line = where.range.start.line + 1;
   const fit = (nodes.get(file) ?? []).filter((n) => n.name === s.name && n.start <= line && n.end >= line);
@@ -348,7 +369,13 @@ async function filesToAsk(conn: Connection, root: string, database: Database, in
 }
 
 /** Asks clangd about every call of the files it can read by the database; the rest are not known. */
-export async function answerCalls(repoDir: string, database: Database, input: ToolInput, note: (text: string) => void): Promise<ToolAnswer[]> {
+export async function answerCalls(
+  repoDir: string,
+  database: Database,
+  input: ToolInput,
+  note: (text: string) => void,
+  readFrom: (places: readonly string[]) => void = () => {},
+): Promise<ToolAnswer[]> {
   const root = realpathSync(repoDir);
   const nodes = new Map<string, Place[]>();
   input.nodes.forEach((node, index) => {
@@ -357,6 +384,7 @@ export async function answerCalls(repoDir: string, database: Database, input: To
     nodes.set(node.path, here);
   });
   const answers: ToolAnswer[] = input.calls.map(() => NOT_KNOWN);
+  const outside = new Set<string>();
   const conn = new Connection(database.folder, root);
   try {
     await conn.request("initialize", { processId: process.pid, rootUri: pathToFileURL(root).href, capabilities: { textDocument: { publishDiagnostics: {} } } });
@@ -380,7 +408,7 @@ export async function answerCalls(repoDir: string, database: Database, input: To
             conn.request<SymbolDetails[] | null>("textDocument/symbolInfo", where),
             conn.request<Location[] | null>("textDocument/definition", where),
           ]);
-          answers[i] = answerOf(root, nodes, call.name, symbols, definitions);
+          answers[i] = answerOf(root, nodes, call.name, symbols, definitions, outside);
         }),
       );
     }
@@ -389,6 +417,7 @@ export async function answerCalls(repoDir: string, database: Database, input: To
   } finally {
     await conn.close();
   }
+  readFrom([...outside].sort());
   return answers;
 }
 
@@ -396,10 +425,19 @@ export async function answerCalls(repoDir: string, database: Database, input: To
 export const clangdTool: LanguageTool = {
   name: "clangd",
   open(repoDir: string): OpenedTool {
-    const clangd = clangdOnPath();
-    if (clangd !== true) return clangd;
+    const clangd = clangdVersion();
+    if ("unavailable" in clangd) return clangd;
     const database = findDatabase(repoDir);
     if ("unavailable" in database) return database;
-    return { answer: (input, note) => answerCalls(repoDir, database, input, note) };
+    return { answer: (input, note, readFrom) => answerCalls(repoDir, database, input, note, readFrom) };
+  },
+  // The tool is the user's clangd, as it reports its version. What it reads beyond the commit is the
+  // project's compile database, which a build makes and git does not hold, and the headers outside
+  // the repo that its answers name (the places): whether each is still on disk.
+  builtWith(repoDir: string, places: readonly string[]): BuiltWith {
+    const clangd = clangdVersion();
+    if ("unavailable" in clangd) return { tool: `cannot run: ${clangd.unavailable}`, packages: "" };
+    const held = places.map((place) => `${place}: ${existsSync(place) ? "held" : "not held"}`);
+    return { tool: clangd.version, packages: [`compile database: ${databaseState(repoDir)}`, ...held].join("\n") };
   },
 };
