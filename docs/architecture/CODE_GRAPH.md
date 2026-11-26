@@ -223,7 +223,7 @@ flowchart TD
 - **Example 2.** A function calls a name imported from an outside package: no link, and not a miss. Outside means a package the project installs, such as one from a public registry. A package that lives in the same repo is the repo's own code and is linked.
 - **Edge case.** `import pkg` followed by `pkg.f()`. Proving the call needs the type of the thing it is called on, so there is no link.
 
-- **The type of the thing a method is called on is read from that thing's own declaration.** The built-in rules find the declaration by looking the name up in its own scope. Only a class name written as its type, with or without type arguments, or a `new` of that class, is proof. Planned (trustmybot/tmb#364): today the type may be taken from another variable of the same name in the file.
+- **The type of the thing a method is called on is read from that thing's own declaration.** The built-in rules find the declaration by looking the name up in its own scope. Only a class name written as its type, with or without type arguments, or a `new` of that class, is proof.
   - **Example 1.** `const cart: Cart = load()` then `cart.total()`: link to `Cart.total`. `ctx: Context<Env>` then `ctx.text()`: link to `Context.text`.
   - **Example 2.** `(c) => c.text()`, where the type of `c` comes from the call the function is passed to. No type is written, so there is no link. The language's tool links it.
   - **Edge case.** Another function in the file declares `c: Context`. That proves nothing about this `c`.
@@ -895,7 +895,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| A receiver's type is read from its own declaration | trustmybot/tmb#364 |
 | A TypeScript method with no body is a node | trustmybot/tmb#367 |
 | Python overload stubs are no nodes | trustmybot/tmb#368 |
 | Java, Rust, C and C++, each with its tool | trustmybot/tmb#353, #354, #355 |
