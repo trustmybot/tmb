@@ -6,10 +6,10 @@ It has two purposes, and the second stands on the first.
 
 | Purpose | What it means | State |
 |---|---|---|
-| 1. Cover the codebase | An agent understands the code as well as by reading all of it, or better, without reading all of it. A text search returns unrelated hits and misses real ones; the graph returns proven links. So the graph must hold close to 100% of the code's relationships | Built in part; measured in [Benchmark](#benchmark) |
-| 2. Bridge design and code | Design and code drift apart in every real project. The graph ties a design to the code that carries it out, so drift is seen | Open, for the Human. [Concepts](#concepts) and [Areas](#areas) are its first parts |
+| 1. Cover the codebase | An agent still reads code, but only the code that matters. The graph narrows the scope, so a task costs fewer tokens and fits a smaller context. A text search returns unrelated hits and misses real ones; the graph returns proven links. So it must hold close to 100% of the code's relationships | Built in part; measured in [Benchmark](#benchmark) |
+| 2. Bridge design and code | Design and code drift apart in every real project. The graph ties a design to the code that carries it out, so the project's picture stays fresh and drift is seen | Open, for the Human. [Concepts](#concepts) and [Areas](#areas) are its first parts |
 
-- **Example 1.** A worker is about to change `Cart.total`. A text search for "total" returns every use of the word. The graph returns the callers of that one method.
+- **Example 1.** A worker is about to change `Cart.total`. A text search for "total" returns every use of the word. The graph returns the callers of that one method, and the worker reads only those.
 - **Example 2.** A bridge on a graph that misses half the calls would tie a design to half the code. So coverage comes first.
 
 | Reader | Reads it through |
@@ -160,6 +160,11 @@ How two languages write each kind:
 | Field | `items = []` in a class | `tax_rate = 0.08` in a class; `self.owner = owner` in a method |
 | File-level data | `const MAX = 10` | `MAX = 10` |
 
+- **Everything is a node, and the graph judges nothing.** A member is in the graph whether or not anything uses it. Showing it costs almost nothing; deciding which members matter would cost a judgment on every one.
+- **What uses a symbol is read from its links.** A symbol with links from outside its type or file has users there. One with none has none yet.
+  - **Example.** `Cart.total` has callers in three files, so a change to it reaches them. `Cart.recount` is called only inside `Cart`, so a change to it stays there. Both are nodes; the links tell them apart.
+  - **Edge case.** A static method is no different: `Cart.round(x)` may be called from anywhere, and its links show from where.
+- **A member is always inside its type.** A method, a constructor, an accessor and a field are never standalone nodes: each is held by its type and named through it, as `Cart.total`.
 - **Example 1.** A class `Cart` with a method `total` gives two nodes in either language: the type `Cart` and the method `Cart.total`.
 - **Example 2.** Python's `@property def items(self)` is read as `cart.items`, with no call marks. It is an accessor, so it is a method node. The data behind it, `self._items`, is the field.
 - **Example 3.** Planned: `Cart.items` as a field node, so "who reads or writes `Cart.items`" has an answer.
