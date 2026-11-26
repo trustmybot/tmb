@@ -101,8 +101,10 @@ jobs:
           bun tests/lib/pinned-repo.ts hono "$RUNNER_TEMP/pinned/hono"
           bun tests/lib/pinned-repo.ts flask "$RUNNER_TEMP/pinned/flask"
           bun tests/lib/pinned-repo.ts datasette "$RUNNER_TEMP/pinned/datasette"
+          bun tests/lib/pinned-repo.ts gin "$RUNNER_TEMP/pinned/gin"
       - run: bun tests/benchmark/run.ts --check
         env:
           TMB_PINNED_HONO: ${{ runner.temp }}/pinned/hono
           TMB_PINNED_FLASK: ${{ runner.temp }}/pinned/flask
           TMB_PINNED_DATASETTE: ${{ runner.temp }}/pinned/datasette
+          TMB_PINNED_GIN: ${{ runner.temp }}/pinned/gin

@@ -1,12 +1,12 @@
 // The public repos the code graph's tests read, each pinned to one commit: hono for the coverage
 // test (trustmybot/tmb#247) and the link check (trustmybot/tmb#242), so a form of TypeScript tmb's
-// own code does not use is still caught, and flask and datasette for the benchmark's Python
-// (trustmybot/tmb#244).
+// own code does not use is still caught, flask and datasette for the benchmark's Python
+// (trustmybot/tmb#244), and gin for its Go (trustmybot/tmb#352).
 //
 //   bun tests/lib/pinned-repo.ts [folder]          fetch hono at the pinned commit (one shallow fetch)
 //   bun tests/lib/pinned-repo.ts <name> [folder]   fetch the pinned repo of that name
 //
-// A test reads a repo from its variable (TMB_PINNED_HONO, TMB_PINNED_FLASK, TMB_PINNED_DATASETTE)
+// A test reads a repo from its variable (TMB_PINNED_HONO, TMB_PINNED_FLASK, TMB_PINNED_DATASETTE, TMB_PINNED_GIN)
 // when set, else from the cache folder below, and is skipped, saying why, when the variable is
 // unset and the cache folder missing. The tests never use the network: CI fetches the repo in a
 // step before the test runs (.github/workflows/ci.yml).
@@ -38,8 +38,15 @@ export const PINNED_DATASETTE: PinnedRepo = {
   env: "TMB_PINNED_DATASETTE",
 };
 
+export const PINNED_GIN: PinnedRepo = {
+  name: "gin",
+  url: "https://github.com/gin-gonic/gin.git",
+  commit: "73726dc606796a025971fe451f0aa6f1b9b847f6",
+  env: "TMB_PINNED_GIN",
+};
+
 /** Every pinned repo, by name. */
-export const PINNED: Readonly<Record<string, PinnedRepo>> = Object.fromEntries([PINNED_HONO, PINNED_FLASK, PINNED_DATASETTE].map((r) => [r.name, r]));
+export const PINNED: Readonly<Record<string, PinnedRepo>> = Object.fromEntries([PINNED_HONO, PINNED_FLASK, PINNED_DATASETTE, PINNED_GIN].map((r) => [r.name, r]));
 
 /** Where a test looks for the repo: its variable, else the cache folder. */
 export function pinnedFolder(repo: PinnedRepo): string {
