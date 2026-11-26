@@ -204,11 +204,9 @@ const ownName = (qualifiedName: string): string => qualifiedName.slice(qualified
 /**
  * Way B (trustmybot/tmb#311): each language's own tool answers for the calls of its files. A
  * language with no tool, and one whose tool cannot run in this repo, keeps the built-in rules'
- * links, and the note says so. `given` holds a tool module by the tool's id, passed by a caller
- * such as the benchmark; else each tool is the repo's own installed one. Read before the layer
- * is written, so no write waits on the tool.
+ * links, and the note says so. Read before the layer is written, so no write waits on the tool.
  */
-function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>, given: ReadonlyMap<string, unknown>): ToolLinks {
+function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>): ToolLinks {
   const present = new Set(plans.filter((p) => p.extraction !== null && p.lang !== null).map((p) => p.lang as SourceLanguage));
   const tools = new Map<LanguageTool, SourceLanguage[]>();
   for (const language of LANGUAGES) if (language.tool) tools.set(language.tool, [...(tools.get(language.tool) ?? []), language.name]);
@@ -218,7 +216,7 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
   const answers = new Map<number, ToolAnswer>();
   for (const [tool, langs] of tools) {
     if (!langs.some((lang) => present.has(lang))) continue;
-    const opened = tool.open(repoDir, given.get(tool.id));
+    const opened = tool.open(repoDir);
     if ("unavailable" in opened) {
       notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable}), so the built-in rules`);
       continue;
@@ -432,8 +430,6 @@ export type BuildOptions = {
   force?: boolean;
   /** The way to make links, from the repo's `graph_links` setting; the built-in rules by default. */
   links?: LinkWay;
-  /** A tool module by the tool's id, used in place of the repo's own installed one: for tests and the benchmark. */
-  tools?: ReadonlyMap<string, unknown>;
 };
 
 /**
@@ -444,7 +440,7 @@ export type BuildOptions = {
 export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: BuildOptions = {}): Promise<BuildStats> {
   const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
   const links = options.links ?? DEFAULT_LINK_WAY;
-  const byTool = links === LANGUAGE_TOOL ? toolLinks(repoDir, commit, plans, configs, options.tools ?? new Map()) : NO_TOOL_LINKS;
+  const byTool = links === LANGUAGE_TOOL ? toolLinks(repoDir, commit, plans, configs) : NO_TOOL_LINKS;
   const stats = db
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.

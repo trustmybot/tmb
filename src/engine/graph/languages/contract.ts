@@ -264,13 +264,10 @@ export interface ToolInput {
 // by its index in ToolInput.nodes; else outside the repo, or not known.
 export type ToolAnswer = { node: number } | { state: 'outside' | 'not_known' };
 
-// A language's own tool, opened for one repo. tmb installs nothing: `given` is a tool module the
-// caller passes (a test or the benchmark), else the tool is the repo's own installed one, and
-// without a usable one it says why it cannot run.
+// A language's own tool, opened for one repo. tmb installs nothing: a tool tmb carries is always
+// the one used; one that cannot run in the repo says why.
 export interface LanguageTool {
-  // Its key, for a caller that passes the tool's module.
-  id: string;
   // What it is, for a reader.
   name: string;
-  open(repoDir: string, given?: unknown): { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };
+  open(repoDir: string): { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };
 }

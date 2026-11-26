@@ -5,7 +5,7 @@
 import path from "node:path";
 import type TS from "typescript5";
 
-/** A TypeScript compiler module: the 5.9 development dependency, or a repo's own installed one. */
+/** A TypeScript compiler module: the one tmb carries (tool.ts), or the benchmark's reference (links.ts). */
 export type TypeScriptModule = typeof TS;
 
 /** The options of a program that reads every TypeScript and JavaScript file and emits nothing. */
@@ -30,12 +30,19 @@ export type CommitFiles = {
   texts: ReadonlyMap<string, string>;
   /** Whether the project's installed dependencies (a `node_modules` folder) are read from disk. */
   installed: boolean;
+  /**
+   * The compiler's default library files by name, when the program carries them: then they are
+   * read from here, never from the compiler's folder on disk. Without it they are read from disk.
+   */
+  library?: ReadonlyMap<string, string>;
 };
 
-/** Where a file the compiler asks for is read: the commit, the disk, or nowhere. */
-type Place = { from: "commit"; rel: string } | { from: "disk" };
+/** Where a file of the repo or of the disk is read: the commit, or the disk. */
+type RepoPlace = { from: "commit"; rel: string } | { from: "disk" };
+/** Where a file the compiler asks for is read: the commit, the disk, or the library carried. */
+type Place = RepoPlace | { from: "library"; name: string };
 
-function placeOf(root: string, file: string, installed: boolean): Place {
+function placeOf(root: string, file: string, installed: boolean): RepoPlace {
   const prefix = root + path.sep;
   if (file !== root && !file.startsWith(prefix)) return { from: "disk" };
   const rel = path.relative(root, file).split(path.sep).join("/");
@@ -45,29 +52,37 @@ function placeOf(root: string, file: string, installed: boolean): Place {
 }
 
 /**
- * A compiler host that reads the repo's files from the commit, and from disk only what is outside
- * the repo (the compiler's own lib files) or, with `installed`, the project's installed packages.
+ * A compiler host that reads the repo's files from the commit; the compiler's default library from
+ * `library` when it is carried, else from the compiler's folder; and from disk only what is outside
+ * the repo or, with `installed`, the project's installed packages.
  */
 export function commitHost(ts: TypeScriptModule, root: string, files: CommitFiles, options: TS.CompilerOptions): TS.CompilerHost {
   const host = ts.createCompilerHost(options, true);
   const dirs = new Set<string>();
   for (const file of files.texts.keys()) for (let d = path.posix.dirname(file); d !== "."; d = path.posix.dirname(d)) dirs.add(d);
-  const at = (file: string) => placeOf(root, file, files.installed);
+  // The folder the compiler looks in for its default library; with a carried library, a name
+  // there is one of the carried files or nothing.
+  const libraryDir = path.dirname(ts.getDefaultLibFilePath(options));
+  const { library } = files;
+  const at = (file: string): Place => (library !== undefined && path.dirname(file) === libraryDir ? { from: "library", name: path.basename(file) } : placeOf(root, file, files.installed));
+  const textOf = (p: Exclude<Place, { from: "disk" }>): string | undefined => (p.from === "library" ? library?.get(p.name) : files.texts.get(p.rel));
   const { getSourceFile } = host;
   return {
     ...host,
     getCurrentDirectory: () => root,
     fileExists: (file) => {
       const p = at(file);
-      return p.from === "disk" ? ts.sys.fileExists(file) : files.texts.has(p.rel);
+      return p.from === "disk" ? ts.sys.fileExists(file) : textOf(p) !== undefined;
     },
     readFile: (file) => {
       const p = at(file);
-      return p.from === "disk" ? ts.sys.readFile(file) : files.texts.get(p.rel);
+      return p.from === "disk" ? ts.sys.readFile(file) : textOf(p);
     },
     directoryExists: (dir) => {
+      if (library !== undefined && dir === libraryDir) return true;
       const p = at(dir);
       if (p.from === "disk") return ts.sys.directoryExists(dir);
+      if (p.from === "library") return false;
       if (dir === root || dirs.has(p.rel)) return true;
       // The installed packages' folder, which git does not hold.
       return files.installed && path.basename(dir) === INSTALLED_DIR && ts.sys.directoryExists(dir);
@@ -77,7 +92,7 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
     getSourceFile: (file, version, onError) => {
       const p = at(file);
       if (p.from === "disk") return getSourceFile.call(host, file, version, onError);
-      const text = files.texts.get(p.rel);
+      const text = textOf(p);
       return text === undefined ? undefined : ts.createSourceFile(file, text, version, true);
     },
   };

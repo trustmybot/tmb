@@ -10,10 +10,9 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import * as ts5 from "typescript5";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { BASE_LAYER, GRAPH_SCHEMA_VERSION, graphDbPath, layerRow, openGraphDb } from "../src/engine/graph/db.ts";
 import { indexProject, openView } from "../src/engine/graph/fresh.ts";
@@ -24,7 +23,6 @@ import type { Actor, Store } from "../src/engine/store/index.ts";
 setDefaultTimeout(30_000);
 
 const HUMAN: Actor = { kind: "human" };
-const TOOLS = new Map<string, unknown>([["typescript", ts5]]);
 
 let project: string;
 let store: Store | undefined;
@@ -118,7 +116,7 @@ async function bothWays(files: Record<string, string>, untracked: Record<string,
   const sha = commit(files, untracked);
   const db = openGraphDb(project, null);
   await buildLayer(db, project, sha, "a", { force: true });
-  const b = await buildLayer(db, project, sha, "b", { force: true, links: "language-tool", tools: TOOLS });
+  const b = await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
   return { db, a: edges(db, "a"), b: edges(db, "b"), stats: b };
 }
 
@@ -303,7 +301,7 @@ describe("the setting", () => {
     const sha = commit(CART, PADDER);
     const db = openGraphDb(project, null);
     await buildLayer(db, project, sha, "unset", { force: true });
-    const stats = await buildLayer(db, project, sha, "set", { force: true, links: "built-in", tools: TOOLS });
+    const stats = await buildLayer(db, project, sha, "set", { force: true, links: "built-in" });
     expect(edges(db, "set")).toEqual(edges(db, "unset"));
     expect(stats).toMatchObject({ links: "built-in", linksNote: null });
     expect(layerRow(db, "set")).toMatchObject({ links: "built-in", links_note: null });
@@ -328,6 +326,11 @@ describe("the setting", () => {
 });
 
 describe("the compiler tmb uses", () => {
+  // tmb carries the TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"): way B needs no
+  // install, and tmb always uses the compiler it carries, never the repo's own. The repo's installed
+  // packages are still read from its working tree; without them a package call is not known, never
+  // guessed to be outside. Each repo here is indexed the way the program indexes it, with no
+  // compiler passed in.
   async function indexed(setting: "built-in" | "language-tool" | null) {
     const opened = openProjectStore(project, { create: true });
     if (!opened.ok) throw opened.error;
@@ -339,47 +342,84 @@ describe("the compiler tmb uses", () => {
     return view;
   }
 
-  test("with no compiler installed in the repo, the repo is built by the built-in rules, and the answer says why", async () => {
-    commit(CART, PADDER);
-    const view = await indexed("language-tool");
-    expect(view.freshness.links.way).toBe("language-tool");
-    expect(view.freshness.links.note).toContain("cannot run (the repo has no node_modules/typescript, and tmb installs nothing)");
-    expect(new Set(edges(view.db, view.layer).map((r) => r.way))).toEqual(new Set(["built-in"]));
-    view.db.close();
-  });
+  // A repo with a call way A cannot link: a method on a value a function returns.
+  const SHOP = {
+    "lib/basket.ts": ["export class Basket {", "  weigh(): number {", "    return 2;", "  }", "}", "export function fill(): Basket {", "  return new Basket();", "}", ""].join("\n"),
+    "lib/till.ts": [
+      'import { fill } from "./basket";',
+      'import { round } from "rounding";',
+      'import money from "money-kit";',
+      "export function ring(): number {",
+      "  return fill().weigh();",
+      "}",
+      "export function rounded(n: number): number {",
+      "  return round(n);",
+      "}",
+      "export function priced(): string {",
+      "  return money.format(1);",
+      "}",
+      "export function stamp(): string {",
+      "  return new Date(0).toISOString();",
+      "}",
+      "",
+    ].join("\n"),
+  };
 
-  test("a repo's compiler with no program API, such as version 7, is not used", async () => {
-    commit(CART, {
-      ...PADDER,
-      "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "7.0.0", main: "index.js" }),
-      "node_modules/typescript/index.js": "module.exports = { version: '7.0.0' };\n",
-    });
-    const view = await indexed("language-tool");
-    expect(view.freshness.links.note).toContain("node_modules/typescript 7.0.0 has no JavaScript program API");
-    expect(new Set(edges(view.db, view.layer).map((r) => r.way))).toEqual(new Set(["built-in"]));
-    view.db.close();
-  });
-
-  test("a repo's compiler older than 5 is not used", async () => {
-    commit(CART, { "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "4.9.5" }) });
-    const view = await indexed("language-tool");
-    expect(view.freshness.links.note).toContain("is version 4.9.5; way B needs 5 or later");
-    view.db.close();
-  });
-
-  test("the repo's own installed compiler 5 or later makes the links", async () => {
-    commit(CART, PADDER);
-    // The 5.9 development dependency, installed in the fixture as the repo's own compiler.
-    symlinkSync(path.dirname(require.resolve("typescript5/package.json")), path.join(project, "node_modules", "typescript"), "dir");
+  test("with no installed packages and no compiler in the repo, the compiler tmb carries makes the links", async () => {
+    commit(SHOP);
     const view = await indexed("language-tool");
     expect(view.freshness.links).toEqual({ way: "language-tool", note: null });
-    expect(call(edges(view.db, view.layer), "src/use.ts:checkout", "total")).toMatchObject({ dst: "src/cart.ts:Cart.total", way: "language-tool" });
+    const rows = edges(view.db, view.layer);
+    expect(call(rows, "lib/till.ts:ring", "weigh")).toMatchObject({ dst: "lib/basket.ts:Basket.weigh", call_state: "linked", way: "language-tool" });
+    expect(call(rows, "lib/till.ts:ring", "fill")).toMatchObject({ dst: "lib/basket.ts:fill", call_state: "linked", way: "language-tool" });
+    // The language's built-ins come with the compiler tmb carries.
+    expect(call(rows, "lib/till.ts:stamp", "toISOString")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
+    view.db.close();
+  });
+
+  test("the built-in rules cannot link that call", async () => {
+    commit(SHOP);
+    const view = await indexed("built-in");
+    expect(call(edges(view.db, view.layer), "lib/till.ts:ring", "weigh").dst).not.toBe("lib/basket.ts:Basket.weigh");
+    view.db.close();
+  });
+
+  test("without the repo's installed packages, a package call is not known, never guessed to be outside", async () => {
+    commit(SHOP);
+    const view = await indexed("language-tool");
+    const rows = edges(view.db, view.layer);
+    expect(call(rows, "lib/till.ts:rounded", "round")).toMatchObject({ dst: null, call_state: "not_known", way: "language-tool" });
+    expect(call(rows, "lib/till.ts:priced", "format")).toMatchObject({ dst: null, call_state: "not_known", way: "language-tool" });
+    view.db.close();
+  });
+
+  test("the repo's installed packages are read from its working tree: a package call is outside", async () => {
+    commit(SHOP, {
+      "node_modules/rounding/package.json": JSON.stringify({ name: "rounding", version: "1.0.0", types: "index.d.ts" }),
+      "node_modules/rounding/index.d.ts": "export declare function round(n: number): number;\n",
+    });
+    const view = await indexed("language-tool");
+    expect(call(edges(view.db, view.layer), "lib/till.ts:rounded", "round")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
+    view.db.close();
+  });
+
+  test("a typescript package the repo installs is never used, even one that would answer otherwise or fail", async () => {
+    // A repo's own "typescript" that claims the program API at version 5 and throws when asked.
+    commit(SHOP, {
+      "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "5.0.0", main: "index.js" }),
+      "node_modules/typescript/index.js": "module.exports = { version: '5.0.0', createProgram() { throw new Error('the repo\\'s own compiler was used'); } };\n",
+      "node_modules/typescript/lib/lib.es5.d.ts": "declare var NotTheLibrary: number;\n",
+    });
+    const view = await indexed("language-tool");
+    expect(view.freshness.links).toEqual({ way: "language-tool", note: null });
+    const rows = edges(view.db, view.layer);
+    expect(call(rows, "lib/till.ts:ring", "weigh")).toMatchObject({ dst: "lib/basket.ts:Basket.weigh", call_state: "linked", way: "language-tool" });
+    expect(call(rows, "lib/till.ts:stamp", "toISOString")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
     view.db.close();
   });
 
   test("changing the setting rebuilds the layer the new way", async () => {
     commit(CART, PADDER);
-    symlinkSync(path.dirname(require.resolve("typescript5/package.json")), path.join(project, "node_modules", "typescript"), "dir");
     const first = await indexed(null);
     expect(first.freshness.links).toEqual({ way: "built-in", note: null });
     first.db.close();
