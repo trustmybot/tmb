@@ -34,15 +34,17 @@ export type Answer =
 export type CompilerLookup = (file: string, line: number, name: string) => Answer[];
 
 /**
- * One call or construction the compiler finds in a file: the lines the graph may record it on (the
- * callee's and the call's first), the names it may record it by (the callee's, and the name an
- * import under a new name declares it as), and the compiler's answer for the callee.
+ * One call or construction the compiler finds in a file: the line it starts on; its position, as
+ * the graph records it, the offset where the name it calls is written, else where it starts; the
+ * names it may record it by (the callee's, and the name an import under a new name declares it
+ * as); and the compiler's answer for the callee.
  */
 export type CompilerCall = {
   file: string;
   node: ts.CallExpression | ts.NewExpression | ts.TaggedTemplateExpression;
   callee: ts.Identifier | ts.PrivateIdentifier | null;
-  lines: number[];
+  line: number;
+  pos: number;
   names: string[];
   answer: Answer;
 };
@@ -206,12 +208,10 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
     const visit = (node: ts.Node): void => {
       if (isCall(node)) {
         const callee = calleeOf(node);
-        const lines = [lineOf(sf, node.getStart(sf))];
-        if (callee !== null && !lines.includes(lineOf(sf, callee.getStart(sf)))) lines.push(lineOf(sf, callee.getStart(sf)));
         const names = callee === null ? [] : [callee.text];
         const imported = callee === null ? undefined : original.get(callee.text);
         if (imported !== undefined) names.push(imported);
-        out.push({ file, node, callee, lines, names, answer: callee === null ? { kind: "unknown" } : answerOf(callee) });
+        out.push({ file, node, callee, line: lineOf(sf, node.getStart(sf)), pos: (callee ?? node).getStart(sf), names, answer: callee === null ? { kind: "unknown" } : answerOf(callee) });
       }
       ts.forEachChild(node, visit);
     };

@@ -102,6 +102,9 @@ export interface ExtractedEdge {
   // grammar writes one, whatever its callee (trustmybot/tmb#252). Absent on every other reference,
   // such as a function passed as a value or a class a class extends.
   call?: 1;
+  // On a call: its position in the file, which tells two calls of one name on one line apart
+  // (CODE_GRAPH.md, "Two ways to make links"). See CallMark.
+  pos?: number;
   // On a call: where the language's lookup ends for its name, or for the name of the object it is
   // called on, when that is no definition of the repo it could link.
   outside?: Outside;
@@ -119,6 +122,12 @@ export type Outside = { kind: 'builtin'; name: string } | { kind: 'import'; modu
 
 /** What a call edge adds to a reference. */
 export type CallMark = { outside?: Outside };
+
+// A call edge's mark and its position: the offset in the file's text, in UTF-16 code units as the
+// parser reports it, where the name it calls is written, else, when it calls no name, where the
+// call starts. A name is one token, so its place is the same in every parser of the language,
+// whatever each makes of the operators around it, and no two calls share it.
+export type CallAt = CallMark & { pos: number };
 
 // How a name is bound around a reference, the first place the language looks:
 // - function: a function or class declared in a function or block around it,
@@ -172,7 +181,7 @@ export class Collector {
     return this.symbols.length - 1;
   }
 
-  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallMark): void {
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt): void {
     this.edges.push({
       src,
       kind,
@@ -181,7 +190,7 @@ export class Collector {
       hint,
       ...(bound ? { bound } : {}),
       ...(local ? { local } : {}),
-      ...(call ? { call: 1 as const, ...(call.outside ? { outside: call.outside } : {}) } : {}),
+      ...(call ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}) } : {}),
     });
   }
 
@@ -233,11 +242,11 @@ export interface ToolNode {
   end: number;
 }
 
-// A call the graph holds, as the built-in parser found it: its file, the line it starts on and
+// A call the graph holds, as the built-in parser found it: its file, its position (CallAt) and
 // the name it calls.
 export interface ToolCall {
   path: string;
-  line: number;
+  pos: number;
   name: string;
 }
 

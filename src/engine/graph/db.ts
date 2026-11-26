@@ -11,7 +11,7 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { DEFAULT_LINK_WAY, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 7;
+export const GRAPH_SCHEMA_VERSION = 8;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS edges (
   kind       TEXT NOT NULL,
   resolution TEXT NOT NULL CHECK (resolution IN ('exact', 'name', 'unresolved')),
   line       INTEGER,
+  pos        INTEGER,
   hint       TEXT,
   call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known')),
   way        TEXT CHECK (way IN (${WAYS_SQL}))
@@ -165,6 +166,13 @@ CREATE TABLE IF NOT EXISTS misses (
 `;
 
 /**
+ * Schema 8 records each call's position in its file, so two calls of one name on one line are told
+ * apart (trustmybot/tmb#323): the offset where the name it calls is written, else where it starts.
+ * Layers built before it are rebuilt by the newer extractor.
+ */
+const SCHEMA_7_TO_8 = ["ALTER TABLE edges ADD COLUMN pos INTEGER"];
+
+/**
  * Schema 7 records the way that made each link or gave each call its state, and the way each layer
  * was asked to be built by, with why a language was built by the built-in rules instead
  * (trustmybot/tmb#311). Layers built before it are rebuilt by the newer extractor.
@@ -230,6 +238,8 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         if (version >= 1 && version <= 5 && !hasCallState) for (const statement of SCHEMA_5_TO_6) db.run(statement);
         const hasWay = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'way'").get() ?? null) !== null;
         if (version >= 1 && version <= 6 && !hasWay) for (const statement of SCHEMA_6_TO_7) db.run(statement);
+        const hasPos = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'pos'").get() ?? null) !== null;
+        if (version >= 1 && version <= 7 && !hasPos) for (const statement of SCHEMA_7_TO_8) db.run(statement);
         db.run(SCHEMA);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
