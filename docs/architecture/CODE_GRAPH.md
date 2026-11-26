@@ -657,13 +657,16 @@ flowchart LR
 
 | Reason | What it means |
 |---|---|
-| Nothing to install or run | SQLite is inside the tmb program. A graph database is a server to run or one more engine to carry, and tmb runs no background program ([PHILOSOPHY.md](PHILOSOPHY.md#9-gate-the-outcome-never-babysit)) |
+| Many programs open it at once | Several sessions, the dashboard and git's hook read and write the same graph. SQLite lets many programs read while one writes. The embedded graph database tested (Kuzu) and DuckDB let one program hold the file, so every other session had no graph |
+| Nothing to install or run | SQLite is inside the tmb program. A graph database is a server to run, or a native engine to install beside tmb that can be missing or crash, and tmb runs no background program ([PHILOSOPHY.md](PHILOSOPHY.md#9-gate-the-outcome-never-babysit)) |
 | One file per repo | The graph is a cache built from git. It is thrown away and rebuilt as one file, and it works offline |
 | One step per write | A whole layer is applied in one transaction, so a reader sees the old graph or the new one |
 | Search is built in | Search by name uses SQLite's own text index |
 | The same store as the record | One kind of storage to upgrade, check and debug |
 | The questions are short | Almost every question is one step or a few: who calls this, what is in this file. A graph database earns its place on long path queries, which tmb does not ask |
 
+- **Example.** Two sessions work in one repo and a commit lands. Git's hook updates the graph while both sessions keep reading it.
+- **Edge case.** Two programs write at the same moment. The second waits for the first, then writes.
 - **Edge case.** A question that needs many steps over a very large repo would be slower than in a graph database. No such question is asked today.
 
 ### What the file holds
