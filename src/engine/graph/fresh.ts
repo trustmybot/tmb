@@ -9,11 +9,11 @@ import { HandlerError } from "../handlers/errors.ts";
 import { inGitWorkTree, type Repo, repoOfRow, resolveRepo, scanRepos } from "../repos.ts";
 import { graphLinksOf, readSettings } from "../settings.ts";
 import type { Feature, Store } from "../store/index.ts";
-import { buildLayer, type BuildStats, EXTRACTOR_VERSION } from "./build.ts";
-import { BASE_LAYER, dropLayer, featureLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
+import { buildLayer, type BuildStats, EXTRACTOR_VERSION, stillBuiltWith } from "./build.ts";
+import { BASE_LAYER, dropLayer, featureLayer, type LayerRow, layerRow, openGraphDb, taskLayer } from "./db.ts";
 import { baseCommit, resolveCommit } from "./git-source.ts";
 import { layerNotRead } from "./not-read.ts";
-import type { LinkWay } from "./ways.ts";
+import { LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** What a read was answered from, and whether it had to bring the graph forward first. */
 export type Freshness = {
@@ -24,6 +24,11 @@ export type Freshness = {
   broughtForwardFrom: string | null;
   /** True when this read rebuilt the graph because tmb's reader of the code changed (trustmybot/tmb#232). */
   readerChanged: boolean;
+  /**
+   * True when this read rebuilt a way B graph because the language's tool or the installed packages
+   * changed since it was built (trustmybot/tmb#325).
+   */
+  toolChanged: boolean;
   /** Set when the read is for a task: the task's commit, laid on top of the base. */
   task: { id: string; commit: string } | null;
   /** Set when the read is for a feature branch: its name and the tip the read answered from. */
@@ -73,10 +78,12 @@ function currentBaseCommit(projectDir: string, baseBranch: string): string {
   return commit;
 }
 
-function isCurrent(db: Database, layer: string, commit: string, links: LinkWay): boolean {
-  const row = layerRow(db, layer);
-  return row !== null && row.commit_sha === commit && row.extractor === EXTRACTOR_VERSION && row.links === links;
-}
+/**
+ * Whether a way B layer was built with a tool or installed packages that have changed since
+ * (CODE_GRAPH.md: "A way B graph is stale when the tool or the installed packages change"). A
+ * layer built by the built-in rules rests on neither.
+ */
+const toolChangedSince = (row: LayerRow, repoDir: string): boolean => row.links === LANGUAGE_TOOL && !stillBuiltWith(repoDir, row.built_with);
 
 /** Brings one layer to `commit` unless it is there already; returns the commit it held before, or null when current. */
 async function bringForward(
@@ -85,13 +92,16 @@ async function bringForward(
   layer: string,
   commit: string,
   links: LinkWay,
-): Promise<{ from: string | null; readerChanged: boolean; stats: BuildStats | null }> {
-  if (isCurrent(db, layer, commit, links)) return { from: null, readerChanged: false, stats: null };
+): Promise<{ from: string | null; readerChanged: boolean; toolChanged: boolean; stats: BuildStats | null }> {
   const held = layerRow(db, layer);
+  const sameReader = held !== null && held.extractor === EXTRACTOR_VERSION && held.links === links;
+  const toolChanged = sameReader && toolChangedSince(held, projectDir);
+  if (sameReader && held.commit_sha === commit && !toolChanged) return { from: null, readerChanged: false, toolChanged: false, stats: null };
   const stats = await buildLayer(db, projectDir, commit, layer, { links });
-  // A graph at this commit already, built by an older reader, was rebuilt, not brought forward.
-  if (held !== null && held.commit_sha === commit) return { from: null, readerChanged: true, stats };
-  return { from: held?.commit_sha ?? "none", readerChanged: held !== null && held.extractor !== EXTRACTOR_VERSION, stats };
+  // A graph at this commit already, built by an older reader, or the way another setting asks, or
+  // with a tool or packages that changed since, was rebuilt, not brought forward.
+  if (held !== null && held.commit_sha === commit) return { from: null, readerChanged: !sameReader, toolChanged, stats };
+  return { from: held?.commit_sha ?? "none", readerChanged: held !== null && held.extractor !== EXTRACTOR_VERSION, toolChanged, stats };
 }
 
 /** A task's work is laid on the graph while it is open, or in review in truest mode, where the reviewer reads it. */
@@ -178,13 +188,14 @@ export async function openView(projectDir: string, store: Store, options: ViewTa
   const links = graphLinksOf(readSettings(store), repo.name);
   const db = openGraphDb(projectDir, repo.name);
   try {
-    const { from, readerChanged } = await bringForward(db, repo.dir, BASE_LAYER, commit, links);
+    const { from, readerChanged, toolChanged } = await bringForward(db, repo.dir, BASE_LAYER, commit, links);
     dropEndedLayers(db, store);
     const freshness: Freshness = {
       baseBranch,
       commit,
       broughtForwardFrom: from,
       readerChanged,
+      toolChanged,
       task: null,
       feature: null,
       links: { way: links, note: layerRow(db, BASE_LAYER)?.links_note ?? null },

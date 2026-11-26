@@ -30,5 +30,6 @@ When a repo asks for the language's tool, javac makes the links of the calls ([t
 - A call is not known when javac's answer rests on an error (15.12): an error at the call; an argument's or the chosen method's parameter's type javac cannot find (15.12.2); a missing supertype of the type the method is looked up in, or, for a simple name, of a class around the call (15.12.1); an import javac cannot find whose name javac finds as another type (6.4.1); a method found through a static import in a file with a static import javac cannot find; or a class two files declare (7.6).
 - A member the language declares and no file writes, such as an enum's `values` (8.9.3) or a record's accessor (8.10.3), and a creation of an anonymous class, which has no name and no node, are not known.
 - Without `java` on PATH, or with a Java that has no compiler, the built-in rules make the links and the layer's note says why.
+- The layer records what it was built with: `java -version`. javac reads no class path, so no installed package. A read that finds another JDK rebuilds the layer (trustmybot/tmb#325).
 
 The coverage test compares the functions and calls with Java's own parser, javac's, through [java_reference.java](../../../../../tests/benchmark/java_reference.java), and the links with javac, through the adapter.

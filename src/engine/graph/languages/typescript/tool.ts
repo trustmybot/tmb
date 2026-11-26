@@ -21,11 +21,14 @@
 // answer. The program holds the compiler's code and its default library (carried.ts), loaded only
 // when way B builds a graph; a repo's own `typescript` package is never loaded. The repo's files are read from the commit; its installed
 // packages, which git does not hold, from its `node_modules` folder when there is one, and without
-// them a call of a package is not known.
+// them a call of a package is not known. A layer it built records the compiler's version and the
+// packages installed in each `node_modules` folder the compiler looked in; a read that finds either
+// changed rebuilds it (trustmybot/tmb#325).
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type TS from "typescript5";
-import { loadCarried } from "./carried.ts";
-import type { LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
+import { CARRIED_VERSION, loadCarried } from "./carried.ts";
+import type { BuiltWith, LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
 import { calleeOf, type CommitFiles, isBodilessMethod, isCallNode, originalNames, type TypeScriptModule } from "./compiler.ts";
 import { projectsOf } from "./projects.ts";
 
@@ -97,13 +100,13 @@ const lineOf = (sf: TS.SourceFile, pos: number) => sf.getLineAndCharacterOfPosit
 const placeKey = (pos: number, name: string): string => `${pos}\u0000${name}`;
 
 /** The compiler's answers for the graph's calls, one per call, in order. */
-function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput): ToolAnswer[] {
+function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput, readFrom: (places: readonly string[]) => void): ToolAnswer[] {
   const root = path.resolve(repoDir);
   // The programs read the source files and the settings files of the commit, the default library
   // tmb carries, and the installed packages of the working tree. Each file with calls is answered
   // in the program of the project that owns it (projects.ts).
   const texts = new Map<string, string>([...input.configs, ...input.files]);
-  const files: CommitFiles = { texts, installed: true, library, read: input.read };
+  const files: CommitFiles = { texts, installed: true, library, read: input.read, lookedIn: (dir) => readFrom([dir]) };
   const projects = projectsOf(ts, root, files, new Set(input.calls.map((call) => call.path)));
   const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
   const inRepo = (sf: TS.SourceFile) => input.files.has(rel(sf.fileName));
@@ -209,12 +212,48 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
   return input.calls.map((call: ToolCall) => callsOf(call.path).get(placeKey(call.pos, call.name)) ?? NOT_KNOWN);
 }
 
+/** A folder's entries, or none when it cannot be read. */
+function entriesOf(dir: string): string[] {
+  try {
+    return readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The packages installed in one installed packages' folder, each as its name and the version its
+ * own `package.json` gives: a folder of the package's name, a scoped package's under its `@scope`
+ * folder, and nothing whose name starts with a dot, which holds the package manager's own files
+ * (npm's "Folders": node_modules, scoped packages, .bin). A folder that is not there holds none.
+ */
+function installedIn(folder: string): string {
+  const names = entriesOf(folder)
+    .filter((name) => !name.startsWith("."))
+    .flatMap((name) => (name.startsWith("@") ? entriesOf(path.join(folder, name)).map((inner) => `${name}/${inner}`) : [name]));
+  const each = names.map((name) => {
+    let version = "?";
+    try {
+      version = String((JSON.parse(readFileSync(path.join(folder, ...name.split("/"), "package.json"), "utf8")) as { version?: unknown }).version ?? "?");
+    } catch {
+      // A folder with no readable package.json is a package of no version.
+    }
+    return `${name}@${version}`;
+  });
+  return `${folder}: ${each.length === 0 ? "none" : each.join(" ")}`;
+}
+
 /** The TypeScript compiler, way B's tool for TypeScript, TSX and JavaScript. */
 export const typescriptCompiler: LanguageTool = {
   name: "the TypeScript compiler",
   open(repoDir: string) {
     const compiler = carriedCompiler();
     if ("unavailable" in compiler) return compiler;
-    return { answer: (input: ToolInput) => answerCalls(compiler, repoDir, input) };
+    return { answer: (input: ToolInput, _note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(compiler, repoDir, input, readFrom) };
+  },
+  // The compiler is the one tmb carries, so its version is tmb's own; the installed packages are
+  // those of each installed packages' folder the compiler looked in.
+  builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
+    return { tool: CARRIED_VERSION, packages: places.map(installedIn).join("\n") };
   },
 };

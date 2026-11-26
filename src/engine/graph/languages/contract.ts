@@ -300,8 +300,21 @@ export interface LanguageTool {
   // or the language's stubs; absent when it reads none.
   reads?(path: string): boolean;
   open(repoDir: string): OpenedTool | Promise<OpenedTool>;
+  // What its answers rest on beyond the commit (CODE_GRAPH.md: "A way B graph is stale when the
+  // tool or the installed packages change", trustmybot/tmb#325), made again at each read of a layer
+  // it built: a change in either makes the layer stale. `places` are where it read the repo's
+  // installed packages, as its answer gave them (OpenedTool), [] when it did not run. It reads only
+  // what says what is installed, never the packages' code, and runs no code of the repo.
+  builtWith(repoDir: string, places: readonly string[]): BuiltWith;
 }
 
+// What a tool's answers rest on beyond the commit: the tool, as it reports its own version (or why
+// it cannot run), and the repo's installed packages at the places it read them, as one text.
+export type BuiltWith = { tool: string; packages: string };
+
 // A tool that runs may still tell the reader something its answers rest on, such as a setting of
-// the repo it could not follow: `note` adds it to the answer's freshness.
-export type OpenedTool = { answer(input: ToolInput, note: (text: string) => void): ToolAnswer[] } | { unavailable: string };
+// the repo it could not follow: `note` adds it to the answer's freshness. `readFrom` names the
+// places it read the repo's installed packages from, which LanguageTool.builtWith reads again.
+export type OpenedTool =
+  | { answer(input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void): ToolAnswer[] }
+  | { unavailable: string };
