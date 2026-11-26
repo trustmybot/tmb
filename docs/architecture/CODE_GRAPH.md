@@ -271,7 +271,8 @@ flowchart LR
 
 - **The promise is the same for both.** A link is made only on proof. In way B the proof is the compiler's own answer for that name.
 - **The nodes are the same for both.** The built-in parser decides which symbols exist. A way adds links and never adds or removes a node, so the two are compared link by link.
-- **A setting picks the way**, per repo. Every link records the way that made it (trustmybot/tmb#251).
+- **A setting picks the way**, per repo ([CONFIG.md](CONFIG.md)). The default is the built-in rules. Every link records the way that made it.
+- **Way B also gives the call states.** A call is linked only when the tool's declaration is a node of the graph, outside when the declaration is outside the repo, and not known otherwise.
 - **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Other languages read a SCIP index, the open format language indexers write (trustmybot/tmb#156).
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
