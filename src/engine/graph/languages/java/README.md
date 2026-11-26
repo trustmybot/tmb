@@ -20,4 +20,15 @@ The code graph's rules for `.java` files. They are read through tree-sitter's Ja
   - Every other call is not known: a call through a value, a call of a method another file declares or a type inherits, an overload, a static import. Way B, javac, gives these.
 - [builtins.ts](builtins.ts) holds the public types of `java.lang` and, for each kind of type, the members its built-in supertype gives it. [builtins.gen.ts](builtins.gen.ts) writes it from the JDK on PATH, by reflection, and names that Java's release. A test fails when the two differ, and is skipped, saying why, without that Java.
 
-The coverage test compares the functions and calls with Java's own parser, javac's, through [java_reference.java](../../../../../tests/benchmark/java_reference.java).
+## Way B: javac
+
+When a repo asks for the language's tool, javac makes the links of the calls ([tool.ts](tool.ts)). tmb carries a small adapter, [javac_links.java](javac_links.java), that uses only the JDK's compiler API, and runs it with the user's own `java`. It asks javac which declaration each call names; it does not imitate it.
+
+- javac reads the repo's files at the commit. It reads no class path, runs no annotation processor (`-proc:none`) and downloads nothing, so no code of the repo runs, and a call into a library is not known.
+- The source roots are found from each file's package declaration and its path (7.4.1). A module declaration is left out, so every file is read in the unnamed module (7.7.5). The language level is the JDK's own default.
+- A call is linked when javac names a declaration in the repo and one node fits it by place: in its file, of its name, over its lines; when two fit, the one that starts on its first line. A construction, `this(…)` and `super(…)` name the class. A call javac answers from the JDK is outside.
+- A call is not known when javac's answer rests on an error (15.12): an error at the call; an argument's or the chosen method's parameter's type javac cannot find (15.12.2); a missing supertype of the type the method is looked up in, or, for a simple name, of a class around the call (15.12.1); an import javac cannot find whose name javac finds as another type (6.4.1); a method found through a static import in a file with a static import javac cannot find; or a class two files declare (7.6).
+- A member the language declares and no file writes, such as an enum's `values` (8.9.3) or a record's accessor (8.10.3), and a creation of an anonymous class, which has no name and no node, are not known.
+- Without `java` on PATH, or with a Java that has no compiler, the built-in rules make the links and the layer's note says why.
+
+The coverage test compares the functions and calls with Java's own parser, javac's, through [java_reference.java](../../../../../tests/benchmark/java_reference.java), and the links with javac, through the adapter.
