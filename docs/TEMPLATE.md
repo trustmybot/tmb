@@ -39,6 +39,7 @@ The rule in one or two sentences.
 | Rule | Good | Bad |
 |---|---|---|
 | **High to low.** Start with the whole, then the parts, then the edge cases. | Purpose, chart, items, edge cases | Opening with a corner case or the history |
+| **Logic chain.** Sections follow the order of the design itself: each one builds on those before it, and none needs a later one to make sense. | "Idea to goal" first, because the roles and checks that follow exist to serve it | "One owner per check" first, before the reader knows what is being checked |
 | **One item, one rule.** Each section states one rule in one or two sentences. | "What code can check, code checks." | A paragraph that holds four rules |
 | **Show it.** Every rule has at least one concrete example. | "Human: 'Make it faster.' Planner: 'Which page, and how fast is fast enough?'" | "The planner clarifies ambiguous requests." |
 | **Easy first.** Order examples from the common case to the edge case. Two to four are enough; do not cover every edge case. | Example 1, Example 2, Edge case | Ten edge cases, or the edge case first |
@@ -48,6 +49,23 @@ The rule in one or two sentences.
 | **Latest design only.** Rewrite in place. No history, versions or schedule. | "The default is Auto." | "The default was Dark until we changed it." |
 | **Mark what is unbuilt or unsettled.** | "Planned (trustmybot/tmb#305)", "Open, for the Human" | Unbuilt design written as if it exists |
 | **One fact, one place.** State a fact once and link to it. | "Details are in MEMORY.md." | The same rule copied into three pages |
+
+## The logic chain
+
+The order of a page is part of the design. It shows what comes first in the system, what depends on what, and why. The same holds across pages: a folder's reading order follows the chain too.
+
+```mermaid
+flowchart LR
+    W["Why: the purpose"] --> F["What happens first"]
+    F --> N["What that makes necessary"]
+    N --> X["What guards or limits it"]
+```
+
+- **Example 1.** PHILOSOPHY.md starts with "Idea to goal, goal to tasks": all work begins there. "One owner per check" comes later, because checks only make sense once there are tasks to check.
+- **Example 2.** A flow page follows time: install, then onboard, then a task, then review, then push.
+- **Example 3.** A page about a part follows dependency: what the part is, what it holds, who reads it, then how it fails.
+- **Edge case.** Two sections do not depend on each other. Put the one the reader meets first in real use first.
+- **Test.** Read only the headings in order. They should tell the design as a short story. If moving a section changes nothing, the chain is missing.
 
 ## Which block to use
 
@@ -83,6 +101,7 @@ A page is as short as its design allows. Cut words before cutting rules.
 | Check | Pass when |
 |---|---|
 | First screen | The purpose and the chart fit without scrolling |
+| Order | The headings alone, read in order, tell the design |
 | Each section | It has one rule of one or two sentences and at least one example |
 | Wording | No sentence needs a second reading |
 | Terms | Each one matches the glossary |
