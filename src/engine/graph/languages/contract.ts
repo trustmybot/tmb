@@ -102,8 +102,10 @@ export interface ExtractedEdge {
   // grammar writes one, whatever its callee (trustmybot/tmb#252). Absent on every other reference,
   // such as a function passed as a value or a class a class extends.
   call?: 1;
-  // On a call: its position in the file, which tells two calls of one name on one line apart
-  // (CODE_GRAPH.md, "Two ways to make links"). See CallMark.
+  // Where the name it links is written: on a call, its position (CallAt), which tells two calls of
+  // one name on one line apart (CODE_GRAPH.md, "Two ways to make links"); on a use that is no
+  // call, such as a function passed as a value or a parent class, where that name is written, the
+  // same in every parser, so the compiler's answer for that name can be matched to it.
   pos?: number;
   // On a call: where the language's lookup ends for its name, or for the name of the object it is
   // called on, when that is no definition of the repo it could link.
@@ -181,7 +183,8 @@ export class Collector {
     return this.symbols.length - 1;
   }
 
-  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt): void {
+  // `at` is where a use that is no call writes its name; a call's place is in `call`.
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt, at?: number): void {
     this.edges.push({
       src,
       kind,
@@ -190,7 +193,7 @@ export class Collector {
       hint,
       ...(bound ? { bound } : {}),
       ...(local ? { local } : {}),
-      ...(call ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}) } : {}),
+      ...(call ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}) } : at !== undefined ? { pos: at } : {}),
     });
   }
 

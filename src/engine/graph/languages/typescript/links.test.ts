@@ -87,6 +87,12 @@ describe("the graph's links agree with the compiler on a fixture", () => {
     expect(at(8, "render").sort()).toEqual(["a.ts:1", "b.ts:1"]);
   });
 
+  test("a function passed as a value is linked where its name is written", () => {
+    const use = FIXTURE["use.ts"]!;
+    const values = links.filter((l) => l.src === "use.ts" && l.line === 8 && l.name === "render").map((l) => `${l.pos} ${l.dst}`);
+    expect(values.sort()).toEqual([`${use.indexOf("renderA, renderB]")} a.ts`, `${use.indexOf("renderB]")} b.ts`].sort());
+  });
+
   test("an imported name links the function, never a class's method of that name", () => {
     expect(at(7, "make")).toEqual(["factory.ts:4"]);
   });
@@ -127,9 +133,13 @@ describe("the graph's links agree with the compiler on a fixture", () => {
     expect(judge({ ...method, start: 4, end: 4 }, lookup)).toMatchObject({ verdict: "right", reexport: true });
     // A name the line does not hold is not judged.
     expect(judge({ ...method, name: "nothing" }, lookup).verdict).toBe("no reference");
-    // A use that is no call, `renderA` passed as a value, has no position: it is judged on its line.
-    const value: GraphLink = { src: "use.ts", line: 8, pos: null, name: "render", dst: "a.ts", start: 1, end: 3, kind: "calls" };
+    // A use that is no call, `renderA` passed as a value, is judged at its position, where its name
+    // is written: `renderB` beside it on the line does not make a link to b.ts right.
+    const value: GraphLink = { src: "use.ts", line: 8, pos: use.indexOf("renderA, renderB]"), name: "render", dst: "a.ts", start: 1, end: 3, kind: "calls" };
     expect(judge(value, lookup).verdict).toBe("right");
+    expect(judge({ ...value, dst: "b.ts" }, lookup).verdict).toBe("wrong");
+    // With no position, a use is judged on its line, where either declaration is the name's.
+    expect(judge({ ...value, pos: null, dst: "b.ts" }, lookup).verdict).toBe("right");
   });
 
   test("a link into the repo where the compiler names only a declaration outside the repo is wrong", () => {

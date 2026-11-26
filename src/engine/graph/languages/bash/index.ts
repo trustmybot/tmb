@@ -36,7 +36,8 @@ function extractBash(root: Node, out: Collector, moduleSymbol: number): void {
         });
       }
     } else if (t === 'command') {
-      const name = node.childForFieldName('name')?.text;
+      const nameNode = node.childForFieldName('name');
+      const name = nameNode?.text;
       const args = named(node)
         .filter((c) => c.type !== 'command_name')
         .map((c) => stripQuotes(c.text));
@@ -46,7 +47,10 @@ function extractBash(root: Node, out: Collector, moduleSymbol: number): void {
       } else if (name && /\.sh$/.test(name)) out.edge(scope, 'runs', basename(name), line);
       else if ((name === 'bash' || name === 'sh') && args[0] && /\.sh$/.test(args[0])) {
         out.edge(scope, 'runs', basename(args[0]), line);
-      } else if (name && /^[A-Za-z_][\w-]*$/.test(name) && !SH_BUILTINS.has(name)) out.edge(scope, 'calls', name, line);
+      } else if (name && /^[A-Za-z_][\w-]*$/.test(name) && !SH_BUILTINS.has(name)) {
+        // Placed where the command's name is written, as every call is.
+        out.edge(scope, 'calls', name, line, null, undefined, undefined, undefined, nameNode!.startIndex);
+      }
     } else if (t === 'string' || t === 'raw_string' || t === 'heredoc_body') {
       const line = node.startPosition.row + 1;
       for (const [kind, table] of sqlRefs(node.text)) out.edge(scope, kind, table, line);

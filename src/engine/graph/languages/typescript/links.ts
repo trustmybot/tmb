@@ -198,7 +198,11 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
         add(refs.byLine, lineOf(sf, node.getStart(sf)), ref);
         add(refs.byPos, callee.getStart(sf), ref);
       }
-      if (ts.isIdentifier(node)) add(refs.byLine, lineOf(sf, node.getStart(sf)), { name: node.text, node });
+      if (ts.isIdentifier(node)) {
+        const ref = { name: node.text, node };
+        add(refs.byLine, lineOf(sf, node.getStart(sf)), ref);
+        add(refs.byPos, node.getStart(sf), ref);
+      }
       ts.forEachChild(node, visit);
     };
     visit(sf);
@@ -211,8 +215,9 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
     if (a === undefined) answers.set(node, (a = answer(node)));
     return a;
   };
-  // A call: the reference at its position, of its name. A use that is no call: every reference to
-  // the name on the line, as the line does not say which one when it holds several (`[f].map((f) => f())`).
+  // A link with a position, a call or a use that is no call: the reference written there, of its
+  // name. With none: every reference to the name on the line, as the line does not say which one
+  // when it holds several (`[f].map((f) => f())`).
   const lookup: CompilerLookup = (file, at, name) => {
     const refs = refsOf(file);
     const found = at.pos === null ? refs.byLine.get(`${at.line}\u0000${name}`) : refs.byPos.get(`${at.pos}\u0000${name}`);
@@ -258,8 +263,8 @@ export function graphLinks(db: Database, layer = BASE_LAYER): GraphLink[] {
 }
 
 /**
- * The verdict on one link: right when, for the call at the link's position (for a use that is no
- * call, a reference to the name on the link's line), one of the compiler's declarations is in the
+ * The verdict on one link: right when, for the reference at the link's position, where the name
+ * it links is written (for a link with no position, a reference to the name on its line), one of the compiler's declarations is in the
  * link's file and its lines overlap the target's; wrong when the compiler names declarations and
  * none of them is, those outside the repo included, since every link of the graph is into the
  * repo; else not judged, saying why.

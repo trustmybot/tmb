@@ -643,7 +643,8 @@ export function extractTs(file: SourceFile, out: Collector): void {
     const key = `${scope}\u0000${kind}\u0000${dst}\u0000${bound ?? ''}\u0000${hint ?? ''}`;
     if (referenced.has(key)) return;
     referenced.add(key);
-    out.edge(scope, kind, dst, at.startPosition.row + 1, hint, bound);
+    // One edge for the name in the scope, at its first use: its line and where the name is written.
+    out.edge(scope, kind, dst, at.startPosition.row + 1, hint, bound, undefined, undefined, at.startIndex);
   };
   // A file-level declaration's signature: its text up to a function value's body, else its first characters.
   const dataSignature = (decl: Node, bodyStart?: number): string =>
