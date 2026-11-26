@@ -1,14 +1,14 @@
 // The benchmark's measure of a TypeScript and JavaScript repo (trustmybot/tmb#244): each way's graph
 // against the TypeScript compiler, which is the reference for functions and for links. The checks
-// are the graph's own: coverage.ts lists the compiler's functions, links.ts judges each link and
-// each call state; this file only counts.
+// are the graph's own: coverage.ts lists the compiler's functions, links.ts judges a link and each
+// call state; this file hands it every link, in the same file or across files, and counts.
 import type { Database } from "bun:sqlite";
 import ts from "typescript5";
 import type { BuildOptions } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER } from "../../src/engine/graph/db.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { compilerFunctions, coveredLanguage } from "../../src/engine/graph/languages/typescript/coverage.ts";
-import { checkLayer, type CompilerCall, compilerProgram, commitTexts } from "../../src/engine/graph/languages/typescript/links.ts";
+import { checkLayer, type CompilerCall, type CompilerLookup, compilerProgram, commitTexts, type GraphLink, judge } from "../../src/engine/graph/languages/typescript/links.ts";
 import { graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
 import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type Way, type WayScores } from "./score.ts";
 
@@ -158,6 +158,45 @@ function graphCalls(db: Database, files: ReadonlySet<string>): GraphCall[] {
   return rows.filter((r) => files.has(r.file)).map((r) => ({ ...r, start: r.start ?? 0, end: r.end ?? r.start ?? 0 }));
 }
 
+/**
+ * Every link of the layer for a call or a construction, resolved `exact`, between TypeScript or
+ * JavaScript files: in the same file or across files, since every link is judged (CODE_GRAPH.md,
+ * Benchmark).
+ */
+function everyLink(db: Database): GraphLink[] {
+  const rows = db
+    .query(
+      `SELECT s.path AS src, e.line AS line, e.pos AS pos, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end, e.kind AS kind
+         FROM edges e JOIN symbols s ON s.id = e.src_id JOIN symbols d ON d.id = e.dst_id
+        WHERE e.layer = ? AND e.kind IN ('calls', 'instantiates') AND e.resolution = 'exact'`,
+    )
+    .all(BASE_LAYER) as { src: string; line: number; pos: number | null; name: string; dst: string; start: number | null; end: number | null; kind: string }[];
+  return rows.filter((r) => coveredLanguage(r.src) !== null && coveredLanguage(r.dst) !== null).map((r) => ({ ...r, start: r.start ?? 0, end: r.end ?? r.start ?? 0 }));
+}
+
+/** Links right's counts: every link judged, those in the same file apart, and each wrong one with the compiler's answer. */
+export type LinksRight = { links: number; sameFile: number; right: number; wrong: string[]; notJudged: { unknown: number; noReference: number } };
+
+/**
+ * Links right: every link of the graph, in the same file or across files, judged against the
+ * compiler's answer for the call at the link's position, the place where the name it calls is
+ * written (CODE_GRAPH.md, "Two ways to make links"). A link the compiler gives no answer for is
+ * counted and not judged.
+ */
+export function linksRight(db: Database, lookup: CompilerLookup): LinksRight {
+  const links = everyLink(db);
+  const out: LinksRight = { links: links.length, sameFile: 0, right: 0, wrong: [], notJudged: { unknown: 0, noReference: 0 } };
+  for (const link of links) {
+    if (link.src === link.dst) out.sameFile++;
+    const { verdict, compiler } = judge(link, lookup);
+    if (verdict === "right") out.right++;
+    else if (verdict === "wrong") out.wrong.push(`${link.src}:${link.line} ${link.kind} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end}; the compiler: ${compiler}`);
+    else if (verdict === "unknown") out.notJudged.unknown++;
+    else out.notJudged.noReference++;
+  }
+  return out;
+}
+
 /** How many missed calls of each cause the output shows, so a reader can see the kind of code. */
 const EXAMPLES_PER_CAUSE = 3;
 
@@ -184,7 +223,8 @@ export async function measureTypescript(repoDir: string, sha: string, way: Way):
 
     const texts = commitTexts(repoDir, sha);
     const program = compilerProgram(repoDir, sha, texts);
-    const { links, calls } = checkLayer(db, program, texts);
+    const { calls } = checkLayer(db, program, texts);
+    const links = linksRight(db, program.lookup);
 
     // The reference's links: every call in a file the graph read that the compiler declares in the repo.
     const read = new Set([...parsedFiles(db)].filter((f) => scope.has(f) && coveredLanguage(f) !== null));
@@ -208,7 +248,7 @@ export async function measureTypescript(repoDir: string, sha: string, way: Way):
       missesByCause: byReference.misses,
     };
     const detail = [
-      `links right: ${links.links} cross-file links, ${links.right} right, ${links.wrong.length} wrong, not judged ${JSON.stringify(links.notJudged)}`,
+      `links right: ${links.links} links, ${links.sameFile} of them in the same file, ${links.right} right, ${links.wrong.length} wrong, not judged ${JSON.stringify(links.notJudged)}`,
       `calls: ${calls.accounted} of ${calls.compiler} with a state, ${calls.linked} linked, ${calls.outside} outside, ${calls.notKnown} not known; ${calls.differ.length} functions counted otherwise, ${calls.outsideWrong.length} outside calls the compiler declares in the repo`,
       ...links.wrong.map((w) => `wrong link: ${w}`),
       ...examples(byReference.missed),
