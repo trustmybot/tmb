@@ -48,20 +48,18 @@
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10445,
+            "n": 10909,
             "of": 11474
           },
           "linksFoundByReference": {
-            "n": 10445,
+            "n": 10909,
             "of": 10909
           },
           "callsAccountedFor": {
             "n": 30077,
             "of": 30077
           },
-          "missesByCause": {
-            "a name bound by destructuring (`const { f } = …`), called": 464
-          }
+          "missesByCause": {}
         }
       }
     },
@@ -118,11 +116,11 @@
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10694,
+            "n": 10710,
             "of": 37720
           },
           "linksFoundByReference": {
-            "n": 10694,
+            "n": 10710,
             "of": 10714
           },
           "callsAccountedFor": {
@@ -130,7 +128,7 @@
             "of": 45912
           },
           "missesByCause": {
-            "a name bound by destructuring (`const { f } = …`), called": 19,
+            "a name bound by destructuring (`const { f } = …`), called": 3,
             "a construction by a class's name": 1
           }
         }
