@@ -3,6 +3,7 @@
 // not be proven is reported as unresolved, never guessed.
 import type { Database } from "bun:sqlite";
 import { STOPWORDS, splitWords } from "./extract.ts";
+import { SYMBOL_KINDS } from "./languages/contract.ts";
 import type { Actor } from "../store/index.ts";
 import { areasOf } from "./areas.ts";
 import { type Concept, conceptsOn } from "./concepts.ts";
@@ -125,7 +126,7 @@ export function projectMap(db: Database, layer: string, options: { path?: string
     .query("SELECT path, summary, file_count, depth FROM dirs WHERE layer = ? AND (path = ? OR path LIKE ? ESCAPE '\\') AND depth <= ? ORDER BY path")
     .all(layer, root, `${prefix.replace(/[\\%_]/g, "\\$&")}%`, rootRow.depth + depth - 1) as { path: string; summary: string; file_count: number; depth: number }[];
   const fileQuery = db.query(
-    "SELECT f.path, f.lane, f.summary, f.lang, (SELECT count(*) FROM symbols s WHERE s.layer = f.layer AND s.path = f.path AND s.kind <> 'module' AND s.unnamed = 0) AS symbols FROM files f WHERE f.layer = ? AND f.dir = ? ORDER BY f.path",
+    `SELECT f.path, f.lane, f.summary, f.lang, (SELECT count(*) FROM symbols s WHERE s.layer = f.layer AND s.path = f.path AND s.kind <> '${SYMBOL_KINDS.file}' AND s.unnamed = 0) AS symbols FROM files f WHERE f.layer = ? AND f.dir = ? ORDER BY f.path`,
   );
   const dirs: DirNode[] = [];
   let nodes = 0;
@@ -177,7 +178,7 @@ function ftsHits(db: Database, layer: string, words: string[], joiner: "AND" | "
     )
     .all(match, layer, limit) as (SymbolRow & { rank: number })[];
   for (const row of symbols) {
-    if (row.kind === "module") continue;
+    if (row.kind === SYMBOL_KINDS.file) continue;
     out.push({ hit: symbolHit(row), rank: row.rank });
   }
   const files = db
@@ -197,11 +198,11 @@ function ftsHits(db: Database, layer: string, words: string[], joiner: "AND" | "
   return out.sort((a, b) => a.rank - b.rank);
 }
 
-/** Symbols named `name`, by qualified or short name, ignoring case; modules and unnamed functions left out. */
+/** Symbols named `name`, by qualified or short name, ignoring case; files and unnamed functions left out. */
 export function symbolsNamed(db: Database, layer: string, name: string, path?: string): SymbolRow[] {
   const rows = db
     .query(
-      `SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.kind <> 'module' AND s.unnamed = 0
+      `SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.kind <> '${SYMBOL_KINDS.file}' AND s.unnamed = 0
          AND (s.qualified_name = ? COLLATE NOCASE OR s.name = ? COLLATE NOCASE)
        ORDER BY s.qualified_name = ? DESC, s.name = ? DESC, s.exported DESC, s.path`,
     )
@@ -210,7 +211,7 @@ export function symbolsNamed(db: Database, layer: string, name: string, path?: s
 }
 
 function moduleOf(db: Database, layer: string, path: string): SymbolRow | null {
-  return db.query(`SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.path = ? AND s.kind = 'module'`).get(layer, path) as SymbolRow | null;
+  return db.query(`SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.path = ? AND s.kind = '${SYMBOL_KINDS.file}'`).get(layer, path) as SymbolRow | null;
 }
 
 function fileRow(db: Database, layer: string, path: string): { path: string; summary: string; lane: string } | null {
@@ -298,7 +299,7 @@ function isTestFile(db: Database, layer: string, path: string): boolean {
 }
 
 export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolCard {
-  const isModule = row.kind === "module";
+  const isModule = row.kind === SYMBOL_KINDS.file;
   const targetIds = isModule ? (db.query("SELECT id FROM symbols WHERE layer = ? AND path = ?").all(layer, row.path) as { id: number }[]).map((r) => r.id) : [row.id];
   const callers = refsInto(db, isModule ? [row.id] : targetIds, CALL_EDGES).filter((r) => !targetIds.includes(r.id) || !isModule);
   const importers = refsInto(db, targetIds, ["imports"]).filter((r) => r.path !== row.path);
@@ -327,7 +328,7 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
   const tests = new Set<string>();
   const direct = [...callers, ...importers];
   for (const ref of direct) if (isTestFile(db, layer, ref.path)) tests.add(ref.path);
-  const productCallers = direct.filter((ref) => !isTestFile(db, layer, ref.path) && ref.kind !== "module").map((ref) => ref.id);
+  const productCallers = direct.filter((ref) => !isTestFile(db, layer, ref.path) && ref.kind !== SYMBOL_KINDS.file).map((ref) => ref.id);
   for (const ref of refsInto(db, productCallers, [...CALL_EDGES, "imports"])) if (isTestFile(db, layer, ref.path)) tests.add(ref.path);
 
   const unresolvedRows = isModule
@@ -418,7 +419,7 @@ export function scope(db: Database, layer: string, input: { objective: string; a
   };
   const widen = (row: SymbolRow) => {
     const card = symbolCard(db, layer, row);
-    const label = row.kind === "module" ? row.path : row.qualified_name;
+    const label = row.kind === SYMBOL_KINDS.file ? row.path : row.qualified_name;
     for (const ref of card.callers) add(ref.path, `caller:${label}`);
     for (const ref of card.importers) add(ref.path, `import:${label}`);
     for (const test of card.tests) add(test, `test:${label}`);

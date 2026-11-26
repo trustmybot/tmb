@@ -202,7 +202,7 @@ describe("a small project", () => {
       expect(view.callers.map(({ id: _id, ...ref }) => ref)).toEqual(card.callers);
       expect(view.callees.map((c) => c.qualifiedName)).toEqual(card.callees.filter((c) => c.target !== null).map((c) => c.target!.qualifiedName));
       // Each proven caller and callee in a function opens by its id.
-      for (const ref of [...view.callers, ...view.callees]) if (ref.kind !== "module") expect(ref.id).not.toBeNull();
+      for (const ref of [...view.callers, ...view.callees]) if (ref.kind !== "file") expect(ref.id).not.toBeNull();
     }
     const applyDiscount = db.query("SELECT id FROM symbols WHERE layer = ? AND qualified_name = 'applyDiscount'").get(layer) as { id: number };
     // Called from inside an unnamed callback: reported from the nearest named function, as the lookup does.
@@ -241,7 +241,7 @@ describe("a small project", () => {
     expect(tree(db, layer, "nope")).toBeNull();
     expect(file(db, layer, "src/nope.ts")).toBeNull();
     expect(functionView(db, layer, 999_999)).toBeNull();
-    const module = db.query("SELECT id FROM symbols WHERE layer = ? AND kind = 'module' LIMIT 1").get(layer) as { id: number };
+    const module = db.query("SELECT id FROM symbols WHERE layer = ? AND kind = 'file' LIMIT 1").get(layer) as { id: number };
     expect(functionView(db, layer, module.id)).toBeNull();
   });
 });

@@ -145,7 +145,7 @@ function symbols(db: Database, layer: string): SymbolRow[] {
     .query(
       `SELECT s.path, s.kind, s.qualified_name, s.start_line, s.end_line, p.qualified_name AS parent, s.unnamed, s.doc, s.exported
          FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id
-        WHERE s.layer = ? AND s.kind != 'module'`,
+        WHERE s.layer = ? AND s.kind != 'file'`,
     )
     .all(layer) as SymbolRow[];
 }
@@ -198,7 +198,7 @@ describe("nodes", () => {
         { kind: "type", qualified_name: "kitchen", start_line: 7, end_line: 61, parent: file },
         // A class head has one class name ([class.pre]): a macro written before it, as an export
         // macro, leaves the class its own name.
-        { kind: "class", qualified_name: "kitchen.Burner", start_line: 9, end_line: 29, parent: "kitchen" },
+        { kind: "type", qualified_name: "kitchen.Burner", start_line: 9, end_line: 29, parent: "kitchen" },
         // A pure virtual function is a method with only a declaration, and a node ([class.abstract]).
         { kind: "method", qualified_name: "kitchen.Burner.Level", start_line: 14, end_line: 14, parent: "kitchen.Burner" },
         { kind: "method", qualified_name: "kitchen.Burner.Boost", start_line: 15, end_line: 15, parent: "kitchen.Burner" },
@@ -207,7 +207,7 @@ describe("nodes", () => {
         { kind: "method", qualified_name: "kitchen.Burner.operator=", start_line: 18, end_line: 18, parent: "kitchen.Burner" },
         { kind: "method", qualified_name: "kitchen.Burner.Mix", start_line: 21, end_line: 21, parent: "kitchen.Burner" },
         { kind: "method", qualified_name: "kitchen.Burner.Clean", start_line: 23, end_line: 23, parent: "kitchen.Burner" },
-        { kind: "class", qualified_name: "kitchen.Burner.Flame", start_line: 25, end_line: 25, parent: "kitchen.Burner" },
+        { kind: "type", qualified_name: "kitchen.Burner.Flame", start_line: 25, end_line: 25, parent: "kitchen.Burner" },
         { kind: "method", qualified_name: "kitchen.Burner.Light", start_line: 26, end_line: 26, parent: "kitchen.Burner" },
         { kind: "method", qualified_name: "kitchen.Burner.Copy", start_line: 27, end_line: 27, parent: "kitchen.Burner" },
         // A member defined outside its class is named through it and held by it when the file defines the class.
@@ -224,7 +224,7 @@ describe("nodes", () => {
         // A member of a class the file does not define is held by the file (CODE_GRAPH.md, "Kinds of symbol", edge case 3).
         { kind: "method", qualified_name: "Pot.Fill", start_line: 63, end_line: 63, parent: file },
         // A variable of the global namespace is file-level data.
-        { kind: "const", qualified_name: "counter", start_line: 65, end_line: 65, parent: file },
+        { kind: "file_level_data", qualified_name: "counter", start_line: 65, end_line: 65, parent: file },
         // A nested namespace definition names each namespace it opens ([namespace.def]).
         { kind: "type", qualified_name: "kitchen.tools", start_line: 67, end_line: 70, parent: file },
         { kind: "function", qualified_name: "kitchen.tools.Sharpen", start_line: 69, end_line: 69, parent: "kitchen.tools" },
@@ -239,7 +239,7 @@ describe("nodes", () => {
       expect(header.map(({ kind, qualified_name }) => ({ kind, qualified_name }))).toEqual(
         expect.arrayContaining([
           { kind: "type", qualified_name: "kitchen" },
-          { kind: "class", qualified_name: "kitchen.Part" },
+          { kind: "type", qualified_name: "kitchen.Part" },
           { kind: "method", qualified_name: "kitchen.Part.Wipe" },
         ]),
       );
@@ -459,8 +459,8 @@ describe("macros around a head", () => {
       expect(rows.map(({ kind, qualified_name, start_line, end_line, parent }) => ({ kind, qualified_name, start_line, end_line, parent }))).toEqual(
         expect.arrayContaining([
           { kind: "type", qualified_name: "garden", start_line: 1, end_line: 17, parent: file },
-          { kind: "class", qualified_name: "garden.Shed", start_line: 2, end_line: 13, parent: "garden" },
-          { kind: "class", qualified_name: "garden.Shed.Rack", start_line: 4, end_line: 8, parent: "garden.Shed" },
+          { kind: "type", qualified_name: "garden.Shed", start_line: 2, end_line: 13, parent: "garden" },
+          { kind: "type", qualified_name: "garden.Shed.Rack", start_line: 4, end_line: 8, parent: "garden.Shed" },
           { kind: "method", qualified_name: "garden.Shed.Rack.Hang", start_line: 7, end_line: 7, parent: "garden.Shed.Rack" },
           { kind: "method", qualified_name: "garden.Shed.Count", start_line: 9, end_line: 12, parent: "garden.Shed" },
           { kind: "function", qualified_name: "garden.Total", start_line: 14, end_line: 16, parent: "garden" },

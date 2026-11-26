@@ -4,13 +4,13 @@ The code graph's rules for the files GitHub Linguist's list and rules call Rust 
 
 ## What it reads
 
-- Structs, enums, unions and type aliases are type nodes; a trait is an interface node. A module written with a body, `mod m { … }`, is a type node too: a type-like container whose items are named through it, `m.f`, and held by it. `mod m;` names another file and is no node.
+- Structs, enums, unions and type aliases are type nodes, and so is a trait. A module written with a body, `mod m { … }`, is a type node too: a type-like container whose items are named through it, `m.f`, and held by it. `mod m;` names another file and is no node.
 - A function item is a function node. A function in a function's body is local to its block: named by its own name and held by the function around it.
 - An implementation is no node. Its functions are method nodes of the type it is for, `T.f`, an implementation of a trait for a type included. They are held by that type's node when the scope the implementation is written in declares the type; otherwise they are held by the file and named by the type's last path segment.
 - A trait's functions are method nodes named through the trait, `Tr.f`, the ones with no body included.
 - A function of an `extern` block is a declaration whose code is elsewhere: no node.
 - A closure is an unnamed function, inside the node around it.
-- A `const` or a `static` at a file's top level is file-level data, a const node. One in a module, an implementation or a trait is a field, which is not yet a node; one in a block is a local.
+- A `const` or a `static` at a file's top level is a file-level data node. One in a module, an implementation or a trait is a field, which is not yet a node; one in a block is a local.
 - Fields, enum variants, `use` declarations, `macro_rules!` macros and derives are no nodes.
 - A node starts at its first outer attribute or doc comment, across plain comments and blank lines. Its doc is the comments right above it, attributes skipped. It is exported when it is `pub`; a trait's function follows its trait.
 - Calls are call expressions and method calls. A call's position is at the name it calls: the last segment of a path, or a method's name. A call is in the innermost function or closure around it. In a file-level constant's value it is in the constant; in an associated constant's value, in the type. A macro's input is tokens to the parser, nested groups included: a name there (a word that is no strict or reserved keyword, [keywords.ts](keywords.ts): `default` is a name) followed by a group in parentheses is written as a call, in the function around the macro, and only the tool says whether it is one. Way A has no tool to ask: it keeps each such name as a call that is not known, with no link, a tuple struct's or a variant's included. [Way B](#way-b-rust-analyzer) asks rust-analyzer. A `macro_rules!` body and an attribute are no macro's input.

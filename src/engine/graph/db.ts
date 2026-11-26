@@ -8,10 +8,11 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
+import { SYMBOL_KINDS, type SymbolKind } from "./languages/contract.ts";
 import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 9;
+export const GRAPH_SCHEMA_VERSION = 10;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -167,6 +168,22 @@ CREATE TABLE IF NOT EXISTS misses (
 `;
 
 /**
+ * Schema 10 stores the kinds of symbol as one set for every language (CODE_GRAPH.md, "Kinds of
+ * symbol"; trustmybot/tmb#314). The kinds a graph stored before it, each rewritten to the kind of
+ * the set it now is: a file's own row, a class, an interface, file-level data and a shell function.
+ * Every layer was built by an older extractor, so the next read rebuilds it; until then its rows
+ * answer in the new kinds.
+ */
+const KINDS_BEFORE_SCHEMA_10: Readonly<Record<string, SymbolKind>> = {
+  module: SYMBOL_KINDS.file,
+  class: SYMBOL_KINDS.type,
+  interface: SYMBOL_KINDS.type,
+  const: SYMBOL_KINDS.fileData,
+  sh_function: SYMBOL_KINDS.function,
+};
+const SCHEMA_9_TO_10 = Object.entries(KINDS_BEFORE_SCHEMA_10).map(([before, now]) => `UPDATE symbols SET kind = '${now}' WHERE kind = '${before}'`);
+
+/**
  * Schema 9 records what each way B layer was built with: each tool's version and the installed
  * packages it read (trustmybot/tmb#325). A way B layer built before it records nothing, so it is
  * stale and the next read rebuilds it; a layer built by the built-in rules rests on neither.
@@ -252,6 +269,8 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         const hasBuiltWith = (db.query("SELECT 1 FROM pragma_table_info('layers') WHERE name = 'built_with'").get() ?? null) !== null;
         if (version >= 1 && version <= 8 && !hasBuiltWith) for (const statement of SCHEMA_8_TO_9) db.run(statement);
         db.run(SCHEMA);
+        // After the tables are made: a graph of schema 1 to 9 may hold no symbols table yet.
+        if (version >= 1 && version <= 9) for (const statement of SCHEMA_9_TO_10) db.run(statement);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();

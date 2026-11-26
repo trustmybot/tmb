@@ -108,7 +108,7 @@ type Place = { name: string; start: number; end: number };
 /** The graph's named nodes, by file: each one's own name and lines. */
 function namedNodes(db: Database): Map<string, Place[]> {
   const rows = db
-    .query("SELECT path, qualified_name AS qualified, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND kind != 'module' AND unnamed = 0")
+    .query("SELECT path, qualified_name AS qualified, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND kind != 'file' AND unnamed = 0")
     .all(BASE_LAYER) as { path: string; qualified: string; start: number; end: number }[];
   const out = new Map<string, Place[]>();
   for (const r of rows) out.set(r.path, [...(out.get(r.path) ?? []), { name: ownName(r.qualified), start: r.start, end: r.end }]);

@@ -150,7 +150,7 @@ function symbols(db: Database, layer: string): SymbolRow[] {
     .query(
       `SELECT s.path, s.kind, s.qualified_name, s.start_line, s.end_line, p.qualified_name AS parent, s.unnamed, o.qualified_name AS owner, s.doc, s.exported
          FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id LEFT JOIN symbols o ON o.id = s.named_id
-        WHERE s.layer = ? AND s.kind != 'module'`,
+        WHERE s.layer = ? AND s.kind != 'file'`,
     )
     .all(layer) as SymbolRow[];
 }
@@ -208,7 +208,7 @@ describe("nodes", () => {
           // A type declaration: a struct is a named shape; a lone declaration starts at `type`.
           { kind: "type", qualified_name: "Shelf", start_line: 6, end_line: 8, parent: file },
           // An interface type, and each of its method specs: a method declared in a type, with no body.
-          { kind: "interface", qualified_name: "Labeler", start_line: 11, end_line: 14, parent: file },
+          { kind: "type", qualified_name: "Labeler", start_line: 11, end_line: 14, parent: file },
           { kind: "method", qualified_name: "Labeler.Label", start_line: 12, end_line: 12, parent: "Labeler" },
           { kind: "method", qualified_name: "Labeler.Width", start_line: 13, end_line: 13, parent: "Labeler" },
           // An alias declaration is a type declaration too.
@@ -216,10 +216,10 @@ describe("nodes", () => {
           // A function written as the value of a file-level name is one callable node, from where the declaration starts.
           { kind: "function", qualified_name: "opener", start_line: 18, end_line: 18, parent: file },
           // Each name a file-level declaration binds is file-level data.
-          { kind: "const", qualified_name: "top", start_line: 20, end_line: 20, parent: file },
-          { kind: "const", qualified_name: "bottom", start_line: 20, end_line: 20, parent: file },
-          { kind: "const", qualified_name: "depth", start_line: 22, end_line: 22, parent: file },
-          { kind: "const", qualified_name: "Grams", start_line: 26, end_line: 26, parent: file },
+          { kind: "file_level_data", qualified_name: "top", start_line: 20, end_line: 20, parent: file },
+          { kind: "file_level_data", qualified_name: "bottom", start_line: 20, end_line: 20, parent: file },
+          { kind: "file_level_data", qualified_name: "depth", start_line: 22, end_line: 22, parent: file },
+          { kind: "file_level_data", qualified_name: "Grams", start_line: 26, end_line: 26, parent: file },
           { kind: "function", qualified_name: "weigh", start_line: 28, end_line: 30, parent: file },
           { kind: "function", qualified_name: "level", start_line: 32, end_line: 32, parent: file },
           // A method is named through its receiver's base type, a pointer or a generic one included, and held by it.

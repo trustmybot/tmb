@@ -148,7 +148,7 @@ function symbols(db: Database, layer: string): SymbolRow[] {
     .query(
       `SELECT s.path, s.kind, s.qualified_name, s.start_line, s.end_line, p.qualified_name AS parent, s.unnamed, s.doc, s.exported
          FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id
-        WHERE s.layer = ? AND s.kind != 'module'`,
+        WHERE s.layer = ? AND s.kind != 'file'`,
     )
     .all(layer) as SymbolRow[];
 }
@@ -218,9 +218,9 @@ describe("nodes", () => {
         { kind: "type", qualified_name: "row", start_line: 12, end_line: 14, parent: file },
         { kind: "type", qualified_name: "lid", start_line: 16, end_line: 16, parent: file },
         // A variable declared at file scope is file-level data (6.9.2), one node per name.
-        { kind: "const", qualified_name: "capacity", start_line: 18, end_line: 18, parent: file },
-        { kind: "const", qualified_name: "filled", start_line: 19, end_line: 19, parent: file },
-        { kind: "const", qualified_name: "spare", start_line: 19, end_line: 19, parent: file },
+        { kind: "file_level_data", qualified_name: "capacity", start_line: 18, end_line: 18, parent: file },
+        { kind: "file_level_data", qualified_name: "filled", start_line: 19, end_line: 19, parent: file },
+        { kind: "file_level_data", qualified_name: "spare", start_line: 19, end_line: 19, parent: file },
         // A function definition is a function (6.9.1); its prototype on line 21 is no node.
         { kind: "function", qualified_name: "count_jars", start_line: 24, end_line: 26, parent: file },
         { kind: "function", qualified_name: "helper", start_line: 28, end_line: 28, parent: file },

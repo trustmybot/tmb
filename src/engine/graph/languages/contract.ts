@@ -3,19 +3,28 @@
 // and the dashboard know only this contract, never a language's own rules.
 import type { Node, Parser, Tree } from 'web-tree-sitter';
 
-export type SymbolKind =
-  | 'function'
-  | 'method'
-  | 'class'
-  | 'interface'
-  | 'type'
-  | 'const'
-  | 'sh_function'
-  | 'sql_trigger'
-  | 'data_source'
-  | 'module'
-  | 'hook'
-  | 'runner';
+/**
+ * The kinds of symbol, one set for every language (CODE_GRAPH.md, "Kinds of symbol"): each language
+ * module maps its own syntax to them, so no kind is one language's word. A constructor and an
+ * accessor are methods; an unnamed function is a function or a method marked `unnamed`. A data
+ * source is the engine's own, made from the links that reach one.
+ */
+export const SYMBOL_KINDS = {
+  file: 'file',
+  type: 'type',
+  function: 'function',
+  method: 'method',
+  fileData: 'file_level_data',
+  dataSource: 'data_source',
+} as const;
+
+/**
+ * A trigger written in SQL (CODE_GRAPH.md, "Data sources": code that runs in the store, a node where
+ * it is written). The page gives it no kind of the common set yet, so it keeps its own.
+ */
+export const SQL_TRIGGER = 'sql_trigger';
+
+export type SymbolKind = (typeof SYMBOL_KINDS)[keyof typeof SYMBOL_KINDS] | typeof SQL_TRIGGER;
 
 export type EdgeKind =
   | 'calls'
@@ -47,7 +56,7 @@ export interface ExtractedSymbol {
   // on every other kind and language.
   params_json?: string;
   // What contains it, as an index into Extraction.symbols: a function, a class
-  // or the file. Absent only on the file's own 'module' row.
+  // or the file. Absent only on the file's own 'file' row.
   parent?: number;
   // 1 on a function with no name of its own. Its owner is the nearest named
   // symbol around it, which agents' lookups name in its place.
@@ -57,6 +66,12 @@ export interface ExtractedSymbol {
   // function, 'member' when bound as an object's key or an assignment's target,
   // which no bare call names. Absent on a declaration of the file or a class.
   reach?: 'nested' | 'member';
+  // 1 on a type its language's own definition calls a class: a type whose objects are made from it
+  // (a TypeScript or Python class; a Java class, enum class or record class; a C++ class, struct or
+  // union). The built-in rules link a construction of its name to it, read its name written as a
+  // receiver's type as proof, and look a method up through its parents ("Links on proof"). Absent
+  // on any other type, such as an interface, a trait or a C struct, and on every other kind.
+  makesObjects?: 1;
   // A class's bases by the names its file gives them (`extends B`, `class C(B)`), which the
   // resolver looks up as the file binds them, an import under a new name included; '' for a
   // base that is no plain name, such as `extends mixin(B)`. Absent when it has none, and on

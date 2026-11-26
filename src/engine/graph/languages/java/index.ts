@@ -5,7 +5,7 @@
 // it reads. Way A links only what those rules prove inside one file; the rest is the tool's.
 import javaWasm from 'tree-sitter-java/tree-sitter-java.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
-import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
+import { type CallMark, type Collector, type LanguageModule, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { docOf, memberHint, named, normalizedHash, signatureOf, syntaxTree } from '../kit.ts';
 import { INHERITED, JAVA_LANG_TYPES } from './builtins.ts';
 import { javacTool } from './tool.ts';
@@ -22,8 +22,8 @@ const TYPE_DECLARATIONS: ReadonlyMap<string, string> = new Map([
   ['annotation_type_declaration', 'annotation'],
 ]);
 
-/** The node kind of each kind of type declaration: an enum and a record are classes, an annotation interface an interface. */
-const TYPE_NODE_KIND: Readonly<Record<string, SymbolKind>> = { class: 'class', enum: 'class', record: 'class', interface: 'interface', annotation: 'interface' };
+/** The kinds of type declaration that are classes (8.1, 8.9, 8.10): an enum and a record are classes; an interface and an annotation interface are not (9.1, 9.6). */
+const CLASS_KINDS: ReadonlySet<string> = new Set(['class', 'enum', 'record']);
 
 /** A method (8.4, 9.4), a constructor (8.8), a compact constructor (8.10.4) and an annotation interface element (9.6.1): each a method node. */
 const CALLABLES: ReadonlySet<string> = new Set(['method_declaration', 'constructor_declaration', 'compact_constructor_declaration', 'annotation_type_element_declaration']);
@@ -235,10 +235,11 @@ function extractJava(root: Node, src: string, out: Collector, moduleSymbol: numb
         const holder = place.kind === 'member' ? types.get(place.type.id) : undefined;
         const symbol =
           holder !== undefined
-            ? symbolOf(TYPE_NODE_KIND[declKind]!, `${holder.name}.${own}`, node, holder.symbol, exportedDecl(node))
+            ? symbolOf(SYMBOL_KINDS.type, `${holder.name}.${own}`, node, holder.symbol, exportedDecl(node))
             : place.kind === 'top'
-              ? symbolOf(TYPE_NODE_KIND[declKind]!, own, node, moduleSymbol, exportedDecl(node))
-              : symbolOf(TYPE_NODE_KIND[declKind]!, own, node, container, exportedDecl(node), 'nested');
+              ? symbolOf(SYMBOL_KINDS.type, own, node, moduleSymbol, exportedDecl(node))
+              : symbolOf(SYMBOL_KINDS.type, own, node, container, exportedDecl(node), 'nested');
+        if (CLASS_KINDS.has(declKind)) out.symbols[symbol]!.makesObjects = 1;
         const decl: TypeDecl = { node, kind: declKind, name: holder !== undefined ? `${holder.name}.${own}` : own, symbol, outer: type };
         types.set(node.id, decl);
         inner = innerContainer = innerOwner = symbol;

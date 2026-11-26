@@ -104,7 +104,7 @@ describe("indexing and lookups", () => {
         .query("SELECT s.unnamed, p.qualified_name AS parent, n.qualified_name AS named FROM symbols s JOIN symbols p ON p.id = s.parent_id JOIN symbols n ON n.id = s.named_id WHERE s.layer = ? AND s.qualified_name = 'callback of `map`'")
         .get(view.layer);
       expect(callback).toEqual({ unnamed: 1, parent: "cartTotal", named: "cartTotal" });
-      const orphans = view.db.query("SELECT count(*) AS n FROM symbols WHERE layer = ? AND kind <> 'module' AND parent_id IS NULL").get(view.layer);
+      const orphans = view.db.query("SELECT count(*) AS n FROM symbols WHERE layer = ? AND kind <> 'file' AND parent_id IS NULL").get(view.layer);
       expect(orphans).toEqual({ n: 0 });
     } finally {
       view.db.close();

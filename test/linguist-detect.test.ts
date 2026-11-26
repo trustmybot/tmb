@@ -234,7 +234,7 @@ describe("indexing a project", () => {
     const view = await openView(project, store);
     try {
       const rows = view.db.query("SELECT path, lang FROM files WHERE layer = ?").all(view.layer) as { path: string; lang: string | null }[];
-      const counts = view.db.query("SELECT path, COUNT(*) AS n FROM symbols WHERE layer = ? AND kind != 'module' GROUP BY path").all(view.layer) as { path: string; n: number }[];
+      const counts = view.db.query("SELECT path, COUNT(*) AS n FROM symbols WHERE layer = ? AND kind != 'file' GROUP BY path").all(view.layer) as { path: string; n: number }[];
       return { langs: Object.fromEntries(rows.map((r) => [r.path, r.lang])), symbols: Object.fromEntries(counts.map((c) => [c.path, c.n])), notRead: stats.notRead.languages };
     } finally {
       view.db.close();

@@ -2,7 +2,7 @@
 // registry names for it (trustmybot/tmb#157). This file holds no language's rules: those are in
 // languages/, one folder per language.
 import { basename } from 'node:path';
-import { Collector, type Extraction, type LanguageModule, type SourceLanguage, type SymbolKind } from './languages/contract.ts';
+import { Collector, type Extraction, type LanguageModule, type SourceLanguage, SYMBOL_KINDS, type SymbolKind } from './languages/contract.ts';
 import { clip, DOC_MAX, md5, splitWords, STOPWORDS } from './languages/kit.ts';
 import { attributeFlag, type Attributes } from '../linguist/gitattributes.ts';
 import { linguist } from '../linguist/index.ts';
@@ -23,6 +23,7 @@ export type {
   SourceLanguage,
   SymbolKind,
 } from './languages/contract.ts';
+export { SQL_TRIGGER, SYMBOL_KINDS } from './languages/contract.ts';
 export { clip, DOC_MAX, isBannerLine, isRuleLine, md5, oneLine, splitWords, STOPWORDS } from './languages/kit.ts';
 
 // What the graph leaves out by path, each rule named so the index can count it
@@ -103,7 +104,7 @@ export function needsParser(lang: SourceLanguage): boolean {
 
 // The split-name text wm_symbols_fts indexes for a symbol.
 export function symbolTerms(kind: SymbolKind, qualifiedName: string, relPath: string): string {
-  return `${splitWords(qualifiedName)} ${kind.replace('_', ' ')} ${splitWords(basename(relPath))}`;
+  return `${splitWords(qualifiedName)} ${kind.replaceAll('_', ' ')} ${splitWords(basename(relPath))}`;
 }
 
 // The distinct non-stopword words of a body, for callers that rank on them.
@@ -126,14 +127,14 @@ function moduleDoc(comment: 'hash' | 'slash', src: string): string {
   return clip(out.join(' '), DOC_MAX);
 }
 
-// Every symbol of one file, the per-file 'module' row first, and the references each one
+// Every symbol of one file, the per-file 'file' row first, and the references each one
 // makes.
 export function extractFile(parsers: Parsers | null, relPath: string, lang: SourceLanguage, src: string): Extraction {
   const language = languageNamed(lang);
   if (!language) throw new Error(`no language module for ${lang}`);
   const out = new Collector();
   const moduleSymbol = out.symbol({
-    kind: 'module',
+    kind: SYMBOL_KINDS.file,
     qualified_name: relPath,
     signature: relPath,
     doc: moduleDoc(language.comment, src),

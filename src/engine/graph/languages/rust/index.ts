@@ -5,7 +5,7 @@
 // Way A links only what those rules prove inside one file; the rest is the tool's.
 import rustWasm from 'tree-sitter-rust/tree-sitter-rust.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
-import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
+import { type CallMark, type Collector, type LanguageModule, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
 import { isNameToken } from './keywords.ts';
 import { rustAnalyzer } from './tool.ts';
@@ -392,8 +392,7 @@ function extractRust(root: Node, src: string, out: Collector, moduleSymbol: numb
       }
     } else if (TYPE_ITEMS.has(t) || t === TRAIT_ITEM || (t === MOD_ITEM && node.childForFieldName('body'))) {
       if (name) {
-        const kind: SymbolKind = t === TRAIT_ITEM ? 'interface' : 'type';
-        const symbol = symbolOf(kind, qualified(name), node, at.container, isPub(node), reach);
+        const symbol = symbolOf(SYMBOL_KINDS.type, qualified(name), node, at.container, isPub(node), reach);
         nodeOf.set(node.id, symbol);
         // A module's items are named through it, as a type's members are (CODE_GRAPH.md, "Kinds of
         // symbol"); a trait's are its members.
@@ -420,7 +419,7 @@ function extractRust(root: Node, src: string, out: Collector, moduleSymbol: numb
     } else if (DATA_ITEMS.has(t) && node.parent?.type === 'source_file') {
       // A constant or a static at a file's top level is file-level data; a call in its value belongs to it.
       if (name) {
-        const symbol = symbolOf('const', name, node, moduleSymbol, isPub(node));
+        const symbol = symbolOf(SYMBOL_KINDS.fileData, name, node, moduleSymbol, isPub(node));
         nodeOf.set(node.id, symbol);
         inner = { ...at, scope: symbol, owner: symbol };
       }

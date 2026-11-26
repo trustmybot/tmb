@@ -2,7 +2,7 @@
 import bashWasm from 'tree-sitter-bash/tree-sitter-bash.wasm' with { type: 'file' };
 import { basename } from 'node:path';
 import type { Node } from 'web-tree-sitter';
-import type { Collector, LanguageModule } from '../contract.ts';
+import { type Collector, type LanguageModule, SYMBOL_KINDS } from '../contract.ts';
 import { docOf, named, normalizedHash, spliced, syntaxTree } from '../kit.ts';
 import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 
@@ -36,7 +36,7 @@ function extractBash(root: Node, out: Collector, moduleSymbol: number): void {
       const n = node.childForFieldName('name')?.text;
       if (n) {
         inner = out.symbol({
-          kind: 'sh_function',
+          kind: SYMBOL_KINDS.function,
           qualified_name: n,
           signature: `${n}()`,
           doc: docOf(node),

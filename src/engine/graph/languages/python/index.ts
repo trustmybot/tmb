@@ -1,7 +1,7 @@
 // Python, read through tree-sitter: classes, functions and methods, imports and calls.
 import pythonWasm from 'tree-sitter-python/tree-sitter-python.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
-import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
+import { type CallAt, type CallMark, type Collector, type LanguageModule, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, md5, memberHint, named, normalizedHash, oneLine, signatureOf, spliced, syntaxTree } from '../kit.ts';
 import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { BUILTINS } from './builtins.ts';
@@ -604,7 +604,8 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       innerPlace = 'nested';
       innerCls = null;
       if (n && place === 'module') {
-        inner = definition(node, 'class', n, exportedName(n), scope);
+        inner = definition(node, SYMBOL_KINDS.type, n, exportedName(n), scope);
+        out.symbols[inner]!.makesObjects = 1;
         innerCls = n;
         innerPlace = 'class';
         const superclasses = node.childForFieldName('superclasses');
@@ -638,7 +639,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       const left = hasValue ? assignment.childForFieldName('left') : null;
       const data = (name: string): number =>
         out.symbol({
-          kind: 'const',
+          kind: SYMBOL_KINDS.fileData,
           qualified_name: name,
           signature: clip(oneLine(src.slice(node.startIndex, Math.min(node.endIndex, node.startIndex + DATA_SIGNATURE_TEXT))), SIGNATURE_MAX),
           doc: docOf(node),

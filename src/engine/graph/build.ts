@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { basename, posix } from "node:path";
 import { GITATTRIBUTES, GitAttributes } from "../linguist/gitattributes.ts";
 import { HEURISTICS_CONSIDER } from "../linguist/index.ts";
-import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, moduleOfLanguages, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, moduleOfLanguages, NODE_MODULES_RULE, type SourceLanguage, splitWords, SYMBOL_KINDS, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { commitReader, listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
@@ -22,7 +22,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 34;
+export const EXTRACTOR_VERSION = 35;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -81,7 +81,7 @@ export function parseNotRead(text: string | null | undefined): NotRead {
 }
 
 /** The symbol kinds that are functions. */
-export const FUNCTION_KINDS: ReadonlySet<string> = new Set(["function", "method", "sh_function"]);
+export const FUNCTION_KINDS: ReadonlySet<string> = new Set<string>([SYMBOL_KINDS.function, SYMBOL_KINDS.method]);
 
 type FilePlan = {
   entry: TreeEntry;
@@ -221,7 +221,7 @@ async function planCommit(
         cache.run(plan.entry.blob, plan.lang, EXTRACTOR_VERSION, result.extraction === null ? null : JSON.stringify(result.extraction), result.error);
       }
     }
-    const moduleDoc = plan.extraction?.symbols.find((s) => s.kind === "module")?.doc ?? null;
+    const moduleDoc = plan.extraction?.symbols.find((s) => s.kind === SYMBOL_KINDS.file)?.doc ?? null;
     plan.summary = fileSummary(plan.entry.path, moduleDoc, text);
     if (isReadme(plan.entry.path) && text !== null) readmes.set(dirOf(plan.entry.path), readmeSummary(text));
   }
@@ -353,7 +353,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       if (plan.lang === null || !mine.has(plan.lang)) continue;
       const file = plan.entry.path;
       extraction.symbols.forEach((s, i) => {
-        if (s.kind === "module" || s.unnamed === 1) return;
+        if (s.kind === SYMBOL_KINDS.file || s.unnamed === 1) return;
         nodes.push({ path: file, name: ownName(s.qualified_name), start: s.start_line, end: s.end_line });
         nodeRows.push(symbolOffset + i);
       });
@@ -403,14 +403,14 @@ const dataSourceKey = (kind: string, name: string): string => `${kind}\u0000${na
  * the code does not name). Returns each one's id by dataSourceKey.
  */
 function writeDataSources(db: Database, layer: string, edges: readonly Extraction["edges"][number][]): Map<string, number> {
-  const insert = db.prepare("INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, exported, unnamed) VALUES (?, '', 'data_source', ?, ?, ?, '', 0, 0)");
+  const insert = db.prepare("INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, exported, unnamed) VALUES (?, '', ?, ?, ?, ?, '', 0, 0)");
   const insertFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, '')");
   const ids = new Map<string, number>();
   for (const edge of edges) {
     if (edge.data === undefined) continue;
     const key = dataSourceKey(edge.data, edge.dst_name);
     if (ids.has(key)) continue;
-    const id = Number(insert.run(layer, edge.dst_name, edge.dst_name, edge.data).lastInsertRowid);
+    const id = Number(insert.run(layer, SYMBOL_KINDS.dataSource, edge.dst_name, edge.dst_name, edge.data).lastInsertRowid);
     insertFts.run(id, layer, `${splitWords(edge.dst_name)} ${splitWords(edge.data)}`);
     ids.set(key, id);
   }
@@ -473,6 +473,7 @@ function applyLayer(
           line: s.start_line,
           ...(s.reach ? { reach: s.reach } : {}),
           ...(parent ? { within: [parent.start_line, parent.end_line] as [number, number] } : {}),
+          ...(s.makesObjects === 1 ? { makesObjects: 1 as const } : {}),
           ...(s.bases ? { bases: s.bases } : {}),
           ...(s.fields ? { fields: s.fields } : {}),
         });

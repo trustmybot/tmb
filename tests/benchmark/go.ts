@@ -140,7 +140,7 @@ function graphCalls(db: Database, files: ReadonlySet<string>): (GraphCall & { ds
 /** The graph's named nodes in Go files, by file: each one's own name and lines. */
 function namedNodes(db: Database): Map<string, { name: string; start: number; end: number }[]> {
   const rows = db
-    .query("SELECT path, qualified_name AS qualified, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND kind != 'module' AND unnamed = 0")
+    .query("SELECT path, qualified_name AS qualified, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND kind != 'file' AND unnamed = 0")
     .all(BASE_LAYER) as { path: string; qualified: string; start: number; end: number }[];
   const out = new Map<string, { name: string; start: number; end: number }[]>();
   for (const r of rows) out.set(r.path, [...(out.get(r.path) ?? []), { name: r.qualified.slice(r.qualified.lastIndexOf(".") + 1), start: r.start, end: r.end }]);

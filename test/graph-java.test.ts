@@ -218,7 +218,7 @@ function symbols(db: Database, layer: string): SymbolRow[] {
     .query(
       `SELECT s.path, s.kind, s.qualified_name, s.start_line, s.end_line, p.qualified_name AS parent, s.unnamed, o.qualified_name AS owner, s.doc, s.exported
          FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id LEFT JOIN symbols o ON o.id = s.named_id
-        WHERE s.layer = ? AND s.kind != 'module'`,
+        WHERE s.layer = ? AND s.kind != 'file'`,
     )
     .all(layer) as SymbolRow[];
 }
@@ -268,7 +268,7 @@ describe("nodes", () => {
       const named = rows.filter((r) => r.unnamed === 0).map(({ kind, qualified_name, start_line, end_line, parent }) => ({ kind, qualified_name, start_line, end_line, parent }));
       const want = [
         // A class (JLS 8.1) is a type; its lines start at its first modifier, not at its doc comment.
-        { kind: "class", qualified_name: "Bed", start_line: 6, end_line: 106, parent: file },
+        { kind: "type", qualified_name: "Bed", start_line: 6, end_line: 106, parent: file },
         // A constructor (8.8) is a method named by its class; two constructors are two nodes.
         { kind: "method", qualified_name: "Bed.Bed", start_line: 13, end_line: 15, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.Bed", start_line: 17, end_line: 19, parent: "Bed" },
@@ -281,29 +281,29 @@ describe("nodes", () => {
         { kind: "method", qualified_name: "Bed.soak", start_line: 35, end_line: 35, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.both", start_line: 37, end_line: 39, parent: "Bed" },
         // A member class (8.5) is a type inside its type, named through it.
-        { kind: "class", qualified_name: "Bed.Seed", start_line: 41, end_line: 49, parent: "Bed" },
+        { kind: "type", qualified_name: "Bed.Seed", start_line: 41, end_line: 49, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.Seed.grow", start_line: 42, end_line: 44, parent: "Bed.Seed" },
         { kind: "method", qualified_name: "Bed.Seed.sprout", start_line: 46, end_line: 48, parent: "Bed.Seed" },
         // An interface (9.1) is a type; its method with no body is a node (9.4).
-        { kind: "interface", qualified_name: "Bed.Tool", start_line: 51, end_line: 57, parent: "Bed" },
+        { kind: "type", qualified_name: "Bed.Tool", start_line: 51, end_line: 57, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.Tool.use", start_line: 52, end_line: 52, parent: "Bed.Tool" },
         { kind: "method", qualified_name: "Bed.Tool.twice", start_line: 54, end_line: 56, parent: "Bed.Tool" },
         // An enum (8.9) is a class; its constructor is a method.
-        { kind: "class", qualified_name: "Bed.Season", start_line: 59, end_line: 76, parent: "Bed" },
+        { kind: "type", qualified_name: "Bed.Season", start_line: 59, end_line: 76, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.Season.Season", start_line: 67, end_line: 67, parent: "Bed.Season" },
         { kind: "method", qualified_name: "Bed.Season.heat", start_line: 69, end_line: 71, parent: "Bed.Season" },
         { kind: "method", qualified_name: "Bed.Season.first", start_line: 73, end_line: 75, parent: "Bed.Season" },
         // A record (8.10) is a class; its compact constructor (8.10.4) is a method named by it.
-        { kind: "class", qualified_name: "Bed.Plot", start_line: 78, end_line: 88, parent: "Bed" },
+        { kind: "type", qualified_name: "Bed.Plot", start_line: 78, end_line: 88, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.Plot.Plot", start_line: 79, end_line: 81, parent: "Bed.Plot" },
         { kind: "method", qualified_name: "Bed.Plot.check", start_line: 83, end_line: 83, parent: "Bed.Plot" },
         { kind: "method", qualified_name: "Bed.Plot.area", start_line: 85, end_line: 87, parent: "Bed.Plot" },
         // An annotation interface (9.6) is an interface; its element is a method (9.6.1).
-        { kind: "interface", qualified_name: "Bed.Mark", start_line: 90, end_line: 92, parent: "Bed" },
+        { kind: "type", qualified_name: "Bed.Mark", start_line: 90, end_line: 92, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.Mark.level", start_line: 91, end_line: 91, parent: "Bed.Mark" },
         { kind: "method", qualified_name: "Bed.later", start_line: 94, end_line: 105, parent: "Bed" },
         // A local class (14.3) is a named type inside its method, named by itself.
-        { kind: "class", qualified_name: "Helper", start_line: 95, end_line: 99, parent: "Bed.later" },
+        { kind: "type", qualified_name: "Helper", start_line: 95, end_line: 99, parent: "Bed.later" },
         { kind: "method", qualified_name: "Helper.help", start_line: 96, end_line: 98, parent: "Helper" },
         // A method of an anonymous class body (15.9.5), an enum constant's included (8.9.1), is a method
         // of a type with no name: no type node holds it, so it is held by the node around it.

@@ -2,7 +2,7 @@
 // container of each, and the calls, imports and value references each makes, in one walk of
 // the tree. What counts as a function here is in README.md beside this file.
 import type { Node } from 'web-tree-sitter';
-import { type Bound, type CallMark, type Collector, type EdgeKind, type ExtractedSymbol, type FunctionParams, type ParamInfo, type SourceFile, type SymbolKind } from '../contract.ts';
+import { type Bound, type CallMark, type Collector, type EdgeKind, type ExtractedSymbol, type FunctionParams, type ParamInfo, type SourceFile, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf } from '../kit.ts';
 import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { GLOBALS } from './globals.ts';
@@ -932,7 +932,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
             params_json: JSON.stringify(functionParams(node)),
             parent: container,
             ...(fn.unnamed ? { unnamed: 1, owner } : {}),
-            ...(fn.reach ? { reach: fn.reach } : container !== moduleSymbol && out.symbols[container]?.kind !== 'class' ? { reach: 'nested' as const } : {}),
+            ...(fn.reach ? { reach: fn.reach } : container !== moduleSymbol && out.symbols[container]?.makesObjects !== 1 ? { reach: 'nested' as const } : {}),
           },
           fnKey(node),
         );
@@ -943,7 +943,8 @@ export function extractTs(file: SourceFile, out: Collector): void {
       const n = name();
       if (n) {
         // Each class is its own symbol, so two classes of one name in a file stay two (trustmybot/tmb#287).
-        inner = definition(node, 'class', n, container, `class\u0000${node.startIndex}`);
+        inner = definition(node, SYMBOL_KINDS.type, n, container, `class\u0000${node.startIndex}`);
+        out.symbols[inner]!.makesObjects = 1;
         const bases = basesOf(node);
         if (bases.length > 0) out.symbols[inner]!.bases = bases;
         const fields = fieldsOf(node);
@@ -956,7 +957,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
       innerCls = null;
     } else if (t === 'interface_declaration') {
       const n = name();
-      if (n) innerContainer = definition(node, 'interface', n, container);
+      if (n) innerContainer = definition(node, SYMBOL_KINDS.type, n, container);
     } else if (METHOD_SIGNATURES.has(t)) {
       // A method with only a declaration is held by its type; its overloads are one, first to last.
       const method = bodilessMethod(node);
@@ -967,7 +968,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
     } else if (t === 'type_alias_declaration' || t === 'enum_declaration') {
       const n = name();
       if (n) {
-        const at = definition(node, 'type', n, container);
+        const at = definition(node, SYMBOL_KINDS.type, n, container);
         // An alias written as an object type holds the methods it lists.
         if (t === 'type_alias_declaration') innerContainer = at;
       }
@@ -983,7 +984,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         const isFn = value !== null && FUNCTION_NODES.has(value.type);
         const bodyStart = value?.type === 'arrow_function' ? value.childForFieldName('body')?.startIndex : undefined;
         const symbol: ExtractedSymbol = {
-          kind: isFn ? 'function' : 'const',
+          kind: isFn ? SYMBOL_KINDS.function : SYMBOL_KINDS.fileData,
           qualified_name: n.text,
           signature: dataSignature(decl, bodyStart),
           doc: docOf(decl),
@@ -1005,7 +1006,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         patternNames(n, bound);
         for (const each of bound) {
           out.symbol({
-            kind: 'const',
+            kind: SYMBOL_KINDS.fileData,
             qualified_name: each,
             signature: dataSignature(decl),
             doc: docOf(decl),

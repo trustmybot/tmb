@@ -374,7 +374,7 @@ function linesText(ref: NodeRef) {
 
 /** A node's label: a caller's lines are in its own file; a callee's are where it is called. */
 function refLabel(ref: NodeRef, side: string) {
-  const name = ref.kind === 'module' ? ref.path : ref.qualifiedName;
+  const name = ref.kind === 'file' ? ref.path : ref.qualifiedName;
   const file = ref.path.slice(ref.path.lastIndexOf('/') + 1);
   const at = linesText(ref);
   if (side === 'callee') return `${name}\n${file}${at === '' ? '' : `\ncalled at ${ref.lines.length + ref.moreLines > 1 ? 'lines' : 'line'} ${at}`}`;
@@ -388,7 +388,7 @@ function FunctionLevel({ data }: { data: FunctionData }) {
   const elements = useMemo<ElementDefinition[]>(() => {
     const column = (refs: NodeRef[], x: number, side: string) =>
       refs.map((r, i) => ({
-        data: { id: `${side}:${i}`, kind: r.kind === 'module' ? 'file' : 'function', label: refLabel(r, side) },
+        data: { id: `${side}:${i}`, kind: r.kind === 'file' ? 'file' : 'function', label: refLabel(r, side) },
         position: { x, y: (i - (refs.length - 1) / 2) * 56 },
       }));
     return [
@@ -474,7 +474,7 @@ function RefList({ title, side, refs, more }: { title: string; side: 'caller' | 
         {refs.map((r) => (
           <li key={r.id === null ? `file:${r.path}` : r.id}>
             <a className={LINK} href={r.id === null ? placeHref({ file: r.path }) : placeHref({ fn: r.id })}>
-              {r.kind === 'module' ? r.path : r.qualifiedName}
+              {r.kind === 'file' ? r.path : r.qualifiedName}
             </a>
             <span className="ml-2 text-xs text-fg-muted">
               {r.path}

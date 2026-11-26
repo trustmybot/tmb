@@ -54,7 +54,7 @@ type Node = { name: string; kind: string; start: number; end: number };
 /** The nodes of a file, by name and lines. */
 function nodes(db: Database, layer: string, file: string): Node[] {
   return db
-    .query(`SELECT qualified_name AS name, kind, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND path = ? AND kind != 'module' ORDER BY start_line, qualified_name`)
+    .query(`SELECT qualified_name AS name, kind, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND path = ? AND kind != 'file' ORDER BY start_line, qualified_name`)
     .all(layer, file) as Node[];
 }
 
@@ -124,7 +124,7 @@ for (const [title, way, layer] of WAYS) {
       const db = await built(FILES, way, layer);
       expect(nodes(db, layer, "paint/stencil.py")).toEqual([
         { name: "tint", kind: "function", start: 10, end: 11 },
-        { name: "Palette", kind: "class", start: 14, end: 33 },
+        { name: "Palette", kind: "type", start: 14, end: 33 },
         { name: "Palette.mix", kind: "method", start: 19, end: 20 },
         { name: "Palette.blend", kind: "method", start: 28, end: 30 },
         { name: "Palette.swatch", kind: "method", start: 32, end: 33 },
@@ -179,10 +179,10 @@ for (const [title, way, layer] of WAYS) {
         layer,
       );
       expect(nodes(db, layer, "loom/thread.py")).toEqual([
-        { name: "Spool", kind: "class", start: 5, end: 12 },
+        { name: "Spool", kind: "type", start: 5, end: 12 },
         { name: "Spool.wind", kind: "method", start: 6, end: 9 },
         { name: "Spool.twist", kind: "method", start: 11, end: 12 },
-        { name: "Bobbin", kind: "class", start: 15, end: 17 },
+        { name: "Bobbin", kind: "type", start: 15, end: 17 },
         { name: "Bobbin.turn", kind: "method", start: 16, end: 17 },
         { name: "knot", kind: "function", start: 20, end: 23 },
       ]);

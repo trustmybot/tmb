@@ -49,9 +49,9 @@ function graphStyle(): cytoscape.StylesheetJson {
       },
     },
     { selector: 'node[kind = "dir"]', style: { 'background-color': inset, 'font-weight': 'bold' } },
-    { selector: 'node[kind = "function"], node[kind = "method"], node[kind = "sh_function"]', style: { 'background-color': accentBg, 'border-color': accent } },
+    { selector: 'node[kind = "function"], node[kind = "method"]', style: { 'background-color': accentBg, 'border-color': accent } },
     { selector: 'node[?unnamed]', style: { 'border-style': 'dashed', 'font-style': 'italic' } },
-    { selector: 'node[kind = "class"]', style: { 'background-color': doneBg, 'border-color': done } },
+    { selector: 'node[kind = "type"]', style: { 'background-color': doneBg, 'border-color': done } },
     { selector: 'node[?notParsed]', style: { 'border-color': danger, 'border-style': 'dashed', 'border-width': 2 } },
     { selector: 'node[?center]', style: { 'border-width': 3, 'font-weight': 'bold' } },
     {

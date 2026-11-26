@@ -3,7 +3,7 @@
 // to sqlInCode. Whatever a statement names as a table is a table, by the last part of its name; a
 // name the code does not state links to the store alone. A statement of an .sql file the parser
 // cannot read gives no link and is counted.
-import type { Collector, LanguageModule } from '../contract.ts';
+import { type Collector, type LanguageModule, SQL_TRIGGER } from '../contract.ts';
 import { md5 } from '../kit.ts';
 import { readSql, type SqlRef, type SqlStatement } from './parser.ts';
 
@@ -58,7 +58,7 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
     // A trigger is code that runs in the store: a node where it is written, and its body's links start at it.
     const id = out.symbol(
       {
-        kind: 'sql_trigger',
+        kind: SQL_TRIGGER,
         qualified_name: trigger.name,
         signature: `trigger ${trigger.name}`,
         doc: '',
@@ -68,7 +68,7 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
         exported: 0,
         parent: owner,
       },
-      `sql_trigger\u0000${trigger.name}\u0000${line}`,
+      `${SQL_TRIGGER}\u0000${trigger.name}\u0000${line}`,
     );
     if (trigger.on?.to === 'table') out.dataLink(id, 'triggers_on', SQL_DATA.table, trigger.on.name, line);
     for (const ref of trigger.refs) link(out, id, ref, line);
