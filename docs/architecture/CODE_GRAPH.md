@@ -389,7 +389,7 @@ flowchart LR
 
 ### Where a language's tool comes from
 
-Planned (trustmybot/tmb#392, trustmybot/tmb#393, trustmybot/tmb#394, trustmybot/tmb#395). Until it is built, the table and rules under [Two ways to make links](#two-ways-to-make-links) say whose copy is used.
+Finding a tool is built. Installing one is Planned (trustmybot/tmb#393), and so are the Go helper built from source (trustmybot/tmb#394) and the TypeScript compiler and pyright leaving the tmb program (trustmybot/tmb#395). Until then a missing tool means the built-in rules, and TypeScript and Python always use the copy tmb carries.
 
 **A tool is found or installed once per machine, and only for a language a repo uses.** tmb is installed once per machine, and so is each tool. Installing tmb installs no tool.
 
@@ -408,18 +408,29 @@ flowchart LR
   - **Example 1.** A Rust developer has rust-analyzer from rustup. tmb uses it.
   - **Example 2.** A machine has no clangd. tmb installs its pinned clangd into its tools folder, once, for every project on the machine.
   - **Edge case 1.** The user's copy is older than tmb supports. tmb uses its own copy and says why.
-  - **Edge case 2.** A setting names the path of a tool. That copy is used and nothing is searched.
+  - **Edge case 2.** A setting names the path of a tool. That copy is used and nothing is searched. It is not held to the lowest version: the user named it, and the layer records its version.
+  - **Edge case 3.** Apple's clangd reports Apple's own version number. tmb takes it as the LLVM release it is built from.
+- **The path setting and tmb's tools folder are per machine.** Both sit in tmb's state folder, which each release channel keeps for itself. The setting is a file the user edits.
+  - **Example.** A machine has the stable and the dev channel. Each keeps its own tools, so a pin that changes on dev never changes what stable uses.
+- **The lowest version tmb supports** is per tool:
+
+  | Tool | Lowest version |
+  |---|---|
+  | rust-analyzer | The one in Rust toolchain 1.92.0, or a standalone release built on or after 2025-09-14 |
+  | clangd | 16 |
+  | `go` | 1.22 |
+  | JDK | 11 |
 - **Only what a repo needs.** A tool is looked for when a repo in its language is indexed.
   - **Example.** A Python repo on a machine with no Rust. rust-analyzer is never looked for or installed.
 - **tmb installs a tool, never a language.** The `go` command, a JDK, the Rust toolchain and a Python environment are the user's. A repo cannot be built on a machine without them, and they are too large to add unasked.
   - **Example.** A Java repo on a machine with no JDK. The built-in rules build the graph and the answer says a JDK is missing.
-- **An install is asked for, checked, and never part of a read.** `tmb init` names the tools the repo's languages miss and installs them on a yes. `tmb tools install` does the same later. A read of the graph downloads nothing: it uses the built-in rules and names the command.
+- **An install is asked for, checked, and never part of a read.** Planned (trustmybot/tmb#393). `tmb init` names the tools the repo's languages miss and installs them on a yes. `tmb tools install` does the same later. A read of the graph downloads nothing: it uses the built-in rules and names the command.
   - **How.** The pinned release comes from the tool's own release page and is checked against a checksum tmb carries. A failed check installs nothing.
   - **Edge case.** A setting turns installs off, for a machine that may not download programs. Every tool is then the user's own or missing.
 - **The layer records whose copy built it**, with its version, so an answer can say which tool it rests on and a changed copy rebuilds the layer.
 - **`tmb tools` lists them.** For each language in the repo: the tool, whose copy, its version, or that it is missing.
 
-| Language | Tool | The user's copy | tmb installs |
+| Language | Tool | The user's copy | tmb installs (Planned) |
 |---|---|---|---|
 | TypeScript, JavaScript | The TypeScript compiler | On the machine's PATH | The pinned compiler |
 | Python | pyright | On the machine's PATH | The pinned pyright |
@@ -1023,7 +1034,7 @@ All are FTS5 virtual tables.
 
 | Piece | Tracked in |
 |---|---|
-| A language's tool is found or installed once per machine | trustmybot/tmb#392, trustmybot/tmb#393, trustmybot/tmb#394, trustmybot/tmb#395 |
+| A language's tool is installed once per machine | trustmybot/tmb#393, trustmybot/tmb#394, trustmybot/tmb#395 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
 | A trigger is stored as a function | trustmybot/tmb#397 |
