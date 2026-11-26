@@ -12,8 +12,8 @@ export type SymbolKind =
   | 'const'
   | 'sh_function'
   | 'sql_table'
-  | 'sql_index'
   | 'sql_trigger'
+  | 'data_source'
   | 'module'
   | 'hook'
   | 'runner';
@@ -26,11 +26,17 @@ export type EdgeKind =
   | 'runs'
   | 'reads_table'
   | 'writes_table'
-  | 'indexes'
+  | 'reads_store'
+  | 'writes_store'
   | 'triggers_on'
   | 'bundles'
   | 'reads_config'
   | 'covers';
+
+// The kinds of a data source (CODE_GRAPH.md, "Data sources"): a leaf at the graph's edge, one node
+// per kind and name in a layer, whichever files name it. It is no code: no language's tool links a
+// call to it.
+export const DATA_SOURCE_KINDS: ReadonlySet<SymbolKind> = new Set<SymbolKind>(['sql_table', 'data_source']);
 
 // A language's name, as its module in the registry gives it.
 export type SourceLanguage = string;
@@ -68,6 +74,9 @@ export interface ExtractedSymbol {
   // a signature with no body in TypeScript, an attribute in Python. Each hides a method of the
   // same name further up its parents. Absent when it has none, and on every other kind.
   fields?: string[];
+  // On a data source: 1 where a statement defines it, such as a CREATE TABLE; absent where it is
+  // only named. The layer's one node of the name is at a definition when there is one.
+  defined?: 1;
 }
 
 export interface ParamInfo {
@@ -161,6 +170,9 @@ export interface Extraction {
   edges: ExtractedEdge[];
   // Absent when the file re-exports nothing.
   exports?: ExtractedExport[];
+  // Statements the language's parser could not read, each of which gave no link (CODE_GRAPH.md,
+  // "Data sources"); absent when there are none.
+  statementsNotRead?: number;
 }
 
 // Gathers one file's symbols and references as a language's rules find them.
@@ -168,6 +180,7 @@ export class Collector {
   readonly symbols: ExtractedSymbol[] = [];
   readonly edges: ExtractedEdge[] = [];
   readonly exports: ExtractedExport[] = [];
+  statementsNotRead = 0;
   private readonly byKey = new Map<string, number>();
 
   // A symbol seen again under the same key is the same row: by default its

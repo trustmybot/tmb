@@ -6,20 +6,20 @@ import { basename, posix } from "node:path";
 import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
-import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
+import { DATA_SOURCE_KINDS, type LanguageTool, type ToolAnswer, type ToolCall, type ToolNode } from "./languages/contract.ts";
 import { LANGUAGES, languageNamed } from "./languages/registry.ts";
 import { unreadLanguageOf } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, callState, type Link, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
 import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
-import { laneOf } from "./test-paths.ts";
+import { isTestPath, laneOf } from "./test-paths.ts";
 import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 18;
+export const EXTRACTOR_VERSION = 19;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -55,6 +55,8 @@ export type NotRead = {
   languages: { name: string; files: number }[];
   /** Files each rule leaves out of the graph altogether, such as dist/ or lockfiles. */
   leftOut: { rule: string; files: number }[];
+  /** Statements a language's parser could not read, each of which gave no link; absent when there are none. */
+  statements?: number;
 };
 
 export const NOTHING_UNREAD: NotRead = { languages: [], leftOut: [] };
@@ -67,7 +69,7 @@ export function parseNotRead(text: string | null | undefined): NotRead {
   if (text === null || text === undefined) return NOTHING_UNREAD;
   try {
     const value = JSON.parse(text) as Partial<NotRead>;
-    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [] };
+    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [], ...(value.statements ? { statements: value.statements } : {}) };
   } catch {
     return NOTHING_UNREAD;
   }
@@ -100,8 +102,11 @@ function cachedParse(db: Database, blob: string, lang: string): { extraction: Ex
 
 function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text: string): { extraction: Extraction | null; error: string | null } {
   try {
-    const { symbols, edges, exports } = extractFile(parsers, entry.path, lang, text);
-    return { extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}) }, error: null };
+    const { symbols, edges, exports, statementsNotRead } = extractFile(parsers, entry.path, lang, text);
+    return {
+      extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}), ...(statementsNotRead ? { statementsNotRead } : {}) },
+      error: null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { extraction: null, error: message.slice(0, MAX_ERROR_CHARS) };
@@ -239,7 +244,8 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
       if (plan.lang === null || !mine.has(plan.lang)) continue;
       const file = plan.entry.path;
       extraction.symbols.forEach((s, i) => {
-        if (s.kind === "module" || s.unnamed === 1) return;
+        // A data source is no code: no call is linked to it.
+        if (s.kind === "module" || s.unnamed === 1 || DATA_SOURCE_KINDS.has(s.kind)) return;
         nodes.push({ path: file, name: ownName(s.qualified_name), start: s.start_line, end: s.end_line });
         nodeRows.push(symbolOffset + i);
       });
@@ -266,6 +272,25 @@ function ancestorsOf(dir: string): string[] {
   for (let d = dir; d !== "."; d = dirOf(d)) out.push(d);
   out.push(".");
   return out;
+}
+
+/**
+ * The rows of the layer's one node of each data source (CODE_GRAPH.md, "Data sources"), by file
+ * and index in its extraction: every file that names a table has a row of it, and the layer keeps
+ * one, at a definition before a mention, outside the tests before in them, then in path order.
+ */
+function dataSourceNodes(plans: readonly FilePlan[]): Set<string> {
+  const kept = new Map<string, { at: string; rank: number }>();
+  for (const plan of plans) {
+    plan.extraction?.symbols.forEach((s, i) => {
+      if (!DATA_SOURCE_KINDS.has(s.kind)) return;
+      const key = `${s.kind}\u0000${s.qualified_name}`;
+      const rank = (s.defined === 1 ? 0 : 2) + (isTestPath(plan.entry.path) ? 1 : 0);
+      const known = kept.get(key);
+      if (known === undefined || rank < known.rank) kept.set(key, { at: `${plan.entry.path}\u0000${i}`, rank });
+    });
+  }
+  return new Set([...kept.values()].map((k) => k.at));
 }
 
 /** Writes one whole layer, replacing what it held. */
@@ -302,6 +327,10 @@ function applyLayer(
   const pending: Pending[] = [];
   const symbolRows: { file: string; s: Extraction["symbols"][number]; offset: number }[] = [];
   const exports = new Map<string, ExtractedExport[]>();
+  const sources = dataSourceNodes(plans);
+  /** Rows of a data source the layer holds at another file's row: never written, never a target. */
+  const merged = new Set<number>();
+  let statementsNotRead = 0;
   for (const plan of plans) {
     const file = plan.entry.path;
     const source = plan.summary === "" ? "none" : plan.extraction ? "header" : "heading";
@@ -309,8 +338,14 @@ function applyLayer(
     insertFileFts.run(layer, file, `${splitWords(file)} ${splitWords(basename(file))}`, plan.summary);
     if (!plan.extraction) continue;
     if (plan.extraction.exports) exports.set(file, plan.extraction.exports);
+    statementsNotRead += plan.extraction.statementsNotRead ?? 0;
     const offset = symbolRows.length;
-    for (const s of plan.extraction.symbols) {
+    for (const [i, s] of plan.extraction.symbols.entries()) {
+      if (DATA_SOURCE_KINDS.has(s.kind) && !sources.has(`${file}\u0000${i}`)) {
+        merged.add(symbolRows.length);
+        symbolRows.push({ file, s, offset });
+        continue;
+      }
       // An unnamed function is no reference's target: nothing names it.
       if (s.unnamed !== 1) {
         const parent = s.reach === "nested" && s.parent !== undefined ? plan.extraction.symbols[s.parent] : undefined;
@@ -338,7 +373,13 @@ function applyLayer(
   // A symbol's container and owner come before it in its file's list, so their ids are known.
   const ids: number[] = [];
   let functions = 0;
-  for (const { file, s, offset } of symbolRows) {
+  let written = 0;
+  for (const [row, { file, s, offset }] of symbolRows.entries()) {
+    if (merged.has(row)) {
+      ids.push(-1);
+      continue;
+    }
+    written++;
     const parentId = s.parent === undefined ? null : ids[offset + s.parent]!;
     const namedId = s.unnamed === 1 && s.owner !== undefined ? ids[offset + s.owner]! : null;
     const id = Number(
@@ -389,12 +430,13 @@ function applyLayer(
   const notRead: NotRead = {
     languages: sortedCounts(unread).map(([name, files]) => ({ name, files })),
     leftOut: sortedCounts(leftOut).map(([rule, files]) => ({ rule, files })),
+    ...(statementsNotRead > 0 ? { statements: statementsNotRead } : {}),
   };
   const stats = {
     layer,
     commit,
     files: plans.length,
-    symbols: ids.length,
+    symbols: written,
     edges: pending.length,
     unresolved,
     unresolvedImports,

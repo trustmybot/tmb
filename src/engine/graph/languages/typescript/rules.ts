@@ -4,10 +4,40 @@
 import type { Node } from 'web-tree-sitter';
 import { type Bound, type CallMark, type Collector, type EdgeKind, type ExtractedSymbol, type FunctionParams, type ParamInfo, type SourceFile, type SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf } from '../kit.ts';
-import { extractSqlDdl, sqlRefs } from '../sql/index.ts';
+import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { GLOBALS } from './globals.ts';
 
 const STRING_PARTS = new Set(['string_fragment', 'escape_sequence']);
+
+// The character a JavaScript escape sequence stands for (ECMAScript, "String Literals").
+const ESCAPED: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', '0': '\0' };
+function unescaped(sequence: string): string {
+  const body = sequence.slice(1);
+  if (/^(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4})$/.test(body)) return String.fromCharCode(parseInt(body.slice(1), 16));
+  const point = /^u\{([0-9a-fA-F]+)\}$/.exec(body)?.[1];
+  if (point !== undefined) return String.fromCodePoint(parseInt(point, 16));
+  if (/^(\r?\n|\u2028|\u2029)$/.test(body)) return '';
+  return ESCAPED[body] ?? body;
+}
+
+const isPlus = (node: Node | null): boolean => node?.type === 'binary_expression' && node.childForFieldName('operator')?.text === '+';
+
+// A string's value as SQL reads it (CODE_GRAPH.md, "Data sources"): each escape as what it stands
+// for, each interpolated value as SQL_HOLE, joined across `+` with any operand that is no string
+// literal as SQL_HOLE. Null when no part is a string literal.
+function stringValue(node: Node): string | null {
+  if (node.type === 'string' || node.type === 'template_string') {
+    return named(node)
+      .map((c) => (c.type === 'escape_sequence' ? unescaped(c.text) : c.type === 'template_substitution' ? SQL_HOLE : c.text))
+      .join('');
+  }
+  if (!isPlus(node)) return null;
+  const left = node.childForFieldName('left');
+  const right = node.childForFieldName('right');
+  const l = left ? stringValue(left) : null;
+  const r = right ? stringValue(right) : null;
+  return l === null && r === null ? null : `${l ?? SQL_HOLE}${r ?? SQL_HOLE}`;
+}
 
 // The text of a `description:` value built from string literals, joined
 // across `+` concatenation and template parts; null for any other value.
@@ -841,11 +871,10 @@ export function extractTs(file: SourceFile, out: Collector): void {
     } else if (t === 'jsx_opening_element' || t === 'jsx_self_closing_element') {
       const tag = node.childForFieldName('name');
       if (tag?.type === 'identifier' && /^[A-Z]/.test(tag.text)) reference(scope, 'instantiates', tag.text, tag);
-    } else if (t === 'string' || t === 'template_string') {
-      const text = node.text;
-      const line = node.startPosition.row + 1;
-      for (const [kind, table] of sqlRefs(text)) out.edge(scope, kind, table, line);
-      if (/CREATE\s+(VIRTUAL\s+)?TABLE/i.test(text)) extractSqlDdl(text, out, null, node.startPosition.row);
+    } else if ((t === 'string' || t === 'template_string' || isPlus(node)) && !isPlus(node.parent)) {
+      // SQL in a string, read whole across the `+` that joins it.
+      const text = stringValue(node);
+      if (text !== null) sqlInCode(text, scope, node.startPosition.row + 1, node.endPosition.row + 1, out);
     }
     if (FUNCTION_NODES.has(t)) around.set(node.id, { scope, cls, container, owner });
     // A decorator runs when the thing it decorates is defined, so its call belongs to what
