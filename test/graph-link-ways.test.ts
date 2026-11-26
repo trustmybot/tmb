@@ -438,7 +438,9 @@ describe("the compiler tmb uses", () => {
   });
 
   test("a repo that installs the very compiler tmb carries reads its declarations as any installed package: its calls are outside", async () => {
-    commit({ "lib/parse.ts": ['import ts from "typescript";', "export function parse(text: string) {", '  return ts.createSourceFile("a.ts", text, ts.ScriptTarget.Latest);', "}", ""].join("\n") });
+    // The file is under no config, so the compiler's defaults hold: a default import of the
+    // compiler's `export =` needs esModuleInterop, which they do not set, so the import is a namespace.
+    commit({ "lib/parse.ts": ['import * as ts from "typescript";', "export function parse(text: string) {", '  return ts.createSourceFile("a.ts", text, ts.ScriptTarget.Latest);', "}", ""].join("\n") });
     // The repo's own typescript is the package tmb carries, installed where the repo installs packages.
     mkdirSync(path.join(project, "node_modules"), { recursive: true });
     symlinkSync(path.dirname(require.resolve("typescript5/package.json")), path.join(project, "node_modules", "typescript"), "dir");

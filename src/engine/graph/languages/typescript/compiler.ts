@@ -23,7 +23,7 @@ export function baseOptions(ts: TypeScriptModule): TS.CompilerOptions {
 }
 
 /** The folder a package manager installs a project's dependencies in. */
-const INSTALLED_DIR = "node_modules";
+export const INSTALLED_DIR = "node_modules";
 
 export type CommitFiles = {
   /** The repo's files at the commit, by path from its top. */
@@ -98,33 +98,6 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
       return text === undefined ? undefined : ts.createSourceFile(file, text, version, true);
     },
   };
-}
-
-/** The settings files a project's compiler options come from, at the repo's top, the first present. */
-const PROJECT_CONFIGS = ["tsconfig.json", "jsconfig.json"] as const;
-
-/**
- * The compiler options of the project's own settings file at the repo's top (tsconfig.json, else
- * jsconfig.json), read at the commit with its `extends`; empty when it has none. Its own `files`
- * and `include` are not used: every file the graph reads is in the program.
- */
-export function projectOptions(ts: TypeScriptModule, root: string, files: CommitFiles): TS.CompilerOptions {
-  const name = PROJECT_CONFIGS.find((n) => files.texts.has(n));
-  if (name === undefined) return {};
-  const configPath = path.join(root, name);
-  const read = (file: string): string | undefined => {
-    const p = placeOf(root, file, files.installed);
-    return p.from === "disk" ? ts.sys.readFile(file) : files.texts.get(p.rel);
-  };
-  const parsed = ts.readConfigFile(configPath, read);
-  if (parsed.config === undefined) return {};
-  const host: TS.ParseConfigHost = {
-    useCaseSensitiveFileNames: true,
-    readDirectory: () => [],
-    fileExists: (file) => read(file) !== undefined,
-    readFile: read,
-  };
-  return ts.parseJsonConfigFileContent(parsed.config, host, root, undefined, configPath).options;
 }
 
 /** A program over the repo's files at the commit: `rootFiles` are its paths from the repo's top. */
