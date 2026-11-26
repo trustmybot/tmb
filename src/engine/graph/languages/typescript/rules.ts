@@ -731,7 +731,9 @@ export function extractTs(file: SourceFile, out: Collector): void {
       if (n) definition(node, 'type', n, container);
     } else if (t === 'variable_declarator' && scope === moduleSymbol) {
       const decl = node.parent;
-      const holder = decl?.parent?.type;
+      // A statement of the file itself, exported or not; one in a `namespace` declares a member of
+      // that namespace, which is a type, so it is no file-level data ("Kinds of symbol").
+      const holder = decl?.parent?.type === 'export_statement' && decl.parent.parent?.type !== 'program' ? undefined : decl?.parent?.type;
       const n = node.childForFieldName('name');
       if (decl && (holder === 'program' || holder === 'export_statement') && n?.type === 'identifier') {
         let value = node.childForFieldName('value');
