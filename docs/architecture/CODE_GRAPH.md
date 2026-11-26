@@ -297,7 +297,7 @@ flowchart LR
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
-- **Way B per language.** Each tool was chosen by its own A/B test. Python is Planned (trustmybot/tmb#347); Go, Java, Rust, C and C++ are Planned (trustmybot/tmb#346).
+- **Way B per language.** Each tool was chosen by its own A/B test. Python is Planned (trustmybot/tmb#347); Go (trustmybot/tmb#352), Java (trustmybot/tmb#353), Rust (trustmybot/tmb#354), and C and C++ (trustmybot/tmb#355) are Planned.
 
 | Language | Tool | Whose copy | Needs from the user |
 |---|---|---|---|
@@ -878,7 +878,7 @@ All are FTS5 virtual tables.
 | The benchmark judges same-file links | trustmybot/tmb#343 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
 | Way B for Python, with pyright | trustmybot/tmb#347 |
-| The tools for Go, Rust, Java, C and C++ | trustmybot/tmb#346 |
+| Go, Java, Rust, C and C++, each with its tool | trustmybot/tmb#352, #353, #354, #355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
