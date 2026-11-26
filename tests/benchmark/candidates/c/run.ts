@@ -12,7 +12,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { CPP_RULES } from "../cpp/rules_cpp.ts";
 import { CANDIDATES, env, runCandidate, type Candidate } from "./candidates.ts";
-import { keyOf, pct, readRepo, referenceResolved, runReference, score, scoreFunctions, type Answers, type GraphNode } from "./lib.ts";
+import { keyOf, pct, readRepo, referenceResolved, runReference, score, scoreFunctions, type Answers, type GraphNode, type Reference } from "./lib.ts";
 import { C_RULES } from "./rules_c.ts";
 
 const { values: a } = parseArgs({
@@ -46,12 +46,20 @@ const refStates = { linked: 0, outside: 0, notKnown: 0 };
 for (const r of refResolved.values()) refStates[r.state]++;
 console.log(`reference calls ${ref.calls.length}: ${JSON.stringify(refStates)}; functions found ${pct(fns.ratio)}`);
 
+const refCdb = a["ref-cdb"] === "none" ? null : path.resolve(a["ref-cdb"]!);
+let ownRef: Reference | null = null;
+const clangRef = (): Reference => {
+  if (cdb === refCdb) return ref;
+  ownRef ??= runReference({ python: process.env.TMB_PYTHON ?? "python3", libclang: env("TMB_LIBCLANG"), cindexDir: env("TMB_CINDEX"), root, cdb, language: rules.language, out: path.join(out, "clang-units.json") });
+  return ownRef;
+};
 const results: Record<string, unknown> = {};
 const all = new Map<string, Answers>();
 for (const cand of a.candidates!.split(",") as Candidate[]) {
   if (!CANDIDATES.includes(cand)) throw new Error(`unknown candidate ${cand}`);
   const tc = performance.now();
-  const run = await runCandidate(cand, { root, cdb, out, graph, ref, language: rules.language, indexTimeoutMs: Number(a["index-timeout-s"]) * 1000 });
+  // clang alone answers from the units as the candidates' database gives them, which may differ from the reference's.
+  const run = await runCandidate(cand, { root, cdb, out, graph, ref: cand === "clang" ? clangRef() : ref, language: rules.language, indexTimeoutMs: Number(a["index-timeout-s"]) * 1000 });
   if ("notRun" in run) {
     results[cand] = run;
     console.log(`${cand}: not run: ${run.notRun}`);
