@@ -206,6 +206,63 @@ export class Store {
 }
 `;
 
+// Methods that have only a declaration ("A function with a declaration and a definition is one
+// node" in CODE_GRAPH.md, trustmybot/tmb#367): an interface's, an abstract one, one of an ambient
+// class. Each is a method node named through its type; overload signatures of one name in one type
+// are one node, from the first to the last; a signature beside a body of its name is no node, the
+// body is. An alias written as an object type lists its methods as an interface does; a signature
+// in an object type with no name of its own, as a parameter's, is no node.
+const BODILESS = `export interface Ledger {
+  post(entry: string): void;
+  balance(): number;
+  balance(asOf: Date): number;
+  readonly size: number;
+  get open(): boolean;
+  set open(v: boolean);
+  (raw: string): void;
+  new (seed: number): Ledger;
+}
+
+export abstract class Shape {
+  abstract area(): number;
+  abstract get sides(): number;
+  scale(by: number): Shape;
+  scale(by: string): Shape;
+  scale(by: unknown): Shape {
+    return this;
+  }
+}
+
+declare class Remote {
+  constructor(url: string);
+  fetch(path: string): Promise<string>;
+}
+
+type Bag = { take(): number };
+export function useBag(bag: { give(): number }): Bag {
+  return { take: () => bag.give() };
+}
+`;
+
+// A named type that lists its methods holds them, whatever keyword declares it: an alias written
+// directly as an object type too. A class and an interface of one name that both list a method
+// give one node, the class's. A method of an object type inside another type has no type of its own.
+const LISTED = `export type Till = {
+  open(): void;
+  count(n: number): number;
+  count(n: string): number;
+  readonly id: string;
+};
+export type Pair = [{ left(): void }];
+export interface Clock {
+  tick(): void;
+  reset(): void;
+}
+export class Clock {
+  tick(): void {}
+}
+`;
+
 function symbols(relPath: string, text: string): ExtractedSymbol[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(relPath);
@@ -227,6 +284,8 @@ describe("every function is a node", () => {
     ["src/decorated.ts", DECORATED],
     ["src/decorated.tsx", DECORATED],
     ["web/decorated.js", DECORATED_JS],
+    ["src/ledger.ts", BODILESS],
+    ["src/till.ts", LISTED],
   ] as const) {
     test(`${file} matches the TypeScript compiler one to one`, () => {
       const want = compilerFunctions(file, text);
@@ -256,9 +315,52 @@ describe("every function is a node", () => {
     // A returned function and an immediately called one are named by their line.
     expect(fn(all, "function at line 47").unnamed).toBe(1);
     expect(fn(all, "function at line 65").unnamed).toBe(1);
-    // A signature without a body is not a function.
+    // An overload signature is no function: the body is. A method with only a declaration is one.
     expect(all.filter((s) => s.qualified_name === "overloaded").length).toBe(1);
-    expect(all.some((s) => s.qualified_name === "declaredOnly" || s.qualified_name === "Base.shape")).toBe(false);
+    expect(fn(all, "Base.shape").kind).toBe("method");
+  });
+
+  test("a method with only a declaration is a node named through its type; its overloads are one", () => {
+    const all = symbols("src/ledger.ts", BODILESS);
+    const lines = (name: string) => all.filter((s) => s.kind === "method" && s.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    expect(lines("Ledger.post")).toEqual([[2, 2]]);
+    expect(lines("Ledger.balance")).toEqual([[3, 4]]);
+    expect(lines("Ledger.open")).toEqual([[6, 6], [7, 7]]);
+    expect(lines("Shape.area")).toEqual([[13, 13]]);
+    expect(lines("Shape.sides")).toEqual([[14, 14]]);
+    expect(lines("Shape.scale")).toEqual([[17, 19]]);
+    expect(lines("Remote.constructor")).toEqual([[23, 23]]);
+    expect(lines("Remote.fetch")).toEqual([[24, 24]]);
+    expect(lines("Bag.take")).toEqual([[27, 27]]);
+    // A property, a call signature and a construct signature are no methods; nor is a method of a type with no name.
+    expect(all.some((s) => ["Ledger.size", "take", "give", "useBag.give"].includes(s.qualified_name) && s.kind === "method")).toBe(false);
+    // Each is held by its type.
+    const ledger = all.findIndex((s) => s.kind === "interface" && s.qualified_name === "Ledger");
+    const shape = all.findIndex((s) => s.kind === "class" && s.qualified_name === "Shape");
+    expect(fn(all, "Ledger.post").parent).toBe(ledger);
+    expect(fn(all, "Shape.area").parent).toBe(shape);
+  });
+
+  test("the compiler's list holds a method with only a declaration, its overloads once", () => {
+    const want = compilerFunctions("src/ledger.ts", BODILESS);
+    for (const lines of ["2-2", "3-4", "6-6", "7-7", "13-13", "14-14", "17-19", "23-23", "24-24", "27-27"]) expect(want).toContain(lines);
+    expect(want).not.toContain("15-15");
+    expect(want.filter((l) => l === "28-28")).toEqual([]);
+  });
+
+  test("an alias written as an object type holds its methods; a class and an interface of one name give the class's", () => {
+    const all = symbols("src/till.ts", LISTED);
+    const lines = (name: string) => all.filter((s) => s.kind === "method" && s.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    expect(lines("Till.open")).toEqual([[2, 2]]);
+    expect(lines("Till.count")).toEqual([[3, 4]]);
+    expect(all.some((s) => s.kind === "method" && (s.qualified_name.endsWith("left") || s.qualified_name === "Till.id"))).toBe(false);
+    expect(lines("Clock.tick")).toEqual([[13, 13]]);
+    expect(lines("Clock.reset")).toEqual([[10, 10]]);
+    const till = all.findIndex((s) => s.kind === "type" && s.qualified_name === "Till");
+    expect(fn(all, "Till.open").parent).toBe(till);
+    const want = compilerFunctions("src/till.ts", LISTED);
+    for (const l of ["2-2", "3-4", "10-10", "13-13"]) expect(want).toContain(l);
+    for (const l of ["7-7", "9-9"]) expect(want).not.toContain(l);
   });
 
   test("functions inside JSX are nodes, named by the attribute or call they are passed to", () => {
