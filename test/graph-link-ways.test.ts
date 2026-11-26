@@ -2,7 +2,7 @@
 // (trustmybot/tmb#337); a repo whose `graph_links` setting is `language-tool`, set or by default,
 // has its TypeScript and JavaScript calls linked by the TypeScript compiler, which is asked and
 // never imitated:
-// - linked, when the callee's declaration is exactly one node of the graph;
+// - linked, to each node of the graph among the callee's declarations the language proves it can go to;
 // - outside, when every declaration is outside the repo (the compiler's lib, an installed package);
 // - not known, when there is no answer or the declaration is no node, such as a parameter.
 // Both ways make the same nodes; each link records the way that made it. A repo whose compiler

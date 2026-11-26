@@ -276,9 +276,10 @@ export interface ToolInput {
   calls: readonly ToolCall[];
 }
 
-// The tool's answer for one call (CODE_GRAPH.md, "Two ways to make links"): linked to one node,
-// by its index in ToolInput.nodes; else outside the repo, or not known.
-export type ToolAnswer = { node: number } | { state: 'outside' | 'not_known' };
+// The tool's answer for one call (CODE_GRAPH.md, "Two ways to make links"): linked to each node, by
+// its index in ToolInput.nodes, of the declarations the language proves the call can go to, one or
+// more (trustmybot/tmb#344); else outside the repo, or not known.
+export type ToolAnswer = { nodes: readonly [number, ...number[]] } | { state: 'outside' | 'not_known' };
 
 // A language's own tool, opened for one repo. tmb installs nothing: a tool tmb carries is always
 // the one used; one that cannot run in the repo says why.
