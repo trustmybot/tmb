@@ -354,7 +354,8 @@ export function compilerCalls(relPath: string, text: string): Map<string, number
   const visit = (node: ts.Node, fn: string): void => {
     const here = ts.isFunctionLike(node) && "body" in node && node.body !== undefined ? `${lineOf(file, node.getStart(file))}-${lineOf(file, node.getEnd())}` : ts.isClassLike(node) ? "" : fn;
     if (isCall(node)) out.set(here, (out.get(here) ?? 0) + 1);
-    ts.forEachChild(node, (c) => visit(c, here));
+    // A decorator runs when the thing it decorates is defined, so its call belongs to what encloses that thing.
+    ts.forEachChild(node, (c) => visit(c, ts.isDecorator(c) ? fn : here));
   };
   visit(file, "");
   return out;

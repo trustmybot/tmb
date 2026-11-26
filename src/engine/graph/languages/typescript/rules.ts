@@ -792,7 +792,12 @@ export function extractTs(file: SourceFile, out: Collector): void {
       for (const [kind, table] of sqlRefs(text)) out.edge(scope, kind, table, line);
       if (/CREATE\s+(VIRTUAL\s+)?TABLE/i.test(text)) extractSqlDdl(text, out, null, node.startPosition.row);
     }
-    for (const c of named(node)) visit(c, inner, innerCls, innerContainer, innerOwner);
+    // A decorator runs when the thing it decorates is defined, so its call belongs to what
+    // encloses that thing: the type for a method, the file for a top-level type.
+    for (const c of named(node)) {
+      if (c.type === 'decorator') visit(c, scope, cls, container, owner);
+      else visit(c, inner, innerCls, innerContainer, innerOwner);
+    }
   };
   visit(root, moduleSymbol, null, moduleSymbol, moduleSymbol);
 }
