@@ -33,8 +33,8 @@ const FIXTURE: Record<string, string> = {
   ".gitignore": ".tmb/\n",
   "src/index.ts": "export function serve() { return 1; }\n",
   "build/script.ts": "export function buildSite() { return 2; }\n",
-  "command.go": "package cobra\n\nfunc ExecuteC() error { return nil }\n",
-  "args.go": "package cobra\n\nfunc NoArgs() error { return nil }\n",
+  "Command.java": "class Command { int executeC() { return 0; } }\n",
+  "Args.java": "class Args { int noArgs() { return 0; } }\n",
   "lib/thing.rs": "pub fn thing() {}\n",
   "dist/app.js": "export function bundled() {}\n",
   "dist/app.js.map": "{}\n",
@@ -63,7 +63,7 @@ afterEach(() => {
 });
 
 test("languages by Linguist's programming endings; the first-listed language wins a shared ending", () => {
-  expect(unreadLanguageOf("cmd/root.go")).toBe("Go");
+  expect(unreadLanguageOf("cmd/Root.java")).toBe("Java");
   expect(unreadLanguageOf("src/main.rs")).toBe("Rust");
   expect(unreadLanguageOf("include/x.h")).toBe("C");
   expect(unreadLanguageOf("App.vue")).toBe("Vue");
@@ -82,7 +82,7 @@ test("the index names the languages it does not read and the files it left out, 
   const stats = await indexProject(project, store, { rebuild: false });
   expect(stats.notRead).toEqual({
     languages: [
-      { name: "Go", files: 2 },
+      { name: "Java", files: 2 },
       { name: "Rust", files: 1 },
     ],
     leftOut: [
@@ -90,7 +90,7 @@ test("the index names the languages it does not read and the files it left out, 
       { rule: "lockfiles", files: 1 },
     ],
   });
-  expect(notReadSummary(stats.notRead)).toBe("not read: Go 2 files, Rust 1 file; left out: dist/ 2 files, lockfiles 1 file");
+  expect(notReadSummary(stats.notRead)).toBe("not read: Java 2 files, Rust 1 file; left out: dist/ 2 files, lockfiles 1 file");
   // Unread languages are not "not parsed": that stays for files tmb reads and could not.
   expect(stats.notParsed).toBe(0);
 });
@@ -106,15 +106,15 @@ test("a tracked build/ folder is in the graph", async () => {
 });
 
 test("a lookup that finds nothing names the languages the graph does not read", async () => {
-  const found = await graphFind(store, PLANNER, { query: "ExecuteC" }, context());
+  const found = await graphFind(store, PLANNER, { query: "executeC" }, context());
   expect(found.hits.some((h) => h.kind === "symbol")).toBe(false);
   expect(found.hits).toEqual([]);
-  expect(found.unreadLanguages).toEqual([{ name: "Go", files: 2 }, { name: "Rust", files: 1 }]);
+  expect(found.unreadLanguages).toEqual([{ name: "Java", files: 2 }, { name: "Rust", files: 1 }]);
 
-  const symbol = await graphSymbol(store, PLANNER, { name: "ExecuteC" }, context());
+  const symbol = await graphSymbol(store, PLANNER, { name: "executeC" }, context());
   expect(symbol.cards).toEqual([]);
-  expect(symbol.unreadLanguages?.map((l) => l.name)).toEqual(["Go", "Rust"]);
-  expect(notReadLines(symbol)).toEqual(["The code graph does not read Go (2 files), Rust (1 file); what is there is not searched."]);
+  expect(symbol.unreadLanguages?.map((l) => l.name)).toEqual(["Java", "Rust"]);
+  expect(notReadLines(symbol)).toEqual(["The code graph does not read Java (2 files), Rust (1 file); what is there is not searched."]);
 
   const scoped = await graphScope(store, PLANNER, { objective: "zzzqqq" }, context());
   expect([scoped.files, scoped.tests]).toEqual([[], []]);
@@ -127,10 +127,10 @@ test("a lookup that finds nothing names the languages the graph does not read", 
 });
 
 test("a lookup of a file in an unread language says the file is there and its language is not read", async () => {
-  const answer = await graphSymbol(store, PLANNER, { name: "command.go" }, context());
+  const answer = await graphSymbol(store, PLANNER, { name: "Command.java" }, context());
   expect(answer.cards).toEqual([]);
-  expect(answer.unreadFile).toEqual({ path: "command.go", language: "Go" });
-  expect(notReadLines(answer)).toEqual(["command.go is in the graph, but the code graph does not read Go, so it has no symbols."]);
+  expect(answer.unreadFile).toEqual({ path: "Command.java", language: "Java" });
+  expect(notReadLines(answer)).toEqual(["Command.java is in the graph, but the code graph does not read Java, so it has no symbols."]);
 });
 
 test("a graph of schema 4 takes the new column and is rebuilt with the counts on the next read", async () => {
@@ -144,7 +144,7 @@ test("a graph of schema 4 takes the new column and is rebuilt with the counts on
   try {
     expect(view.db.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });
     const row = view.db.query("SELECT not_read FROM layers WHERE layer = 'base'").get() as { not_read: string };
-    expect(JSON.parse(row.not_read).languages[0]).toEqual({ name: "Go", files: 2 });
+    expect(JSON.parse(row.not_read).languages[0]).toEqual({ name: "Java", files: 2 });
   } finally {
     view.db.close();
   }

@@ -2,6 +2,7 @@
 // languages/ and one line here. Each is built into the compiled tmb; none is downloaded.
 import type { LanguageModule } from './contract.ts';
 import { bash } from './bash/index.ts';
+import { go } from './go/index.ts';
 import { perl } from './perl/index.ts';
 import { python } from './python/index.ts';
 import { sql } from './sql/index.ts';
@@ -15,6 +16,7 @@ export const LANGUAGES: LanguageModule[] = [
   bash,
   python,
   sql,
+  go,
 ];
 
 /** The language module named `name`, or null. */
