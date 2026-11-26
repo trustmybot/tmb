@@ -309,7 +309,7 @@ flowchart LR
     F1["saveOrder()"] -->|writes| T["Table: orders"]
     F2["listOrders()"] -->|reads| T
     F3["exportReport()"] -->|writes| B["Object storage"]
-    T -.-|"not in the graph"| X["Columns, keys, links between tables"]
+    T -.->|"not in the graph"| X["Columns, keys, links between tables"]
 ```
 
 | Level | Example | In the graph |
