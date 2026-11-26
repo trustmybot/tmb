@@ -43,15 +43,6 @@ export function startsLikeStatement(text: string): boolean {
   return first !== undefined && STATEMENT_STARTS.has(first.toUpperCase());
 }
 
-/**
- * Whether a statement in a string of code is SQL: the string does not say its dialect, so the
- * general dialect and more than half of all the dialects must parse it, and all that parse it name
- * the same tables. A label a few lenient dialects read as a statement is not.
- */
-function isSqlInCode(statement: SqlStatement): boolean {
-  return statement.read && statement.general === true && (statement.parsed ?? 0) * 2 > statement.of;
-}
-
 function link(out: Collector, src: number, ref: SqlRef, line: number): void {
   const kind = ref.op === 'read' ? 'reads_data' : 'writes_data';
   if (ref.at.to === 'table') out.dataLink(src, kind, SQL_DATA.table, ref.at.name, line);
@@ -87,13 +78,14 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
 /**
  * The tables of the SQL in a string of code, linked from `owner`. `text` is the string's value,
  * each interpolated value replaced by SQL_HOLE; `first` and `last` are the lines the string spans
- * in the file. A statement that is not SQL by isSqlInCode gives nothing and is not counted: a
- * string that starts like a statement may be a label.
+ * in the file. The string does not say its dialect: every dialect is tried, and a statement counts
+ * when every dialect that parses it names the same tables. One that does not gives nothing and is
+ * not counted, since a string that starts like a statement may be a label.
  */
 export function sqlInCode(text: string, owner: number, first: number, last: number, out: Collector): void {
   if (!startsLikeStatement(text)) return;
   const lineOf = (line: number) => Math.min(last, first + line - 1);
-  for (const statement of readSql(text, SQL_HOLE)) if (isSqlInCode(statement)) addStatement(out, owner, statement, lineOf);
+  for (const statement of readSql(text, SQL_HOLE)) if (statement.read) addStatement(out, owner, statement, lineOf);
 }
 
 export const sql: LanguageModule = {

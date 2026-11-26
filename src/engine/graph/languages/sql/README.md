@@ -12,6 +12,6 @@ The code graph's rules for SQL, in `.sql` files and in strings of code. SQL is r
 
 ## SQL in strings
 
-The other languages hand `sqlInCode` ([index.ts](index.ts)) the value of a string that starts with a statement's first word, in any letter case: TypeScript and JavaScript strings, template strings and `+` chains of them; Python strings, f-strings, `%` and `.format` templates and their concatenations; bash strings. An interpolated value becomes a placeholder word, `SQL_HOLE`. The string does not say its dialect, so a statement counts only when the general dialect and more than half of all the dialects parse it, and all that parse it name the same tables. A string that is not SQL by that rule gives nothing and is not counted.
+The other languages hand `sqlInCode` ([index.ts](index.ts)) the value of a string that starts with a statement's first word, in any letter case: TypeScript and JavaScript strings, template strings and `+` chains of them; Python strings, f-strings, `%` and `.format` templates and their concatenations; bash strings. An interpolated value becomes a placeholder word, `SQL_HOLE`. The string does not say its dialect, so every dialect is tried, and a statement counts when every dialect that parses it names the same tables. A string that is not SQL by that rule gives nothing and is not counted.
 
-A label every dialect reads as a statement, such as `Select one from the list`, still gives a table: a known gap (trustmybot/tmb#350).
+A label that is also a valid statement, such as `Delete row` or `Select one from the list`, gives a false table: a known gap (trustmybot/tmb#350).
