@@ -1,5 +1,9 @@
 {
   "command": "bun tests/benchmark/run.ts --write",
+  "referenceVersions": {
+    "typescript": 2,
+    "python": 1
+  },
   "entries": [
     {
       "repo": "tmb",
@@ -13,16 +17,16 @@
             "of": 5463
           },
           "linksRight": {
-            "n": 10756,
-            "of": 10756
+            "n": 10759,
+            "of": 10759
           },
           "linksFoundByState": {
             "n": 10463,
             "of": 20446
           },
           "linksFoundByReference": {
-            "n": 10460,
-            "of": 10909
+            "n": 10463,
+            "of": 10912
           },
           "callsAccountedFor": {
             "n": 30077,
@@ -41,17 +45,17 @@
             "of": 5463
           },
           "linksRight": {
-            "n": 11205,
-            "of": 11205,
+            "n": 11208,
+            "of": 11208,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10909,
-            "of": 11474
+            "n": 10912,
+            "of": 11431
           },
           "linksFoundByReference": {
-            "n": 10909,
-            "of": 10909
+            "n": 10912,
+            "of": 10912
           },
           "callsAccountedFor": {
             "n": 30077,
@@ -73,26 +77,26 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 8630,
-            "of": 8630
+            "n": 8623,
+            "of": 8623
           },
           "linksFoundByState": {
             "n": 7763,
             "of": 41520
           },
           "linksFoundByReference": {
-            "n": 7761,
-            "of": 10711
+            "n": 7754,
+            "of": 10701
           },
           "callsAccountedFor": {
             "n": 45912,
             "of": 45912
           },
           "missesByCause": {
-            "a method on a name whose type is not written": 1185,
-            "a method on a name made by `new`, its type not written": 1083,
-            "a method on an expression (a chain, a call's result, an index)": 373,
-            "a method on a name whose type is written": 161,
+            "a method on a name whose type is not written": 1186,
+            "a method on a name made by `new`, its type not written": 1077,
+            "a method on an expression (a chain, a call's result, an index)": 376,
+            "a method on a name whose type is written": 160,
             "a method on a module's or class's name": 132,
             "a function's name called directly": 11,
             "a call on the parent (`super`)": 2,
@@ -106,17 +110,17 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 11578,
-            "of": 11578,
+            "n": 11568,
+            "of": 11568,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10710,
-            "of": 37720
+            "n": 10700,
+            "of": 37598
           },
           "linksFoundByReference": {
-            "n": 10710,
-            "of": 10711
+            "n": 10700,
+            "of": 10701
           },
           "callsAccountedFor": {
             "n": 45912,

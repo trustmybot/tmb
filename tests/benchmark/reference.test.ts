@@ -192,7 +192,7 @@ describe("the TypeScript compiler as the reference for links found", () => {
     const got = program
       .calls("use.ts")
       .filter((c) => c.line >= 5)
-      .map((c) => [c.line, c.callee?.text ?? "", declaresANode(c, program.checker) ? causeOf(c, program.checker) : null]);
+      .map((c) => [c.line, c.callee?.text ?? "", declaresANode(c, program.checkerOf("use.ts")) ? causeOf(c, program.checkerOf("use.ts")) : null]);
     const want = USE.flatMap(([, callee, cause], i) => (callee === "" ? [] : [[i + 1, callee, cause]]));
     // `new Cart().total()` holds two calls on one line: the construction too, inside the outer call.
     want.splice(want.findIndex(([, , cause]) => cause === CAUSES.chain) + 1, 0, [14, "Cart", CAUSES.construct]);
@@ -206,7 +206,7 @@ describe("the reference's nodes follow the Local row of Kinds of symbol", () => 
     const got: Record<string, boolean> = {};
     for (const c of program.calls("top.ts")) {
       const name = c.callee?.text;
-      if (name !== undefined && name in TOP_WANT) got[name] = declaresANode(c, program.checker);
+      if (name !== undefined && name in TOP_WANT) got[name] = declaresANode(c, program.checkerOf("top.ts"));
     }
     expect(got).toEqual(TOP_WANT);
   });

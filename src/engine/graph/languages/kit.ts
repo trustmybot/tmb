@@ -107,3 +107,20 @@ export const syntaxTree = (file: SourceFile): Node => {
   if (!file.root) throw new Error(`no syntax tree for ${file.relPath}`);
   return file.root;
 };
+
+// The text of `node` from offset `from` to `to` (both within it, relative to its start), with each
+// named child `replace` gives a text for put in its place; for a language to read a string's value
+// with each interpolated part put as one word.
+export function spliced(node: Node, from: number, to: number, replace: (child: Node) => string | null): string {
+  let text = '';
+  let at = node.startIndex + from;
+  const end = node.startIndex + to;
+  for (const c of named(node)) {
+    if (c.startIndex < at || c.endIndex > end) continue;
+    const put = replace(c);
+    if (put === null) continue;
+    text += node.text.slice(at - node.startIndex, c.startIndex - node.startIndex) + put;
+    at = c.endIndex;
+  }
+  return text + node.text.slice(at - node.startIndex, end - node.startIndex);
+}
