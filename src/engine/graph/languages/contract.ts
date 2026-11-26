@@ -59,10 +59,15 @@ export interface ExtractedSymbol {
   // function, 'member' when bound as an object's key or an assignment's target,
   // which no bare call names. Absent on a declaration of the file or a class.
   reach?: 'nested' | 'member';
-  // A class's bases as its file names them, through the file's own import aliases (`extends B`,
-  // `class C(B)`); '' for a base that is no plain name, such as `extends mixin(B)`. Absent when
-  // it has none, and on every other kind.
+  // A class's bases by the names its file gives them (`extends B`, `class C(B)`), which the
+  // resolver looks up as the file binds them, an import under a new name included; '' for a
+  // base that is no plain name, such as `extends mixin(B)`. Absent when it has none, and on
+  // every other kind.
   bases?: string[];
+  // The names a class's own body binds to anything but a method (trustmybot/tmb#287): a field or
+  // a signature with no body in TypeScript, an attribute in Python. Each hides a method of the
+  // same name further up its parents. Absent when it has none, and on every other kind.
+  fields?: string[];
 }
 
 export interface ParamInfo {
@@ -89,6 +94,10 @@ export interface ExtractedEdge {
   // Where the language finds the name before the file's own names and imports
   // (trustmybot/tmb#246); absent when nothing around the reference binds it.
   bound?: Bound;
+  // On an 'imports' edge, the name the import binds in the file when it is not the imported
+  // name (`import { A as B }`, `from m import A as B`): a reference to `B` is looked up in the
+  // file that import names, by `A` (trustmybot/tmb#287).
+  local?: string;
 }
 
 // How a name is bound around a reference, the first place the language looks:
@@ -133,8 +142,8 @@ export class Collector {
   private readonly byKey = new Map<string, number>();
 
   // A symbol seen again under the same key is the same row: by default its
-  // kind and name, so a class and its merged declarations are one; a function
-  // passes its own place, so two functions that share a name stay two.
+  // kind and name, so an interface and its merged declarations are one; a
+  // function or a class passes its own place, so two that share a name stay two.
   symbol(s: ExtractedSymbol, key = `${s.kind}\u0000${s.qualified_name}`): number {
     const known = this.byKey.get(key);
     if (known !== undefined) return known;
@@ -143,8 +152,8 @@ export class Collector {
     return this.symbols.length - 1;
   }
 
-  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound): void {
-    this.edges.push({ src, kind, dst_name: dstName, line, hint, ...(bound ? { bound } : {}) });
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string): void {
+    this.edges.push({ src, kind, dst_name: dstName, line, hint, ...(bound ? { bound } : {}), ...(local ? { local } : {}) });
   }
 
   export(e: ExtractedExport): void {

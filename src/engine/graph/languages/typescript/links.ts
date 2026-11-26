@@ -1,8 +1,10 @@
 // The link check of trustmybot/tmb#242: every cross-file `calls` and `instantiates` link the code
 // graph makes with resolution `exact` in TypeScript and JavaScript is compared with the
 // TypeScript compiler's own answer for the same name. A link the graph did not make is no
-// failure; a link to another file or declaration than the compiler's is. The compiler is the
-// TypeScript 5.9 compiler, a development dependency only, given the same commit the graph reads.
+// failure; a link to another file or declaration than the compiler's is, and so is a link into
+// the repo where the compiler names only a declaration outside it (trustmybot/tmb#287). The
+// compiler is the TypeScript 5.9 compiler, a development dependency only, given the same commit
+// the graph reads.
 import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +20,9 @@ const MAX_BYTES = 1_000_000;
 
 type Span = { start: number; end: number };
 
+/** How a wrong link names the compiler's answer when that is a declaration outside the repo. */
+const OUTSIDE = "a declaration outside the repo";
+
 /** What the compiler says one call or construction's callee is. */
 type Answer =
   | { kind: "declared"; decls: { file: string; spans: Span[] }[]; importFile: string | null }
@@ -30,7 +35,7 @@ export type CompilerLookup = (file: string, line: number, name: string) => Answe
 /** One link of the graph: the call's file and line, the name it calls, and the declaration it links. */
 export type GraphLink = { src: string; line: number; name: string; dst: string; start: number; end: number; kind: string };
 
-export type LinkVerdict = "right" | "wrong" | "external" | "unknown" | "no reference";
+export type LinkVerdict = "right" | "wrong" | "unknown" | "no reference";
 
 export type LinkReport = {
   /** Every link checked. */
@@ -38,7 +43,7 @@ export type LinkReport = {
   right: number;
   wrong: string[];
   /** Links the compiler gave no answer for, by why: not judged. */
-  notJudged: { external: number; unknown: number; noReference: number };
+  notJudged: { unknown: number; noReference: number };
   /** The links reached through an `export … from` or `export *`: the import's file is not the target's. */
   reexports: { right: number; wrong: number };
   /** Milliseconds spent building the graph, and the compiler's program with its answers. */
@@ -237,7 +242,8 @@ export function graphLinks(db: Database, layer = BASE_LAYER): GraphLink[] {
 /**
  * The verdict on one link: right when, for a reference to the name on the link's line, one of
  * the compiler's declarations is in the link's file and its lines overlap the target's; wrong
- * when the compiler names declarations of the repo and none of them is; else not judged, saying why.
+ * when the compiler names declarations and none of them is, those outside the repo included,
+ * since every link of the graph is into the repo; else not judged, saying why.
  */
 export function judge(link: GraphLink, lookup: CompilerLookup): { verdict: LinkVerdict; reexport: boolean; compiler: string } {
   const here = lookup(link.src, link.line, link.name);
@@ -248,11 +254,13 @@ export function judge(link: GraphLink, lookup: CompilerLookup): { verdict: LinkV
   // Reached through an `export … from` or `export *`: the import names another file than the declaration's.
   const reexport = (a: (typeof declared)[number]) => a.importFile !== null && !a.decls.some((d) => d.file === a.importFile);
   if (hit !== undefined) return { verdict: "right", reexport: reexport(hit), compiler: "" };
-  if (declared.length > 0) {
-    const compiler = declared.map((a) => a.decls.map((d) => `${d.file}:${d.spans.map((s) => `${s.start}-${s.end}`).join(",")}`).join(" | ")).join("; ");
+  const outside = here.some((a) => a.kind === "external");
+  if (declared.length > 0 || outside) {
+    const named = declared.map((a) => a.decls.map((d) => `${d.file}:${d.spans.map((s) => `${s.start}-${s.end}`).join(",")}`).join(" | "));
+    const compiler = [...named, ...(outside ? [OUTSIDE] : [])].join("; ");
     return { verdict: "wrong", reexport: declared.some(reexport), compiler };
   }
-  return { verdict: here.some((a) => a.kind === "external") ? "external" : "unknown", reexport: false, compiler: "" };
+  return { verdict: "unknown", reexport: false, compiler: "" };
 }
 
 /** Builds the graph of the repo at `commit` (HEAD by default) the way tmb does, in a scratch folder, and checks every link. */
@@ -277,7 +285,7 @@ export async function checkLinks(repoDir: string, commit = "HEAD"): Promise<Link
       links: links.length,
       right: 0,
       wrong: [],
-      notJudged: { external: 0, unknown: 0, noReference: 0 },
+      notJudged: { unknown: 0, noReference: 0 },
       reexports: { right: 0, wrong: 0 },
       ms: { graph: Math.round(graphMs), compiler: 0 },
     };
@@ -285,7 +293,6 @@ export async function checkLinks(repoDir: string, commit = "HEAD"): Promise<Link
       const { verdict, reexport, compiler } = judge(link, lookup);
       if (verdict === "right") report.right++;
       else if (verdict === "wrong") report.wrong.push(`${link.src}:${link.line} ${link.kind} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end}; the compiler: ${compiler}`);
-      else if (verdict === "external") report.notJudged.external++;
       else if (verdict === "unknown") report.notJudged.unknown++;
       else report.notJudged.noReference++;
       if (reexport && verdict === "right") report.reexports.right++;
