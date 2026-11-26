@@ -14,9 +14,14 @@ Every later check is judged against these records, never against what someone re
 
 ## 2. Dev-vs-user-runtime boundary
 
-tmb's docs, test harness and release scripts describe how this project is built: its test levels, its repository, its milestones and its release gates. None of it ships to a user's project.
+tmb has two sides, and nothing crosses from the first to the second.
 
-The shipped runtime (the role prompts, the tools, the commands, the adapters and the dashboard) is about the user's project and is self-contained. It never refers to tmb's own development process, because a user has none of it and a prompt that cites it leaks meaningless internal context. When a shipped surface needs a rule tmb's docs also describe, it states the rule directly. For the same reason, a feature built for tmb's own needs must work in any user's project, reading that project's labels, milestones and repos from its data rather than assuming tmb's.
+| Side | What it is | Who it is for |
+|---|---|---|
+| **Development** | These docs, the test harness and the release scripts: how tmb itself is built, with its test levels, repository, milestones and release gates | People and agents developing tmb |
+| **Shipped runtime** | The role prompts, the tools, the commands, the adapters and the dashboard | A user and the agents in the user's project |
+
+The shipped runtime is about the user's project and is self-contained. It never reads, embeds or cites these docs, and never mentions how tmb is developed: a user has none of it, and an agent that is handed it treats it as instructions for a project it is not working on ([who reads these docs](../README.md#who-reads-these-docs)). When a shipped surface needs a rule tmb's docs also describe, it states the rule directly. For the same reason, a feature built for tmb's own needs must work in any user's project, reading that project's labels, milestones and repos from its data rather than assuming tmb's.
 
 ## 3. Cut entropy at handoffs
 

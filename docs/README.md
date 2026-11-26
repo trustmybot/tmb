@@ -24,6 +24,17 @@ flowchart LR
 | [contributing/](contributing/README.md) | How work on this repo is done: labels, enums, releases | Contribute to tmb |
 | [reference/](reference/README.md) | Install, setup, every command | Use tmb |
 
+## Who reads these docs
+
+| Reader | Reads | Why |
+|---|---|---|
+| People and agents developing tmb, in this repo | Every folder | To build tmb to its design |
+| A user of tmb | [reference/](reference/README.md) only | To install and use tmb |
+| A tmb agent at work in a user's project | Nothing here | These pages are not its guide and not its prompt |
+
+- **The docs never ship.** No role prompt, skill, tool or message that tmb puts in a user's project reads, embeds or cites a page here. A rule an agent must follow is written into its prompt directly. Planned: a check that fails the build when a shipped prompt names these docs (trustmybot/tmb#307).
+- **In this repo the docs are read as any project's design docs are.** An agent developing tmb reads them because tmb is the project it works on, not because tmb's prompts point to them.
+
 ## Where to start
 
 1. [architecture/README.md](architecture/README.md), then [PHILOSOPHY.md](architecture/PHILOSOPHY.md): what tmb is.
