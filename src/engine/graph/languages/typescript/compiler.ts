@@ -157,23 +157,54 @@ function memberName(ts: TypeScriptModule, m: MethodLike): string {
   return ts.isIdentifier(name) || ts.isPrivateIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name) ? name.text : name.getText();
 }
 
+/** How a member runs: a getter, a setter, or a method, a constructor being one by its name. */
+const runsAs = (ts: TypeScriptModule, m: MethodLike): string => (ts.isGetAccessorDeclaration(m) ? "get" : ts.isSetAccessorDeclaration(m) ? "set" : "method");
+
+/** The members of a named type that run as methods, each with its name and kind as one key. */
+function listed(ts: TypeScriptModule, members: readonly TS.Node[]): { m: MethodLike; key: string }[] {
+  return members.filter((m): m is MethodLike => isMethodLike(ts, m)).map((m) => ({ m, key: `${runsAs(ts, m)}\u0000${memberName(ts, m)}` }));
+}
+
+/**
+ * The members of a type that has a name and lists its methods, whatever keyword declares it: a
+ * class, an interface, or an alias written directly as an object type. Null for any other node.
+ */
+function namedTypeMembers(ts: TypeScriptModule, type: TS.Node): readonly TS.Node[] | null {
+  if ((ts.isClassDeclaration(type) || ts.isInterfaceDeclaration(type)) && type.name !== undefined) return type.members;
+  if (ts.isTypeLiteralNode(type) && ts.isTypeAliasDeclaration(type.parent) && type.parent.type === type) return type.members;
+  return null;
+}
+
+/** The keys of the members the classes of an interface's name list in the interface's own scope, which it merges with. */
+function mergedClassKeys(ts: TypeScriptModule, type: TS.Node): Set<string> {
+  const keys = new Set<string>();
+  if (!ts.isInterfaceDeclaration(type) || !("statements" in type.parent)) return keys;
+  for (const stmt of (type.parent as TS.Node & { statements: TS.NodeArray<TS.Statement> }).statements) {
+    if (ts.isClassDeclaration(stmt) && stmt.name?.text === type.name.text) for (const { key } of listed(ts, stmt.members)) keys.add(key);
+  }
+  return keys;
+}
+
 /**
  * The methods of a type that have only a declaration (CODE_GRAPH.md, "A function with a
- * declaration and a definition is one node"; "Kinds of symbol"): in a class or an interface that
- * has a name, each method, constructor, getter or setter with no body, when the type's own body
- * holds no member of that name and kind with a body. The signatures of one name and kind in one
- * body are one method, an overload set, first to last. A signature beside a body of its name is an
- * overload of that body, which is the node; a type with no name holds no node.
+ * declaration and a definition is one node"; "Kinds of symbol"): in a type that has a name and
+ * lists its methods (namedTypeMembers), each method, constructor, getter or setter with no body,
+ * when the type's own body holds no member of that name and kind with a body, and, for an
+ * interface, no class of its name in its scope lists that member: the class's is the one node. The
+ * signatures of one name and kind in one body are one method, an overload set, first to last. A
+ * signature beside a body of its name is an overload of that body, which is the node; a type with
+ * no name holds no node.
  */
 export function bodilessMethods(ts: TypeScriptModule, type: TS.Node): MethodLike[][] {
-  if (!(ts.isClassDeclaration(type) || ts.isInterfaceDeclaration(type)) || type.name === undefined) return [];
-  const members = (type.members as TS.NodeArray<TS.Node>).filter((m): m is MethodLike => isMethodLike(ts, m));
-  const keyOf = (m: MethodLike) => `${m.kind}\u0000${memberName(ts, m)}`;
-  const defined = new Set(members.filter(hasBody).map(keyOf));
+  const members = namedTypeMembers(ts, type);
+  if (members === null) return [];
+  const all = listed(ts, members);
+  const taken = mergedClassKeys(ts, type);
+  for (const { m, key } of all) if (hasBody(m)) taken.add(key);
   const sets = new Map<string, MethodLike[]>();
-  for (const m of members) {
-    if (hasBody(m) || defined.has(keyOf(m))) continue;
-    sets.set(keyOf(m), [...(sets.get(keyOf(m)) ?? []), m]);
+  for (const { m, key } of all) {
+    if (hasBody(m) || taken.has(key)) continue;
+    sets.set(key, [...(sets.get(key) ?? []), m]);
   }
   return [...sets.values()];
 }

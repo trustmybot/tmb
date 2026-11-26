@@ -552,24 +552,55 @@ const FUNCTION_NODES = new Set([
 // A member of a class's or an interface's body that declares a method, a constructor or an
 // accessor with no body of its own.
 const METHOD_SIGNATURES = new Set(['method_signature', 'abstract_method_signature']);
-// The bodies of the types that have a name and hold methods: a class's and an interface's.
-const MEMBER_BODIES = new Set(['class_body', 'interface_body']);
-const NAMED_TYPES = new Set(['class_declaration', 'abstract_class_declaration', 'interface_declaration']);
+// The bodies of the types that have a name and list their methods, by the declaration that holds
+// each: a class's and an interface's. An alias's, written directly as an object type, is its value.
+const MEMBER_BODIES: Record<string, ReadonlySet<string>> = {
+  class_body: new Set(['class_declaration', 'abstract_class_declaration']),
+  interface_body: new Set(['interface_declaration']),
+};
 
 // Whether a method is a getter or a setter, by its keyword before its name; '' for neither.
 const accessorOf = (m: Node): string => m.children.find((c) => c?.type === 'get' || c?.type === 'set')?.type ?? '';
 
+// The name of the type that holds a body of members, when that type has a name and lists its
+// methods, whatever keyword declares it.
+function namedTypeOf(body: Node): string | undefined {
+  const holder = body.parent;
+  if (!holder) return undefined;
+  if (MEMBER_BODIES[body.type]?.has(holder.type)) return holder.childForFieldName('name')?.text;
+  if (body.type === 'object_type' && holder.type === 'type_alias_declaration' && isField(holder, 'value', body)) return holder.childForFieldName('name')?.text;
+  return undefined;
+}
+
+// A statement as it declares: inside each `export` and `declare` around it.
+function innermostDeclaration(stmt: Node): Node {
+  let d = stmt;
+  while (d.type === 'export_statement' || d.type === 'ambient_declaration') {
+    const inner = d.childForFieldName('declaration') ?? named(d)[0];
+    if (!inner) break;
+    d = inner;
+  }
+  return d;
+}
+
+// The statement a declaration is, with each `export` and `declare` around it.
+function outermostStatement(decl: Node): Node {
+  let s = decl;
+  while (s.parent && (s.parent.type === 'export_statement' || s.parent.type === 'ambient_declaration')) s = s.parent;
+  return s;
+}
+
 /**
  * The method a signature with no body declares, when it is a node ("A function with a declaration
- * and a definition is one node" in CODE_GRAPH.md): a method, a constructor or an accessor declared
- * in the body of a class or an interface that has a name, when that body holds no method of the
- * same name and kind with a body, which would be the node, the signature its overload. The
- * signatures of one name and kind in one body are one method, keyed by `key`.
+ * and a definition is one node" in CODE_GRAPH.md): a method, a constructor or an accessor listed
+ * in the body of a type that has a name, when that body holds no method of the same name and kind
+ * with a body, which would be the node, the signature its overload; and, in an interface, when no
+ * class of its name in its scope, which it merges with, lists that method: the class's is the one
+ * node. The signatures of one name and kind in one body are one method, keyed by `key`.
  */
 function bodilessMethod(sig: Node): { type: string; name: string; key: string } | null {
   const body = sig.parent;
-  const holder = body?.parent;
-  const type = holder && body && MEMBER_BODIES.has(body.type) && NAMED_TYPES.has(holder.type) ? holder.childForFieldName('name')?.text : undefined;
+  const type = body ? namedTypeOf(body) : undefined;
   const own = sig.childForFieldName('name');
   if (!body || type === undefined || !own) return null;
   const name = keyText(own);
@@ -579,6 +610,13 @@ function bodilessMethod(sig: Node): { type: string; name: string; key: string } 
     return key !== null && keyText(key) === name && accessorOf(m) === accessor;
   };
   if (named(body).some((m) => m.type === 'method_definition' && sameMember(m))) return null;
+  const holder = body.parent!;
+  if (holder.type === 'interface_declaration') {
+    const scope = outermostStatement(holder).parent;
+    const classes = (scope ? named(scope) : []).map(innermostDeclaration).filter((d) => CLASS_DECLARATIONS.has(d.type) && d.childForFieldName('name')?.text === type);
+    const lists = (cls: Node) => named(cls.childForFieldName('body') ?? cls).some((m) => (m.type === 'method_definition' || METHOD_SIGNATURES.has(m.type)) && sameMember(m));
+    if (classes.some(lists)) return null;
+  }
   return { type, name, key: `signature\u0000${body.startIndex}\u0000${accessor}\u0000${name}` };
 }
 
@@ -928,7 +966,11 @@ export function extractTs(file: SourceFile, out: Collector): void {
       }
     } else if (t === 'type_alias_declaration' || t === 'enum_declaration') {
       const n = name();
-      if (n) definition(node, 'type', n, container);
+      if (n) {
+        const at = definition(node, 'type', n, container);
+        // An alias written as an object type holds the methods it lists.
+        if (t === 'type_alias_declaration') innerContainer = at;
+      }
     } else if (t === 'variable_declarator' && scope === moduleSymbol) {
       const decl = node.parent;
       // A statement of the file itself, exported or not; one in a `namespace` declares a member of
