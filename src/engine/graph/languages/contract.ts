@@ -237,6 +237,12 @@ export interface LanguageModule {
   // The languages of GitHub Linguist's list it reads, by Linguist's names (trustmybot/tmb#154):
   // a file is read by the module whose language Linguist settles the file on.
   linguist: readonly string[];
+  // Dialects Linguist names apart that it reads too, in a file whose ending Linguist lists for its
+  // own first language (trustmybot/tmb#154): a dialect's other endings are not read.
+  dialects?: readonly string[];
+  // Whether a file of its language only declares what another file runs, such as a stub: it is
+  // kept as a file of that language with no symbols (trustmybot/tmb#390).
+  declarationsOnly?(relPath: string): boolean;
   // The path of its embedded tree-sitter grammar; absent for a language read by patterns.
   grammar?: string;
   // Its comment marker, for the file's leading comment: `#` or `--`, or `//` and `/* */`.

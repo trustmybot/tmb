@@ -6,11 +6,11 @@ import { createHash } from "node:crypto";
 import { basename, posix } from "node:path";
 import { GITATTRIBUTES, GitAttributes } from "../linguist/gitattributes.ts";
 import { HEURISTICS_CONSIDER } from "../linguist/index.ts";
-import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, moduleOfLanguages, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { commitReader, listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
-import { LANGUAGES, languageNamed, languageOfLinguist } from "./languages/registry.ts";
+import { LANGUAGES, languageNamed } from "./languages/registry.ts";
 import { unreadLanguage } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
@@ -120,11 +120,6 @@ function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text
   }
 }
 
-/** The module that reads a file Linguist's rules settle on one language; null otherwise. */
-function moduleOf(languages: readonly string[]): SourceLanguage | null {
-  return languages.length === 1 ? (languageOfLinguist(languages[0]!)?.name ?? null) : null;
-}
-
 /** The Linguist attributes the `.gitattributes` files of a commit's tree give its paths (trustmybot/tmb#154). */
 export function commitAttributes(repoDir: string, tree: readonly TreeEntry[]): GitAttributes {
   const files = tree.filter((e) => e.path === GITATTRIBUTES || e.path.endsWith(`/${GITATTRIBUTES}`));
@@ -172,7 +167,7 @@ async function planCommit(
       },
       attributes.of(entry.path),
     );
-    const lang = headless ? null : moduleOf(languages);
+    const lang = headless ? null : moduleOfLanguages(entry.path, languages);
     if (headless) waiting.add(entry.path);
     const cached = lang !== null ? cachedParse(db, entry.blob, lang) : null;
     if (cached) reused++;
@@ -195,7 +190,7 @@ async function planCommit(
     const text = texts.get(plan.entry.blob) ?? starts.get(plan.entry.blob)?.slice(0, HEURISTICS_CONSIDER) ?? null;
     if (waiting.has(plan.entry.path)) {
       plan.languages = fileLanguages(plan.entry.path, text === null ? null : () => text, attributes.of(plan.entry.path));
-      plan.lang = moduleOf(plan.languages);
+      plan.lang = moduleOfLanguages(plan.entry.path, plan.languages);
       const cached = plan.lang !== null ? cachedParse(db, plan.entry.blob, plan.lang) : null;
       if (cached) {
         reused++;
@@ -554,7 +549,7 @@ function applyLayer(
   const unresolvedImports = resolver.unresolvedImports;
   const unread = new Map<string, number>();
   for (const plan of plans) {
-    const language = plan.lang === null ? unreadLanguage(plan.languages) : null;
+    const language = plan.lang === null ? unreadLanguage(plan.languages, plan.entry.path) : null;
     if (language !== null) unread.set(language, (unread.get(language) ?? 0) + 1);
   }
   const notRead: NotRead = {

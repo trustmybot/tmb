@@ -38,7 +38,7 @@ const OUTSIDE: ToolAnswer = { state: "outside" };
 const ENVIRONMENT_MARK = "pyvenv.cfg";
 
 /** The files of the commit pyright reads besides the `.py` files: the language's stubs and pyright's settings. */
-const STUB_EXTENSION = ".pyi";
+export const STUB_EXTENSION = ".pyi";
 const SETTINGS_FILES = new Set(["pyproject.toml", "pyrightconfig.json"]);
 
 /** The folder of an environment that holds its installed packages. */

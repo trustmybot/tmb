@@ -12,6 +12,7 @@ import { indexProject, openView } from "../src/engine/graph/fresh.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import { GitAttributes } from "../src/engine/linguist/gitattributes.ts";
 import { interpreterOf, Linguist, LINGUIST_RELEASE } from "../src/engine/linguist/index.ts";
+import { unreadLanguage } from "../src/engine/graph/languages/unread.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -63,11 +64,65 @@ describe("files no module reads get their Linguist language", () => {
     expect(fileLanguages("ios/Gauge.h", () => text)).toEqual(["Objective-C"]);
     expect(languageOf("ios/Gauge.h", () => text)).toBeNull();
   });
+});
 
-  test("an extension the heuristics cannot settle stays undecided", () => {
-    const languages = fileLanguages("logic/facts.pl", () => "likes(mary, wine).\n");
-    expect(languages.length).toBeGreaterThan(1);
-    expect(languageOf("logic/facts.pl", () => "likes(mary, wine).\n")).toBeNull();
+describe("Linguist's order: file name, interpreter, ending, then the rules for a shared ending", () => {
+  test("a name settles a file before anything else", () => {
+    expect(fileLanguages("build/Makefile", () => "#!/usr/bin/env python3\n")).toEqual(["Makefile"]);
+  });
+
+  test("the interpreter comes before the ending", () => {
+    expect(fileLanguages("tools/report.ts", () => "#!/usr/bin/env python3\nprint(1)\n")).toEqual(["Python"]);
+    expect(languageOf("tools/report.ts", () => "#!/usr/bin/env python3\nprint(1)\n")).toBe("python");
+  });
+
+  test("an interpreter several languages share is narrowed by the ending", () => {
+    expect(fileLanguages("tools/serve.ts", () => "#!/usr/bin/env bun\nexport {};\n")).toEqual(["TypeScript"]);
+    expect(fileLanguages("tools/serve.js", () => "#!/usr/bin/env bun\nexport {};\n")).toEqual(["JavaScript"]);
+  });
+
+  test("with no name and no ending, the interpreter names it", () => {
+    expect(languageOf("bin/run", () => "#!/usr/bin/env python3\nprint(1)\n")).toBe("python");
+  });
+
+  test("the ending names it, then a shared ending's rules", () => {
+    expect(fileLanguages("api/meter.proto", () => "")).toEqual(["Protocol Buffer"]);
+    expect(languageOf("legacy/report.pl", () => "use strict;\nprint 1;\n")).toBe("perl");
+  });
+});
+
+describe("a file Linguist's rules settle nothing for", () => {
+  test("is read as the language of a module among its languages", () => {
+    const mod = "/*!\nShell completions.\n*/\n\npub(super) mod bash;\npub(super) mod fish;\n";
+    expect(fileLanguages("crates/cli/src/complete/mod.rs", () => mod).length).toBeGreaterThan(1);
+    expect(languageOf("crates/cli/src/complete/mod.rs", () => mod)).toBe("rust");
+    expect(languageOf("legacy/sums.pl", () => "sub total {\n  return 0;\n}\n")).toBe("perl");
+  });
+
+  test("with no module among its languages, is named as one of them, never guessed", () => {
+    const languages = fileLanguages("lib/facts.ecl", () => "x\n");
+    expect(languages).toEqual(["ECL", "ECLiPSe"]);
+    expect(languageOf("lib/facts.ecl", () => "x\n")).toBeNull();
+    expect(unreadLanguage(languages)).toBe("one of ECL, ECLiPSe");
+  });
+});
+
+describe("a dialect keeps its module", () => {
+  test.each([
+    ["db/fn.sql", "CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END $$ LANGUAGE plpgsql;\n", "PLpgSQL"],
+    ["db/proc.sql", "CREATE PROCEDURE p AS\nGO\n", "TSQL"],
+    ["db/seq.sql", "SELECT ledger_seq.nextval FROM dual;\n", "PLSQL"],
+    ["db/mod.sql", "ALTER MODULE ledger ADD PROCEDURE p();\n", "SQLPL"],
+    ["db/plain.sql", "CREATE TABLE ledger (id INTEGER);\n", "SQL"],
+  ])("%s is %s, read by the SQL module", (file, text, name) => {
+    expect(fileLanguages(file, () => text)).toEqual([name]);
+    expect(languageOf(file, () => text)).toBe("sql");
+  });
+
+  test("a dialect's other endings are not read", () => {
+    expect(fileLanguages("db/fn.pgsql", () => "")).toEqual(["PLpgSQL"]);
+    expect(languageOf("db/fn.pgsql", () => "")).toBeNull();
+    expect(languageOf("db/body.pls", () => "")).toBeNull();
   });
 });
 
@@ -127,6 +182,58 @@ describe("indexing a project", () => {
   afterEach(() => {
     store?.close();
     rmSync(project, { recursive: true, force: true });
+  });
+
+  /** Commits `files`, indexes the project, and returns each file's module and its count of symbols other than the file's own. */
+  async function indexed(files: Record<string, string>): Promise<{ langs: Record<string, string | null>; symbols: Record<string, number>; notRead: { name: string; files: number }[] }> {
+    for (const [file, text] of Object.entries({ ".gitignore": ".tmb/\n", ...files })) {
+      mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
+      writeFileSync(path.join(project, file), text);
+    }
+    git("add", "-A");
+    git("commit", "-q", "-m", "first");
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    store = opened.store;
+    writeSetting(store, HUMAN, "base_branch", "main");
+    const stats = await indexProject(project, store, { rebuild: false });
+    const view = await openView(project, store);
+    try {
+      const rows = view.db.query("SELECT path, lang FROM files WHERE layer = ?").all(view.layer) as { path: string; lang: string | null }[];
+      const counts = view.db.query("SELECT path, COUNT(*) AS n FROM symbols WHERE layer = ? AND kind != 'module' GROUP BY path").all(view.layer) as { path: string; n: number }[];
+      return { langs: Object.fromEntries(rows.map((r) => [r.path, r.lang])), symbols: Object.fromEntries(counts.map((c) => [c.path, c.n])), notRead: stats.notRead.languages };
+    } finally {
+      view.db.close();
+    }
+  }
+
+  test("a `.ts` file that holds `<TS` is XML, as on GitHub, and a linguist-language line makes it TypeScript", async () => {
+    const qt = "const nodes: Array<TS.Node> = [];\nexport function walk() { return nodes; }\n";
+    const { langs } = await indexed({
+      ".gitattributes": "src/typed.ts linguist-language=TypeScript\n",
+      "src/strings.ts": qt,
+      "src/typed.ts": qt,
+    });
+    expect(langs["src/strings.ts"]).toBeNull();
+    expect(langs["src/typed.ts"]).toBe("typescript");
+  });
+
+  test("a `.pyi` stub is Python, kept as a file with no symbols (trustmybot/tmb#390)", async () => {
+    const { langs, symbols, notRead } = await indexed({
+      "pkg/meter.py": "def reading():\n    return 1\n",
+      "pkg/meter.pyi": "def reading() -> int: ...\n",
+    });
+    expect(fileLanguages("pkg/meter.pyi", () => "")).toEqual(["Python"]);
+    expect(langs["pkg/meter.py"]).toBe("python");
+    expect(langs["pkg/meter.pyi"]).toBeNull();
+    expect(symbols["pkg/meter.pyi"]).toBeUndefined();
+    expect(notRead).toEqual([]);
+  });
+
+  test("an undecided file no module reads is counted as one of its languages", async () => {
+    const { langs, notRead } = await indexed({ "lib/facts.ecl": "x\n", "lib/main.py": "def main():\n    pass\n" });
+    expect(langs["lib/facts.ecl"]).toBeNull();
+    expect(notRead).toEqual([{ name: "one of ECL, ECLiPSe", files: 1 }]);
   });
 
   test("a .gitattributes override changes a file's language and takes a vendored folder out", async () => {

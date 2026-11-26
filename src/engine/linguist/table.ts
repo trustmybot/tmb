@@ -172,7 +172,7 @@ export function interpreterOf(text: string): string | null {
 }
 
 /** A file's base name and its extensions, longest first, as Linguist's BlobHelper#extensions: `a.d.ts` gives `.d.ts` and `.ts`; `.bashrc` gives `.bashrc`. */
-function extensionsOf(base: string): string[] {
+export function extensionsOf(base: string): string[] {
   const [, ...segments] = base.toLowerCase().split(".");
   return segments.map((_, at) => `.${segments.slice(at).join(".")}`);
 }
@@ -251,11 +251,11 @@ export class Linguist {
   }
 
   /**
-   * The languages of a file by Linguist's strategies, each narrowing the languages the one before
-   * left, and the first that leaves one deciding: its file name, its extension (unless Linguist
-   * counts the extension too common to tell), the interpreter its first line names, then the
-   * heuristics for its extension. `text` is asked for only when its name and extension leave other
-   * than one language; with no text the name alone answers.
+   * The languages of a file by Linguist's strategies, in Linguist's order, each narrowing the
+   * languages the one before left, and the first that leaves one deciding: its file name, the
+   * interpreter its first line names, its extension (unless Linguist counts the extension too common
+   * to tell), then the heuristics for its extension. `text` is asked for only when its name leaves
+   * other than one language; with no text the name alone answers.
    */
   detect(relPath: string, text: (() => string) | null): Detection {
     const base = relPath.split(/[\\/]/).pop() ?? "";
@@ -264,13 +264,13 @@ export class Linguist {
     const strategies: ((candidates: string[]) => string[])[] = [
       (candidates) => narrow(candidates, this.byFilename.get(base) ?? []),
       (candidates) => {
+        const interpreter = text === null ? null : interpreterOf(text());
+        return interpreter === null ? [] : narrow(candidates, this.byInterpreter.get(interpreter) ?? []);
+      },
+      (candidates) => {
         if (this.generic.some((extension) => lower.endsWith(extension))) return candidates;
         const extension = extensionsOf(base).find((e) => this.byExtension.has(e));
         return narrow(candidates, extension === undefined ? [] : this.byExtension.get(extension)!);
-      },
-      (candidates) => {
-        const interpreter = text === null ? null : interpreterOf(text());
-        return interpreter === null ? [] : narrow(candidates, this.byInterpreter.get(interpreter) ?? []);
       },
       () => (text === null ? [] : this.heuristic(lower, text)),
     ];

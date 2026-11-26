@@ -8,7 +8,7 @@ import languages from "./data/languages.yml" with { type: "text" };
 import release from "./data/RELEASE.json" with { type: "json" };
 import { Linguist } from "./table.ts";
 
-export { type Detection, HEURISTICS_CONSIDER, interpreterOf, Linguist, type LinguistLanguage, type LinguistTexts } from "./table.ts";
+export { type Detection, extensionsOf, HEURISTICS_CONSIDER, interpreterOf, Linguist, type LinguistLanguage, type LinguistTexts } from "./table.ts";
 
 /** The Linguist release the data came from. */
 export const LINGUIST_RELEASE: { repo: string; tag: string; commit: string; licence: string; files: Record<string, string> } = release;

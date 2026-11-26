@@ -74,8 +74,10 @@ test("a file is counted under the language Linguist names for it when it is code
   expect(unreadLanguage(languages("include/x.h", "int x(void);\n"))).toBeNull();
   expect(unreadLanguage(languages("src/x.cc"))).toBeNull();
   expect(unreadLanguage(languages("README.md", "# demo\n"))).toBeNull();
-  // Linguist's rules leave a `.pl` file with neither Perl's nor Prolog's marks undecided: its first language names it.
-  expect(unreadLanguage(languages("logic/facts.pl", "x.\n"))).toBe(languages("logic/facts.pl", "x.\n")[0]!);
+  // Linguist's rules leave a `.pl` file with neither Perl's nor Prolog's marks undecided: Perl's module reads it.
+  expect(unreadLanguage(languages("logic/facts.pl", "x.\n"))).toBeNull();
+  // Undecided between languages no module reads: one of them.
+  expect(unreadLanguage(languages("lib/facts.ecl", "x\n"))).toBe("one of ECL, ECLiPSe");
 });
 
 test("by its name alone, a path is in the first of its languages that the layer counted", () => {

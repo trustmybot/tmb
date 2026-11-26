@@ -6,7 +6,7 @@ import { Collector, type Extraction, type SourceLanguage, type SymbolKind } from
 import { clip, DOC_MAX, md5, splitWords, STOPWORDS } from './languages/kit.ts';
 import { attributeFlag, type Attributes } from '../linguist/gitattributes.ts';
 import { linguist } from '../linguist/index.ts';
-import { languageNamed, languageOfLinguist } from './languages/registry.ts';
+import { languageNamed, moduleReading } from './languages/registry.ts';
 import type { Parsers } from './loader.ts';
 
 export type {
@@ -74,11 +74,21 @@ export function fileLanguages(relPath: string, text: (() => string) | null, attr
   return linguist().detect(relPath, text).languages;
 }
 
-// The language module that reads a path: the one that reads the single language Linguist settles
-// on for it; null when no module reads that language, or when Linguist leaves several.
+// The language module that reads a file Linguist names `languages` (CODE_GRAPH.md, trustmybot/tmb#154):
+// the module of the language Linguist settles on; when its rules leave several, the module of the
+// first of them a module reads, so a file is never dropped for want of an answer. Null when no
+// module reads any of them, and for a file its module keeps with no symbols.
+export function moduleOfLanguages(relPath: string, languages: readonly string[]): SourceLanguage | null {
+  for (const name of languages) {
+    const module = moduleReading(relPath, name);
+    if (module !== null) return module.declarationsOnly?.(relPath) === true ? null : module.name;
+  }
+  return null;
+}
+
+// The language module that reads a path; see moduleOfLanguages.
 export function languageOf(relPath: string, text: () => string, attributes: Attributes = {}): SourceLanguage | null {
-  const languages = fileLanguages(relPath, text, attributes);
-  return languages.length === 1 ? (languageOfLinguist(languages[0]!)?.name ?? null) : null;
+  return moduleOfLanguages(relPath, fileLanguages(relPath, text, attributes));
 }
 
 // Whether a language is read through a tree-sitter grammar, not by patterns.
