@@ -235,7 +235,6 @@ export const UNREAD_LANGUAGES: Readonly<Record<string, string>> = {
   "rktl": "Racket",
   "rmiss": "GLSL",
   "rockspec": "Lua",
-  "rs": "Rust",
   "rsx": "R",
   "ru": "Ruby",
   "ruby": "Ruby",

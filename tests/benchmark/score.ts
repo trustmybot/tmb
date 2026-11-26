@@ -30,7 +30,7 @@ export type WayScores = Record<ScoreName, Score> & { missesByCause: Causes | Not
 export const WAYS = ["A", "B"] as const;
 export type Way = (typeof WAYS)[number];
 
-export type Language = "typescript" | "python" | "go" | "java";
+export type Language = "typescript" | "python" | "go" | "java" | "rust";
 
 /** One repo's scores: the commit measured, the reference used, and one set per way. */
 export type Entry = { repo: string; language: Language; commit: string; reference: string; ways: Record<Way, WayScores> };
