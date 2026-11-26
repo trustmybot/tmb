@@ -389,8 +389,8 @@
       "ways": {
         "A": {
           "functionsFound": {
-            "n": 3460,
-            "of": 3460
+            "n": 3458,
+            "of": 3458
           },
           "linksRight": {
             "n": 495,
@@ -398,43 +398,43 @@
           },
           "linksFoundByState": {
             "n": 495,
-            "of": 14228
+            "of": 14220
           },
           "linksFoundByReference": {
             "n": 495,
-            "of": 7234
+            "of": 7200
           },
           "callsAccountedFor": {
-            "n": 14228,
-            "of": 14228
+            "n": 14220,
+            "of": 14220
           },
           "missesByCause": {
-            "a method, called through a value": 4237,
-            "an item, called by its path": 1271,
+            "a method, called through a value": 4209,
+            "an item, called by its path": 1265,
             "a function or a constructor, called by its bare name": 1231
           }
         },
         "B": {
           "functionsFound": {
-            "n": 3460,
-            "of": 3460
+            "n": 3458,
+            "of": 3458
           },
           "linksRight": {
-            "n": 7234,
-            "of": 7234,
+            "n": 7200,
+            "of": 7200,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 7234,
-            "of": 7588
+            "n": 7200,
+            "of": 7699
           },
           "linksFoundByReference": {
-            "n": 7234,
-            "of": 7234
+            "n": 7200,
+            "of": 7200
           },
           "callsAccountedFor": {
-            "n": 14228,
-            "of": 14228
+            "n": 14220,
+            "of": 14220
           },
           "missesByCause": {}
         }
@@ -561,7 +561,7 @@
           },
           "linksFoundByState": {
             "n": 5759,
-            "of": 7143
+            "of": 7145
           },
           "linksFoundByReference": {
             "n": 5719,
