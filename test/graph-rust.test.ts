@@ -550,4 +550,41 @@ describe("Rust's own parser", () => {
       db.close();
     }
   });
+
+  // A call is identified by its position: where the name it calls is written ("Two ways to make
+  // links"). The name of a path is its last segment, `Self` included; a method's is its own name. A
+  // callee that is no path, such as a parenthesized value or a field, names nothing.
+  test.skipIf(!raFound)("rust-analyzer's parser names each call at the name it calls, as UTF-16 offsets (skipped without rust-analyzer on PATH)", () => {
+    const text = 'fn g() { let s = "héllo 🌱"; Self(0); Self::V(1); s.len(); f::<u8>(); r#match(); (s)(); s.0(); crate::m::h(); }\n';
+    const ref = rustReference(new Map([["src/a.rs", text]]));
+    const answer = ref.files["src/a.rs"];
+    if (answer === undefined || "error" in answer) throw new Error(JSON.stringify(answer));
+    const at = (needle: string, from = 0) => text.indexOf(needle, from);
+    expect(answer.named).toEqual([
+      { pos: at("Self(0)"), line: 1, name: "Self", shape: "name" },
+      { pos: at("V(1)"), line: 1, name: "V", shape: "path" },
+      { pos: at("len"), line: 1, name: "len", shape: "method" },
+      { pos: at("f::<u8>"), line: 1, name: "f", shape: "name" },
+      { pos: at("r#match"), line: 1, name: "r#match", shape: "name" },
+      { pos: at("m::h()") + "m::".length, line: 1, name: "h", shape: "path" },
+    ]);
+  });
+
+  test.skipIf(!raFound)("each call rust-analyzer's parser names is the graph's call at that position, of that name (skipped without rust-analyzer on PATH)", async () => {
+    const db = await built();
+    try {
+      const ref = rustReference(new Map(Object.entries(FILES)));
+      const rows = db.query("SELECT s.path AS path, e.pos AS pos, e.dst_name AS name FROM edges e JOIN symbols s ON s.id = e.src_id WHERE e.layer = 'a' AND e.call_state IS NOT NULL").all() as {
+        path: string;
+        pos: number;
+        name: string;
+      }[];
+      const graph = new Set(rows.map((r) => `${r.path}:${r.pos}:${r.name}`));
+      const named = Object.entries(ref.files).flatMap(([file, answer]) => ("error" in answer ? [] : answer.named.map((c) => `${file}:${c.pos}:${c.name}`)));
+      expect(named.length).toBeGreaterThan(0);
+      expect(named.filter((c) => !graph.has(c))).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
 });
