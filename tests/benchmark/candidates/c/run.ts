@@ -7,7 +7,7 @@
 // The tools come from the environment, never from the repo: TMB_LIBCLANG (libclang's library),
 // TMB_CINDEX (the folder holding clang's Python bindings), TMB_CLANGD_APPLE, TMB_CLANGD, TMB_SCIP_CLANG,
 // and the grammars TMB_GRAMMAR_C and TMB_GRAMMAR_CPP.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { CPP_RULES } from "../cpp/rules_cpp.ts";
@@ -24,6 +24,8 @@ const { values: a } = parseArgs({
     out: { type: "string" },
     candidates: { type: "string", default: "clang,clangd-apple,clangd,scip-clang" },
     "index-timeout-s": { type: "string", default: "1800" },
+    // A reference.json written before with the same --ref-cdb, read instead of running the reference again.
+    reference: { type: "string" },
   },
 });
 const rules = a.lang === "cpp" ? CPP_RULES : C_RULES;
@@ -37,7 +39,8 @@ const graph = await readRepo(root, rules);
 console.log(`graph: ${graph.nodes.length} nodes, ${graph.calls.length} calls, ${graph.parseErrors.length} files with a parse error (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
 
 const tr = performance.now();
-const ref = runReference({ python: process.env.TMB_PYTHON ?? "python3", libclang: env("TMB_LIBCLANG"), cindexDir: env("TMB_CINDEX"), root, cdb: a["ref-cdb"] === "none" ? null : path.resolve(a["ref-cdb"]!), language: rules.language, out: path.join(out, "reference.json") });
+const ref = a.reference !== undefined ? (JSON.parse(readFileSync(path.resolve(a.reference), "utf8")) as Reference) : runReference({ python: process.env.TMB_PYTHON ?? "python3", libclang: env("TMB_LIBCLANG"), cindexDir: env("TMB_CINDEX"), root, cdb: a["ref-cdb"] === "none" ? null : path.resolve(a["ref-cdb"]!), language: rules.language, out: path.join(out, "reference.json") });
+if (a.reference !== undefined && path.resolve(a.reference) !== path.join(out, "reference.json")) copyFileSync(path.resolve(a.reference), path.join(out, "reference.json"));
 console.log(`reference: ${((performance.now() - tr) / 1000).toFixed(1)} s`);
 const refResolved = referenceResolved(graph, ref);
 const fns = scoreFunctions(graph, ref);
@@ -91,3 +94,5 @@ for (const c of graph.calls) {
 }
 writeFileSync(path.join(out, "calls.jsonl"), rows.join("\n") + "\n");
 console.log(`wrote ${out}`);
+// A language server left running would keep the process open.
+process.exit(0);

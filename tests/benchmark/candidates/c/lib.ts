@@ -129,7 +129,7 @@ export function resolve(graph: Graph, call: { name: string }, answer: Answer | u
 // The compiler's answer (clang_reference.py) and the judge built from it.
 
 type RefPlace = { file: string; start: number; end: number } | { outside: string } | null;
-type RefDecl = { usr: string; kind: string; name: string; decl: RefPlace; def: RefPlace };
+type RefDecl = { usr: string; kind: string; name: string; decl: RefPlace; def: RefPlace; class?: RefPlace };
 export type RefCall = { file: string; line: number; col: number; name: string; owners: string[]; decls: RefDecl[]; dynamic: boolean };
 export type Reference = {
   units: { file: string; errors?: number; error?: string; first?: string[] }[];
@@ -162,7 +162,10 @@ export function referenceDecls(ref: Reference, call: RefCall): Answer {
     }
     // A construction by a class's name calls the constructor and names the class: the class that
     // declares the constructor is reached as well as the constructor's definition.
-    if (d.kind === "CONSTRUCTOR") out.push({ ...d.decl, name: d.name });
+    if (d.kind === "CONSTRUCTOR") {
+      out.push({ ...d.decl, name: d.name });
+      if (d.class && !("outside" in d.class)) out.push({ ...d.class, name: d.name });
+    }
     if (d.def !== null) {
       out.push({ ...d.def, name: d.name });
       continue;

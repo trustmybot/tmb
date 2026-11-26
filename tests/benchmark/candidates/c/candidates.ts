@@ -1,7 +1,7 @@
 // The candidates for way B in C and C++, each run the same way: given the repo, its graph and
 // the compiler's reference, the declarations it gives for each call.
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { clangdAnswers } from "./clangd.ts";
 import { clangPerUnitAnswers, type Answers, type Graph, type Reference } from "./lib.ts";
@@ -32,7 +32,8 @@ export async function runCandidate(cand: Candidate, o: { root: string; cdb: stri
       mkdirSync(cdbDir, { recursive: true });
       copyFileSync(o.cdb, path.join(cdbDir, "compile_commands.json"));
     }
-    const run = await clangdAnswers({ binary: env(cand === "clangd" ? "TMB_CLANGD" : "TMB_CLANGD_APPLE"), root: o.root, cdbDir, language: o.language, indexTimeoutMs: o.indexTimeoutMs, parallelFiles: 4 }, o.graph.calls);
+    const databaseFiles = o.cdb === null ? undefined : databaseSources(o.root, o.cdb);
+    const run = await clangdAnswers({ binary: env(cand === "clangd" ? "TMB_CLANGD" : "TMB_CLANGD_APPLE"), root: o.root, cdbDir, language: o.language, indexTimeoutMs: o.indexTimeoutMs, parallelFiles: 4, databaseFiles }, o.graph.calls);
     return { answers: run.answers, timing: { version: run.version, startMs: Math.round(run.startMs), indexMs: Math.round(run.indexMs), askMs: Math.round(run.askMs) } };
   }
   if (o.cdb === null) return { notRun: "scip-clang reads a compile database and runs with none only on a database it is given" };
@@ -41,6 +42,12 @@ export async function runCandidate(cand: Candidate, o: { root: string; cdb: stri
   const run = runScipClang(env("TMB_SCIP_CLANG"), o.root, o.cdb, index);
   if (!existsSync(index)) return { notRun: `scip-clang wrote no index: ${run.stderr.slice(0, 500)}` };
   return { answers: scipAnswers(readIndex(index), o.graph.calls), timing: { indexMs: Math.round(run.ms), status: String(run.status) } };
+}
+
+/** The files a compile database compiles, by path from the root. */
+export function databaseSources(root: string, cdb: string): Set<string> {
+  const entries: { directory: string; file: string }[] = JSON.parse(readFileSync(cdb, "utf8"));
+  return new Set(entries.map((e) => path.relative(root, path.resolve(e.directory, e.file))));
 }
 
 /** The macOS SDK, which a compile database must name for a tool built on clang that is not Apple's. */

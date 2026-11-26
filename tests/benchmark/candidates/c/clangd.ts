@@ -64,6 +64,12 @@ export type ClangdOptions = {
   indexTimeoutMs: number;
   /** Files asked at once. */
   parallelFiles: number;
+  /**
+   * The source files the database compiles, by path from the root. When given, these and the headers
+   * are asked first, and the other files (another platform's, say) only after them: clangd indexes
+   * an open file, so while one is open its definitions can answer a call asked in any other file.
+   */
+  databaseFiles?: ReadonlySet<string>;
 };
 
 export type ClangdRun = { answers: Answers; startMs: number; indexMs: number; askMs: number; version: string };
@@ -99,22 +105,25 @@ export async function clangdAnswers(opts: ClangdOptions, calls: readonly GraphCa
 
   const byFile = new Map<string, GraphCall[]>();
   for (const c of calls) byFile.set(c.file, [...(byFile.get(c.file) ?? []), c]);
-  const files = [...byFile.keys()];
+  const inDatabase = (f: string) => opts.databaseFiles === undefined || opts.databaseFiles.has(f) || !/\.(c|cc|cpp|cxx)$/.test(f);
+  const first = [...byFile.keys()].filter(inDatabase);
+  const later = [...byFile.keys()].filter((f) => !inDatabase(f));
 
   const t1 = performance.now();
   if (opts.cdbDir !== null) {
     // The background index starts once a file is opened; open the first, then wait for its end.
-    const first = files[0];
-    if (first !== undefined) open(lsp, opts, first);
+    const opened = first[0] ?? later[0];
+    if (opened !== undefined) open(lsp, opts, opened);
     const timeout = new Promise<void>((r) => setTimeout(r, opts.indexTimeoutMs));
     await Promise.race([indexed, timeout]);
     if (!indexing) process.stderr.write("clangd: background index never reported progress\n");
-    if (first !== undefined) lsp.notify("textDocument/didClose", { textDocument: { uri: uriOf(opts.root, first) } });
+    if (opened !== undefined) lsp.notify("textDocument/didClose", { textDocument: { uri: uriOf(opts.root, opened) } });
   }
   const indexMs = performance.now() - t1;
 
   const t2 = performance.now();
   const answers: Answers = new Map();
+  let files: string[] = [];
   let next = 0;
   const worker = async () => {
     while (next < files.length) {
@@ -130,7 +139,11 @@ export async function clangdAnswers(opts: ClangdOptions, calls: readonly GraphCa
       lsp.notify("textDocument/didClose", { textDocument: { uri } });
     }
   };
-  await Promise.all(Array.from({ length: opts.parallelFiles }, worker));
+  for (const group of [first, later]) {
+    files = group;
+    next = 0;
+    await Promise.all(Array.from({ length: opts.parallelFiles }, worker));
+  }
   const askMs = performance.now() - t2;
   await lsp.request("shutdown", null).catch(() => null);
   lsp.notify("exit", null);

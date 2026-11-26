@@ -34,9 +34,11 @@ const sample = <T,>(xs: T[], k: number) => {
   while (out.length < k && copy.length > 0) out.push(copy.splice(Math.floor(rand() * copy.length), 1)[0]!);
   return out;
 };
-// The disagreements that involve a link, spread over the kinds by size.
-const linkDisagree = [...kinds.values()].flat().filter((r) => cands.some((c) => r[c].state === "linked"));
-console.log(`\nSAMPLE disagree-with-a-link (${linkDisagree.length})`);
-for (const r of sample(linkDisagree, n)) console.log(JSON.stringify({ key: r.key, name: r.name, ref: r.ref && `${r.ref.state} ${r.ref.links.join("+")}`, ...Object.fromEntries(cands.map((c) => [c, view(r, c)])) }));
+// The disagreements that involve a link, drawn in turn from each kind, so a rare kind is checked too.
+const linkKinds = [...kinds.values()].map((rs) => sample(rs.filter((r) => cands.some((c) => r[c].state === "linked")), rs.length)).filter((rs) => rs.length > 0);
+const drawn: Row[] = [];
+for (let i = 0; drawn.length < n && linkKinds.some((rs) => i < rs.length); i++) for (const rs of linkKinds) if (i < rs.length && drawn.length < n) drawn.push(rs[i]!);
+console.log(`\nSAMPLE disagree-with-a-link (${linkKinds.reduce((s, x) => s + x.length, 0)}), in turn from each kind`);
+for (const r of drawn) console.log(JSON.stringify({ key: r.key, name: r.name, ref: r.ref && `${r.ref.state} ${r.ref.links.join("+")}`, ...Object.fromEntries(cands.map((c) => [c, view(r, c)])) }));
 console.log(`\nSAMPLE all-agree-linked (${agreeLinked.length})`);
 for (const r of sample(agreeLinked, 20)) console.log(JSON.stringify({ key: r.key, name: r.name, ref: r.ref && `${r.ref.state} ${r.ref.links.join("+")}`, link: view(r, cands[0]!) }));

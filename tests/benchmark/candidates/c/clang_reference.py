@@ -195,6 +195,11 @@ def main():
                 return
             d = ref.get_definition()
             decl = {"usr": ref.get_usr(), "kind": ref.kind.name, "name": ref.spelling, "decl": place(extent(ref)), "def": place(extent(d)) if d is not None else None}
+            if ref.kind == K.CONSTRUCTOR:
+                # A construction by the class's name names the class, too: its definition.
+                cls = ref.semantic_parent
+                cls_def = cls.get_definition() if cls is not None else None
+                decl["class"] = place(extent(cls_def)) if cls_def is not None else None
             if decl not in entry["decls"]:
                 entry["decls"].append(decl)
 
