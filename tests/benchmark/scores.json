@@ -1,0 +1,230 @@
+{
+  "command": "bun tests/benchmark/run.ts --write",
+  "entries": [
+    {
+      "repo": "tmb",
+      "language": "typescript",
+      "commit": "8ee804de3ced5ccd6555237be8dac8815c70ce04",
+      "reference": "TypeScript compiler 5.9.3",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 5463,
+            "of": 5463
+          },
+          "linksRight": {
+            "n": 4784,
+            "of": 4784
+          },
+          "linksFoundByState": {
+            "n": 9953,
+            "of": 20446
+          },
+          "linksFoundByReference": {
+            "n": 9950,
+            "of": 10909
+          },
+          "callsAccountedFor": {
+            "n": 30077,
+            "of": 30077
+          },
+          "missesByCause": {
+            "a name bound by destructuring (`const { f } = …`), called": 464,
+            "a method on a name whose type is not written": 281,
+            "a method on an expression (a chain, a call's result, an index)": 135,
+            "a name of data whose value is no function written there, called": 31,
+            "a method on a module's or class's name": 19,
+            "a function's name called directly": 15,
+            "a method on a name whose type is written": 14
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksRight": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "missesByCause": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          }
+        }
+      }
+    },
+    {
+      "repo": "hono",
+      "language": "typescript",
+      "commit": "75ff8e3ea18485589816881c6278bc9783e56602",
+      "reference": "TypeScript compiler 5.9.3",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 10267,
+            "of": 10267
+          },
+          "linksRight": {
+            "n": 6118,
+            "of": 6118
+          },
+          "linksFoundByState": {
+            "n": 7636,
+            "of": 41520
+          },
+          "linksFoundByReference": {
+            "n": 7634,
+            "of": 10714
+          },
+          "callsAccountedFor": {
+            "n": 45912,
+            "of": 45912
+          },
+          "missesByCause": {
+            "a method on a name whose type is not written": 1185,
+            "a method on a name made by `new`, its type not written": 1083,
+            "a method on an expression (a chain, a call's result, an index)": 373,
+            "a method on a name whose type is written": 162,
+            "a method on a module's or class's name": 132,
+            "a name of data whose value is no function written there, called": 80,
+            "a tagged template": 28,
+            "a name bound by destructuring (`const { f } = …`), called": 19,
+            "a function's name called directly": 13,
+            "a call on the parent (`super`)": 2,
+            "a construction by a class's name": 2,
+            "a method on the object itself (`this`)": 1
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksRight": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "missesByCause": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          }
+        }
+      }
+    },
+    {
+      "repo": "flask",
+      "language": "python",
+      "commit": "49943b5a94413a530761350f04e896f76e8d620e",
+      "reference": "Python 3.9.6 ast",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 857,
+            "of": 1488
+          },
+          "linksRight": {
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          },
+          "linksFoundByState": {
+            "n": 376,
+            "of": 3102
+          },
+          "linksFoundByReference": {
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          },
+          "callsAccountedFor": {
+            "n": 3472,
+            "of": 3961
+          },
+          "missesByCause": {
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksRight": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "missesByCause": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          }
+        }
+      }
+    },
+    {
+      "repo": "datasette",
+      "language": "python",
+      "commit": "b91f2668004b3c115a8672474739a88f08945605",
+      "reference": "Python 3.9.6 ast",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 3253,
+            "of": 3949
+          },
+          "linksRight": {
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          },
+          "linksFoundByState": {
+            "n": 4144,
+            "of": 18996
+          },
+          "linksFoundByReference": {
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          },
+          "callsAccountedFor": {
+            "n": 22576,
+            "of": 24078
+          },
+          "missesByCause": {
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksRight": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          },
+          "missesByCause": {
+            "notScored": "not built (trustmybot/tmb#311)"
+          }
+        }
+      }
+    }
+  ]
+}
