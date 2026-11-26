@@ -6,6 +6,10 @@
 //   bun tests/benchmark/run.ts --check   the same, and fail when an enforced stored score fell (the heavy test)
 //   bun tests/benchmark/run.ts --write   measure and store the scores in scores.json, refused when one fell
 //
+// Each language's reference has a version, stored with the scores. A change to the reference raises
+// it; the run against the new reference is then that language's new baseline when no enforced score
+// misses more than before. With the same version, a lower share is a fall.
+//
 // scores.json is written by `--write` alone, never by hand. A pull request that raises a stored
 // score shows the run's output. Every repo is at a fixed commit: tmb at its pin in repos.ts, read
 // from its own history; the public repos at theirs, fetched with `bun tests/lib/pinned-repo.ts <name>`.
@@ -15,10 +19,10 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
-import { measurePython, WAY_B_NOT_BUILT } from "./python.ts";
+import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION, WAY_B_NOT_BUILT } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
 import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
-import { measureTypescript, REFERENCE as TS_REFERENCE } from "./typescript.ts";
+import { measureTypescript, REFERENCE as TS_REFERENCE, REFERENCE_VERSION as TS_REFERENCE_VERSION } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
 const COMMAND = "bun tests/benchmark/run.ts --write";
@@ -76,7 +80,7 @@ async function measureAll(): Promise<Run> {
     }
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);
-  return { stored: { command: COMMAND, entries }, seconds, detail };
+  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION }, entries }, seconds, detail };
 }
 
 /** The scores as Markdown tables, for the terminal and for a pull request. */

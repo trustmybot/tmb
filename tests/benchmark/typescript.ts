@@ -17,6 +17,12 @@ const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["typescript", "tsx", "ja
 export const REFERENCE = `TypeScript compiler ${ts.version}`;
 
 /**
+ * The version of the TypeScript reference, raised when the reference changes what it counts.
+ * 2: each file is resolved under the program of the config that owns it, as way B resolves it.
+ */
+export const REFERENCE_VERSION = 2;
+
+/**
  * How each way builds the graph, as the program builds it: way B uses the compiler tmb carries,
  * the one the program uses, and nothing is passed in.
  */

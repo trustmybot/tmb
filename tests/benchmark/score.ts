@@ -33,8 +33,25 @@ export type Language = "typescript" | "python";
 /** One repo's scores: the commit measured, the reference used, and one set per way. */
 export type Entry = { repo: string; language: Language; commit: string; reference: string; ways: Record<Way, WayScores> };
 
-/** The stored file: the command that alone writes it, and one entry per repo and language. */
-export type Stored = { command: string; entries: Entry[] };
+/**
+ * The version of each language's reference: raised when the reference changes what it counts, so
+ * the scores stored before were measured against another reference.
+ */
+export type ReferenceVersions = Partial<Record<Language, number>>;
+
+/** The version of a language's reference that stored scores with no version were measured against. */
+export const FIRST_REFERENCE_VERSION = 1;
+
+/**
+ * The stored file: the command that alone writes it, each language's reference version, and one
+ * entry per repo and language.
+ */
+export type Stored = { command: string; referenceVersions?: ReferenceVersions; entries: Entry[] };
+
+const versionOf = (s: Stored, language: Language): number => s.referenceVersions?.[language] ?? FIRST_REFERENCE_VERSION;
+
+/** What a score misses: the reference's items it does not have; for links right, the wrong links. */
+const missesOf = (r: Ratio): number => r.of - r.n;
 
 export const isRatio = (s: Score | Causes | NotScored): s is Ratio => "n" in s && "of" in s && typeof s.n === "number";
 export const isNotScored = (s: Score | Causes | NotScored): s is NotScored => "notScored" in s;
@@ -145,28 +162,33 @@ function compare(a: Ratio, b: Ratio): number {
 
 const keyOf = (e: Entry) => `${e.repo} ${e.language}`;
 
-/** Each pair of stored and current scores, for the named scores. */
-function pairs(stored: Stored, now: Stored, names: readonly ScoreName[]): { where: string; before: Score; after: Score | undefined }[] {
+/** Each pair of stored and current scores, for the named scores, with whether the language's reference version changed. */
+function pairs(stored: Stored, now: Stored, names: readonly ScoreName[]): { where: string; before: Score; after: Score | undefined; newReference: boolean }[] {
   const current = new Map(now.entries.map((e) => [keyOf(e), e]));
-  const out: { where: string; before: Score; after: Score | undefined }[] = [];
+  const out: { where: string; before: Score; after: Score | undefined; newReference: boolean }[] = [];
   for (const e of stored.entries) {
     const c = current.get(keyOf(e));
-    for (const way of WAYS) for (const name of names) out.push({ where: `${keyOf(e)} way ${way} ${name}`, before: e.ways[way][name], after: c?.ways[way][name] });
+    const newReference = versionOf(stored, e.language) !== versionOf(now, e.language);
+    for (const way of WAYS) for (const name of names) out.push({ where: `${keyOf(e)} way ${way} ${name}`, before: e.ways[way][name], after: c?.ways[way][name], newReference });
   }
   return out;
 }
 
 /**
  * Every enforced stored score the current run is below: a lower share, a share that is no longer
- * scored, or a repo no longer measured. A stored score with no value cannot fall.
+ * scored, or a repo no longer measured. A stored score with no value cannot fall. When the
+ * language's reference version changed, the shares were measured against two references, so a
+ * score falls only when it misses more than it did; the run is then that language's new baseline.
  */
 export function falls(stored: Stored, now: Stored): string[] {
   const current = new Set(now.entries.map(keyOf));
   const out = stored.entries.filter((e) => !current.has(keyOf(e))).map((e) => `${keyOf(e)}: no longer measured`);
-  for (const { where, before, after } of pairs(stored, now, ENFORCED)) {
+  for (const { where, before, after, newReference } of pairs(stored, now, ENFORCED)) {
     if (!isRatio(before) || before.of === 0 || after === undefined) continue;
     if (!isRatio(after) || after.of === 0) out.push(`${where}: was ${format(before)}, now ${format(after)}`);
-    else if (compare(after, before) < 0) out.push(`${where}: fell from ${format(before)} to ${format(after)}`);
+    else if (newReference) {
+      if (missesOf(after) > missesOf(before)) out.push(`${where}: misses rose from ${missesOf(before)} to ${missesOf(after)} under a new reference (${format(before)} to ${format(after)})`);
+    } else if (compare(after, before) < 0) out.push(`${where}: fell from ${format(before)} to ${format(after)}`);
   }
   return out;
 }
