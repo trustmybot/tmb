@@ -3,8 +3,9 @@
 // TypeScript compiler's own answer for the same name. A link the graph did not make is no
 // failure; a link to another file or declaration than the compiler's is, and so is a link into
 // the repo where the compiler names only a declaration outside it (trustmybot/tmb#287). The
-// compiler is the TypeScript 5.9 compiler, a development dependency only, given the same commit
-// the graph reads.
+// compiler is the TypeScript 5.9 compiler tmb carries for way B, a dependency of tmb, given the
+// same commit the graph reads. The check runs in the tests and the benchmark, never in tmb's
+// commands.
 import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,8 +31,18 @@ export type Answer =
   | { kind: "external" }
   | { kind: "unknown" };
 
-/** The compiler's answers for the references to a name on one line of a file. */
-export type CompilerLookup = (file: string, line: number, name: string) => Answer[];
+/**
+ * Where a use of a name is in a file: its line, and for a call its position, the offset where the
+ * name it calls is written, else where the call starts (CODE_GRAPH.md, "Two ways to make links").
+ * A use that is no call has no position.
+ */
+export type Place = { line: number; pos: number | null };
+
+/**
+ * The compiler's answers for a name used at a place of a file: the call at the position, when the
+ * place has one; else every reference to the name on the line.
+ */
+export type CompilerLookup = (file: string, at: Place, name: string) => Answer[];
 
 /**
  * One call or construction the compiler finds in a file: the line it starts on; its position, as
@@ -52,8 +63,8 @@ export type CompilerCall = {
 /** The compiler's program of a repo at a commit: its answer for a name on a line, and every call of a file. */
 export type CompilerProgram = { lookup: CompilerLookup; calls: (file: string) => CompilerCall[]; checker: ts.TypeChecker };
 
-/** One link of the graph: the call's file and line, the name it calls, and the declaration it links. */
-export type GraphLink = { src: string; line: number; name: string; dst: string; start: number; end: number; kind: string };
+/** One link of the graph: the call's file, line and position, the name it calls, and the declaration it links. */
+export type GraphLink = { src: string; line: number; pos: number | null; name: string; dst: string; start: number; end: number; kind: string };
 
 export type LinkVerdict = "right" | "wrong" | "unknown" | "no reference";
 
@@ -96,7 +107,8 @@ type Ref = { name: string; node: ts.Identifier | ts.PrivateIdentifier };
 
 /**
  * The TypeScript compiler's program of the repo at `commit`, read from git as the graph reads it,
- * and a lookup of its answer for each reference to a name on a line. A call's callee counts on
+ * and a lookup of its answer for a name at a place. A call is found at the position where the name
+ * it calls is written. A reference that is no call is found on its line; a call's callee counts on
  * its own line and on the call's first line, where the graph records a call that spans lines.
  */
 export function compilerLookup(repoDir: string, commit: string, texts = commitTexts(repoDir, commit)): CompilerLookup {
@@ -155,35 +167,38 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
     return { kind: "declared", decls: [...decls].map(([file, spans]) => ({ file, spans })), importFile };
   };
 
-  // Each file's names by line, made the first time a link asks for the file.
-  const byFile = new Map<string, Map<string, Ref[]>>();
-  const refsOf = (file: string): Map<string, Ref[]> => {
+  // Each file's names by line and by position, made the first time a link asks for the file. A
+  // name is one token, so the names at a position are those of one reference.
+  type FileRefs = { byLine: Map<string, Ref[]>; byPos: Map<string, Ref[]> };
+  const byFile = new Map<string, FileRefs>();
+  const refsOf = (file: string): FileRefs => {
     const known = byFile.get(file);
     if (known !== undefined) return known;
-    const refs = new Map<string, Ref[]>();
+    const refs: FileRefs = { byLine: new Map(), byPos: new Map() };
     byFile.set(file, refs);
     const sf = program.getSourceFile(path.join(root, file));
     if (sf === undefined) return refs;
     const original = originalNames(sf);
-    const put = (line: number, name: string, ref: Ref) => {
-      const key = `${line}\u0000${name}`;
-      const here = refs.get(key) ?? [];
+    const put = (into: Map<string, Ref[]>, at: number, name: string, ref: Ref) => {
+      const key = `${at}\u0000${name}`;
+      const here = into.get(key) ?? [];
       if (!here.some((r) => r.node === ref.node)) here.push(ref);
-      refs.set(key, here);
+      into.set(key, here);
     };
-    const add = (line: number, ref: Ref) => {
-      put(line, ref.name, ref);
+    const add = (into: Map<string, Ref[]>, at: number, ref: Ref) => {
+      put(into, at, ref.name, ref);
       const imported = original.get(ref.name);
-      if (imported !== undefined) put(line, imported, ref);
+      if (imported !== undefined) put(into, at, imported, ref);
     };
     const visit = (node: ts.Node): void => {
       const callee = calleeOf(node);
       if (callee !== null) {
         const ref = { name: callee.text, node: callee };
-        add(lineOf(sf, callee.getStart(sf)), ref);
-        add(lineOf(sf, node.getStart(sf)), ref);
+        add(refs.byLine, lineOf(sf, callee.getStart(sf)), ref);
+        add(refs.byLine, lineOf(sf, node.getStart(sf)), ref);
+        add(refs.byPos, callee.getStart(sf), ref);
       }
-      if (ts.isIdentifier(node)) add(lineOf(sf, node.getStart(sf)), { name: node.text, node });
+      if (ts.isIdentifier(node)) add(refs.byLine, lineOf(sf, node.getStart(sf)), { name: node.text, node });
       ts.forEachChild(node, visit);
     };
     visit(sf);
@@ -196,9 +211,13 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
     if (a === undefined) answers.set(node, (a = answer(node)));
     return a;
   };
-  // Every reference to the name on the line: the graph's link is for one of them, which one the
-  // line does not say when it holds several (`[f].map((f) => f())`).
-  const lookup: CompilerLookup = (file, line, name) => (refsOf(file).get(`${line}\u0000${name}`) ?? []).map((r) => answerOf(r.node));
+  // A call: the reference at its position, of its name. A use that is no call: every reference to
+  // the name on the line, as the line does not say which one when it holds several (`[f].map((f) => f())`).
+  const lookup: CompilerLookup = (file, at, name) => {
+    const refs = refsOf(file);
+    const found = at.pos === null ? refs.byLine.get(`${at.line}\u0000${name}`) : refs.byPos.get(`${at.pos}\u0000${name}`);
+    return (found ?? []).map((r) => answerOf(r.node));
+  };
 
   const calls = (file: string): CompilerCall[] => {
     const sf = program.getSourceFile(path.join(root, file));
@@ -228,24 +247,25 @@ const originalNames = (sf: ts.SourceFile) => originalIn(ts, sf);
 export function graphLinks(db: Database, layer = BASE_LAYER): GraphLink[] {
   const rows = db
     .query(
-      `SELECT s.path AS src, e.line AS line, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end, e.kind AS kind
+      `SELECT s.path AS src, e.line AS line, e.pos AS pos, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end, e.kind AS kind
          FROM edges e JOIN symbols s ON s.id = e.src_id JOIN symbols d ON d.id = e.dst_id
         WHERE e.layer = ? AND e.kind IN ('calls', 'instantiates') AND e.resolution = 'exact' AND s.path != d.path`,
     )
-    .all(layer) as { src: string; line: number; name: string; dst: string; start: number | null; end: number | null; kind: string }[];
+    .all(layer) as { src: string; line: number; pos: number | null; name: string; dst: string; start: number | null; end: number | null; kind: string }[];
   return rows
     .filter((r) => coveredLanguage(r.src) !== null && coveredLanguage(r.dst) !== null)
     .map((r) => ({ ...r, start: r.start ?? 0, end: r.end ?? r.start ?? 0 }));
 }
 
 /**
- * The verdict on one link: right when, for a reference to the name on the link's line, one of
- * the compiler's declarations is in the link's file and its lines overlap the target's; wrong
- * when the compiler names declarations and none of them is, those outside the repo included,
- * since every link of the graph is into the repo; else not judged, saying why.
+ * The verdict on one link: right when, for the call at the link's position (for a use that is no
+ * call, a reference to the name on the link's line), one of the compiler's declarations is in the
+ * link's file and its lines overlap the target's; wrong when the compiler names declarations and
+ * none of them is, those outside the repo included, since every link of the graph is into the
+ * repo; else not judged, saying why.
  */
 export function judge(link: GraphLink, lookup: CompilerLookup): { verdict: LinkVerdict; reexport: boolean; compiler: string } {
-  const here = lookup(link.src, link.line, link.name);
+  const here = lookup(link.src, { line: link.line, pos: link.pos }, link.name);
   if (here.length === 0) return { verdict: "no reference", reexport: false, compiler: "" };
   const overlaps = (s: Span) => s.start <= link.end && s.end >= link.start;
   const declared = here.flatMap((a) => (a.kind === "declared" ? [a] : []));
@@ -345,7 +365,8 @@ export function checkCalls(db: Database, texts: ReadonlyMap<string, string>, loo
   const outsideWrong: string[] = [];
   for (const r of rows) {
     if (r.state !== "outside") continue;
-    const answers = lookup(r.path, r.line, r.name);
+    // Checked against every reference to the name on the call's line, as the call states have been.
+    const answers = lookup(r.path, { line: r.line, pos: null }, r.name);
     if (answers.some((a) => a.kind === "declared") && !answers.some((a) => a.kind !== "declared")) outsideWrong.push(`${r.path}:${r.line} \`${r.name}\``);
   }
   const count = (state: string) => rows.filter((r) => r.state === state).length;

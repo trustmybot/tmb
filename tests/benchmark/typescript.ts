@@ -70,10 +70,17 @@ const isTyped = (d: ts.Node): d is Typed => ts.isParameter(d) || ts.isVariableDe
 /** A function or a class written as a value, which is a node of the graph whatever binds it. */
 const isFunctionValue = (e: ts.Expression | undefined): boolean => e !== undefined && (ts.isArrowFunction(e) || ts.isFunctionExpression(e) || ts.isClassExpression(e));
 
-/** Whether a declaration sits inside a callable. */
-function insideCallable(d: ts.Node): boolean {
-  for (let n: ts.Node | undefined = d.parent; n !== undefined; n = n.parent) if (ts.isFunctionLike(n)) return true;
-  return false;
+/**
+ * Whether a variable, or a name a destructuring binds, is declared by a statement of the file
+ * itself, exported or not: a name the whole file can see. One bound by a loop, a block, a catch or
+ * a function is a local.
+ */
+function fileLevel(d: ts.VariableDeclaration | ts.BindingElement): boolean {
+  let n: ts.Node = d;
+  while (ts.isBindingElement(n) || ts.isObjectBindingPattern(n) || ts.isArrayBindingPattern(n)) n = n.parent;
+  if (!ts.isVariableDeclaration(n)) return false;
+  const statement = n.parent.parent;
+  return ts.isVariableStatement(statement) && ts.isSourceFile(statement.parent);
 }
 
 /** How a name a method is called on is declared. */
@@ -115,10 +122,11 @@ export function causeOf(call: CompilerCall, checker: ts.TypeChecker): string {
 /**
  * Whether the compiler declares a call's callee as a node of the graph, by "Kinds of symbol" in
  * CODE_GRAPH.md, so a link could reach it: a callable with a body (a function written as a
- * variable's, a field's or a property's value included), a type, or data declared outside every
- * callable. A local is no node: a parameter, or a variable inside a callable whose value is no
- * function written there. Nor is a signature with no body, a field (Planned), or a property of an
- * object written by a name alone (`{ f }`).
+ * variable's, a field's or a property's value included), a type, or file-level data, a name a
+ * statement of the file declares, each name a destructuring binds included. A local is no node: a
+ * parameter, or a variable whose value is no function written there, bound inside a callable or
+ * by a loop, a block or a catch at the top of the file. Nor is a signature with no body, a field
+ * (Planned), or a property of an object written by a name alone (`{ f }`).
  */
 export function declaresANode(call: CompilerCall, checker: ts.TypeChecker): boolean {
   if (call.callee === null) return false;
@@ -126,8 +134,8 @@ export function declaresANode(call: CompilerCall, checker: ts.TypeChecker): bool
     if (ts.isFunctionLike(d)) return "body" in d && d.body !== undefined;
     if (ts.isClassLike(d)) return true;
     if (ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d)) return isFunctionValue(d.initializer);
-    if (ts.isVariableDeclaration(d)) return isFunctionValue(d.initializer) || !insideCallable(d);
-    if (ts.isBindingElement(d)) return !insideCallable(d);
+    if (ts.isVariableDeclaration(d)) return isFunctionValue(d.initializer) || fileLevel(d);
+    if (ts.isBindingElement(d)) return fileLevel(d);
     return false;
   });
 }
