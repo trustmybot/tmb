@@ -23,7 +23,7 @@ import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 import { type CopySearch, findCopy, machinePlaces } from "./tool-copy.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 35;
+export const EXTRACTOR_VERSION = 36;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -367,7 +367,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       if (plan.lang === null || !mine.has(plan.lang)) continue;
       const file = plan.entry.path;
       extraction.symbols.forEach((s, i) => {
-        if (s.kind === SYMBOL_KINDS.file || s.unnamed === 1) return;
+        if (s.kind === SYMBOL_KINDS.file || s.unnamed === 1 || s.reach === "none") return;
         nodes.push({ path: file, name: ownName(s.qualified_name), start: s.start_line, end: s.end_line });
         nodeRows.push(symbolOffset + i);
       });
@@ -476,8 +476,8 @@ function applyLayer(
     statementsNotRead += plan.extraction.statementsNotRead ?? 0;
     const offset = symbolRows.length;
     for (const s of plan.extraction.symbols) {
-      // An unnamed function is no reference's target: nothing names it.
-      if (s.unnamed !== 1) {
+      // An unnamed function is no reference's target: nothing names it. Nor is a function no call names.
+      if (s.unnamed !== 1 && s.reach !== "none") {
         const parent = s.reach === "nested" && s.parent !== undefined ? plan.extraction.symbols[s.parent] : undefined;
         candidates.push({
           id: symbolRows.length,

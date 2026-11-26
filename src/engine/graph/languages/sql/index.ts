@@ -3,7 +3,7 @@
 // to sqlInCode. Whatever a statement names as a table is a table, by the last part of its name; a
 // name the code does not state links to the store alone. A statement of an .sql file the parser
 // cannot read gives no link and is counted.
-import { type Collector, type LanguageModule, SQL_TRIGGER } from '../contract.ts';
+import { type Collector, type LanguageModule, SYMBOL_KINDS } from '../contract.ts';
 import { md5 } from '../kit.ts';
 import { readSql, type SqlRef, type SqlStatement } from './parser.ts';
 
@@ -34,6 +34,9 @@ const STATEMENT_STARTS: ReadonlySet<string> = new Set([
   'COPY',
 ]);
 
+/** What a trigger's node is keyed by in its file, apart from any function of the code around its string. */
+const TRIGGER_KEY = 'trigger';
+
 /** The kinds of data source SQL reaches: a table by its name, and the store alone when the code states no table's name. */
 export const SQL_DATA = { table: 'table', store: 'database' } as const;
 
@@ -55,10 +58,11 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
   const end = lineOf(statement.end);
   for (const ref of statement.refs ?? []) link(out, owner, ref, line);
   for (const trigger of statement.triggers ?? []) {
-    // A trigger is code that runs in the store: a node where it is written, and its body's links start at it.
+    // A trigger is code that runs in the store: a function node where it is written, and its body's
+    // links start at it. The store runs it on its table's event, so no call of any language names it.
     const id = out.symbol(
       {
-        kind: SQL_TRIGGER,
+        kind: SYMBOL_KINDS.function,
         qualified_name: trigger.name,
         signature: `trigger ${trigger.name}`,
         doc: '',
@@ -67,8 +71,9 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
         body_hash: md5(JSON.stringify(trigger)),
         exported: 0,
         parent: owner,
+        reach: 'none',
       },
-      `${SQL_TRIGGER}\u0000${trigger.name}\u0000${line}`,
+      `${TRIGGER_KEY}\u0000${trigger.name}\u0000${line}`,
     );
     if (trigger.on?.to === 'table') out.dataLink(id, 'triggers_on', SQL_DATA.table, trigger.on.name, line);
     for (const ref of trigger.refs) link(out, id, ref, line);

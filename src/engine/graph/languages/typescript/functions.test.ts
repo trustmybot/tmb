@@ -269,6 +269,21 @@ function symbols(relPath: string, text: string): ExtractedSymbol[] {
   return extractFile(parsers, relPath, lang, text).symbols;
 }
 
+// A trigger in a string is SQL the store runs ("Data sources"): a function node of the graph, and
+// no function of TypeScript, so the compiler's list and the graph's TypeScript functions still match.
+const TRIGGERS = `declare const db: { exec(s: string): void };
+export const SCHEMA = \`CREATE TABLE bins (id INTEGER);
+CREATE TRIGGER bin_emptied AFTER DELETE ON bins BEGIN DELETE FROM bin_labels WHERE bin = old.id; END;\`;
+export function install() {
+  db.exec("CREATE TRIGGER bin_filled AFTER INSERT ON bins BEGIN UPDATE bins SET id = 0; END");
+}
+export const drop = () => db.exec("DROP TABLE bins");
+export class Bins {
+  add() { return 1; }
+  remove() { return 2; }
+}
+`;
+
 const fn = (all: ExtractedSymbol[], name: string): ExtractedSymbol => {
   const hit = all.find((s) => s.qualified_name === name && (s.kind === "function" || s.kind === "method"));
   if (!hit) throw new Error(`no function ${name} in ${all.map((s) => s.qualified_name).join(", ")}`);
@@ -286,6 +301,7 @@ describe("every function is a node", () => {
     ["web/decorated.js", DECORATED_JS],
     ["src/ledger.ts", BODILESS],
     ["src/till.ts", LISTED],
+    ["src/bins.ts", TRIGGERS],
   ] as const) {
     test(`${file} matches the TypeScript compiler one to one`, () => {
       const want = compilerFunctions(file, text);
@@ -294,6 +310,15 @@ describe("every function is a node", () => {
       expect(want.length).toBeGreaterThan(3);
     });
   }
+
+  test("a trigger in a string is a function node, held by what holds the string", () => {
+    const all = symbols("src/bins.ts", TRIGGERS);
+    const triggers = all.filter((s) => s.qualified_name === "bin_emptied" || s.qualified_name === "bin_filled");
+    expect(triggers.map((s) => ({ name: s.qualified_name, kind: s.kind, in: all[s.parent!]?.qualified_name }))).toEqual([
+      { name: "bin_emptied", kind: "function", in: "SCHEMA" },
+      { name: "bin_filled", kind: "function", in: "install" },
+    ]);
+  });
 
   test("each kind of function has its node and its name", () => {
     const all = symbols("src/kinds.ts", KINDS);

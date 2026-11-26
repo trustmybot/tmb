@@ -156,7 +156,12 @@ const FILES: Record<string, string> = {
   ),
   "sh/shop.sh": lines("#!/bin/sh", "weigh() {", "  echo 1", "}", "weigh"),
   "pl/shop.pl": lines("use constant LIMIT => 10;", "", "sub weigh {", "  return 1;", "}"),
-  "sql/shop.sql": lines("CREATE TABLE baskets (id INTEGER);", "SELECT id FROM baskets;"),
+  // A trigger is code the store runs: a function ("Data sources").
+  "sql/shop.sql": lines(
+    "CREATE TABLE baskets (id INTEGER);",
+    "SELECT id FROM baskets;",
+    "CREATE TRIGGER basket_added AFTER INSERT ON baskets BEGIN DELETE FROM baskets WHERE id < 0; END;",
+  ),
 };
 
 /** Every named node's kind, by its file and qualified name. */
@@ -243,6 +248,8 @@ describe("the kinds of symbol", () => {
       "sh/shop.sh#weigh": FUNCTION,
       "pl/shop.pl#weigh": FUNCTION,
       "pl/shop.pl#LIMIT": FILE_DATA,
+      // An SQL trigger is a function.
+      "sql/shop.sql#basket_added": FUNCTION,
     };
     const got = Object.fromEntries(Object.keys(expected).map((key) => [key, kinds.get(key) ?? "(no node)"]));
     expect(got).toEqual(expected);
@@ -360,6 +367,32 @@ describe("the graph's store", () => {
       { qualified_name: "Cart.total", kind: METHOD },
       { qualified_name: "deploy", kind: FUNCTION },
       { qualified_name: "orders", kind: DATA_SOURCE },
+    ]);
+    upgraded.close();
+  });
+
+  test("a graph that stored a trigger under a kind of its own has it rewritten to a function when it is opened", () => {
+    const db = openGraphDb(project, null);
+    const insert = db.prepare("INSERT INTO symbols (layer, path, kind, qualified_name, name) VALUES ('old', ?, ?, ?, ?)");
+    const old: [string, string, string][] = [
+      ["db/shop.sql", "file", "db/shop.sql"],
+      ["db/shop.sql", "sql_trigger", "basket_added"],
+      ["src/install.ts", "function", "install"],
+      ["src/install.ts", "sql_trigger", "shelf_added"],
+      ["", "data_source", "baskets"],
+    ];
+    for (const [file, kind, name] of old) insert.run(file, kind, name, name);
+    db.run("PRAGMA user_version = 11");
+    db.close();
+    const upgraded = openGraphDb(project, null);
+    expect(upgraded.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });
+    const rows = upgraded.query("SELECT qualified_name, kind FROM symbols WHERE layer = 'old' ORDER BY id").all() as { qualified_name: string; kind: string }[];
+    expect(rows).toEqual([
+      { qualified_name: "db/shop.sql", kind: FILE },
+      { qualified_name: "basket_added", kind: FUNCTION },
+      { qualified_name: "install", kind: FUNCTION },
+      { qualified_name: "shelf_added", kind: FUNCTION },
+      { qualified_name: "baskets", kind: DATA_SOURCE },
     ]);
     upgraded.close();
   });

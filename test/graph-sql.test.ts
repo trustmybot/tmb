@@ -76,8 +76,16 @@ const FILES: Record<string, string> = {
   // A label that starts like a statement and does not parse gives nothing.
   "src/labels.ts": 'export const insertLabel = "Insert row";\nexport function caption() {\n  return "Update available";\n}\n',
   // A trigger in a string, which only a few dialects parse, lives in the function that holds it.
+  // A call of the trigger's name is no call of the trigger: no code calls a trigger, the store runs it.
   "src/install.ts":
-    'declare const db: { run(s: string): unknown };\nexport function installShelfTrigger() {\n  return db.run("CREATE TRIGGER shelf_added AFTER INSERT ON shelves BEGIN UPDATE crates SET size = 0; END");\n}\n',
+    'declare const db: { run(s: string): unknown };\ndeclare function shelf_added(): void;\nexport function installShelfTrigger() {\n  shelf_added();\n  return db.run("CREATE TRIGGER shelf_added AFTER INSERT ON shelves BEGIN UPDATE crates SET size = 0; END");\n}\n',
+  // A trigger in a string held by a method lives in that method.
+  "src/ledger.py": [
+    "class Ledger:",
+    "    def install(self, cur):",
+    '        cur.execute("CREATE TRIGGER line_posted AFTER INSERT ON journal_rows BEGIN INSERT INTO journal_sums (n) VALUES (1); END")',
+    "",
+  ].join("\n"),
   // A placeholder where a query or a table's name would be names no table.
   "src/count.py": 'def count_rows(cur, sql, n):\n    cur.execute(f"select count(*) from (select * from ({sql}) limit {n})")\n',
   // A shell script's strings are read the same way.
@@ -91,6 +99,7 @@ let store: Store;
 let stats: BuildStats;
 let links: string[];
 let nodes: string[];
+let triggers: string[];
 
 function git(cwd: string, ...args: string[]): void {
   const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, encoding: "utf8" });
@@ -130,6 +139,15 @@ beforeAll(async () => {
       )
       .all(view.layer) as { kind: string; sig: string; name: string; path: string; parent: string | null }[];
     nodes = symbols.map((s) => `${s.kind}:${s.kind === "data_source" ? `${s.sig}:` : ""}${s.name} @${s.path} in ${s.parent ?? "-"}`).sort();
+    // The nodes the fixtures' triggers make, by their names, whatever their kind.
+    const written = view.db
+      .query(
+        `SELECT s.kind, s.qualified_name AS name, s.path, p.qualified_name AS parent
+           FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id
+          WHERE s.layer = ? AND s.qualified_name IN ('crate_moved', 'shelf_added', 'line_posted')`,
+      )
+      .all(view.layer) as { kind: string; name: string; path: string; parent: string | null }[];
+    triggers = written.map((s) => `${s.kind}:${s.name} @${s.path} in ${s.parent ?? "-"}`).sort();
   } finally {
     view.db.close();
   }
@@ -185,8 +203,8 @@ describe("a statement's tables, from the parser", () => {
     expect(nodes.some((n) => n.includes("dock-intake"))).toBe(false);
   });
 
-  test("a trigger is a node in its file, on its table, and its body's links start at it", () => {
-    expect(nodes).toContain("sql_trigger:crate_moved @db/triggers.sql in db/triggers.sql");
+  test("a trigger is a function node in its file, on its table, and its body's links start at it", () => {
+    expect(triggers).toContain("function:crate_moved @db/triggers.sql in db/triggers.sql");
     expect(linksFrom("crate_moved")).toEqual([
       `crate_moved triggers_on ${TABLE}crates`,
       `crate_moved writes_data ${TABLE}crate_moves`,
@@ -194,9 +212,38 @@ describe("a statement's tables, from the parser", () => {
     ]);
   });
 
-  test("a trigger in a string lives in the function that holds the string", () => {
-    expect(nodes).toContain("sql_trigger:shelf_added @src/install.ts in installShelfTrigger");
+  test("a trigger in a string is a function node in the function that holds the string", () => {
+    expect(triggers).toContain("function:shelf_added @src/install.ts in installShelfTrigger");
     expect(linksFrom("shelf_added")).toEqual([`shelf_added triggers_on ${TABLE}shelves`, `shelf_added writes_data ${TABLE}crates`]);
+  });
+
+  test("a trigger in a string held by a method is a function node in that method", () => {
+    expect(triggers).toContain("function:line_posted @src/ledger.py in Ledger.install");
+    expect(linksFrom("line_posted")).toEqual([`line_posted triggers_on ${TABLE}journal_rows`, `line_posted writes_data ${TABLE}journal_sums`]);
+  });
+
+  test("the triggers are the only nodes of their names, and none is stored under a kind of its own", () => {
+    expect(triggers).toEqual([
+      "function:crate_moved @db/triggers.sql in db/triggers.sql",
+      "function:line_posted @src/ledger.py in Ledger.install",
+      "function:shelf_added @src/install.ts in installShelfTrigger",
+    ]);
+    expect(nodes.filter((n) => !n.startsWith("data_source:"))).toEqual([]);
+  });
+
+  test("a call of a trigger's name in code is no call of the trigger", async () => {
+    const view = await openView(project, store);
+    try {
+      const calls = view.db
+        .query(
+          `SELECT e.dst_id AS dst, e.call_state AS state FROM edges e JOIN symbols s ON s.id = e.src_id
+            WHERE e.layer = ? AND s.qualified_name = 'installShelfTrigger' AND e.kind = 'calls' AND e.dst_name = 'shelf_added'`,
+        )
+        .all(view.layer) as { dst: number | null; state: string }[];
+      expect(calls).toEqual([{ dst: null, state: "not_known" }]);
+    } finally {
+      view.db.close();
+    }
   });
 
   test("an FTS virtual table is a table node", () => {

@@ -49,12 +49,16 @@ export function compilerFunctions(relPath: string, text: string): string[] {
   return out.sort();
 }
 
-/** Each function the code graph's extractor finds, as `start-end` lines. */
+/**
+ * Each TypeScript or JavaScript function the code graph's extractor finds, as `start-end` lines. A
+ * function no call names, such as an SQL trigger in a string, is code its store runs, not a function
+ * of the file's own language, so the compiler does not list it.
+ */
 export function graphFunctions(parsers: Parsers, relPath: string, text: string): string[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(`${relPath} is not TypeScript or JavaScript`);
   return extractFile(parsers, relPath, lang, text)
-    .symbols.filter((s) => s.kind === "function" || s.kind === "method")
+    .symbols.filter((s) => (s.kind === "function" || s.kind === "method") && s.reach !== "none")
     .map((s) => `${s.start_line}-${s.end_line}`)
     .sort();
 }
