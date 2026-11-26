@@ -16,13 +16,10 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import * as ts5 from "typescript5";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { openGraphDb } from "../src/engine/graph/db.ts";
 
 setDefaultTimeout(30_000);
-
-const TOOLS = new Map<string, unknown>([["typescript", ts5]]);
 
 let project: string;
 
@@ -149,7 +146,7 @@ describe("TypeScript and JavaScript", () => {
     const sha = commit(TS_FILES);
     const db = openGraphDb(project, null);
     await buildLayer(db, project, sha, "a", { force: true });
-    await buildLayer(db, project, sha, "b", { force: true, links: "language-tool", tools: TOOLS });
+    await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
     return db;
   }
 
