@@ -97,6 +97,23 @@ const TS_FILES = {
     "}", //                                                                   21
   ),
   "lib/index.ts": lines('export { shuttle as flyer } from "./loom";'),
+  "lib/crate.ts": lines(
+    "function nail(): () => number {", //   1
+    "  return () => 1;", //                 2
+    "}", //                                 3
+    "namespace Left {", //                  4
+    "  export const lid = nail();", //      5
+    "  export function open(): number {", // 6
+    "    return lid();", //                 7
+    "  }", //                               8
+    "}", //                                 9
+    "namespace Right {", //                 10
+    "  export const lid = nail();", //      11
+    "  export function shut(): number {", // 12
+    "    return lid();", //                 13
+    "  }", //                               14
+    "}", //                                 15
+  ),
   "lib/mill.ts": lines(
     'import { shuttle, bobbin, reel as spindle } from "./loom";', //          1
     'import { heddle as frame } from "./loom";', //                           2
@@ -171,6 +188,15 @@ describe("TypeScript and JavaScript", () => {
     const db = await bothWays();
     expect(names(db, "a", "lib/loom.ts")).not.toContain("treadle");
     expect(call(callsOf(db, "a"), "lib/loom.ts:lib/loom.ts", "treadle")).toMatchObject({ dst: null, call_state: "not_known" });
+    db.close();
+  });
+
+  test("a variable in a namespace is a member of that namespace, no file-level data: no node, and its call is not linked", async () => {
+    const db = await bothWays();
+    expect(names(db, "a", "lib/crate.ts")).not.toContain("lid");
+    const a = callsOf(db, "a");
+    expect(call(a, "lib/crate.ts:open", "lid")).toMatchObject({ dst: null });
+    expect(call(a, "lib/crate.ts:shut", "lid")).toMatchObject({ dst: null });
     db.close();
   });
 
