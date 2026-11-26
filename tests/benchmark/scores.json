@@ -40,22 +40,29 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 5463,
+            "of": 5463
           },
           "linksRight": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 5246,
+            "of": 5246,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 10430,
+            "of": 11475
           },
           "linksFoundByReference": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 10430,
+            "of": 10909
           },
           "callsAccountedFor": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 30077,
+            "of": 30077
           },
           "missesByCause": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "a name bound by destructuring (`const { f } = …`), called": 464,
+            "a function's name called directly": 15
           }
         }
       }
@@ -104,22 +111,33 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 10267,
+            "of": 10267
           },
           "linksRight": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 9117,
+            "of": 9117,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 10659,
+            "of": 37728
           },
           "linksFoundByReference": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 10659,
+            "of": 10714
           },
           "callsAccountedFor": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "n": 45912,
+            "of": 45912
           },
           "missesByCause": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "a method on a name whose type is not written": 22,
+            "a name bound by destructuring (`const { f } = …`), called": 19,
+            "a method on an expression (a chain, a call's result, an index)": 9,
+            "a function's name called directly": 3,
+            "a construction by a class's name": 1,
+            "a method on a name whose type is written": 1
           }
         }
       }
@@ -155,22 +173,22 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "linksRight": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "linksFoundByState": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "linksFoundByReference": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "callsAccountedFor": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "missesByCause": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           }
         }
       }
@@ -206,22 +224,22 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "linksRight": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "linksFoundByState": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "linksFoundByReference": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "callsAccountedFor": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           },
           "missesByCause": {
-            "notScored": "not built (trustmybot/tmb#311)"
+            "notScored": "not built (SCIP, trustmybot/tmb#156)"
           }
         }
       }

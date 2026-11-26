@@ -82,8 +82,8 @@ describe("tmb init, then tmb onboard", () => {
     const project = newBunProject();
     expect(tmb(["init"], project)).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
     expect(human(["onboard", "--yes", "--review-mode", "agile"], project)).toContain("Recorded 3 changes in the record's audit trail.");
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"] });
-    expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\n');
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"], graph_links: null });
+    expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\ngraph links: (not set)\n');
   });
 
   test("onboard with no terminal and no flags never waits for input: takes the defaults, leaves the review mode to the Human and prints them", async () => {
@@ -109,7 +109,7 @@ describe("tmb init, then tmb onboard", () => {
     tmb(["init", "--host", "claude-code"], project);
     const flags = ["onboard", "--host", "claude-code", "--base", "release", "--review-mode", "agile", "--check", "make lint", "--check", "make test", "--yes"];
     human(flags, project);
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"] });
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "release", review_mode: "agile", checks: ["make lint", "make test"], graph_links: null });
     const recorded = auditCount(project);
 
     const files = [".mcp.json", ".claude/settings.local.json", ".gitignore"].map((file) => path.join(project, file));

@@ -13,6 +13,9 @@ const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["python"]);
 /** Why Python's links have no score yet. */
 export const LINKS_NOT_JUDGED = "not judged: Python's links have no reference yet (trustmybot/tmb#244)";
 
+/** Why Python has no way B yet: its tool is not built. */
+export const WAY_B_NOT_BUILT = "not built (SCIP, trustmybot/tmb#156)";
+
 const SCRIPT = path.join(import.meta.dir, "python_reference.py");
 
 /** The answer of python_reference.py for each file. */
@@ -44,7 +47,7 @@ export function referenceCounts(ref: PythonReference): { functions: Map<string, 
 
 /** Measures way A on the repo at `sha`. */
 export async function measurePython(repoDir: string, sha: string): Promise<Measured & { reference: string }> {
-  return withGraph(repoDir, sha, (db, graphMs) => {
+  return withGraph(repoDir, sha, {}, (db, graphMs) => {
     const t = performance.now();
     const texts = languageTexts(repoDir, sha, LANGUAGES);
     const ref = pythonReference(texts);

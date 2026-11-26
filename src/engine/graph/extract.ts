@@ -27,9 +27,11 @@ export { clip, DOC_MAX, isBannerLine, isRuleLine, md5, oneLine, splitWords, STOP
 // (trustmybot/tmb#234): installed or vendored dependencies and build output as GitHub
 // Linguist's vendored list names them, source maps, minified bundles and lockfiles. A folder
 // named `build` is read: the graph is built from git, so output git ignores is never in it.
+/** The rule that leaves out a project's installed packages, which are no code of the repo. */
+export const NODE_MODULES_RULE = 'node_modules/';
 const LEFT_OUT: readonly { rule: string; re: RegExp }[] = [
   { rule: 'dist/', re: /(^|\/)dist\// },
-  { rule: 'node_modules/', re: /(^|\/)node_modules\// },
+  { rule: NODE_MODULES_RULE, re: /(^|\/)node_modules\// },
   { rule: 'vendor/', re: /(^|\/)vendor\// },
   { rule: 'source maps', re: /\.map$/ },
   { rule: 'minified (.min.js)', re: /\.min\.js$/ },

@@ -5,20 +5,20 @@ import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildLayer, FUNCTION_KINDS, MAX_PARSE_BYTES } from "../../src/engine/graph/build.ts";
+import { type BuildOptions, buildLayer, FUNCTION_KINDS, MAX_PARSE_BYTES } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER, openGraphDb } from "../../src/engine/graph/db.ts";
 import { inSymbolScope, languageOf, type SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { listTree, readBlobs } from "../../src/engine/graph/git-source.ts";
 import { languageNamed } from "../../src/engine/graph/languages/registry.ts";
 
-/** Builds the graph of the repo at `sha` in a scratch folder, runs `use` on it, and throws the folder away. */
-export async function withGraph<T>(repoDir: string, sha: string, use: (db: Database, graphMs: number) => T | Promise<T>): Promise<T> {
+/** Builds the graph of the repo at `sha` in a scratch folder, the way `options` asks, runs `use` on it, and throws the folder away. */
+export async function withGraph<T>(repoDir: string, sha: string, options: BuildOptions, use: (db: Database, graphMs: number) => T | Promise<T>): Promise<T> {
   const scratch = mkdtempSync(path.join(tmpdir(), "tmb-benchmark-"));
   try {
     const db = openGraphDb(scratch);
     try {
       const t = performance.now();
-      await buildLayer(db, repoDir, sha, BASE_LAYER, { force: true });
+      await buildLayer(db, repoDir, sha, BASE_LAYER, { ...options, force: true });
       return await use(db, Math.round(performance.now() - t));
     } finally {
       db.close();

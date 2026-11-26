@@ -3,14 +3,11 @@
 // count, and this file turns counts into shares and compares a run with the stored one.
 import { surplus } from "../../src/engine/graph/languages/typescript/coverage.ts";
 
-/** A share: n of `of`. Kept as counts, so two shares compare exactly. */
-export type Ratio = { n: number; of: number };
+/** A share: n of `of`. Kept as counts, so two shares compare exactly. `note` says what a reader must know to read it. */
+export type Ratio = { n: number; of: number; note?: string };
 /** A score that has no value, and why: never a zero. */
 export type NotScored = { notScored: string };
 export type Score = Ratio | NotScored;
-
-/** Why way B has no scores yet. */
-export const NOT_BUILT = "not built (trustmybot/tmb#311)";
 
 /** The four scores, with links found two ways: from the call states, and against the reference. */
 export const SCORE_NAMES = ["functionsFound", "linksRight", "linksFoundByState", "linksFoundByReference", "callsAccountedFor"] as const;
@@ -42,15 +39,15 @@ export type Stored = { command: string; entries: Entry[] };
 export const isRatio = (s: Score | Causes | NotScored): s is Ratio => "n" in s && "of" in s && typeof s.n === "number";
 export const isNotScored = (s: Score | Causes | NotScored): s is NotScored => "notScored" in s;
 
-/** Every score of a way that is not built. */
-export function notBuilt(): WayScores {
-  const none = { notScored: NOT_BUILT };
+/** Every score of a way that is not built, with why. */
+export function notBuilt(why: string): WayScores {
+  const none = { notScored: why };
   return { ...(Object.fromEntries(SCORE_NAMES.map((name) => [name, none])) as Record<ScoreName, Score>), missesByCause: none };
 }
 
-/** One repo's entry, with way A measured and way B not built. */
-export function entry(of: Omit<Entry, "ways">, wayA: WayScores): Entry {
-  return { ...of, ways: { A: wayA, B: notBuilt() } };
+/** One repo's entry, with each way's scores. */
+export function entry(of: Omit<Entry, "ways">, ways: Record<Way, WayScores>): Entry {
+  return { ...of, ways };
 }
 
 /** Links found from the call states: linked of linked plus not known. A call outside the repo can never link, so it is left out. */
@@ -136,7 +133,7 @@ export function sortCauses(causes: Causes): Causes {
 export function format(s: Score): string {
   if (!isRatio(s)) return s.notScored;
   if (s.of === 0) return "none";
-  return `${((s.n / s.of) * 100).toFixed(1)}% (${s.n}/${s.of})`;
+  return `${((s.n / s.of) * 100).toFixed(1)}% (${s.n}/${s.of})${s.note === undefined ? "" : `, ${s.note}`}`;
 }
 
 /** -1, 0 or 1 as share a is below, equal to or above share b, compared exactly. */

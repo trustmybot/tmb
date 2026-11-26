@@ -5,6 +5,7 @@ import javascriptWasm from 'tree-sitter-javascript/tree-sitter-javascript.wasm' 
 import type { LanguageModule } from '../contract.ts';
 import { parseRepaired } from './repair.ts';
 import { extractTs } from './rules.ts';
+import { typescriptCompiler } from './tool.ts';
 
 // GitHub Linguist's test for a minified JavaScript file: its lines average more than 110
 // characters. A bundle is minified whatever its name, so the name alone is not enough.
@@ -21,6 +22,7 @@ export const typescript: LanguageModule = {
   minified: isMinifiedScript,
   parse: parseRepaired,
   extract: extractTs,
+  tool: typescriptCompiler,
 };
 
 export const tsx: LanguageModule = {
@@ -31,6 +33,7 @@ export const tsx: LanguageModule = {
   minified: isMinifiedScript,
   parse: parseRepaired,
   extract: extractTs,
+  tool: typescriptCompiler,
 };
 
 export const javascript: LanguageModule = {
@@ -40,4 +43,5 @@ export const javascript: LanguageModule = {
   comment: 'slash',
   minified: isMinifiedScript,
   extract: extractTs,
+  tool: typescriptCompiler,
 };
