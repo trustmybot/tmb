@@ -6,6 +6,9 @@ import {
   callsAccountedFor,
   ENFORCED,
   entry,
+  acceptFallIssue,
+  acceptFalls,
+  carryAccepted,
   falls,
   format,
   functionsFound,
@@ -229,5 +232,73 @@ describe("way B is not built, not zero", () => {
     expect(format({ n: 0, of: 0 })).toBe("none");
     expect(format({ n: 6, of: 7 })).toBe("85.7% (6/7)");
     expect(format({ n: 6, of: 7, note: "a note" })).toBe("85.7% (6/7), a note");
+  });
+});
+
+// "A fix that removes links that were wrong can lower links found. Then the new score is recorded
+// with the issue that removed them, and links right must still be 100%." `--write --accept-fall
+// <issue>` records it; scores.json is never edited by hand.
+describe("a fall in links found is accepted with the issue that caused it", () => {
+  const rightAt = (n: number, of: number, right: { n: number; of: number }): WayScores => ({ ...scored(n, of), linksRight: right });
+
+  test("the fallen score is stored with the issue and the score it fell from", () => {
+    const accepted = acceptFalls(stored(scored(6, 7)), stored(scored(5, 7)), 42);
+    if (!("stored" in accepted)) throw new Error(accepted.refused.join("\n"));
+    const a = accepted.stored.entries[0]?.ways.A;
+    expect(a?.linksFoundByReference).toEqual({ n: 5, of: 7, fallAccepted: { issue: 42, was: { n: 6, of: 7 } } });
+    expect(accepted.accepted).toEqual([expect.stringContaining("r typescript way A linksFoundByReference")]);
+  });
+
+  test("the check then passes on the recorded score", () => {
+    const accepted = acceptFalls(stored(scored(6, 7)), stored(scored(5, 7)), 42);
+    if (!("stored" in accepted)) throw new Error(accepted.refused.join("\n"));
+    expect(falls(accepted.stored, stored(scored(5, 7)))).toEqual([]);
+    expect(falls(accepted.stored, stored(scored(4, 7)))).toEqual([expect.stringContaining("linksFoundByReference")]);
+  });
+
+  test("refused unless links right is 100% for that way and repo", () => {
+    const wrong = acceptFalls(stored(rightAt(6, 7, { n: 6, of: 7 })), stored(rightAt(5, 7, { n: 6, of: 7 })), 42);
+    expect(wrong).toEqual({ refused: [expect.stringContaining("r typescript way A linksRight")] });
+    const unjudged = rightAt(5, 7, { n: 0, of: 0 });
+    expect(acceptFalls(stored(scored(6, 7)), stored(unjudged), 42)).toEqual({ refused: expect.arrayContaining([expect.stringContaining("linksRight is none, not 100%")]) });
+  });
+
+  test("only links found can be accepted: a fall in another score is refused", () => {
+    for (const name of ["functionsFound", "linksRight", "callsAccountedFor"] as const) {
+      const low = scored(7, 7);
+      low[name] = { n: 6, of: 7 };
+      const r = acceptFalls(stored(scored(7, 7)), stored(low), 42);
+      expect(r).toEqual({ refused: expect.arrayContaining([expect.stringContaining(`way A ${name}`)]) });
+    }
+    expect(acceptFalls(stored(scored(6, 7)), { command: "test", entries: [] }, 42)).toEqual({ refused: [expect.stringContaining("no longer measured")] });
+  });
+
+  test("a score that did not fall is stored as measured", () => {
+    const rose = scored(7, 7);
+    const accepted = acceptFalls(stored(scored(6, 7)), stored(rose), 42);
+    if (!("stored" in accepted)) throw new Error(accepted.refused.join("\n"));
+    expect(accepted.stored.entries[0]?.ways.A.linksFoundByReference).toEqual({ n: 7, of: 7 });
+    expect(accepted.accepted).toEqual([]);
+  });
+
+  test("a later write keeps the record while the score is unchanged, and drops it once the score moves", () => {
+    const accepted = acceptFalls(stored(scored(6, 7)), stored(scored(5, 7)), 42);
+    if (!("stored" in accepted)) throw new Error(accepted.refused.join("\n"));
+    const same = carryAccepted(accepted.stored, stored(scored(5, 7)));
+    expect(same.entries[0]?.ways.A.linksFoundByReference).toEqual({ n: 5, of: 7, fallAccepted: { issue: 42, was: { n: 6, of: 7 } } });
+    const moved = carryAccepted(accepted.stored, stored(scored(6, 7)));
+    expect(moved.entries[0]?.ways.A.linksFoundByReference).toEqual({ n: 6, of: 7 });
+  });
+
+  test("--accept-fall takes the issue number and is given with --write", () => {
+    expect(acceptFallIssue(["--write"])).toBeNull();
+    expect(acceptFallIssue(["--write", "--accept-fall", "364"])).toBe(364);
+    expect(acceptFallIssue(["--write", "--accept-fall"])).toEqual({ error: expect.stringContaining("issue number") });
+    expect(acceptFallIssue(["--write", "--accept-fall", "#364"])).toEqual({ error: expect.stringContaining("issue number") });
+    expect(acceptFallIssue(["--check", "--accept-fall", "364"])).toEqual({ error: expect.stringContaining("--write") });
+  });
+
+  test("the printed score names the issue", () => {
+    expect(format({ n: 5, of: 7, fallAccepted: { issue: 42, was: { n: 6, of: 7 } } })).toContain("#42");
   });
 });
