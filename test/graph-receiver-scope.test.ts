@@ -80,6 +80,27 @@ const FIXTURE: Record<string, string> = {
     "export function fileLevel(): number { return shared.post(); }",
     "export function paramOverFile(shared: Journal): number { return shared.post(); }",
   ),
+  // A class named as the type with type arguments is still that class; the written name is
+  // looked up in the receiver's own scope, and an interface, an alias or a type parameter is no class.
+  "src/wire.ts": lines(
+    "interface Settings { region: string }",
+    "export class Session<T> { send(): number { return 1; } }",
+    "export interface Channel<T> { send(): number }",
+    "type Line<T> = Session<T>;",
+    "export function withArgs(s: Session<Settings>): number { return s.send(); } // with args",
+    "export function viaInterface(s: Channel<Settings>): number { return s.send(); } // interface",
+    "export function viaAlias(s: Line<Settings>): number { return s.send(); } // alias",
+    "export function shadowed<Session extends { send(): number }>(s: Session): number { return s.send(); } // type parameter",
+    "export function fromContext(list: Session<Settings>[]): void { list.forEach((s) => s.send()); } // context",
+    "export class Hub {",
+    "  line: Session<Settings> = new Session();",
+    "  ping(): number { return this.line.send(); } // field",
+    "}",
+    "export function built(): number {",
+    "  const s = new Session<Settings>();",
+    "  return s.send(); // built",
+    "}",
+  ),
 };
 
 type Link = string | null;
@@ -164,6 +185,16 @@ test("`this.x` is read in the class `this` is an instance of, and a field with n
   expect(await linkAt("src/books.ts", "// stool", "post")).toBeNull();
 });
 
+test("a class written as the type with type arguments is that class; an interface, an alias or a type parameter is not", async () => {
+  expect(await linkAt("src/wire.ts", "// with args", "send")).toBe("src/wire.ts:Session.send");
+  expect(await linkAt("src/wire.ts", "// field", "send")).toBe("src/wire.ts:Session.send");
+  expect(await linkAt("src/wire.ts", "// built", "send")).toBe("src/wire.ts:Session.send");
+  expect(await linkAt("src/wire.ts", "// interface", "send")).toBeNull();
+  expect(await linkAt("src/wire.ts", "// alias", "send")).toBeNull();
+  expect(await linkAt("src/wire.ts", "// type parameter", "send")).toBeNull();
+  expect(await linkAt("src/wire.ts", "// context", "send")).toBeNull();
+});
+
 test("every link the fixture's calls make agrees with the compiler", async () => {
   const lookup = compilerLookup(project, resolveCommit(project, "HEAD")!);
   const view = await openView(project, store);
@@ -172,7 +203,7 @@ test("every link the fixture's calls make agrees with the compiler", async () =>
       .query(
         `SELECT s.path AS src, e.line AS line, e.pos AS pos, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end, e.kind AS kind
            FROM edges e JOIN symbols s ON s.id = e.src_id JOIN symbols d ON d.id = e.dst_id
-          WHERE e.layer = ? AND e.kind = 'calls' AND e.dst_name IN ('total', 'post')`,
+          WHERE e.layer = ? AND e.kind = 'calls' AND e.dst_name IN ('total', 'post', 'send')`,
       )
       .all(view.layer) as { src: string; line: number; pos: number | null; name: string; dst: string; start: number; end: number; kind: string }[];
     expect(made.length).toBeGreaterThan(0);

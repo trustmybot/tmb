@@ -106,28 +106,51 @@ const literalText = (node: Node): string | null =>
     : null;
 const FUNCTION_VALUES = new Set(['arrow_function', 'function_expression', 'function']);
 /**
- * A receiver's type as one declaration of it writes it: the written type when it is a plain class
- * name, else the class a `new` of a plain name constructs when no type is written; null when it is
- * anything else, so the type is not known.
+ * The name of the class one declaration of a receiver writes: its written type when that is a
+ * name, with or without type arguments, else, when no type is written, the class a `new` of a
+ * name constructs; null for anything else, so the type is not known.
  */
-function declaredType(decl: Node): string | null {
+function writtenClass(decl: Node): Node | null {
   const written = decl.childForFieldName('type');
   if (written) {
     const t = written.namedChildren[0];
-    return t?.type === 'type_identifier' ? t.text : null;
+    const name = t?.type === 'generic_type' ? t.childForFieldName('name') : t;
+    return name?.type === 'type_identifier' ? name : null;
   }
   const value = decl.type === 'variable_declarator' || decl.type === 'public_field_definition' ? decl.childForFieldName('value') : null;
   const ctor = value?.type === 'new_expression' ? value.childForFieldName('constructor') : null;
-  return ctor?.type === 'identifier' ? ctor.text : null;
+  return ctor?.type === 'identifier' && localBinding(ctor, ctor.text)?.bound !== 'value' ? ctor : null;
 }
 
-/** The one type every declaration gives, or null when any gives none or two disagree. */
-function soleType(decls: Node[]): string | null {
-  const types = new Set(decls.map(declaredType));
-  const [only] = types;
-  return types.size === 1 && only !== undefined ? only : null;
-}
+/** Declarations that name a type and are no class: each hides a class of that name. */
+const TYPE_DECLARATIONS = new Set(['interface_declaration', 'type_alias_declaration', 'enum_declaration', 'internal_module', 'module']);
+const CLASS_DECLARATIONS = new Set(['class_declaration', 'abstract_class_declaration']);
 
+// Whether a node declares type parameters, one of them named `name`.
+const typeParameter = (node: Node, name: string): boolean => {
+  const params = node.childForFieldName('type_parameters');
+  return params !== null && named(params).some((p) => p.childForFieldName('name')?.text === name);
+};
+
+/**
+ * The class a written type name names, looked up the way the language looks up a type from where
+ * it is written: the type parameters and the declarations of each scope around it, then the file
+ * and its imports. Null when the first place that has the name holds a type parameter, an
+ * interface, an alias, an enum or a namespace, or when the name reaches the file while a class of
+ * that name is declared below it, out of this scope.
+ */
+function classNamed(name: Node, nestedClasses: Set<string>): string | null {
+  const text = name.text;
+  for (let a = name.parent; a; a = a.parent) {
+    if (typeParameter(a, text)) return null;
+    if (!BLOCK_SCOPES.has(a.type) && a.type !== 'program') continue;
+    const here = named(a)
+      .map(declarationOf)
+      .filter((d) => (CLASS_DECLARATIONS.has(d.type) || TYPE_DECLARATIONS.has(d.type)) && d.childForFieldName('name')?.text === text);
+    if (here.length > 0) return here.every((d) => CLASS_DECLARATIONS.has(d.type)) ? text : null;
+  }
+  return nestedClasses.has(text) ? null : text;
+}
 // A statement as the file declares it: the declaration inside an `export` or a `declare`.
 const declarationOf = (stmt: Node): Node =>
   stmt.type === 'export_statement' || stmt.type === 'ambient_declaration' ? (stmt.childForFieldName('declaration') ?? named(stmt)[0] ?? stmt) : stmt;
@@ -142,7 +165,7 @@ const declaratorsOf = (stmt: Node | null, name: string): Node[] =>
  * A declaration's type when it binds `name` as a plain name; a destructuring, or a parameter with
  * no written type, binds a value whose type is not known.
  */
-function bindingType(decls: Node[], name: string): string | null {
+function bindingType(decls: Node[], name: string, soleType: (decls: Node[]) => string | null): string | null {
   const plain = decls.every((d) => {
     const n = d.type === 'variable_declarator' ? d.childForFieldName('name') : d.childForFieldName('pattern');
     return n?.type === 'identifier' && n.text === name;
@@ -169,6 +192,22 @@ function receiverTypes(root: Node): (object: Node) => string | null | undefined 
     while (scope && !VAR_SCOPES.has(scope.type)) scope = scope.parent;
     if (scope) vars.set(scope.id, [...(vars.get(scope.id) ?? []), d]);
   }
+  // Classes declared below the file: a name that reaches the file is none of them.
+  const nestedClasses = new Set<string>();
+  for (const c of root.descendantsOfType([...CLASS_DECLARATIONS])) {
+    const holder = c?.parent?.type === 'export_statement' ? c.parent.parent : c?.parent;
+    const n = c?.childForFieldName('name')?.text;
+    if (n && holder?.type !== 'program') nestedClasses.add(n);
+  }
+  // The one class every declaration names, or null when any names none or two disagree.
+  const soleType = (decls: Node[]): string | null => {
+    const types = new Set(decls.map((d) => {
+      const n = writtenClass(d);
+      return n === null ? null : classNamed(n, nestedClasses);
+    }));
+    const [only] = types;
+    return types.size === 1 && only !== undefined ? only : null;
+  };
   const hoisted = (scope: Node, name: string): Node[] => (vars.get(scope.id) ?? []).filter((d) => bindsName(d.childForFieldName('name'), name));
 
   const ofName = (object: Node): string | null | undefined => {
@@ -178,7 +217,7 @@ function receiverTypes(root: Node): (object: Node) => string | null | undefined 
         const params = a.childForFieldName('parameters');
         const single = a.childForFieldName('parameter');
         const bound = [...(params ? named(params) : single ? [single] : []).filter((p) => bindsName(p, name)), ...hoisted(a, name)];
-        if (bound.length > 0) return bindingType(bound, name);
+        if (bound.length > 0) return bindingType(bound, name, soleType);
         if (!NAME_BINDS_OUTSIDE.has(a.type) && a.childForFieldName('name')?.text === name) return undefined;
       } else if (BLOCK_SCOPES.has(a.type) || a.type === 'program') {
         const statements = named(a).map(declarationOf);
@@ -186,14 +225,14 @@ function receiverTypes(root: Node): (object: Node) => string | null | undefined 
         // A file's `var`s written in its blocks are the file's too.
         const seen = new Set(bound.map((d) => d.id));
         if (a.type === 'program') bound.push(...hoisted(a, name).filter((d) => !seen.has(d.id)));
-        if (bound.length > 0) return bindingType(bound, name);
+        if (bound.length > 0) return bindingType(bound, name, soleType);
         if (statements.some((s) => declaredAs(s, name) !== null)) return undefined;
       } else if (a.type === 'class_static_block') {
         const bound = hoisted(a, name);
-        if (bound.length > 0) return bindingType(bound, name);
+        if (bound.length > 0) return bindingType(bound, name, soleType);
       } else if (a.type === 'for_statement') {
         const bound = declaratorsOf(a.childForFieldName('initializer'), name);
-        if (bound.length > 0) return bindingType(bound, name);
+        if (bound.length > 0) return bindingType(bound, name, soleType);
       } else if (a.type === 'for_in_statement') {
         if (a.childForFieldName('kind') && bindsName(a.childForFieldName('left'), name)) return null;
       } else if (a.type === 'catch_clause') {
