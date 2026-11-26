@@ -192,6 +192,8 @@ Each language is a module of its own (trustmybot/tmb#157). Every module answers 
 |---|---|---|
 | TypeScript, TSX and JavaScript, one module | Yes | Yes |
 | Python | Planned (trustmybot/tmb#141) | Yes |
+| Go | Yes | Yes |
+| Java | Yes | Yes |
 | bash, SQL, Perl | Planned (trustmybot/tmb#141) | No |
 
 ## Links on proof
@@ -338,13 +340,17 @@ flowchart LR
   - **Edge case 2.** A class and an interface of one name both list `get`. The class's `get` is the definition, so it is the one node.
   - **Edge case 3.** A function with only a declaration, `declare function f()`, is no node. The code that runs is elsewhere, and nothing in the file proves where.
 - **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
-- **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. Stubs with no definition after them, as in a Python `Protocol`, are one node together: a method with only a declaration. A call that the tool resolves to a function's `@overload` stubs links to the function itself. Planned (trustmybot/tmb#368): today each Python stub is a node, so way A leaves such a call unlinked.
+- **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. Stubs with no definition after them, as in a Python `Protocol`, are one node together: a method with only a declaration. A call that the tool resolves to a function's `@overload` stubs links to the function itself.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known: tmb carries the tool's stubs for the standard library only.
   - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. The config's choice is read the way the tool reads it, also when it names a folder outside the repo; a folder that is not there counts as no environment, and freshness says so.
 - **Way B for Go reads the packages already on the machine.** Go's module cache is its installed packages. The helper runs the user's `go` with downloads off and with the user's own Go settings.
   - **Example.** A call into a module in the cache is outside. A call into a module that is not there is not known.
   - **Edge case 1.** A file that needs a C compiler to be read (cgo) is left out of the tool's run. Its functions are nodes, and its calls are not known.
   - **Edge case 2.** A module replaced by a folder outside the repo. Its calls are not known.
+- **Way B for Java reads the sources and the JDK, and no build file.** Reading a Maven or Gradle file for its class path means running the build tool, which runs the repo's code. A call that needs a library's types is not known.
+  - **Example.** A test calls `assertEquals(a, cart.total())`. JUnit is not on the class path, so javac reports an error at the call and it is not known. A call between the repo's own classes links.
+  - **Edge case 1.** A repo with several modules is read as one set of sources.
+  - **Edge case 2.** A method reference, `Cart::total`, is a use and no call. A constructor is named as Java names it, `Cart.Cart`.
 - **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
@@ -517,6 +523,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | TypeScript and JavaScript | tmb, hono | The TypeScript compiler | The TypeScript compiler |
 | Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
 | Go | gin | Go's own parser | Go's type checker |
+| Java | jsoup | javac | Planned (trustmybot/tmb#353): javac |
 
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
 - **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
@@ -900,7 +907,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| Python overload stubs are no nodes | trustmybot/tmb#368 |
 | Java, Rust, C and C++, each with its tool | trustmybot/tmb#353, #354, #355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
