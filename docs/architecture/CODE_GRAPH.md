@@ -144,7 +144,7 @@ The graph uses one set of kinds for every language. Each language module maps it
 | Accessor | A method that is called like a field: a getter or a setter | Yes, as a method |
 | Unnamed function | A callable written as a value with no name | Yes, hidden |
 | Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
-| File-level data | A constant or variable declared outside any type or function; a database table, index or trigger | Yes |
+| File-level data | A constant or variable declared outside any type or function; a database table, index or trigger | Yes. Planned (trustmybot/tmb#322): each name a destructuring binds, `const { a, b } = make()` |
 | Local | A variable, a parameter or a statement inside a callable | No |
 
 How two languages write each kind:
@@ -251,7 +251,7 @@ The design for links is trustmybot/tmb#250. Its next steps are in [Planned](#pla
 
 ## Two ways to make links
 
-Planned (trustmybot/tmb#311). The goal is links found close to 100%. tmb builds two ways to make links, side by side, and the benchmark compares them.
+The goal is links found close to 100%. tmb builds two ways to make links, side by side, and the benchmark compares them.
 
 ```mermaid
 flowchart LR
@@ -274,6 +274,15 @@ flowchart LR
 - **The nodes are the same for both.** The built-in parser decides which symbols exist. A way adds links and never adds or removes a node, so the two are compared link by link.
 - **A setting picks the way**, per repo ([CONFIG.md](CONFIG.md)). The default is the built-in rules. Every link records the way that made it.
 - **Way B also gives the call states.** A call is linked only when the tool's declaration is a node of the graph, outside when the declaration is outside the repo, and not known otherwise.
+- **Way B makes the call links.** Another use of a name, such as a value passed on or a parent class, keeps its built-in link and records the built-in rules. Way B's answer for those comes with what depends on a symbol beyond calls (trustmybot/tmb#148).
+- **The tool's declaration is matched to a node by place.** Same file, same name, overlapping lines. When two nodes fit, the one that starts on the same line wins. A declaration that fits no node leaves the call not known.
+  - **Example.** The compiler says `c.total()` is declared at lines 40 to 52 of `cart.ts`. The node `Cart.total` covers those lines, so the call links to it.
+- **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. Planned (trustmybot/tmb#323): today they are matched by line and name, and when their answers differ both are not known.
+- **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
+- **Way B follows the project's own configs.** A file is resolved under the config that owns it. Planned (trustmybot/tmb#324): today only the root config is read.
+- **Any version of the tool is accepted** when it offers the interface way B uses. A version that does not is treated as a tool that cannot run.
+- **When the tool cannot run, way A builds the graph.** Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
+- **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
 - **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Other languages read a SCIP index, the open format language indexers write (trustmybot/tmb#156).
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
@@ -401,7 +410,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 |---|---|---|
 | Functions found | 100% | A test (trustmybot/tmb#247): the compiler lists every function, and the graph must match that list one to one |
 | Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes between files is wrong |
-| Links found | Close to 100% of the calls that can be proven. Planned (trustmybot/tmb#244, trustmybot/tmb#311) | Scored per way and per language for every release. The score may not fall |
+| Links found | Close to 100% of the calls that can be proven | Scored per way and per language for every release. The score may not fall |
 | Calls accounted for | 100% | A test (trustmybot/tmb#252): in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
 
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
@@ -755,9 +764,12 @@ All are FTS5 virtual tables.
 
 | Piece | Tracked in |
 |---|---|
-| Two ways to make links, built side by side and compared ([Two ways to make links](#two-ways-to-make-links)) | trustmybot/tmb#311 |
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
+| Each name a file-level destructuring binds is a node | trustmybot/tmb#322 |
+| Way B identifies a call by its position | trustmybot/tmb#323 |
+| Way B follows the project's own configs | trustmybot/tmb#324 |
+| A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
 | A method call linked when the object's type is written in the same function or class: the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used, because they cost much and find little | trustmybot/tmb#249 |

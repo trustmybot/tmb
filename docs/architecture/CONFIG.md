@@ -51,7 +51,7 @@ The planner reads them with `settings_get` and writes them with `settings_set`. 
 | `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a multi-repo workspace, where each repo has its own in `repos`. |
 | `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its push. No task starts while it is unset. |
 | `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a multi-repo workspace. |
-| `graph_links` | string: `built-in` \| `language-tool` | `built-in` | the planner via `settings_set` | Planned (trustmybot/tmb#311). Which way makes the code graph's links ([CODE_GRAPH.md](CODE_GRAPH.md#two-ways-to-make-links)). A language with no tool uses `built-in`, and the answer says so. |
+| `graph_links` | string: `built-in` \| `language-tool` | `built-in` | the planner via `settings_set` | Which way makes the code graph's links ([CODE_GRAPH.md](CODE_GRAPH.md#two-ways-to-make-links)). A language with no tool uses `built-in`, and the answer says so. |
 | `repos` | object: `{"<repo path>": policy}` | unset in a single-repo project. In a multi-repo workspace `tmb init` fills it with the repos it finds | `tmb init`; the planner via `settings_set`; `tmb onboard --repo <name>` | One policy per folder of a workspace, by its path from the workspace folder. |
 
 ### The `repos` policy
@@ -63,7 +63,7 @@ A repo is named by its path inside the workspace, relative and with forward slas
 | `base_branch` | string | The branch the repo's pull requests merge into. Required unless the repo is exempt. |
 | `checks` | string[] | The checks the repo's tasks run. |
 | `review_mode` | `agile` \| `truest` | The repo's own review mode. A repo that names none follows the workspace's `review_mode`. The Human's choice, as the workspace's is. |
-| `graph_links` | `built-in` \| `language-tool` | Planned (trustmybot/tmb#311). The repo's own way to make links. A repo that names none follows the workspace's. |
+| `graph_links` | `built-in` \| `language-tool` | The repo's own way to make links. A repo that names none follows the workspace's. |
 | `exempt` | `true` | tmb does no work in the repo and wires nothing in it. |
 | `git` | `false` only | The folder is not a repo: tmb records it and leaves it alone. It takes no other field. |
 
