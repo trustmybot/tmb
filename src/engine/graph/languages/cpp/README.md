@@ -4,7 +4,7 @@ The code graph's rules for C++ files. They are read through tree-sitter's C++ gr
 
 ## Which files
 
-- `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.inl`, `.ipp`, `.tpp` and Linguist's other C++ endings are C++. A `.h` file is C++ when its text has a construct only C++ has, by Linguist's heuristic; else it is C.
+- A file is C++ when GitHub Linguist's list and rules say so (trustmybot/tmb#154): `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.inl`, `.ipp`, `.tpp` and Linguist's other C++ endings. An ending C++ shares is decided by Linguist's heuristics for it: a `.h` file is C++ when its text has a construct only C++ has and none only Objective-C has; a `.re` or `.inc` file is C++ only when its heuristic says so.
 
 ## What it reads
 

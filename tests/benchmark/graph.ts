@@ -5,7 +5,7 @@ import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type BuildOptions, buildLayer, FUNCTION_KINDS, MAX_PARSE_BYTES } from "../../src/engine/graph/build.ts";
+import { type BuildOptions, buildLayer, commitAttributes, FUNCTION_KINDS, MAX_PARSE_BYTES } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER, openGraphDb } from "../../src/engine/graph/db.ts";
 import { inSymbolScope, languageOf, type SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { listTree, readBlobs } from "../../src/engine/graph/git-source.ts";
@@ -30,11 +30,14 @@ export async function withGraph<T>(repoDir: string, sha: string, options: BuildO
 
 /**
  * The text of every file at `sha` in one of `languages` that the graph parses by the page's rules:
- * not left out by path, not larger than the graph parses, and not minified. A file that fails to
+ * not left out by path or by the repo's `.gitattributes`, in a language Linguist's rules and the
+ * `.gitattributes` settle, not larger than the graph parses, and not minified. A file that fails to
  * parse stays in: its functions are the graph's to find.
  */
 export function languageTexts(repoDir: string, sha: string, languages: ReadonlySet<SourceLanguage>): Map<string, string> {
-  const entries = listTree(repoDir, sha).filter((e) => inSymbolScope(e.path) && e.size <= MAX_PARSE_BYTES);
+  const tree = listTree(repoDir, sha);
+  const attributes = commitAttributes(repoDir, tree);
+  const entries = tree.filter((e) => inSymbolScope(e.path, attributes.of(e.path)) && e.size <= MAX_PARSE_BYTES);
   const blobs = readBlobs(
     repoDir,
     entries.map((e) => e.blob),
@@ -43,7 +46,7 @@ export function languageTexts(repoDir: string, sha: string, languages: ReadonlyS
   for (const e of entries) {
     const text = blobs.get(e.blob);
     if (text === undefined) continue;
-    const lang = languageOf(e.path, () => text);
+    const lang = languageOf(e.path, () => text, attributes.of(e.path));
     if (lang === null || !languages.has(lang)) continue;
     if (languageNamed(lang)?.minified?.(text) === true) continue;
     out.set(e.path, text);

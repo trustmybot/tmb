@@ -52,14 +52,14 @@ afterEach(() => {
 
 describe("the registry", () => {
   test("a language added as one folder and one registry line is indexed with no other change", async () => {
-    makeProject({ "game/rules.toy": "fn start\n  call move\nfn move\n" });
+    makeProject({ "game/rules.janet": "fn start\n  call move\nfn move\n" });
     LANGUAGES.push(toy);
     try {
       const stats = await indexProject(project, store, { rebuild: false });
       expect(stats.functions).toBe(2);
       const view = await openView(project, store);
       try {
-        const file = view.db.query("SELECT lang FROM files WHERE layer = ? AND path = 'game/rules.toy'").get(view.layer);
+        const file = view.db.query("SELECT lang FROM files WHERE layer = ? AND path = 'game/rules.janet'").get(view.layer);
         expect(file).toEqual({ lang: "toy" });
         const [move] = lookupSymbol(view.db, view.layer, "move").cards;
         expect(move!.callers.map((c) => c.qualifiedName)).toEqual(["start"]);

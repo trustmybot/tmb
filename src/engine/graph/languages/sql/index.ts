@@ -90,7 +90,7 @@ export function sqlInCode(text: string, owner: number, first: number, last: numb
 
 export const sql: LanguageModule = {
   name: 'sql',
-  extensions: ['sql'],
+  linguist: ['SQL'],
   comment: 'hash',
   extract: (file, out) => {
     for (const statement of readSql(file.src, '')) {

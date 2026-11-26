@@ -32,18 +32,7 @@ export function languageNamed(name: string): LanguageModule | null {
   return LANGUAGES.find((l) => l.name === name) ?? null;
 }
 
-/**
- * The language of an extension (lowercase, no dot), or null. An ending several languages share is
- * decided by the file's text: the language that claims it, else the one that claims nothing.
- */
-export function languageOfExtension(ext: string, text: () => string): LanguageModule | null {
-  const all = LANGUAGES.filter((l) => l.extensions.includes(ext));
-  if (all.length <= 1) return all[0] ?? null;
-  const body = text();
-  return all.find((l) => l.claims?.(body) === true) ?? all.find((l) => l.claims === undefined) ?? null;
-}
-
-/** The language an extensionless file's first line names by its shebang, or null. */
-export function languageOfShebang(head: string): LanguageModule | null {
-  return LANGUAGES.find((l) => l.shebang?.test(head)) ?? null;
+/** The module that reads a language of Linguist's list, by Linguist's name, or null. */
+export function languageOfLinguist(name: string): LanguageModule | null {
+  return LANGUAGES.find((l) => l.linguist.includes(name)) ?? null;
 }

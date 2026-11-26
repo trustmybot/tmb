@@ -1,6 +1,6 @@
 # Python
 
-The code graph's rules for `.py` files. They are read through tree-sitter's Python grammar ([index.ts](index.ts)).
+The code graph's rules for the files GitHub Linguist's list and rules call Python (trustmybot/tmb#154): `.py`, `.pyi`, `.pyw` and Linguist's other Python endings and file names, and a file whose first line names python. They are read through tree-sitter's Python grammar ([index.ts](index.ts)).
 
 ## What it reads
 

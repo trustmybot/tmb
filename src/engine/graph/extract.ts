@@ -4,7 +4,9 @@
 import { basename } from 'node:path';
 import { Collector, type Extraction, type SourceLanguage, type SymbolKind } from './languages/contract.ts';
 import { clip, DOC_MAX, md5, splitWords, STOPWORDS } from './languages/kit.ts';
-import { languageNamed, languageOfExtension, languageOfShebang } from './languages/registry.ts';
+import { attributeFlag, type Attributes } from '../linguist/gitattributes.ts';
+import { linguist } from '../linguist/index.ts';
+import { languageNamed, languageOfLinguist } from './languages/registry.ts';
 import type { Parsers } from './loader.ts';
 
 export type {
@@ -27,36 +29,56 @@ export { clip, DOC_MAX, isBannerLine, isRuleLine, md5, oneLine, splitWords, STOP
 // (trustmybot/tmb#234): installed or vendored dependencies and build output as GitHub
 // Linguist's vendored list names them, source maps, minified bundles and lockfiles. A folder
 // named `build` is read: the graph is built from git, so output git ignores is never in it.
+// Each rule is of one of Linguist's two kinds, vendored (lib/linguist/vendor.yml) or generated
+// (lib/linguist/generated.rb), so a project's `.gitattributes` can override it as on GitHub
+// (trustmybot/tmb#154): `-linguist-vendored` reads a vendored folder, `linguist-vendored` leaves a
+// path out, and `linguist-generated` likewise.
 /** The rule that leaves out a project's installed packages, which are no code of the repo. */
 export const NODE_MODULES_RULE = 'node_modules/';
-const LEFT_OUT: readonly { rule: string; re: RegExp }[] = [
-  { rule: 'dist/', re: /(^|\/)dist\// },
-  { rule: NODE_MODULES_RULE, re: /(^|\/)node_modules\// },
-  { rule: 'vendor/', re: /(^|\/)vendor\// },
-  { rule: 'source maps', re: /\.map$/ },
-  { rule: 'minified (.min.js)', re: /\.min\.js$/ },
-  { rule: 'lockfiles', re: /(^|\/)package-lock\.json$/ },
-  { rule: 'lockfiles', re: /\.lock(b)?$/ },
+type LeftOutKind = 'vendored' | 'generated';
+const LEFT_OUT: readonly { rule: string; kind: LeftOutKind; re: RegExp }[] = [
+  { rule: 'dist/', kind: 'vendored', re: /(^|\/)dist\// },
+  { rule: NODE_MODULES_RULE, kind: 'vendored', re: /(^|\/)node_modules\// },
+  { rule: 'vendor/', kind: 'vendored', re: /(^|\/)vendor\// },
+  { rule: 'source maps', kind: 'generated', re: /\.map$/ },
+  { rule: 'minified (.min.js)', kind: 'vendored', re: /\.min\.js$/ },
+  { rule: 'lockfiles', kind: 'generated', re: /(^|\/)package-lock\.json$/ },
+  { rule: 'lockfiles', kind: 'generated', re: /\.lock(b)?$/ },
 ];
+/** The rule name of a path a `.gitattributes` file marks with the attribute. */
+const ATTRIBUTE_RULE: Readonly<Record<LeftOutKind, string>> = { vendored: 'linguist-vendored', generated: 'linguist-generated' };
 
-// The rule that leaves a path out of the graph, or null when the graph reads it.
-export function leftOutRule(relPath: string): string | null {
-  return LEFT_OUT.find(({ re }) => re.test(relPath))?.rule ?? null;
+// The rule that leaves a path out of the graph, or null when the graph reads it. A
+// `.gitattributes` file's `linguist-vendored` or `linguist-generated` decides for its kind.
+export function leftOutRule(relPath: string, attributes: Attributes = {}): string | null {
+  const marked = { vendored: attributeFlag(attributes['linguist-vendored']), generated: attributeFlag(attributes['linguist-generated']) };
+  for (const kind of ['vendored', 'generated'] as const) if (marked[kind] === true) return ATTRIBUTE_RULE[kind];
+  return LEFT_OUT.find(({ kind, re }) => marked[kind] === null && re.test(relPath))?.rule ?? null;
 }
 
 // A path is in symbol scope unless a rule leaves it out.
-export function inSymbolScope(relPath: string): boolean {
-  return leftOutRule(relPath) === null;
+export function inSymbolScope(relPath: string, attributes: Attributes = {}): boolean {
+  return leftOutRule(relPath, attributes) === null;
 }
 
-// The language a path parses as: by extension, by the text of a file whose ending several languages
-// share, else by the shebang of an extensionless file; null when no language module reads it.
-// `text` is asked for only when the path alone does not decide.
-export function languageOf(relPath: string, text: () => string): SourceLanguage | null {
-  const name = basename(relPath);
-  const dot = name.lastIndexOf('.');
-  if (dot > 0) return languageOfExtension(name.slice(dot + 1).toLowerCase(), text)?.name ?? null;
-  return languageOfShebang(text().slice(0, 120))?.name ?? null;
+/**
+ * A file's languages by GitHub Linguist's list and rules (trustmybot/tmb#154): the language a
+ * `.gitattributes` file names for it, else what its name, its first line and the heuristics for its
+ * extension leave. `text` is asked for only when the name does not decide; null answers by the name
+ * alone.
+ */
+export function fileLanguages(relPath: string, text: (() => string) | null, attributes: Attributes = {}): string[] {
+  const named = attributes['linguist-language'];
+  const override = typeof named === 'string' ? linguist().byAliasName(named) : null;
+  if (override !== null) return [override];
+  return linguist().detect(relPath, text).languages;
+}
+
+// The language module that reads a path: the one that reads the single language Linguist settles
+// on for it; null when no module reads that language, or when Linguist leaves several.
+export function languageOf(relPath: string, text: () => string, attributes: Attributes = {}): SourceLanguage | null {
+  const languages = fileLanguages(relPath, text, attributes);
+  return languages.length === 1 ? (languageOfLinguist(languages[0]!)?.name ?? null) : null;
 }
 
 // Whether a language is read through a tree-sitter grammar, not by patterns.

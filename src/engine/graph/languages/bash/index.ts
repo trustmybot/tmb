@@ -73,8 +73,7 @@ function extractBash(root: Node, out: Collector, moduleSymbol: number): void {
 
 export const bash: LanguageModule = {
   name: 'bash',
-  extensions: ['sh', 'bash'],
-  shebang: /^#!.*\b(bash|sh)\b/,
+  linguist: ['Shell'],
   grammar: bashWasm,
   comment: 'hash',
   extract: (file, out) => extractBash(syntaxTree(file), out, file.module),

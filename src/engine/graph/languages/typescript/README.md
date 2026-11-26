@@ -1,6 +1,6 @@
 # TypeScript, TSX and JavaScript
 
-The code graph's rules for `.ts`, `.mts`, `.cts`, `.tsx`, `.js`, `.mjs`, `.cjs` and `.jsx` files. One set of rules ([rules.ts](rules.ts)) serves all three grammars ([index.ts](index.ts)).
+The code graph's rules for the files GitHub Linguist's list and rules call TypeScript (`.ts`, `.mts`, `.cts`), TSX (`.tsx`) and JavaScript (`.js`, `.mjs`, `.cjs`, `.jsx` and Linguist's other JavaScript endings), trustmybot/tmb#154. One set of rules ([rules.ts](rules.ts)) serves all three grammars ([index.ts](index.ts)).
 
 ## What counts as a function
 

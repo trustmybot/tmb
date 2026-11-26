@@ -1,11 +1,12 @@
-// A fixture language for the registry's test (trustmybot/tmb#157): `.toy` files, read by
+// A fixture language for the registry's test (trustmybot/tmb#157): it claims Linguist's Janet
+// (`.janet` files, a language no real module reads, trustmybot/tmb#154) and reads it by toy
 // patterns. Each `fn NAME` line opens a function and each `call NAME` line inside it calls one.
 import type { LanguageModule } from "../../../src/engine/graph/languages/contract.ts";
 import { md5 } from "../../../src/engine/graph/languages/kit.ts";
 
 export const toy: LanguageModule = {
   name: "toy",
-  extensions: ["toy"],
+  linguist: ["Janet"],
   comment: "hash",
   extract(file, out) {
     let current: number | null = null;
