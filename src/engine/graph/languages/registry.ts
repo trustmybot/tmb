@@ -8,6 +8,7 @@ import { go } from './go/index.ts';
 import { java } from './java/index.ts';
 import { perl } from './perl/index.ts';
 import { python } from './python/index.ts';
+import { rust } from './rust/index.ts';
 import { sql } from './sql/index.ts';
 import { javascript, tsx, typescript } from './typescript/index.ts';
 
@@ -23,6 +24,7 @@ export const LANGUAGES: LanguageModule[] = [
   java,
   c,
   cpp,
+  rust,
 ];
 
 /** The language module named `name`, or null. */

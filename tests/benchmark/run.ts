@@ -27,6 +27,7 @@ import { compileDatabase, measureC, REFERENCE_VERSION as C_REFERENCE_VERSION, WA
 import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION } from "./java.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
+import { measureRust, REFERENCE_VERSION as RUST_REFERENCE_VERSION, WAY_B_NOT_BUILT as RUST_WAY_B_NOT_BUILT } from "./rust.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
 import { acceptFallIssue, acceptFalls, carryAccepted, type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE, REFERENCE_VERSION as TS_REFERENCE_VERSION } from "./typescript.ts";
@@ -54,6 +55,7 @@ const INSTALLED: Record<string, Record<Way, string>> = {
   },
   go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
   java: { A: "nothing: tmb's own parser", B: "a JDK, whose `java` runs the adapter tmb carries; no class path, so the repo's calls of its libraries are not known" },
+  rust: { A: "nothing: tmb's own parser", B: RUST_WAY_B_NOT_BUILT },
   c: { A: "nothing: tmb's own parser", B: C_WAY_B_NOT_BUILT },
   cpp: { A: "nothing: tmb's own parser", B: C_WAY_B_NOT_BUILT },
 };
@@ -93,11 +95,15 @@ async function measureAll(): Promise<Run> {
           ? await measurePython(where.folder, sha, way)
           : r.language === "go"
             ? await measureGo(where.folder, sha, way)
-            : database !== null
-              ? way === "A"
-                ? await measureC(where.folder, sha, database.file)
-                : { scores: notBuilt(C_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" }
-              : await measureJava(where.folder, sha, way);
+            : r.language === "java"
+              ? await measureJava(where.folder, sha, way)
+              : r.language === "rust"
+                ? way === "A"
+                  ? await measureRust(where.folder, sha)
+                  : { scores: notBuilt(RUST_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" }
+                : database !== null && way === "A"
+                  ? await measureC(where.folder, sha, database.file)
+                  : { scores: notBuilt(C_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" };
     const a = await measure("A");
     const b = await measure("B");
     entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
@@ -105,7 +111,7 @@ async function measureAll(): Promise<Run> {
     detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);
-  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION, go: GO_REFERENCE_VERSION, java: JAVA_REFERENCE_VERSION, c: C_REFERENCE_VERSION, cpp: C_REFERENCE_VERSION }, entries }, seconds, detail };
+  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION, go: GO_REFERENCE_VERSION, java: JAVA_REFERENCE_VERSION, rust: RUST_REFERENCE_VERSION, c: C_REFERENCE_VERSION, cpp: C_REFERENCE_VERSION }, entries }, seconds, detail };
 }
 
 /** The scores as Markdown tables, for the terminal and for a pull request. */

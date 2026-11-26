@@ -1,10 +1,10 @@
 // The benchmark's set (trustmybot/tmb#244), as CODE_GRAPH.md's Benchmark section names it: tmb's
 // own repo and public repos at fixed commits, one language each. A language with no module is not
-// scored; Go joined with its module (trustmybot/tmb#352), Java with its (trustmybot/tmb#353), C and C++ with theirs (trustmybot/tmb#355). The repos are named here and in
+// scored; Go joined with its module (trustmybot/tmb#352), Java with its (trustmybot/tmb#353), Rust with its (trustmybot/tmb#354), C and C++ with theirs (trustmybot/tmb#355). The repos are named here and in
 // tests/lib/pinned-repo.ts only, never in the graph's code.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { PINNED_DATASETTE, PINNED_FLASK, PINNED_GIN, PINNED_HONO, PINNED_JSOUP, PINNED_LEVELDB, PINNED_LIBUV, type PinnedRepo, pinnedRepo } from "../lib/pinned-repo.ts";
+import { PINNED_DATASETTE, PINNED_FLASK, PINNED_GIN, PINNED_HONO, PINNED_JSOUP, PINNED_LEVELDB, PINNED_LIBUV, PINNED_RIPGREP, type PinnedRepo, pinnedRepo } from "../lib/pinned-repo.ts";
 import type { Language } from "./score.ts";
 
 /** tmb's own repo, whose history holds its pinned commit. */
@@ -27,6 +27,7 @@ export const BENCH_REPOS: readonly BenchRepo[] = [
   { repo: PINNED_DATASETTE.name, language: "python", pinned: PINNED_DATASETTE, fetched: PINNED_DATASETTE },
   { repo: PINNED_GIN.name, language: "go", pinned: PINNED_GIN, fetched: PINNED_GIN },
   { repo: PINNED_JSOUP.name, language: "java", pinned: PINNED_JSOUP, fetched: PINNED_JSOUP },
+  { repo: PINNED_RIPGREP.name, language: "rust", pinned: PINNED_RIPGREP, fetched: PINNED_RIPGREP },
   { repo: PINNED_LIBUV.name, language: "c", pinned: PINNED_LIBUV, fetched: PINNED_LIBUV },
   { repo: PINNED_LEVELDB.name, language: "cpp", pinned: PINNED_LEVELDB, fetched: PINNED_LEVELDB },
 ];
