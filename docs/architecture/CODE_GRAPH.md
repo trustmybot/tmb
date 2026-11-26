@@ -332,7 +332,7 @@ flowchart LR
   - **Example 2.** A call under `if TYPE_CHECKING:` is a call like any other. A call in code the tool finds unreachable gets no answer from it, so it is not known.
   - **Edge case.** The tool answers for a different call than the one asked, such as the enclosing call when the called thing is a subscript or another call's result. That is no answer for this call, so it is not known.
 - **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor. An enum variant or a conversion written like a call, such as Go's `Celsius(x)`, links to its type the same way.
-- **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it. Planned (trustmybot/tmb#367): today a TypeScript method with no body is no node.
+- **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it.
   - **Example.** TypeScript: `interface Store { get(key: string): string }` gives the node `Store.get`, and `store.get(k)` on a `Store` links to it.
   - **Edge case 1.** A named type that lists its methods holds them, whatever keyword declares it: `type Store = { get(): string }` gives `Store.get` too.
   - **Edge case 2.** A class and an interface of one name both list `get`. The class's `get` is the definition, so it is the one node.
@@ -900,7 +900,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| A TypeScript method with no body is a node | trustmybot/tmb#367 |
 | Python overload stubs are no nodes | trustmybot/tmb#368 |
 | Java, Rust, C and C++, each with its tool | trustmybot/tmb#353, #354, #355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
