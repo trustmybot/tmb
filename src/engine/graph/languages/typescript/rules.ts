@@ -403,9 +403,22 @@ type FunctionName = {
   anchor: Node;
 };
 
+// Prefix operators. In the language's grammar a call binds tighter than any of them, so
+// `await f<T>()` is `await (f<T>())`. tree-sitter-typescript reads a call with type arguments
+// after one as a call of the operator's expression, `(await f)<T>()` (trustmybot/tmb#326).
+const PREFIX_OPERATORS = new Set(['await_expression', 'unary_expression']);
+
+// A call's callee expression: the node the grammar names, or, where the parser put a prefix
+// operator around it, that operator's operand. The callee is never a wider node.
+function calleeOf(call: Node): Node | null {
+  let fn = call.childForFieldName(call.type === 'new_expression' ? 'constructor' : 'function');
+  while (fn && PREFIX_OPERATORS.has(fn.type)) fn = fn.childForFieldName('argument') ?? fn.namedChildren[0] ?? null;
+  return fn;
+}
+
 // The name a call's callee goes by: an identifier, or a member's property.
 function calleeName(call: Node): string | null {
-  const fn = call.childForFieldName(call.type === 'new_expression' ? 'constructor' : 'function');
+  const fn = calleeOf(call);
   if (fn?.type === 'identifier') return fn.text;
   if (fn?.type === 'member_expression') return fn.childForFieldName('property')?.text ?? null;
   return null;
@@ -735,7 +748,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         if (isFn) made.set(value!.id, inner);
       }
     } else if ((t === 'call_expression' || t === 'new_expression') && !importType(node)) {
-      const fn = node.childForFieldName(t === 'call_expression' ? 'function' : 'constructor');
+      const fn = calleeOf(node);
       let callee: string | undefined;
       let receiver: string | undefined;
       let bound: Bound | undefined;

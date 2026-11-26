@@ -13,15 +13,15 @@
             "of": 5463
           },
           "linksRight": {
-            "n": 4784,
-            "of": 4784
+            "n": 4788,
+            "of": 4788
           },
           "linksFoundByState": {
-            "n": 9953,
+            "n": 9968,
             "of": 20446
           },
           "linksFoundByReference": {
-            "n": 9950,
+            "n": 9965,
             "of": 10909
           },
           "callsAccountedFor": {
@@ -34,7 +34,6 @@
             "a method on an expression (a chain, a call's result, an index)": 135,
             "a name of data whose value is no function written there, called": 31,
             "a method on a module's or class's name": 19,
-            "a function's name called directly": 15,
             "a method on a name whose type is written": 14
           }
         },
@@ -44,16 +43,16 @@
             "of": 5463
           },
           "linksRight": {
-            "n": 5246,
-            "of": 5246,
+            "n": 5250,
+            "of": 5250,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10430,
+            "n": 10445,
             "of": 11475
           },
           "linksFoundByReference": {
-            "n": 10430,
+            "n": 10445,
             "of": 10909
           },
           "callsAccountedFor": {
@@ -61,8 +60,7 @@
             "of": 30077
           },
           "missesByCause": {
-            "a name bound by destructuring (`const { f } = …`), called": 464,
-            "a function's name called directly": 15
+            "a name bound by destructuring (`const { f } = …`), called": 464
           }
         }
       }
@@ -79,15 +77,15 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 6118,
-            "of": 6118
+            "n": 6121,
+            "of": 6121
           },
           "linksFoundByState": {
-            "n": 7636,
+            "n": 7639,
             "of": 41520
           },
           "linksFoundByReference": {
-            "n": 7634,
+            "n": 7637,
             "of": 10714
           },
           "callsAccountedFor": {
@@ -98,12 +96,12 @@
             "a method on a name whose type is not written": 1185,
             "a method on a name made by `new`, its type not written": 1083,
             "a method on an expression (a chain, a call's result, an index)": 373,
-            "a method on a name whose type is written": 162,
+            "a method on a name whose type is written": 161,
             "a method on a module's or class's name": 132,
             "a name of data whose value is no function written there, called": 80,
             "a tagged template": 28,
             "a name bound by destructuring (`const { f } = …`), called": 19,
-            "a function's name called directly": 13,
+            "a function's name called directly": 11,
             "a call on the parent (`super`)": 2,
             "a construction by a class's name": 2,
             "a method on the object itself (`this`)": 1
@@ -115,16 +113,16 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 9117,
-            "of": 9117,
+            "n": 9122,
+            "of": 9122,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10659,
+            "n": 10664,
             "of": 37728
           },
           "linksFoundByReference": {
-            "n": 10659,
+            "n": 10664,
             "of": 10714
           },
           "callsAccountedFor": {
@@ -134,10 +132,9 @@
           "missesByCause": {
             "a method on a name whose type is not written": 22,
             "a name bound by destructuring (`const { f } = …`), called": 19,
-            "a method on an expression (a chain, a call's result, an index)": 9,
-            "a function's name called directly": 3,
+            "a method on an expression (a chain, a call's result, an index)": 7,
             "a construction by a class's name": 1,
-            "a method on a name whose type is written": 1
+            "a function's name called directly": 1
           }
         }
       }
