@@ -159,7 +159,7 @@ The graph uses one set of kinds for every language. Each language module maps it
 | Unnamed function | A callable written as a value with no name | Yes, hidden: a function or a method, marked unnamed |
 | Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
 | File-level data | A constant or variable declared outside any type or function, each name a destructuring binds included | Yes |
-| Data source | A place the code reads or writes data: a table, a bucket, a collection, a queue ([Data sources](#data-sources)) | A table, an index and a trigger, from SQL. Planned (trustmybot/tmb#339): every kind, and no index |
+| Data source | A place the code reads or writes data: a table, a bucket, a collection, a queue ([Data sources](#data-sources)) | A table, a database and a queue. Planned (trustmybot/tmb#398): a bucket and a collection |
 | Local | A variable, a parameter or a statement inside a callable; a name bound by a block, a loop or a catch at file level, when the language's scope rule hides it from the rest of the file | No |
 
 - **A class is a type that objects are made from.** Where a link rule speaks of a class, it means such a type, as the language's own definition has it: a class in TypeScript and Python; a class, an enum or a record in Java; a class, a struct or a union in C++. It is not a kind of its own.
@@ -432,7 +432,7 @@ flowchart LR
 
 ## Data sources
 
-Planned (trustmybot/tmb#339). The graph is a code graph, not a data graph. A data source is a leaf at its edge: the graph says which code reads or writes it and never what is inside it.
+The graph is a code graph, not a data graph. A data source is a leaf at its edge: the graph says which code reads or writes it and never what is inside it.
 
 ```mermaid
 flowchart LR
@@ -451,7 +451,7 @@ flowchart LR
 - **A data source is one node: its kind and its name.** It has no members and no links to another data source. The links are reads and writes, from the code that touches it.
   - **Example 1.** A task changes the table `orders`. The graph answers which functions read or write `orders`, so the worker reads those and not the whole repo.
   - **Example 2.** A function sends a file to a bucket named in a setting. The name is not in the code, so the link goes to the store alone: object storage.
-  - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a function node, with a link to its table.
+  - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a function node, with a link to its table. Planned (trustmybot/tmb#397): today it is stored under a kind of its own.
 - **Whatever a statement names as a table is a table node.** The graph does not judge which tables matter.
   - **Example 1.** A view, a virtual table and a system table such as `sqlite_master` are each a table node.
   - **Example 2.** `CREATE TABLE orders` and `CREATE INDEX … ON orders` change `orders`, so each is a write to `orders`. The index itself is no node.
@@ -593,7 +593,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | Language | Repos | Reference for functions | Reference for links |
 |---|---|---|---|
 | TypeScript and JavaScript | tmb, hono | The TypeScript compiler | The TypeScript compiler |
-| Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
+| Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#399): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
 | Go | gin | Go's own parser | Go's type checker |
 | Java | jsoup | javac | javac |
 | Rust | ripgrep | rust-analyzer | rust-analyzer |
@@ -981,11 +981,12 @@ All are FTS5 virtual tables.
 |---|---|
 | A language's tool is found or installed once per machine | trustmybot/tmb#392, trustmybot/tmb#393, trustmybot/tmb#394, trustmybot/tmb#395 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
-| A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
+| A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
+| A trigger is stored as a function | trustmybot/tmb#397 |
+| Python's benchmark reference is a type checker | trustmybot/tmb#399 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
 | Every C and C++ function a node | trustmybot/tmb#387 |
-| Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
 | The planner keeps concepts and areas written: a rule for when it writes them, and a view of the code not yet placed | trustmybot/tmb#310 |
