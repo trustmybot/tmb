@@ -19,9 +19,9 @@
 // config (CODE_GRAPH.md, "Way B for Python reads the environment in the working tree"). The
 // environment is the one the project's config names, pyright's own `venvPath` and `venv`, else the
 // one folder at the top of the working tree that is one; two or more with no config naming one
-// are none, and the answer's freshness says so. With no environment, a call into a package is not
+// are none, and so is a folder the config names that is not there; the answer's freshness says so. With no environment, a call into a package is not
 // known.
-import { type Dirent, existsSync, readdirSync, type Stats } from "node:fs";
+import { type Dirent, existsSync, readdirSync, type Stats, statSync } from "node:fs";
 import path from "node:path";
 import { type Exporting, loadCarried, PYRIGHT_DIR, TYPESHED_ROOT } from "./carried.ts";
 import type { LanguageTool, OpenedTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
@@ -114,6 +114,15 @@ function served(files: ReadonlyMap<string, string>): Served {
 
 /** No place: a folder pyright believes it runs in, whose files it is never given. */
 const NOWHERE: Served = { files: new Map(), dirs: new Map(), addDir: () => {} };
+
+/** Whether a folder is on disk. */
+function isFolder(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 /** Whether a path is a folder or inside it. */
 const within = (dir: string, file: string): boolean => file === dir || file.startsWith(`${dir}${path.sep}`);
@@ -258,8 +267,11 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
     // A folder that holds the repo itself is none: the repo's files are the commit's.
     const settled = service.getConfigOptions() as { venvPath?: Uri & { resolvePaths(p: string): Uri }; venv?: string };
     const set = settled.venvPath !== undefined && settled.venv !== undefined ? settled.venvPath.resolvePaths(settled.venv).getFilePath() : null;
-    environment = set === null || within(set, root) ? null : set;
-    if (environment === null && tops.length > 1) note(`${tops.length} virtual environments at the top of the repo (${tops.join(", ")}) and no config naming one, so none is read: a call into a package is not known`);
+    // A folder the config names that is not there is no environment, and the freshness says so.
+    const missing = set !== null && !within(set, root) && !isFolder(set);
+    environment = set === null || within(set, root) || missing ? null : set;
+    if (missing) note(`the environment the project's config names (${within(root, set) ? path.relative(root, set).split(path.sep).join("/") : set}) is not there, so none is read: a call into a package is not known`);
+    else if (environment === null && tops.length > 1) note(`${tops.length} virtual environments at the top of the repo (${tops.join(", ")}) and no config naming one, so none is read: a call into a package is not known`);
     // An environment inside the repo is listed in its folder, and its files are not the repo's.
     const envRel = environment !== null && within(root, environment) ? path.relative(root, environment).split(path.sep).join("/") : null;
     if (envRel !== null) commit.addDir(envRel);

@@ -355,6 +355,18 @@ describe("which environment", () => {
     db.close();
   });
 
+  test("the config names an environment folder that is not there: none is read, and the freshness names the folder", async () => {
+    const { db, rows, stats } = await wayB(
+      { ...IGNORED, ...USES_QUILL, "pyrightconfig.json": JSON.stringify({ venvPath: "envs", venv: "gone" }) },
+      environment("tools-env", QUILL),
+    );
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "not_known", way: "language-tool" });
+    expect(stats.linksNote).toContain("envs/gone");
+    expect(stats.linksNote).toContain("not known");
+    expect(note(db)).toBe(stats.linksNote);
+    db.close();
+  });
+
   test("one environment and no config: that one is read, and the freshness says nothing", async () => {
     const { db, rows, stats } = await wayB({ ...IGNORED, ...USES_QUILL }, environment("tools-env", QUILL));
     expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
