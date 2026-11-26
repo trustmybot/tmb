@@ -145,7 +145,7 @@ The graph uses one set of kinds for every language. Each language module maps it
 | Unnamed function | A callable written as a value with no name | Yes, hidden |
 | Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
 | File-level data | A constant or variable declared outside any type or function; a database table, index or trigger | Yes. Planned (trustmybot/tmb#322): each name a destructuring binds, `const { a, b } = make()` |
-| Local | A variable, a parameter or a statement inside a callable | No |
+| Local | A variable, a parameter or a statement inside a callable; a name bound by a block, a loop or a catch at file level, which the rest of the file cannot see | No |
 
 How two languages write each kind:
 
@@ -279,7 +279,8 @@ flowchart LR
 - **Way B makes the call links.** Another use of a name, such as a value passed on or a parent class, keeps its built-in link and records the built-in rules. Way B's answer for those comes with what depends on a symbol beyond calls (trustmybot/tmb#148).
 - **The tool's declaration is matched to a node by place.** Same file, same name, overlapping lines. When two nodes fit, the one that starts on the same line wins. A declaration that fits no node leaves the call not known.
   - **Example.** The compiler says `c.total()` is declared at lines 40 to 52 of `cart.ts`. The node `Cart.total` covers those lines, so the call links to it.
-- **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. Planned (trustmybot/tmb#323): today they are matched by line and name, and when their answers differ both are not known.
+- **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. The position is where the name it calls is written, else where the call starts.
+  - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
 - **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
 - **Way B follows the project's own configs.** A file is resolved under the config that owns it. Planned (trustmybot/tmb#324): today only the root config is read.
 - **When the tool cannot run, way A builds the graph.** Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
@@ -462,6 +463,8 @@ erDiagram
         INTEGER functions "NOT NULL"
         INTEGER not_parsed "NOT NULL"
         TEXT not_read "NOT NULL"
+        TEXT links "NOT NULL"
+        TEXT links_note
     }
     dirs {
         TEXT layer PK "NOT NULL"
@@ -508,7 +511,10 @@ erDiagram
         TEXT kind "NOT NULL"
         TEXT resolution "NOT NULL"
         INTEGER line
+        INTEGER pos
         TEXT hint
+        TEXT call_state
+        TEXT way
     }
     parsed {
         TEXT blob PK "NOT NULL"
@@ -584,6 +590,8 @@ erDiagram
 | `functions` | INTEGER | NOT NULL | `0` |  |
 | `not_parsed` | INTEGER | NOT NULL | `0` |  |
 | `not_read` | TEXT | NOT NULL | `'{}'` |  |
+| `links` | TEXT | NOT NULL | `'built-in'` |  |
+| `links_note` | TEXT | nullable |  |  |
 
 #### `dirs`
 
@@ -650,7 +658,10 @@ Table constraints:
 | `kind` | TEXT | NOT NULL |  |  |
 | `resolution` | TEXT | NOT NULL |  | CHECK `resolution IN ('exact', 'name', 'unresolved')` |
 | `line` | INTEGER | nullable |  |  |
+| `pos` | INTEGER | nullable |  |  |
 | `hint` | TEXT | nullable |  |  |
+| `call_state` | TEXT | nullable |  | CHECK `call_state IN ('linked', 'outside', 'not_known')` |
+| `way` | TEXT | nullable |  | CHECK `way IN ('built-in', 'language-tool')` |
 
 #### `parsed`
 
@@ -770,7 +781,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Each name a file-level destructuring binds is a node | trustmybot/tmb#322 |
 | tmb carries the TypeScript compiler for way B | trustmybot/tmb#328 |
-| Way B identifies a call by its position | trustmybot/tmb#323 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
