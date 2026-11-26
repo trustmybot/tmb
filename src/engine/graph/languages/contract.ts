@@ -307,4 +307,6 @@ export interface LanguageTool {
 
 // A tool that runs may still tell the reader something its answers rest on, such as a setting of
 // the repo it could not follow: `note` adds it to the answer's freshness.
-export type OpenedTool = { answer(input: ToolInput, note: (text: string) => void): ToolAnswer[] } | { unavailable: string };
+// A tool that runs as its own program, talked to while it works, answers later: `answer` may return
+// a promise.
+export type OpenedTool = { answer(input: ToolInput, note: (text: string) => void): ToolAnswer[] | Promise<ToolAnswer[]> } | { unavailable: string };

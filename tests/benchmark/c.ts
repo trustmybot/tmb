@@ -2,22 +2,32 @@
 // compiler's own answer, clang's, read through libclang (c_reference.py), for the functions, the
 // calls and the links. The compiler reads the repo as its compile database says, so the database is
 // required: without it there is no answer to measure against (CODE_GRAPH.md, "C and C++ without the
-// project's compile database"). Way B, clangd, is not built yet.
+// project's compile database"). Way B is clangd (languages/c/clangd.ts), which reads the database
+// at the repo's own place, so the benchmark measures it only when the reference's database is that
+// one. clangd is clang too, so way B's links right is judged by the compiler that made them.
 import type { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { BASE_LAYER } from "../../src/engine/graph/db.ts";
+import { BUILT_IN_RULES, type BuildOptions } from "../../src/engine/graph/build.ts";
+import { BASE_LAYER, layerRow } from "../../src/engine/graph/db.ts";
+import { DATABASE_PLACES } from "../../src/engine/graph/languages/c/clangd.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { graphCallCounts, graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
-import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type WayScores } from "./score.ts";
+import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type Way, type WayScores } from "./score.ts";
 import type { Measured } from "./typescript.ts";
 
 /** Both languages are read in either repo: a C repo's header the graph reads as C++, or the other way, still counts. */
 const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["c", "cpp"]);
 
-/** Why C and C++ have no way B yet. */
-export const WAY_B_NOT_BUILT = "not built (clangd, trustmybot/tmb#355)";
+/** How each way builds the graph, as the program builds it. */
+const BUILD: Record<Way, BuildOptions> = {
+  A: { links: "built-in" },
+  B: { links: "language-tool" },
+};
+
+/** Way B's links are judged by clang, the compiler clangd is built on. */
+export const SAME_COMPILER = "clang, the compiler clangd is built on, is the reference";
 
 /** The version of the C and C++ reference, raised when the reference changes what it counts. */
 export const REFERENCE_VERSION = 1;
@@ -167,9 +177,22 @@ function examples(missed: readonly ReferenceCall[]): string[] {
   return [...shown].map(([cause, list]) => `missed, ${cause}: ${list.join(", ")}`);
 }
 
-/** Measures way A on the repo at `sha`, with clang reading the repo's working tree by the compile database. */
-export async function measureC(repoDir: string, sha: string, database: string): Promise<Measured & { reference: string }> {
-  return withGraph(repoDir, sha, {}, (db, graphMs) => {
+/** The compile database way B reads in the repo, as clangd.ts finds it; null when there is none. */
+export function repoDatabase(repoDir: string): string | null {
+  const place = DATABASE_PLACES.map((p) => path.join(repoDir, p)).find((p) => existsSync(p));
+  return place === undefined ? null : realpathSync(place);
+}
+
+/** Measures one way on the repo at `sha`, with clang reading the repo's working tree by the compile database. */
+export async function measureC(repoDir: string, sha: string, database: string, way: Way): Promise<Measured & { reference: string }> {
+  if (way === "B" && repoDatabase(repoDir) !== realpathSync(database)) {
+    throw new Error(`way B reads the compile database at the repo's own place (${DATABASE_PLACES.join(" or ")}); put ${database} there to measure it`);
+  }
+  return withGraph(repoDir, sha, BUILD[way], (db, graphMs) => {
+    // A way B graph whose C and C++ fell back to the built-in rules is no measure of way B.
+    const notes = (layerRow(db, BASE_LAYER)?.links_note ?? "").split("; ").filter((part) => part.split(":")[0]!.split(", ").some((lang) => LANGUAGES.has(lang as SourceLanguage)));
+    const fellBack = notes.find((part) => part.endsWith(BUILT_IN_RULES));
+    if (way === "B" && fellBack !== undefined) throw new Error(`way B was not built: ${fellBack}`);
     const t = performance.now();
     const texts = languageTexts(repoDir, sha, LANGUAGES);
     const ref = cReference(repoDir, database);
@@ -203,13 +226,14 @@ export async function measureC(repoDir: string, sha: string, database: string): 
     }, {});
     const scores: WayScores = {
       functionsFound: functionsFound(functions, graphFunctionLines(db, functions.keys())),
-      linksRight: { n: links.right, of: links.right + links.wrong.length },
+      linksRight: { n: links.right, of: links.right + links.wrong.length, ...(way === "B" ? { note: SAME_COMPILER } : {}) },
       linksFoundByState: linksFoundByState(graph),
       linksFoundByReference: { n: byReference.n, of: byReference.of },
       callsAccountedFor: callsAccountedFor(calls, scoredGraph.byFunction),
       missesByCause: byReference.misses,
     };
     const detail = [
+      ...(way === "B" ? notes.map((n) => `layer note: ${n}`) : []),
       `links right: ${linked.length} links, ${links.right} right, ${links.wrong.length} wrong, ${links.notJudged} in code the database does not compile`,
       `calls: ${graph.linked + graph.outside + graph.notKnown} with a state, ${graph.linked} linked, ${graph.outside} outside, ${graph.notKnown} not known`,
       `files: ${texts.size} C and C++ files read by the page's rules (${JSON.stringify(languages)}), ${read.size} parsed by the graph, ${compiled.size} compiled or included by the database`,

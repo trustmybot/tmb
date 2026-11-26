@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
-import { compileDatabase, measureC, REFERENCE_VERSION as C_REFERENCE_VERSION, WAY_B_NOT_BUILT as C_WAY_B_NOT_BUILT } from "./c.ts";
+import { compileDatabase, measureC, REFERENCE_VERSION as C_REFERENCE_VERSION } from "./c.ts";
 import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION } from "./java.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
@@ -56,8 +56,8 @@ const INSTALLED: Record<string, Record<Way, string>> = {
   go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
   java: { A: "nothing: tmb's own parser", B: "a JDK, whose `java` runs the adapter tmb carries; no class path, so the repo's calls of its libraries are not known" },
   rust: { A: "nothing: tmb's own parser", B: RUST_WAY_B_NOT_BUILT },
-  c: { A: "nothing: tmb's own parser", B: C_WAY_B_NOT_BUILT },
-  cpp: { A: "nothing: tmb's own parser", B: C_WAY_B_NOT_BUILT },
+  c: { A: "nothing: tmb's own parser", B: "the user's own `clangd`, and the project's compile database in the repo (build/compile_commands.json), made by CMake" },
+  cpp: { A: "nothing: tmb's own parser", B: "the user's own `clangd`, and the project's compile database in the repo (build/compile_commands.json), made by CMake" },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -101,9 +101,7 @@ async function measureAll(): Promise<Run> {
                 ? way === "A"
                   ? await measureRust(where.folder, sha)
                   : { scores: notBuilt(RUST_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" }
-                : database !== null && way === "A"
-                  ? await measureC(where.folder, sha, database.file)
-                  : { scores: notBuilt(C_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" };
+                : await measureC(where.folder, sha, database!.file, way);
     const a = await measure("A");
     const b = await measure("B");
     entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));

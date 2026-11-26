@@ -279,7 +279,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
     }
     let answered: ToolAnswer[];
     try {
-      answered = opened.answer({ files, configs: toolConfigs, read, nodes, calls }, (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`));
+      answered = await opened.answer({ files, configs: toolConfigs, read, nodes, calls }, (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`));
     } catch (error) {
       notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)})${BUILT_IN_RULES}`);
       continue;

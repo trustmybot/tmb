@@ -5,6 +5,7 @@
 import cWasm from 'tree-sitter-c/tree-sitter-c.wasm' with { type: 'file' };
 import type { LanguageModule } from '../contract.ts';
 import { syntaxTree } from '../kit.ts';
+import { clangdTool } from './clangd.ts';
 import { extractFamily, parseFamily } from './family.ts';
 
 export const c: LanguageModule = {
@@ -15,5 +16,7 @@ export const c: LanguageModule = {
   grammar: cWasm,
   comment: 'slash',
   parse: parseFamily('c'),
+  // Way B: clangd, which C++ shares (clangd.ts).
+  tool: clangdTool,
   extract: (file, out) => extractFamily('c', syntaxTree(file), file.src, out, file.module),
 };
