@@ -3,7 +3,7 @@
   "referenceVersions": {
     "typescript": 2,
     "python": 1,
-    "go": 1
+    "go": 2
   },
   "entries": [
     {
@@ -245,7 +245,7 @@
       "repo": "gin",
       "language": "go",
       "commit": "73726dc606796a025971fe451f0aa6f1b9b847f6",
-      "reference": "go1.27.4 go/parser",
+      "reference": "go1.27.4 go/parser and go/types",
       "ways": {
         "A": {
           "functionsFound": {
@@ -253,42 +253,53 @@
             "of": 1859
           },
           "linksRight": {
-            "notScored": "not judged: Go's links have no reference yet (go/types, trustmybot/tmb#352)"
+            "n": 767,
+            "of": 767
           },
           "linksFoundByState": {
             "n": 767,
             "of": 8548
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Go's links have no reference yet (go/types, trustmybot/tmb#352)"
+            "n": 767,
+            "of": 3316
           },
           "callsAccountedFor": {
             "n": 9085,
             "of": 9085
           },
           "missesByCause": {
-            "notScored": "not judged: Go's links have no reference yet (go/types, trustmybot/tmb#352)"
+            "a method, called on a value": 1420,
+            "a function of the package, called by its name": 847,
+            "a method of an interface, called on a value": 216,
+            "a conversion to a type": 23,
+            "a function of another package, called through its import": 22,
+            "a package-level variable, called": 21
           }
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (go/types, trustmybot/tmb#352)"
+            "n": 1859,
+            "of": 1859
           },
           "linksRight": {
-            "notScored": "not built (go/types, trustmybot/tmb#352)"
+            "n": 3316,
+            "of": 3316,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "notScored": "not built (go/types, trustmybot/tmb#352)"
+            "n": 3316,
+            "of": 6183
           },
           "linksFoundByReference": {
-            "notScored": "not built (go/types, trustmybot/tmb#352)"
+            "n": 3316,
+            "of": 3316
           },
           "callsAccountedFor": {
-            "notScored": "not built (go/types, trustmybot/tmb#352)"
+            "n": 9085,
+            "of": 9085
           },
-          "missesByCause": {
-            "notScored": "not built (go/types, trustmybot/tmb#352)"
-          }
+          "missesByCause": {}
         }
       }
     }
