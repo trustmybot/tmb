@@ -16,7 +16,9 @@ This page is the code graph in space: what it holds, how its parts connect and w
 | Word | Meaning | Example |
 |---|---|---|
 | Node | One thing in the graph: a directory, a file, or a symbol | The file `cart.ts`; the function `total` in it |
-| Symbol | Something the code declares: a function, a class or a method | `class Cart`, `function total()` |
+| Symbol | Something the code declares. [Kinds of symbol](#kinds-of-symbol) lists them | `class Cart`, `function total()` |
+| Function | A callable declared on its own, outside any class | `function total()` |
+| Method | A callable declared inside a class or an object. A constructor, a getter and a setter are methods | `Cart.total()`, `Cart.constructor` |
 | Name | The word the code uses for a symbol at one place. A name is not the symbol: the same word can mean different symbols in different files, and one symbol can be reached under several names | `total` in `cart.ts` and `total` in `report.ts` are two symbols. `import { total as sum }` makes `sum` a second name for one symbol |
 | Qualified name | A symbol's full name inside its file, which tells it apart from others of the same name | `Cart.total` |
 | Link | A proven relation between two nodes: a call, an import, a database read or write, or a test covering code | `checkout()` calls `Cart.total` |
@@ -71,6 +73,7 @@ The code graph is not part of the record. It lives in its own file beside it, on
 - **It can always be rebuilt.** Everything except concepts and areas is derived from git. A rebuild throws the rest away, builds it again, keeps the concepts and areas and re-checks each against the new graph. One whose code is gone is marked broken, never dropped.
 - **One step per write.** An index reads and parses first, then applies the whole layer at once. A reader sees the old graph or the new one, never a mix.
 - **The commit and the graph are written together.** The commit a repo is indexed at, and the indexer version it was built with, are stored with the graph in one step. So an absent or emptied file always reads as never indexed.
+- **Issues and decisions are not in the graph.** The record already ties a commit to its task and its issue. Open, for the Human: whether a code answer also names the issues that changed that code, joined from the record at read time, and whether a concept links to a design page.
 - **Indexing is not trajectory.** The record holds no entry for an index run. The graph file keeps, for each repo, the commit it was built at, when, and what it holds.
 - **It works offline.** Indexing needs no network. Search is by name and by the words in a name; search by meaning is left out ([MEMORY.md](MEMORY.md#search)).
 - **Edge case.** A newer tmb made the graph file. The graph is refused, and the refusal says to update tmb.
@@ -115,6 +118,23 @@ flowchart TD
 | Unread languages | Named from a copy of Linguist's programming languages, plus Vue and Svelte. Where languages share a file ending, Linguist's first one is named |
 | Not counted | Prose, data, settings and images; code in a file ending tmb does not know. Planned (trustmybot/tmb#154): a file's language comes from Linguist's list |
 
+### Kinds of symbol
+
+The lowest node is a member of a class or a callable. Nothing inside a function is a node.
+
+| Level | Kinds | A node |
+|---|---|---|
+| Container | File, class, interface, type | Yes |
+| Callable | Function, method, constructor, getter, setter, unnamed function | Yes |
+| Data on a class | Field, property | Planned (trustmybot/tmb#312) |
+| Data in a file | Top-level constant, database table, index and trigger | Yes |
+| Inside a function | Local variable, parameter, statement | No |
+
+- **Example 1.** `class Cart { total() {} }` gives two nodes: the class `Cart` and the method `Cart.total`.
+- **Example 2.** `class Cart { items = [] }`: `items` is a field. Planned: it is a node, so "who reads or writes `Cart.items`" has an answer.
+- **Edge case.** `class Cart { onChange = () => {} }`: a field whose value is a function is a callable node today.
+- **Why it stops there.** A local variable cannot be reached from another function, so no question across the code needs it.
+
 ### Languages
 
 Each language is a module of its own (trustmybot/tmb#157). Every module answers the same questions for the engine, and one list names the modules, so adding a language touches nothing else. A language's parser loads only when a file in that language is read.
@@ -127,7 +147,7 @@ Each language is a module of its own (trustmybot/tmb#157). Every module answers 
 
 ## Links on proof
 
-The graph never guesses. A link is made only on proof, and that is the one promise. What could not be resolved is reported as unresolved. There is no second set of less-sure links, marked or not: studies of agents show wrong links cost more than missing ones, and none shows that marking a link as less sure helps.
+The graph never guesses. A link is made only on proof, and that is the one promise. What could not be resolved is reported as unresolved. There is no second set of less-sure links, marked or not: a missing link is reported and the agent searches by text for the rest, while a wrong link sends it to the wrong code with no warning.
 
 **How a name is resolved.** Not by searching for the word. tmb parses each file into its syntax tree with a parser (tree-sitter), so it knows which words are calls and imports and which are variables, strings or comments. It then resolves each called or imported name by the language's own scope rules, the way the compiler would. tmb does not run the compiler to build the graph; the TypeScript compiler is the independent check that every link is right ([Benchmark](#benchmark)).
 
@@ -172,6 +192,40 @@ flowchart TD
 - **Misses are counted.** Each build counts the imports that name the repo's own code and link to no file, and indexing prints the count.
 
 The design for links is trustmybot/tmb#250. Its next steps are in [Planned](#planned).
+
+## Two ways to make links
+
+Planned (trustmybot/tmb#311). The goal is links found close to 100%. tmb builds two ways to make links, side by side, and the benchmark compares them.
+
+```mermaid
+flowchart LR
+    C["A repo at a commit"] --> N["Nodes: the built-in parser, the same for both ways"]
+    N --> A["Way A: built-in rules"]
+    N --> B["Way B: the language's own tool"]
+    A --> G["One graph, one schema, the same lookups"]
+    B --> G
+    G --> S["Benchmark: one report, a score per way"]
+```
+
+| | Way A: built-in rules | Way B: the language's own tool |
+|---|---|---|
+| Makes links with | The syntax tree and tmb's lookup rules ([Links on proof](#links-on-proof)) | The language's compiler or indexer, which knows types |
+| Needs | Nothing installed | The tool, and the project set up for it |
+| Strong at | Any repo, any commit, offline | A method call on an object, an inherited method, a worked-out type |
+| Weak at | Calls that need a type | A repo that is not set up, a language with no tool, a commit the tool did not index |
+
+- **The promise is the same for both.** A link is made only on proof. In way B the proof is the compiler's own answer for that name.
+- **The nodes are the same for both.** The built-in parser decides which symbols exist. A way adds links and never adds or removes a node, so the two are compared link by link.
+- **A setting picks the way**, per repo. Every link records the way that made it (trustmybot/tmb#251).
+- **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Other languages read a SCIP index, the open format language indexers write (trustmybot/tmb#156).
+- **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
+  - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
+  - **Example 2.** A Python repo with no virtual environment. Way B cannot run. The graph is built by way A, and the answer's freshness says so.
+  - **Edge case.** A call decided only at run time, such as a method picked by a string. Neither way links it. It is counted as not known.
+- **Way A keeps growing.** Its next proofs are the stated types (trustmybot/tmb#249), the four bindings (trustmybot/tmb#287) and the other languages (trustmybot/tmb#141).
+- **No rule is written for one repo.** A rule in either way is the language's rule. Neither way names a benchmark repo, a file or a symbol of one, and a failing benchmark case is fixed by the rule or left unlinked.
+
+Open, for the Human: which way is the default, after the first report. Whether tmb's program carries the TypeScript compiler inside it, so way B needs no install for TypeScript.
 
 ## Concepts
 
@@ -259,6 +313,7 @@ flowchart LR
 | What calls or imports X, and which tests cover it? | The planner when it scopes a task; the worker before it changes X; the reviewer when it judges what a change may break |
 
 - **The planner** reads the map at cold start and asks "where does X live" directly. A scope gives it a draft of a task's files: the hits for the task's objective, plus the callers, importers and tests of the symbols it names.
+- **The reviewer starts from git's diff.** The diff says what changed, and no graph tool repeats it. The reviewer asks the graph only what the diff cannot say: what calls a changed function, and which tests cover it.
 - **The dashboard has a Code page** (trustmybot/tmb#142): folders, then files, then functions, one level at a time, and a view of one function with its callers and what it calls. It never draws every function at once. In a multi-repo workspace it opens on the list of repos, and the page's address names the repo, so a link to one repo's graph can be shared.
 - **The command line reads the same graph** as the tools ([the reference](../reference/README.md#the-record-from-the-command-line)).
 
@@ -278,10 +333,14 @@ The graph is measured against a second, independent parser, the TypeScript compi
 |---|---|---|
 | Functions found | 100% | A test (trustmybot/tmb#247): the compiler lists every function, and the graph must match that list one to one |
 | Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes between files is wrong |
-| Links found | None | Tracked only, so that nothing pushes the graph to guess |
+| Links found | Close to 100% of the calls that can be proven. Planned (trustmybot/tmb#244, trustmybot/tmb#311) | Scored per way and per language for every release. The score may not fall |
+| Calls accounted for | 100%. Planned (trustmybot/tmb#252) | Every call is in one of three states: linked, to code outside the repo, or not known |
 
+- **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
+- **Example.** A file has 10 calls: 6 linked, 3 to an outside package, 1 not known. Links found is 6 of 7. Calls accounted for is 10 of 10.
+- **Way B needs a second judge.** In TypeScript the reference is the compiler, which is also way B's source. Way B's links right is judged on Python and on samples checked by hand.
 - **When a link is right.** It names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
-- **Why links are missed.** The graph leaves a call unlinked when proving it needs the type of the thing it is called on ([Links on proof](#links-on-proof)).
+- **Why way A misses links.** It leaves a call unlinked when proving it needs the type of the thing it is called on ([Links on proof](#links-on-proof)).
 
 ## Schema
 
@@ -627,6 +686,8 @@ All are FTS5 virtual tables.
 
 | Piece | Tracked in |
 |---|---|
+| Two ways to make links, built side by side and compared ([Two ways to make links](#two-ways-to-make-links)) | trustmybot/tmb#311 |
+| A class's fields and properties are nodes, with read and write links | trustmybot/tmb#312 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
 | A function says how many of its calls are not linked: linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest | trustmybot/tmb#252 |
