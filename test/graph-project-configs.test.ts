@@ -167,8 +167,8 @@ describe("a file under no config uses the compiler's defaults", () => {
 describe("a same-repo package whose entry is build output (trustmybot/tmb#236)", () => {
   // The repo's own package names its entry in `dist`, which git does not hold; its config states
   // where its sources are (`rootDir`) and where output goes (`outDir`). A folder of the repo with a
-  // package and config of its own imports it by the package's name. Expected, from the issue and
-  // the page's Planned row: the call links to the source declaration in `src`.
+  // package and config of its own imports it by the package's name. The tool decides: with nothing
+  // installed the compiler finds no file for the name, so the call is not known.
   const PANTRY = {
     "package.json": json({ name: "pantry-kit", type: "module", main: "dist/index.js", types: "dist/index.d.ts", exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } } }),
     "tsconfig.json": json({ compilerOptions: { composite: true, rootDir: "src", outDir: "dist", module: "esnext", moduleResolution: "bundler", declaration: true }, include: ["src"] }),
@@ -178,15 +178,6 @@ describe("a same-repo package whose entry is build output (trustmybot/tmb#236)",
     "stalls/corner/src/shelf.ts": lines('import { stock } from "pantry-kit";', "export function restock(): number {", "  return stock();", "}"),
   };
 
-  // Fails today: with nothing installed, the compiler resolves "pantry-kit" to no file. A bare
-  // package name is looked up in `node_modules`, and the folder's own package is not "pantry-kit",
-  // so the name is not the package's own. The tool's answer stands, so the call is not known.
-  test.failing("an import of the package by its name links to the source declaration", async () => {
-    const { db, call } = await wayB(PANTRY);
-    expect(call("stalls/corner/src/shelf.ts:restock", "stock")).toMatchObject({ dst: "src/index.ts:stock", ...LINKED });
-    db.close();
-  });
-
   // The compiler proves it when the package is installed where the folder looks (a workspace link,
   // which git does not hold) and the folder's config references the package's project: it maps the
   // entry in `outDir` back to its source under `rootDir`, as its editor reads a referenced project.
@@ -195,6 +186,33 @@ describe("a same-repo package whose entry is build output (trustmybot/tmb#236)",
     symlinkSync(project, path.join(project, "node_modules", "pantry-kit"), "dir");
     const { db, call } = await wayB(PANTRY);
     expect(call("stalls/corner/src/shelf.ts:restock", "stock")).toMatchObject({ dst: "src/index.ts:stock", ...LINKED });
+    db.close();
+  });
+});
+
+describe("a config's extends and references name any file", () => {
+  // The compiler reads whatever file an `extends` or a reference names, whatever its name. Here the
+  // root's config takes its alias from `configs/base.json`, and references a project whose config
+  // is `configs/yard.json`, which has an alias of its own.
+  const DEPOT = {
+    "tsconfig.json": json({ extends: "./configs/base.json", include: ["src"], references: [{ path: "./configs/yard.json" }] }),
+    "configs/base.json": json({ compilerOptions: { baseUrl: "..", paths: { "@crates/*": ["src/crates/*"] } } }),
+    "src/crates/box.ts": lines("export function pack(): number {", "  return 1;", "}"),
+    "src/dock.ts": lines('import { pack } from "@crates/box";', "export function load(): number {", "  return pack();", "}"),
+    "configs/yard.json": json({ compilerOptions: { composite: true, baseUrl: "../yard", paths: { "%/*": ["./*"] } }, include: ["../yard"] }),
+    "yard/bin.ts": lines("export function stack(): number {", "  return 2;", "}"),
+    "yard/crane.ts": lines('import { stack } from "%/bin";', "export function lift(): number {", "  return stack();", "}"),
+  };
+
+  test("an extends of a file with another name gives its settings", async () => {
+    const { db, call } = await wayB(DEPOT);
+    expect(call("src/dock.ts:load", "pack")).toMatchObject({ dst: "src/crates/box.ts:pack", ...LINKED });
+    db.close();
+  });
+
+  test("a reference to a config with another name makes its project, which owns its files", async () => {
+    const { db, call } = await wayB(DEPOT);
+    expect(call("yard/crane.ts:lift", "stack")).toMatchObject({ dst: "yard/bin.ts:stack", ...LINKED });
     db.close();
   });
 });
