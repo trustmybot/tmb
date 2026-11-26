@@ -75,15 +75,16 @@ function insideCallable(ts: TypeScriptModule, d: TS.Node): boolean {
 /**
  * Whether a declaration of a called value is a node of the graph by "Kinds of symbol": a callable
  * with a body (a function written as a variable's, a field's or a property's value included), a
- * type that makes objects, or data declared outside every callable. A local is no node: a
- * parameter, or a variable inside a callable whose value is no function written there; nor is a
- * signature with no body.
+ * type that makes objects, or data declared outside every callable, each name a destructuring
+ * binds there included (trustmybot/tmb#322). A local is no node: a parameter, or a variable inside
+ * a callable whose value is no function written there; nor is a signature with no body.
  */
 function isNodeDeclaration(ts: TypeScriptModule, d: TS.Declaration): boolean {
   if (ts.isFunctionLike(d)) return "body" in d && d.body !== undefined;
   if (ts.isClassLike(d)) return true;
   if (ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d)) return isFunctionValue(ts, d.initializer);
   if (ts.isVariableDeclaration(d)) return isFunctionValue(ts, d.initializer) || !insideCallable(ts, d);
+  if (ts.isBindingElement(d)) return !insideCallable(ts, d);
   return false;
 }
 

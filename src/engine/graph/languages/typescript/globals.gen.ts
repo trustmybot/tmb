@@ -25,7 +25,15 @@ export function compilerGlobals(): Map<string, string[]> {
   host.fileExists = (file) => file === PROBE || fileExists.call(host, file);
   const program = ts.createProgram([PROBE], options, host);
   const checker = program.getTypeChecker();
+  // A member keyed by a symbol, `[Symbol.species]`, has no name a call can write; the compiler's
+  // internal name for it carries an id that depends on what the process compiled before.
+  const keyedBySymbol = (symbol: ts.Symbol): boolean =>
+    (symbol.declarations ?? []).some((d) => {
+      const name = ts.getNameOfDeclaration(d);
+      return name !== undefined && ts.isComputedPropertyName(name);
+    });
   const callable = (symbol: ts.Symbol): boolean => {
+    if (keyedBySymbol(symbol)) return false;
     if ((symbol.flags & ts.SymbolFlags.Method) !== 0) return true;
     const type = checker.getTypeOfSymbol(symbol);
     return type.getCallSignatures().length > 0 || type.getConstructSignatures().length > 0;
