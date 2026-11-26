@@ -237,7 +237,7 @@ function symbols(db: Database, layer: string): SymbolRow[] {
     .query(
       `SELECT s.path, s.kind, s.qualified_name, s.start_line, s.end_line, p.qualified_name AS parent, s.unnamed, o.qualified_name AS owner, s.doc, s.exported
          FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id LEFT JOIN symbols o ON o.id = s.named_id
-        WHERE s.layer = ? AND s.kind != 'module'`,
+        WHERE s.layer = ? AND s.kind != 'file'`,
     )
     .all(layer) as SymbolRow[];
 }
@@ -289,8 +289,8 @@ describe("nodes", () => {
       const want = [
         // A constant and a static at the file's top level are file-level data (items/constant-items.html,
         // items/static-items.html); a node starts at its first doc comment (comments.html#doc-comments).
-        { kind: "const", qualified_name: "ROWS", start_line: 5, end_line: 6, parent: LIB },
-        { kind: "const", qualified_name: "NAME", start_line: 8, end_line: 8, parent: LIB },
+        { kind: "file_level_data", qualified_name: "ROWS", start_line: 5, end_line: 6, parent: LIB },
+        { kind: "file_level_data", qualified_name: "NAME", start_line: 8, end_line: 8, parent: LIB },
         // A function item (items/functions.html).
         { kind: "function", qualified_name: "rows", start_line: 10, end_line: 12, parent: LIB },
         // A struct, an enum (items/structs.html, items/enumerations.html) is a type; it starts at its doc
@@ -303,7 +303,7 @@ describe("nodes", () => {
         { kind: "method", qualified_name: "Bed.new", start_line: 31, end_line: 34, parent: "Bed" },
         { kind: "method", qualified_name: "Bed.water", start_line: 37, end_line: 41, parent: "Bed" },
         // A trait (items/traits.html) is an interface; its function with no body is a node.
-        { kind: "interface", qualified_name: "Tool", start_line: 44, end_line: 50, parent: LIB },
+        { kind: "type", qualified_name: "Tool", start_line: 44, end_line: 50, parent: LIB },
         { kind: "method", qualified_name: "Tool.use_it", start_line: 45, end_line: 45, parent: "Tool" },
         { kind: "method", qualified_name: "Tool.twice", start_line: 47, end_line: 49, parent: "Tool" },
         // An impl of a trait for a type gives the type its methods: `Bed.use_it` is Bed's.

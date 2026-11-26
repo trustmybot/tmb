@@ -126,7 +126,7 @@ beforeAll(async () => {
       .query(
         `SELECT s.kind, s.signature AS sig, s.qualified_name AS name, s.path, p.qualified_name AS parent
            FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id
-          WHERE s.layer = ? AND s.kind NOT IN ('module', 'function', 'method', 'class', 'interface', 'type', 'const', 'sh_function')`,
+          WHERE s.layer = ? AND s.kind NOT IN ('file', 'function', 'method', 'type', 'file_level_data')`,
       )
       .all(view.layer) as { kind: string; sig: string; name: string; path: string; parent: string | null }[];
     nodes = symbols.map((s) => `${s.kind}:${s.kind === "data_source" ? `${s.sig}:` : ""}${s.name} @${s.path} in ${s.parent ?? "-"}`).sort();

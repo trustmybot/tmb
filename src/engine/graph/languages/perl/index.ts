@@ -1,5 +1,5 @@
 // Perl, read by patterns: subs, constants and the packages they sit in.
-import type { Collector, LanguageModule } from '../contract.ts';
+import { type Collector, type LanguageModule, SYMBOL_KINDS } from '../contract.ts';
 import { afterLastBanner, clip, DOC_MAX, md5, oneLine } from '../kit.ts';
 
 // The '#' comment block whose last row is right above row `at` (0-based),
@@ -132,9 +132,9 @@ function perlConstantKeys(lines: string[], row: number, col: number): { keys: Ar
   return { keys, end: lines.length - 1 };
 }
 
-// Perl, line by line: each named `sub NAME` is a 'function' and each
-// `use constant NAME => ...` or `use constant { A => ..., B => ... }` name a
-// 'const'. A leading underscore marks a name private (exported 0).
+// Perl, line by line: each named `sub NAME` is a function and each
+// `use constant NAME => ...` or `use constant { A => ..., B => ... }` name
+// file-level data. A leading underscore marks a name private (exported 0).
 function extractPerl(src: string, out: Collector): void {
   const lines = perlCodeLines(src);
   const body = (from: number, to: number) =>
@@ -166,7 +166,7 @@ function extractPerl(src: string, out: Collector): void {
       let end = i;
       while (end < lines.length - 1 && !/;\s*(#.*)?$/.test(lines[end]!)) end++;
       out.symbol({
-        kind: 'const',
+        kind: SYMBOL_KINDS.fileData,
         qualified_name: name,
         signature: clip(oneLine(lines.slice(i, end + 1).join(' ').replace(/^\s*use\s+constant\s+/, '').replace(/;\s*(#.*)?$/, '')), 200),
         doc: hashCommentDoc(lines, i),
@@ -180,7 +180,7 @@ function extractPerl(src: string, out: Collector): void {
     const block = perlConstantKeys(lines, i, line.indexOf('{', constant.index + constant[0].length - 1));
     for (const [name, row] of block.keys) {
       out.symbol({
-        kind: 'const',
+        kind: SYMBOL_KINDS.fileData,
         qualified_name: name,
         signature: clip(oneLine(lines[row]!).replace(/,$/, ''), 200),
         doc: hashCommentDoc(lines, row) || hashCommentDoc(lines, i),

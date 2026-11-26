@@ -55,7 +55,7 @@ type EdgeRow = { src: string; dst_name: string; kind: string; dst: string | null
 
 function nodesOf(db: Database, layer: string, file: string): Node[] {
   return db
-    .query("SELECT kind, qualified_name, start_line, end_line FROM symbols WHERE layer = ? AND path = ? AND kind != 'module' ORDER BY start_line, qualified_name")
+    .query("SELECT kind, qualified_name, start_line, end_line FROM symbols WHERE layer = ? AND path = ? AND kind != 'file' ORDER BY start_line, qualified_name")
     .all(layer, file) as Node[];
 }
 
@@ -139,7 +139,7 @@ const PY_FILES = {
   "kiln/pot.py": lines("from kiln.glaze import amber, others", "", "", "def throw():", "    return amber"),
 };
 
-const data = (name: string, start: number, end: number): Node => ({ kind: "const", qualified_name: name, start_line: start, end_line: end });
+const data = (name: string, start: number, end: number): Node => ({ kind: "file_level_data", qualified_name: name, start_line: start, end_line: end });
 
 describe("TypeScript and JavaScript", () => {
   async function bothWays() {
@@ -152,7 +152,7 @@ describe("TypeScript and JavaScript", () => {
 
   test("each name a file-level destructuring binds is a data node spanning the whole declaration", async () => {
     const db = await bothWays();
-    const data_ = nodesOf(db, "a", "src/forge.ts").filter((n) => n.kind === "const");
+    const data_ = nodesOf(db, "a", "src/forge.ts").filter((n) => n.kind === "file_level_data");
     expect(data_).toEqual([data("douse", 7, 11), data("ignite", 7, 11), data("spare", 7, 11), data("lefty", 12, 12), data("righty", 12, 12), data("spark", 13, 15)]);
     db.close();
   });
@@ -161,7 +161,7 @@ describe("TypeScript and JavaScript", () => {
     const db = await bothWays();
     // The object `supply` returns holds functions named `ignite` and `quench`: those are its own nodes.
     const names = nodesOf(db, "a", "src/forge.ts")
-      .filter((n) => n.kind === "const")
+      .filter((n) => n.kind === "file_level_data")
       .map((n) => n.qualified_name);
     for (const none of ["quench", "core", "ownIgnite", "ownLefty"]) expect(names).not.toContain(none);
     db.close();
@@ -232,7 +232,7 @@ describe("Python", () => {
 
   test("each name a module-level target list binds is a data node spanning the whole statement", async () => {
     const db = await built();
-    expect(nodesOf(db, "a", "kiln/glaze.py").filter((n) => n.kind === "const")).toEqual([
+    expect(nodesOf(db, "a", "kiln/glaze.py").filter((n) => n.kind === "file_level_data")).toEqual([
       data("amber", 5, 5),
       data("umber", 5, 5),
       data("ochre", 6, 6),

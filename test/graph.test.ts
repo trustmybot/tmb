@@ -163,7 +163,7 @@ describe("indexing", () => {
       expect(named("Badge")).toEqual(["function src/view.tsx"]);
       expect(named("formatPrice")).toEqual(["function web/util.js"]);
       expect(named("weekly_report")).toEqual(["function tools/report.py"]);
-      expect(named("deploy_site")).toEqual(["sh_function scripts/deploy.sh"]);
+      expect(named("deploy_site")).toEqual(["function scripts/deploy.sh"]);
       expect(named("orders")).toEqual(["data_source "]);
       expect(named("legacy_total")[0]).toContain("scripts/legacy.pl");
     } finally {
@@ -236,7 +236,7 @@ describe("lookups", () => {
       expect(card!.importers.map((c) => c.path)).toContain("src/cart.ts");
       expect(card!.tests).toContain("test/discount.test.ts");
       const file = lookupSymbol(view.db, view.layer, "src/pricing/discount.ts").cards[0]!;
-      expect(file.symbol.kind).toBe("module");
+      expect(file.symbol.kind).toBe("file");
       expect(file.importers.map((c) => c.path)).toContain("src/cart.ts");
     } finally {
       view.db.close();

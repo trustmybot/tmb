@@ -304,8 +304,8 @@ test("3, Python: a class under a new name is looked up in its own import's file"
 });
 
 test("4: two classes of one name in one file are two symbols, each with its own methods", async () => {
-  expect(await symbolsAt("twice/menu.ts", "class", "Entry")).toEqual([2, 6]);
-  expect(await symbolsAt("twice/codec.py", "class", "Codec")).toEqual([4, 8]);
+  expect(await symbolsAt("twice/menu.ts", "type", "Entry")).toEqual([2, 6]);
+  expect(await symbolsAt("twice/codec.py", "type", "Codec")).toEqual([4, 8]);
   expect(await symbolsAt("twice/codec.py", "method", "Codec.encode")).toEqual([5, 9]);
 });
 

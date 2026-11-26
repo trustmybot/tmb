@@ -4,7 +4,7 @@ The code graph's rules for `.java` files. They are read through tree-sitter's Ja
 
 ## What it reads
 
-- Classes, enums and records are class nodes; interfaces and annotation interfaces are interface nodes. Each has its Javadoc comment, its signature and whether it is exported: `public`, or a member of an interface that is not `private`.
+- Classes, enums, records, interfaces and annotation interfaces are type nodes; classes, enums and records make objects. Each has its Javadoc comment, its signature and whether it is exported: `public`, or a member of an interface that is not `private`.
 - A member type is named through the type it is declared in, `Outer.Inner`, and held by it. A local class, declared in a block, is named by its own name and held by the node around it.
 - Methods, constructors, compact constructors and annotation interface elements are method nodes, named through their type: `T.m`, and `T.T` for a constructor. Overloads are one node each. An interface's method with no body is a node.
 - A method of an anonymous class, an enum constant's body included, belongs to a type with no name. No type node holds it, so it is named by its own name and held by the node around it.

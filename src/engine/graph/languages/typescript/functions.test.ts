@@ -335,8 +335,8 @@ describe("every function is a node", () => {
     // A property, a call signature and a construct signature are no methods; nor is a method of a type with no name.
     expect(all.some((s) => ["Ledger.size", "take", "give", "useBag.give"].includes(s.qualified_name) && s.kind === "method")).toBe(false);
     // Each is held by its type.
-    const ledger = all.findIndex((s) => s.kind === "interface" && s.qualified_name === "Ledger");
-    const shape = all.findIndex((s) => s.kind === "class" && s.qualified_name === "Shape");
+    const ledger = all.findIndex((s) => s.kind === "type" && s.makesObjects === undefined && s.qualified_name === "Ledger");
+    const shape = all.findIndex((s) => s.kind === "type" && s.makesObjects === 1 && s.qualified_name === "Shape");
     expect(fn(all, "Ledger.post").parent).toBe(ledger);
     expect(fn(all, "Shape.area").parent).toBe(shape);
   });
@@ -376,7 +376,7 @@ describe("every function is a node", () => {
     for (const name of ["Factory.constructor", "Factory.createApp", "Factory.createHandlers"]) expect(fn(all, name).kind).toBe("method");
     expect(fn(all, "createFactory").kind).toBe("function");
     expect(fn(all, "callback of `filter`").unnamed).toBe(1);
-    const iface = all.find((s) => s.kind === "interface" && s.qualified_name === "CreateHandlers");
+    const iface = all.find((s) => s.kind === "type" && s.qualified_name === "CreateHandlers");
     expect([iface?.start_line, iface?.end_line]).toEqual([1, 9]);
   });
 
@@ -391,7 +391,7 @@ describe("every function is a node", () => {
         return [s?.start_line, s?.end_line];
       };
       const o = file.endsWith(".js") ? -1 : 0; // the JavaScript fixture has one helper fewer above
-      expect(at("class", "Store")).toEqual([3 + o, file.endsWith(".js") ? 17 : 19]);
+      expect(at("type", "Store")).toEqual([3 + o, file.endsWith(".js") ? 17 : 19]);
       expect(at("method", "Store.load")).toEqual([5 + o, 10 + o]);
       expect(at("method", "Store.size")).toEqual([11 + o, 12 + o]);
       expect(at("method", "Store.make")).toEqual([13 + o, 14 + o]);
@@ -401,7 +401,7 @@ describe("every function is a node", () => {
     const lines = (kind: string, name: string) => ts.filter((x) => x.kind === kind && x.qualified_name === name).map((s) => [s.start_line, s.end_line]);
     // A parameter's decorator is inside its constructor: the constructor starts at its own line.
     expect(lines("method", "Store.constructor")).toEqual([[18, 18]]);
-    expect(lines("class", "Plain")).toEqual([[20, 24]]);
+    expect(lines("type", "Plain")).toEqual([[20, 24]]);
     expect(lines("method", "Plain.run")).toEqual([[22, 23]]);
   });
 
@@ -434,13 +434,13 @@ describe("every symbol has a container", () => {
   test("a nested function's container is its parent function, a method's its class, the rest the file", () => {
     const all = symbols("src/kinds.ts", KINDS);
     const index = (s: ExtractedSymbol) => all.indexOf(s);
-    expect(all[0]!.kind).toBe("module");
+    expect(all[0]!.kind).toBe("file");
     expect(all[0]!.parent).toBeUndefined();
     for (const s of all.slice(1)) expect(s.parent).toBeNumber();
     expect(fn(all, "innerNamed").parent).toBe(index(fn(all, "topLevel")));
     expect(fn(all, "innerArrow").parent).toBe(index(fn(all, "topLevel")));
     expect(fn(all, "callback of `map`").parent).toBe(index(fn(all, "topLevel")));
-    const shop = all.findIndex((s) => s.kind === "class" && s.qualified_name === "Shop");
+    const shop = all.findIndex((s) => s.kind === "type" && s.makesObjects === 1 && s.qualified_name === "Shop");
     expect(fn(all, "Shop.load").parent).toBe(shop);
     expect(fn(all, "callback of `run`").parent).toBe(index(fn(all, "Shop.load")));
     expect(fn(all, "topLevel").parent).toBe(0);

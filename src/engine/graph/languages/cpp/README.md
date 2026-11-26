@@ -9,7 +9,7 @@ The code graph's rules for C++ files. They are read through tree-sitter's C++ gr
 ## What it reads
 
 - A named namespace is a type node, named through the namespaces around it: `a::b` is `a.b` ([namespace.def]). An unnamed namespace adds no name, and its members are not exported ([namespace.unnamed]). `extern "C"` adds nothing.
-- A class, structure or union with a body is a class node; an enumeration is a type node. Each is named through the namespaces and classes around it. A class declared in a function is named by its own name and held by that function.
+- A class, structure or union with a body is a type node that makes objects; an enumeration is a type node. Each is named through the namespaces and classes around it. A class declared in a function is named by its own name and held by that function.
 - A class head has one class name ([class.pre]): `class M N {`, with an export macro `M`, is the class `N`, in a namespace and in a class's body alike.
 - A member function, constructor, destructor and conversion defined in a class is a method node named through the class: `Cart.total`, `Cart.Cart`, `Cart.~Cart`. A member defined outside its class, `Cart::total`, is named `Cart.total` and held by the class when the file defines it, else by the file. A function a qualified name defines in a namespace the file declares is that namespace's function.
 - A pure virtual function is a method node, though it has no body ([class.abstract]); so are a deleted and a defaulted function ([dcl.fct.def.delete], [dcl.fct.def.default]). Any other member function with only a declaration is no node.

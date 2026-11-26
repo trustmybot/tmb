@@ -4,7 +4,7 @@
 // it reads.
 import goWasm from 'tree-sitter-go/tree-sitter-go.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
-import type { Bound, CallAt, Collector, ExtractedSymbol, LanguageModule, SymbolKind } from '../contract.ts';
+import { type Bound, type CallAt, type Collector, type ExtractedSymbol, type LanguageModule, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { clip, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
 import { BUILTINS } from './builtins.ts';
 import { goTypeChecker } from './tool.ts';
@@ -160,7 +160,7 @@ function extractGo(root: Node, src: string, out: Collector, moduleSymbol: number
         if (!name) continue;
         const shape = spec.childForFieldName('type');
         const anchor = specAnchor(spec, decl);
-        const type = symbolOf(shape?.type === 'interface_type' ? 'interface' : 'type', name, spec, anchor, moduleSymbol, textSignature(anchor, spec.endIndex));
+        const type = symbolOf(SYMBOL_KINDS.type, name, spec, anchor, moduleSymbol, textSignature(anchor, spec.endIndex));
         if (!types.has(name)) types.set(name, type);
         if (shape?.type !== 'interface_type') continue;
         for (const m of named(shape)) {
@@ -267,7 +267,7 @@ function extractGo(root: Node, src: string, out: Collector, moduleSymbol: number
         const ids = own.map((n) =>
           lit
             ? symbolOf('function', n.text, node, anchor, moduleSymbol, textSignature(anchor, lit.childForFieldName('body')?.startIndex ?? lit.endIndex))
-            : symbolOf('const', n.text, node, anchor, moduleSymbol, textSignature(anchor, node.endIndex)),
+            : symbolOf(SYMBOL_KINDS.fileData, n.text, node, anchor, moduleSymbol, textSignature(anchor, node.endIndex)),
         );
         if (lit) made.set(lit.id, ids[0]!);
         // A call in the value of a spec that binds one name belongs to that name; else to the file.

@@ -3,7 +3,7 @@
 // definition of a script. A bare name that matches a symbol elsewhere is never
 // proof, so such a reference stays unresolved rather than risk a wrong link.
 import { basename, posix } from "node:path";
-import type { EdgeKind, ExtractedEdge, ExtractedExport, SymbolKind } from "./extract.ts";
+import { type EdgeKind, type ExtractedEdge, type ExtractedExport, SYMBOL_KINDS, type SymbolKind } from "./extract.ts";
 import { fileCandidates, ImportConfig } from "./import-config.ts";
 
 /**
@@ -21,6 +21,8 @@ export type Candidate = {
   within?: [number, number];
   /** The line it starts on. */
   line?: number;
+  /** 1 on a type its language calls a class (ExtractedSymbol.makesObjects). */
+  makesObjects?: 1;
   /** A class's bases as its file names them; '' for one that is no plain name. */
   bases?: readonly string[];
   /** The names a class binds to anything but a method, each hiding a parent's method of that name. */
@@ -30,7 +32,15 @@ export type Candidate = {
 /** Why a reference was linked: `exact` on a proof that names the definition, `name` on a receiver's declared type. */
 export type Link = { dst: number; how: "exact" | "name" };
 
-const CALLABLE = new Set<SymbolKind>(["function", "method", "class", "sh_function"]);
+/** The kinds that are callables: a function and a method. A class is named by a call too (isClass). */
+const CALLABLE_KINDS = new Set<SymbolKind>([SYMBOL_KINDS.function, SYMBOL_KINDS.method]);
+/**
+ * A class: a type its language calls one, which a construction names (CODE_GRAPH.md, "A construction
+ * links to the class"), a receiver's written type proves, and whose parents a method is looked up in.
+ */
+const isClass = (c: Candidate): boolean => c.kind === SYMBOL_KINDS.type && c.makesObjects === 1;
+/** Whether a reference may name `c` as a callable: a function, a method or a class. */
+const callable = (c: Candidate): boolean => CALLABLE_KINDS.has(c.kind) || isClass(c);
 /**
  * File-level data: a name a statement of the file declares outside any type or function
  * (CODE_GRAPH.md, "Kinds of symbol"). A call whose name the language's lookup ends at such a
@@ -38,13 +48,13 @@ const CALLABLE = new Set<SymbolKind>(["function", "method", "class", "sh_functio
  * the proof, so no type is needed (trustmybot/tmb#332). Only a call is linked so; any other use of
  * the name is not.
  */
-const FILE_DATA = new Set<SymbolKind>(["const"]);
+const FILE_DATA = new Set<SymbolKind>([SYMBOL_KINDS.fileData]);
 /** Edges that name a key, not a symbol: they are never linked. */
 export const NAME_ONLY_EDGES: ReadonlySet<EdgeKind> = new Set<EdgeKind>(["reads_config", "covers"]);
 
 /** A symbol's name as references use it: a method's own name, else its qualified name. */
 export function shortName(kind: SymbolKind, qualifiedName: string): string {
-  return kind === "method" ? qualifiedName.slice(qualifiedName.lastIndexOf(".") + 1) : qualifiedName;
+  return kind === SYMBOL_KINDS.method ? qualifiedName.slice(qualifiedName.lastIndexOf(".") + 1) : qualifiedName;
 }
 
 /** A relative import specifier resolved against the importing file, trying the TS forms of a `.js` specifier. */
@@ -122,13 +132,13 @@ export class Resolver {
     private readonly exports: ReadonlyMap<string, readonly ExtractedExport[]> = new Map(),
   ) {
     for (const c of candidates) {
-      if (c.kind === "module") {
+      if (c.kind === SYMBOL_KINDS.file) {
         this.modules.set(c.path, c.id);
         this.fileSet.add(c.path);
         push(this.byBase, basename(c.path), c);
       } else {
         push(this.byName, shortName(c.kind, c.qualified_name), c);
-        if (c.kind !== "method" && c.reach === undefined) {
+        if (c.kind !== SYMBOL_KINDS.method && c.reach === undefined) {
           const names = this.topLevel.get(c.path) ?? new Set<string>();
           names.add(c.qualified_name);
           this.topLevel.set(c.path, names);
@@ -267,12 +277,12 @@ export class Resolver {
    */
   private declarationAt(origin: Origin | null, call: boolean): number | undefined {
     if (origin === null || "namespace" in origin) return undefined;
-    return sole((this.byName.get(origin.name) ?? []).filter((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && namable(c.kind, call)))?.id;
+    return sole((this.byName.get(origin.name) ?? []).filter((c) => c.path === origin.path && c.reach === undefined && c.kind !== SYMBOL_KINDS.method && namable(c, call)))?.id;
   }
 
   /** The classes named `name` that `path` declares. */
   private classesAt(path: string, name: string): Candidate[] {
-    return (this.byName.get(name) ?? []).filter((c) => c.path === path && c.kind === "class");
+    return (this.byName.get(name) ?? []).filter((c) => c.path === path && isClass(c));
   }
 
   /**
@@ -299,7 +309,7 @@ export class Resolver {
   /** The methods of the class `cls` declares under `name`. */
   private ownMethods(cls: { path: string; name: string }, name: string): Candidate[] {
     const qualified = `${cls.name}.${name}`;
-    return (this.byName.get(name) ?? []).filter((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified);
+    return (this.byName.get(name) ?? []).filter((c) => c.kind === SYMBOL_KINDS.method && c.path === cls.path && c.qualified_name === qualified);
   }
 
   /**
@@ -379,10 +389,10 @@ export class Resolver {
     if (edge.kind === "bundles") return link(this.modules.get(edge.dst_name), "exact");
     if (edge.kind === "runs" || edge.kind === "sources") return link(this.scriptTarget(edge.dst_name)?.id, "exact");
     const call = edge.call === 1;
-    const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
+    const cands = (this.byName.get(edge.dst_name) ?? []).filter(callable);
     // A bare or imported name is never a class's method of that name (trustmybot/tmb#242). A call
     // of it may name file-level data too (trustmybot/tmb#332).
-    const declared = (this.byName.get(edge.dst_name) ?? []).filter((c) => namable(c.kind, call) && c.reach === undefined && c.kind !== "method");
+    const declared = (this.byName.get(edge.dst_name) ?? []).filter((c) => namable(c, call) && c.reach === undefined && c.kind !== SYMBOL_KINDS.method);
     // A name bound around the reference is looked up there first, and only there (trustmybot/tmb#246).
     if (edge.bound === "value") return null;
     if (edge.bound === "self") {
@@ -457,7 +467,7 @@ function link(dst: number | undefined, how: Link["how"]): Link | null {
   return dst === undefined ? null : { dst, how };
 }
 
-/** Whether a reference may name a symbol of `kind`: a callable always, file-level data only from a call. */
-function namable(kind: SymbolKind, call: boolean): boolean {
-  return CALLABLE.has(kind) || (call && FILE_DATA.has(kind));
+/** Whether a reference may name `c`: a callable always, file-level data only from a call. */
+function namable(c: Candidate, call: boolean): boolean {
+  return callable(c) || (call && FILE_DATA.has(c.kind));
 }

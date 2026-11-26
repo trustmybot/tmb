@@ -4,7 +4,7 @@
 // (ISO/IEC 9899:2011, "C11") or of the C++ standard (ISO/IEC 14882:2020, by its stable names, such as
 // [basic.lookup.unqual]) it reads. Way A links only what those rules prove inside one file.
 import type { Node, Parser } from 'web-tree-sitter';
-import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
+import { type CallMark, type Collector, type LanguageModule, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { docOf, memberHint, named, normalizedHash, signatureOf } from '../kit.ts';
 
 /** The grammar's node type for a comment, in both grammars. */
@@ -355,10 +355,11 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
     }
     const full = cpp ? [...ctx.prefix, ...own] : own;
     const name = full.join('.');
-    const kind: SymbolKind = cpp && node.type !== 'enum_specifier' ? 'class' : 'type';
     const anchor = spanOf(statement ?? node);
     const exported = !ctx.internal && !ctx.local && (access === null || access === 'public');
-    const symbol = symbolOf(kind, ctx.local && cpp ? own.join('.') : name, node, anchor, ctx.container, exported, ctx.local ? 'nested' : undefined);
+    const symbol = symbolOf(SYMBOL_KINDS.type, ctx.local && cpp ? own.join('.') : name, node, anchor, ctx.container, exported, ctx.local ? 'nested' : undefined);
+    // A C++ class, struct or union is a class ([class.pre]); an enumeration and every C type are not.
+    if (cpp && node.type !== 'enum_specifier') out.symbols[symbol]!.makesObjects = 1;
     // A C tag is in a namespace of its own (C11 6.2.3); a C++ class name is an ordinary name of its scope.
     if (ctx.cls) ctx.cls.others.add(own.at(-1)!);
     else if (!ctx.local && cpp) addEntry(ctx.ns, own.at(-1)!, { kind: 'other', node });
@@ -571,7 +572,7 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
       return;
     }
     if (fileLevel) {
-      const made = data.map(({ name }) => symbolOf('const', name, node, node, ctx.container, !ctx.internal && !hasStorage(node, 'static')));
+      const made = data.map(({ name }) => symbolOf(SYMBOL_KINDS.fileData, name, node, node, ctx.container, !ctx.internal && !hasStorage(node, 'static')));
       if (made.length === 1) scope = made[0]!;
     }
     visitChildren(node, { ...ctx, scope });

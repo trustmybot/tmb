@@ -135,7 +135,7 @@ function graphLinks(db: Database, files: ReadonlySet<string>): Linked[] {
 
 /** The graph's nodes, by file, as lines. */
 function nodeSpans(db: Database): Map<string, { start: number; end: number }[]> {
-  const rows = db.query("SELECT path, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND kind != 'module'").all(BASE_LAYER) as { path: string; start: number; end: number }[];
+  const rows = db.query("SELECT path, start_line AS start, end_line AS end FROM symbols WHERE layer = ? AND kind != 'file'").all(BASE_LAYER) as { path: string; start: number; end: number }[];
   const out = new Map<string, { start: number; end: number }[]>();
   for (const r of rows) out.set(r.path, [...(out.get(r.path) ?? []), { start: r.start, end: r.end }]);
   return out;

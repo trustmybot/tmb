@@ -105,8 +105,8 @@ describe("TypeScript: a decorator's call belongs to what encloses the decorated 
   test("the graph: the class's decorator is the file's call, the method's is the class's, and a bare decorator is no call", async () => {
     const got = await withGraph(repo, sha, {}, (db) => owners(db).filter((o) => o.file === "deco.ts"));
     expect(got.map(({ kind, callee, line }) => ({ kind, callee, line }))).toEqual([
-      { kind: "module", callee: "tag", line: 3 },
-      { kind: "class", callee: "cache", line: 5 },
+      { kind: "file", callee: "tag", line: 3 },
+      { kind: "type", callee: "cache", line: 5 },
       { kind: "method", callee: "count", line: 7 },
     ]);
   });
@@ -118,11 +118,11 @@ describe("TypeScript: a decorator's call belongs to what encloses the decorated 
   test("the graph: a field's, an accessor's and a parameter's decorators are the class's calls", async () => {
     const got = await withGraph(repo, sha, {}, (db) => owners(db).filter((o) => o.file === "members.ts"));
     expect(got.map(({ kind, name, callee, line }) => ({ kind, name, callee, line }))).toEqual([
-      { kind: "class", name: "Service", callee: "inject", line: 4 },
-      { kind: "class", name: "Service", callee: "inject", line: 6 },
-      { kind: "class", name: "Service", callee: "inject", line: 8 },
+      { kind: "type", name: "Service", callee: "inject", line: 4 },
+      { kind: "type", name: "Service", callee: "inject", line: 6 },
+      { kind: "type", name: "Service", callee: "inject", line: 8 },
       { kind: "method", name: "Service.constructor", callee: "label", line: 9 },
-      { kind: "class", name: "Service", callee: "inject", line: 11 },
+      { kind: "type", name: "Service", callee: "inject", line: 11 },
     ]);
   });
 });
@@ -133,8 +133,8 @@ describe("Python: a decorator's call belongs to what encloses the decorated thin
   test("the graph: the top-level function's decorator is the file's call, the method's is the class's", async () => {
     const got = await withGraph(repo, sha, {}, (db) => owners(db).filter((o) => o.file === "deco.py"));
     expect(got.map(({ kind, callee, line }) => ({ kind, callee, line }))).toEqual([
-      { kind: "module", callee: "cache", line: 4 },
-      { kind: "class", callee: "cache", line: 9 },
+      { kind: "file", callee: "cache", line: 4 },
+      { kind: "type", callee: "cache", line: 9 },
       { kind: "method", callee: "top", line: 11 },
     ]);
   });

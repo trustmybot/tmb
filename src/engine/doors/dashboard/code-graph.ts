@@ -4,6 +4,7 @@
 // once, and nothing here writes: the page reads the same graph the agents' lookups read.
 import type { Database } from "bun:sqlite";
 import { FUNCTION_KINDS } from "../../graph/build.ts";
+import { SYMBOL_KINDS } from "../../graph/languages/contract.ts";
 import { areasOf, listAreas } from "../../graph/areas.ts";
 import { type CallCounts, countsOf, type SymbolCard, symbolCard } from "../../graph/lookups.ts";
 import type { CallState } from "../../graph/resolve.ts";
@@ -104,7 +105,7 @@ function functionCounts(db: Database, layer: string): Map<string, number> {
 /** Why a file of a known language holds no symbols, or null when it was parsed. */
 function notParsedReason(db: Database, layer: string, file: { path: string; lang: string | null; parse_error: string | null }): string | null {
   if (file.lang === null) return null;
-  const module = db.query("SELECT 1 FROM symbols WHERE layer = ? AND path = ? AND kind = 'module'").get(layer, file.path);
+  const module = db.query(`SELECT 1 FROM symbols WHERE layer = ? AND path = ? AND kind = '${SYMBOL_KINDS.file}'`).get(layer, file.path);
   return module ? null : (file.parse_error ?? "not parsed");
 }
 
@@ -198,10 +199,10 @@ type SymbolRow = {
 
 const SYMBOL_COLUMNS = "s.id, s.path, s.kind, s.qualified_name, s.name, s.signature, s.doc, s.start_line, s.end_line, s.exported, s.parent_id, s.unnamed";
 
-/** Kinds drawn on a file's view: the functions and the classes that hold them. */
-const DRAWN_KINDS = [...KIND_LIST, "class"];
+/** Kinds drawn on a file's view: the functions and the types that hold them. */
+const DRAWN_KINDS = [...KIND_LIST, SYMBOL_KINDS.type];
 
-/** One file: its classes and functions, each inside its container, with the proven calls between them. */
+/** One file: its types and functions, each inside its container, with the proven calls between them. */
 export function file(db: Database, layer: string, filePath: string): FileResult | null {
   const path = filePath.replace(/^\.\//, "");
   const row = db.query("SELECT path, lang, lane, parse_error FROM files WHERE layer = ? AND path = ?").get(layer, path) as {
@@ -278,10 +279,10 @@ function idOf(db: Database, layer: string, path: string, qualifiedName: string, 
 
 /** One symbol with its callers and what it calls: the same card the agents' lookup gives, with ids to open each. */
 export function functionView(db: Database, layer: string, id: number): FunctionResult | null {
-  const row = db.query(`SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.id = ? AND s.kind <> 'module'`).get(layer, id) as SymbolRow | null;
+  const row = db.query(`SELECT ${SYMBOL_COLUMNS} FROM symbols s WHERE s.layer = ? AND s.id = ? AND s.kind <> '${SYMBOL_KINDS.file}'`).get(layer, id) as SymbolRow | null;
   if (!row) return null;
   const card = symbolCard(db, layer, row);
-  const callers = card.callers.map((c): NodeRef => ({ ...c, id: c.kind === "module" ? null : idOf(db, layer, c.path, c.qualifiedName, c.kind) }));
+  const callers = card.callers.map((c): NodeRef => ({ ...c, id: c.kind === SYMBOL_KINDS.file ? null : idOf(db, layer, c.path, c.qualifiedName, c.kind) }));
   const callees = card.callees
     .filter((c) => c.target !== null)
     .map((c): NodeRef => ({
@@ -297,7 +298,7 @@ export function functionView(db: Database, layer: string, id: number): FunctionR
     id: row.id,
     name: row.unnamed === 1 ? row.qualified_name : row.name,
     unnamed: row.unnamed === 1,
-    parent: parentRow !== null && parentRow.kind !== "module" ? row.parent_id : null,
+    parent: parentRow !== null && parentRow.kind !== SYMBOL_KINDS.file ? row.parent_id : null,
     card,
     callers,
     callees,

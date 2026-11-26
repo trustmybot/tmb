@@ -32,6 +32,7 @@ import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
 import type { CallCounts, Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
 import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
+import { SYMBOL_KINDS } from "../graph/languages/contract.ts";
 import { DEFAULT_LINK_WAY } from "../graph/ways.ts";
 import { runningName } from "../../program.ts";
 import { openProjectStore } from "../project.ts";
@@ -575,7 +576,7 @@ export function callCountsText(calls: CallCounts): string {
 function formatCard(card: SymbolCard): string {
   const s = card.symbol;
   const lines = [`${s.kind} ${s.qualifiedName}  ${s.path}:${s.startLine ?? "?"}-${s.endLine ?? "?"}`];
-  if (s.signature && s.kind !== "module") lines.push(`  ${s.signature}`);
+  if (s.signature && s.kind !== SYMBOL_KINDS.file) lines.push(`  ${s.signature}`);
   if (card.areas.length > 0) lines.push(`  areas: ${card.areas.join(", ")}`);
   lines.push(...refLines("called by", card.callers, card.more.callers), ...refLines("imported by", card.importers, card.more.importers));
   const calls = card.callees.filter((c) => c.edge !== "imports");
