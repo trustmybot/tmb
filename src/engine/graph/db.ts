@@ -12,7 +12,7 @@ import { SYMBOL_KINDS, type SymbolKind } from "./languages/contract.ts";
 import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 11;
+export const GRAPH_SCHEMA_VERSION = 12;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS symbols (
   exported       INTEGER NOT NULL DEFAULT 0,
   parent_id      INTEGER,
   unnamed        INTEGER NOT NULL DEFAULT 0,
-  named_id       INTEGER
+  named_id       INTEGER,
+  lang           TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS symbols_name ON symbols(layer, name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS symbols_qualified ON symbols(layer, qualified_name COLLATE NOCASE);
@@ -184,6 +185,23 @@ const KINDS_BEFORE_SCHEMA_10: Readonly<Record<string, SymbolKind>> = {
 const SCHEMA_9_TO_10 = Object.entries(KINDS_BEFORE_SCHEMA_10).map(([before, now]) => `UPDATE symbols SET kind = '${now}' WHERE kind = '${before}'`);
 
 /**
+ * Schema 12 stores an SQL trigger as a function, and records a node's own language when it differs
+ * from its file's, '' when it does not (CODE_GRAPH.md, "Data sources"; trustmybot/tmb#397). A trigger
+ * stored before it, under a kind of its own, is rewritten: it names SQL when its file is in another
+ * language, as one in a string of code is. Every other row is in its file's language. Every layer
+ * was built by an older extractor, so the next read rebuilds it; until then its triggers answer as
+ * functions.
+ */
+const TRIGGER_KIND_BEFORE_SCHEMA_12 = "sql_trigger";
+const TRIGGER_LANGUAGE = "sql";
+const SCHEMA_11_TO_12_COLUMN = "ALTER TABLE symbols ADD COLUMN lang TEXT NOT NULL DEFAULT ''";
+const SCHEMA_11_TO_12 = [
+  `UPDATE symbols SET lang = '${TRIGGER_LANGUAGE}' WHERE kind = '${TRIGGER_KIND_BEFORE_SCHEMA_12}' AND NOT EXISTS
+     (SELECT 1 FROM files f WHERE f.layer = symbols.layer AND f.path = symbols.path AND f.lang = '${TRIGGER_LANGUAGE}')`,
+  `UPDATE symbols SET kind = '${SYMBOL_KINDS.function}' WHERE kind = '${TRIGGER_KIND_BEFORE_SCHEMA_12}'`,
+];
+
+/**
  * Schema 11 records, for each tool a way B layer was built with, whose copy it was and where it is
  * (trustmybot/tmb#392). A record made before it names no copy, so it is dropped: the layer is stale
  * and the next read rebuilds it, as one built before schema 9.
@@ -279,6 +297,10 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         // After the tables are made: a graph of schema 1 to 9 may hold no symbols table yet.
         if (version >= 1 && version <= 9) for (const statement of SCHEMA_9_TO_10) db.run(statement);
         if (version >= 1 && version <= 10) for (const statement of SCHEMA_10_TO_11) db.run(statement);
+        // After the tables are made, as the step before: the symbols table may be new, and so hold the column.
+        const hasLang = (db.query("SELECT 1 FROM pragma_table_info('symbols') WHERE name = 'lang'").get() ?? null) !== null;
+        if (version >= 1 && version <= 11 && !hasLang) db.run(SCHEMA_11_TO_12_COLUMN);
+        if (version >= 1 && version <= 11) for (const statement of SCHEMA_11_TO_12) db.run(statement);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();

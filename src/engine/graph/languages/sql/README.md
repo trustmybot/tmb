@@ -7,7 +7,7 @@ The code graph's rules for SQL, in `.sql` files and in strings of code. SQL is r
 - Each statement is parsed in every dialect the parser has, the general one first. Its tables count when the dialects that parse it name the same tables. A statement of an `.sql` file no dialect parses, or one the dialects disagree on, gives no link and is counted in the layer's `not_read` as `statements`, which the answer's freshness shows.
 - A table is a data source: one `data_source` node of the repo, in no file, its kind (`table`) as its signature and its name as the last part of the name the statement gives. A view and a virtual table are tables.
 - A query's tables are reads; an insert, update, delete, merge, truncate, `ALTER`, `DROP`, `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX` and `COPY` into a table write theirs, as `reads_data` and `writes_data` links. An index is no node. A foreign key is no link. An address a `COPY` names is not read.
-- A trigger is a node where it is written, linked to the table it fires on (`triggers_on`); the tables its body reads and writes are linked from it.
+- A trigger is code that runs in the store: a `function` node where it is written, in its file or in the function that holds its string, linked to the table it fires on (`triggers_on`); the tables its body reads and writes are linked from it. The store runs it, so no call names it: a call of its name in code is never linked to it.
 - A table name the code does not state, such as one interpolated from a variable, links to the store alone: a `data_source` node of kind `database` with no name.
 
 ## SQL in strings

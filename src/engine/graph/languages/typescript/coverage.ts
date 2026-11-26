@@ -49,12 +49,16 @@ export function compilerFunctions(relPath: string, text: string): string[] {
   return out.sort();
 }
 
-/** Each function the code graph's extractor finds, as `start-end` lines. */
+/**
+ * Each TypeScript or JavaScript function the code graph's extractor finds, as `start-end` lines: the
+ * nodes in the file's own language. A node of another language found inside a string, such as an
+ * SQL trigger, is not counted: the compiler does not read it (CODE_GRAPH.md, "Benchmark").
+ */
 export function graphFunctions(parsers: Parsers, relPath: string, text: string): string[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(`${relPath} is not TypeScript or JavaScript`);
   return extractFile(parsers, relPath, lang, text)
-    .symbols.filter((s) => s.kind === "function" || s.kind === "method")
+    .symbols.filter((s) => (s.kind === "function" || s.kind === "method") && s.lang === undefined)
     .map((s) => `${s.start_line}-${s.end_line}`)
     .sort();
 }

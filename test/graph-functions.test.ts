@@ -28,7 +28,9 @@ describe("every symbol has a container", () => {
     expect(py.find((s) => s.qualified_name === "A.run")?.parent).toBe(py.findIndex((s) => s.qualified_name === "A"));
     expect(py.find((s) => s.qualified_name === "top")?.parent).toBe(0);
     const sql = extractFile(null, "db/a.sql", "sql", "CREATE TABLE t (id INTEGER);\nCREATE TRIGGER t_added AFTER INSERT ON t BEGIN SELECT 1; END;\n").symbols;
-    expect(sql.find((s) => s.kind === "sql_trigger")?.parent).toBe(0);
+    expect(sql.find((s) => s.qualified_name === "t_added")).toMatchObject({ kind: "function", parent: 0 });
+    // In an .sql file a trigger is in its file's language, so it names none of its own.
+    expect(sql.find((s) => s.qualified_name === "t_added")?.lang).toBeUndefined();
   });
 });
 

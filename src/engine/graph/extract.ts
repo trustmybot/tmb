@@ -23,7 +23,7 @@ export type {
   SourceLanguage,
   SymbolKind,
 } from './languages/contract.ts';
-export { SQL_TRIGGER, SYMBOL_KINDS } from './languages/contract.ts';
+export { SYMBOL_KINDS } from './languages/contract.ts';
 export { clip, DOC_MAX, isBannerLine, isRuleLine, md5, oneLine, splitWords, STOPWORDS } from './languages/kit.ts';
 
 // What the graph leaves out by path, each rule named so the index can count it

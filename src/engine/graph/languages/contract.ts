@@ -18,13 +18,7 @@ export const SYMBOL_KINDS = {
   dataSource: 'data_source',
 } as const;
 
-/**
- * A trigger written in SQL (CODE_GRAPH.md, "Data sources": code that runs in the store, a node where
- * it is written). The page gives it no kind of the common set yet, so it keeps its own.
- */
-export const SQL_TRIGGER = 'sql_trigger';
-
-export type SymbolKind = (typeof SYMBOL_KINDS)[keyof typeof SYMBOL_KINDS] | typeof SQL_TRIGGER;
+export type SymbolKind = (typeof SYMBOL_KINDS)[keyof typeof SYMBOL_KINDS];
 
 export type EdgeKind =
   | 'calls'
@@ -65,7 +59,13 @@ export interface ExtractedSymbol {
   // How far a named function's bare name reaches: 'nested' inside another
   // function, 'member' when bound as an object's key or an assignment's target,
   // which no bare call names. Absent on a declaration of the file or a class.
-  reach?: 'nested' | 'member';
+  // 'none' on a function no call of any language names: code a store runs on its own, such as an SQL
+  // trigger (CODE_GRAPH.md, "Data sources"). Like an unnamed function, it is no reference's target.
+  reach?: 'nested' | 'member' | 'none';
+  // The node's own language, set by the module that writes it, only when it differs from its file's
+  // (CODE_GRAPH.md, "Data sources"): SQL for a trigger in a string of TypeScript. Absent on every
+  // other node, which is in its file's language.
+  lang?: SourceLanguage;
   // 1 on a type its language's own definition calls a class: a type whose objects are made from it
   // (a TypeScript or Python class; a Java class, enum class or record class; a C++ class, struct or
   // union). The built-in rules link a construction of its name to it, read its name written as a
