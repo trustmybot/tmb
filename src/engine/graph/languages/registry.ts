@@ -3,6 +3,7 @@
 import type { LanguageModule } from './contract.ts';
 import { bash } from './bash/index.ts';
 import { go } from './go/index.ts';
+import { java } from './java/index.ts';
 import { perl } from './perl/index.ts';
 import { python } from './python/index.ts';
 import { sql } from './sql/index.ts';
@@ -17,6 +18,7 @@ export const LANGUAGES: LanguageModule[] = [
   python,
   sql,
   go,
+  java,
 ];
 
 /** The language module named `name`, or null. */
