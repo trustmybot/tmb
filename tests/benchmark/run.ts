@@ -19,10 +19,10 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
-import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION, WAY_B_NOT_BUILT as GO_WAY_B_NOT_BUILT } from "./go.ts";
+import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
-import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
+import { type Entry, entry, falls, format, isNotScored, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE, REFERENCE_VERSION as TS_REFERENCE_VERSION } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
@@ -46,7 +46,7 @@ const INSTALLED: Record<string, Record<Way, string>> = {
     A: "nothing: tmb's own parser",
     B: "nothing for pyright: tmb carries it; the repo's own virtual environment, for its calls of packages to be outside",
   },
-  go: { A: "nothing: tmb's own parser", B: GO_WAY_B_NOT_BUILT },
+  go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -71,26 +71,13 @@ async function measureAll(): Promise<Run> {
     }
     console.error(`measuring ${r.repo} (${r.language}) at ${sha.slice(0, 7)}…`);
     const secs = (ms: { graph: number; reference: number }): Seconds => ({ graph: ms.graph / 1000, reference: ms.reference / 1000 });
-    if (r.language === "typescript") {
-      const a = await measureTypescript(where.folder, sha, "A");
-      const b = await measureTypescript(where.folder, sha, "B");
-      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: TS_REFERENCE }, { A: a.scores, B: b.scores }));
-      seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
-      detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
-    } else {
-      if (r.language === "python") {
-        const a = await measurePython(where.folder, sha, "A");
-        const b = await measurePython(where.folder, sha, "B");
-        entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
-        seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
-        detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
-      } else {
-        const m = await measureGo(where.folder, sha);
-        entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, { A: m.scores, B: notBuilt(GO_WAY_B_NOT_BUILT) }));
-        seconds[r.repo] = { A: secs(m.ms) };
-        detail[r.repo] = m.detail.map((d) => `way A, ${d}`);
-      }
-    }
+    const measure = async (way: Way) =>
+      r.language === "typescript" ? { ...(await measureTypescript(where.folder, sha, way)), reference: TS_REFERENCE } : r.language === "python" ? await measurePython(where.folder, sha, way) : await measureGo(where.folder, sha, way);
+    const a = await measure("A");
+    const b = await measure("B");
+    entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
+    seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
+    detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);
   return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION, go: GO_REFERENCE_VERSION }, entries }, seconds, detail };
