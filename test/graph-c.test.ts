@@ -375,3 +375,33 @@ describe("a function a macro wraps", () => {
     }
   });
 });
+
+// A call written in a macro's arguments: the macro decides what its input becomes (6.10.3).
+const SEEDS = lines(
+  "#define EACH(kind, act) case kind: act; break", // 1
+  "static int weigh(int n) { return n; }", //          2
+  "int sort_seed(int kind) {", //                      3
+  "  switch (kind) {", //                              4
+  "    EACH(1, weigh(kind));", //                      5
+  "  }", //                                            6
+  "  return weigh(0);", //                             7
+  "}", //                                              8
+);
+
+describe("a call in a macro's arguments", () => {
+  test("a call in the arguments of a macro the file defines is not known; the same call outside it links", async () => {
+    const db = await built({ "garden/seeds.c": SEEDS });
+    try {
+      const file = "garden/seeds.c";
+      const all = calls(db, "a");
+      const state = (needle: string) => {
+        const r = callAt(all, file, at(SEEDS, needle));
+        return [r.src, r.call_state, r.dst];
+      };
+      expect(state("weigh(kind)")).toEqual([`${file}:sort_seed`, "not_known", null]);
+      expect(state("weigh(0)")).toEqual([`${file}:sort_seed`, "linked", `${file}:weigh`]);
+    } finally {
+      db.close();
+    }
+  });
+});

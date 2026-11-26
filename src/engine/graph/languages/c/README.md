@@ -15,6 +15,7 @@ The code graph's rules for C files. They are read through tree-sitter's C gramma
 - Calls are call expressions, at the name they call: `f` in `f(x)`, and the field's name in `o.f(x)` and `p->f(x)`. A call is in the function around it; in a variable's initializer it is that variable's, or the file's when the declaration declares several. A call through an expression, as `(*f)(x)`, has no name and is no call; nor are a `sizeof` and a cast.
 - Every call is linked or not known. No call is linked by its name alone, only by this rule:
   - `f(…)` by a plain name links to the file's one definition of `f` (6.2.1, 6.2.3: one namespace of ordinary identifiers in a file's scope, and no overloading), when no block around the call declares `f`, the file has no other declaration of `f` that is not a function's, no `#define` of `f`, and the definition is compiled wherever the call is: in the same conditional groups of `#if`, `#ifdef` and `#else`.
+  - A call written in the arguments of a macro the file defines is not known: the macro decides what its input becomes (6.10.3).
   - Every other call is not known: a function another file defines, a call through a field or a pointer, a macro, a function a macro writes the head of. Way B, clangd with the project's compile database, gives these.
 
 The benchmark compares the functions, calls and links with clang's own answer, through libclang and the project's compile database ([c_reference.py](../../../../../tests/benchmark/c_reference.py)).

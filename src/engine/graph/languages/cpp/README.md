@@ -22,7 +22,7 @@ The code graph's rules for C++ files. They are read through tree-sitter's C++ gr
   - In a member function, `f(…)` or `this->f(…)` links to the class's member `f` when the class declares one member function of that name, no other member of that name and no using-declaration of it ([class.member.lookup], [basic.lookup.unqual]). The target is the member's node in the class, or its one definition outside it.
   - In a member function, a construction by the class's own name or by a member class's name links to that class ([class.pre] p2, the injected class name), as the page's "A construction links to the class" says.
   - Outside a class, `f()` with no arguments, which has no argument-dependent lookup ([basic.lookup.argdep]), links when the file declares `f` in the call's namespace before the call and defines one `f` there, with nothing else of that name, compiled wherever the call is.
-  - A name a block declares or a `#define` defines is not known.
+  - A name a block declares or a `#define` defines is not known, and so is a call written in the arguments of a macro the file defines.
   - Every other call is not known: an overload, a call through a value, a call with arguments outside a class, a function another file defines. Way B, clangd with the project's compile database, gives these.
 
 The benchmark compares the functions, calls and links with clang's own answer, through libclang and the project's compile database ([c_reference.py](../../../../../tests/benchmark/c_reference.py)).

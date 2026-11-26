@@ -707,6 +707,17 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
     if (name) macros.add(name);
   }
 
+  // A macro's arguments are tokens it may stringify, paste or drop (C11 6.10.3): what a call written
+  // there becomes is the macro's to say, and the rules do not expand the file's `#define`.
+  const inMacroArguments = (call: Node): boolean => {
+    for (let a = call.parent; a !== null; a = a.parent) {
+      if (a.type !== 'argument_list') continue;
+      const callee = a.parent?.type === 'call_expression' ? a.parent.childForFieldName('function') : null;
+      if (callee?.type === 'identifier' && macros.has(callee.text)) return true;
+    }
+    return false;
+  };
+
   /** The one node of `entries` that is a definition the rules can link, compiled whenever the call is. */
   const oneDefinition = (entries: readonly NsEntry[], call: Node): number | null => {
     const defs = entries.filter((e) => e.kind === 'definition');
@@ -719,7 +730,7 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
   // The rules that prove a call's target inside the file. Every other call is not known; the
   // language's tool, clangd, gives those.
   const markOf = (call: Node, name: Node, fn: FnInfo | null): CallMark => {
-    if (fn === null || macros.has(name.text) || boundIn(fn.node).has(name.text)) return {};
+    if (fn === null || macros.has(name.text) || boundIn(fn.node).has(name.text) || inMacroArguments(call)) return {};
     const callee = call.type === 'call_expression' ? call.childForFieldName('function') : null;
     if (!cpp) {
       // C has one ordinary-identifier namespace in a file's scope and no overloading (C11 6.2.1,
