@@ -45,7 +45,7 @@ export type BuildStats = {
   notRead: NotRead;
   /** The way the layer was asked to make its links by (trustmybot/tmb#311). */
   links: LinkWay;
-  /** Why a language was built by the built-in rules although its tool was asked for; null when none was. */
+  /** Why a language was built by the built-in rules although its tool was asked for, and what a tool's answers rest on that the reader should know; null when neither. */
   linksNote: string | null;
 };
 
