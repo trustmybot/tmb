@@ -131,6 +131,22 @@ describe("way B for Python, pyright", () => {
   });
 });
 
+describe("every link of way B is placed where its name is written", () => {
+  test("a call, a method call and a parent class each keep the position of the name they link", async () => {
+    const text = lines("class Crate:", "    def lid(self):", "        return 1", "", "", "class Box(Crate):", "    pass", "", "", "def pack():", "    return Box().lid()");
+    const { db } = await wayB({ "store/box.py": text });
+    const rows = db
+      .query(`SELECT e.dst_name AS name, e.pos AS pos, e.call_state AS state FROM edges e JOIN symbols s ON s.id = e.src_id WHERE e.layer = 'b' AND s.path = 'store/box.py' AND e.kind IN ('calls', 'instantiates') ORDER BY e.pos`)
+      .all() as { name: string; pos: number | null; state: string | null }[];
+    expect(rows).toEqual([
+      { name: "Crate", pos: text.indexOf("Crate)"), state: null },
+      { name: "Box", pos: text.indexOf("Box()"), state: "linked" },
+      { name: "lid", pos: text.indexOf("lid()"), state: "linked" },
+    ]);
+    db.close();
+  });
+});
+
 describe("overload stubs are one function", () => {
   test("a call pyright resolves to a function's @overload stubs links to the function itself, the one definition that runs", async () => {
     const { db, rows } = await wayB({
