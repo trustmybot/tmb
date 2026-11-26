@@ -566,7 +566,7 @@ describe("Rust's own parser", () => {
       { pos: at("len"), line: 1, name: "len", shape: "method" },
       { pos: at("f::<u8>"), line: 1, name: "f", shape: "name" },
       { pos: at("r#match"), line: 1, name: "r#match", shape: "name" },
-      { pos: at("h()"), line: 1, name: "h", shape: "path" },
+      { pos: at("m::h()") + "m::".length, line: 1, name: "h", shape: "path" },
     ]);
   });
 
