@@ -19,7 +19,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 20;
+export const EXTRACTOR_VERSION = 22;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -55,6 +55,8 @@ export type NotRead = {
   languages: { name: string; files: number }[];
   /** Files each rule leaves out of the graph altogether, such as dist/ or lockfiles. */
   leftOut: { rule: string; files: number }[];
+  /** Statements a language's parser could not read, each of which gave no link; absent when there are none. */
+  statements?: number;
 };
 
 export const NOTHING_UNREAD: NotRead = { languages: [], leftOut: [] };
@@ -67,7 +69,7 @@ export function parseNotRead(text: string | null | undefined): NotRead {
   if (text === null || text === undefined) return NOTHING_UNREAD;
   try {
     const value = JSON.parse(text) as Partial<NotRead>;
-    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [] };
+    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [], ...(value.statements ? { statements: value.statements } : {}) };
   } catch {
     return NOTHING_UNREAD;
   }
@@ -100,8 +102,11 @@ function cachedParse(db: Database, blob: string, lang: string): { extraction: Ex
 
 function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text: string): { extraction: Extraction | null; error: string | null } {
   try {
-    const { symbols, edges, exports } = extractFile(parsers, entry.path, lang, text);
-    return { extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}) }, error: null };
+    const { symbols, edges, exports, statementsNotRead } = extractFile(parsers, entry.path, lang, text);
+    return {
+      extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}), ...(statementsNotRead ? { statementsNotRead } : {}) },
+      error: null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { extraction: null, error: message.slice(0, MAX_ERROR_CHARS) };
@@ -270,6 +275,28 @@ function ancestorsOf(dir: string): string[] {
   return out;
 }
 
+const dataSourceKey = (kind: string, name: string): string => `${kind}\u0000${name}`;
+
+/**
+ * The layer's data sources (CODE_GRAPH.md, "Data sources"): one node of each kind and name its
+ * links reach, in no file and in nothing, its kind as its signature and its name ('' for a store
+ * the code does not name). Returns each one's id by dataSourceKey.
+ */
+function writeDataSources(db: Database, layer: string, edges: readonly Extraction["edges"][number][]): Map<string, number> {
+  const insert = db.prepare("INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, exported, unnamed) VALUES (?, '', 'data_source', ?, ?, ?, '', 0, 0)");
+  const insertFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, '')");
+  const ids = new Map<string, number>();
+  for (const edge of edges) {
+    if (edge.data === undefined) continue;
+    const key = dataSourceKey(edge.data, edge.dst_name);
+    if (ids.has(key)) continue;
+    const id = Number(insert.run(layer, edge.dst_name, edge.dst_name, edge.data).lastInsertRowid);
+    insertFts.run(id, layer, `${splitWords(edge.dst_name)} ${splitWords(edge.data)}`);
+    ids.set(key, id);
+  }
+  return ids;
+}
+
 /** Writes one whole layer, replacing what it held. */
 function applyLayer(
   db: Database,
@@ -304,6 +331,7 @@ function applyLayer(
   const pending: Pending[] = [];
   const symbolRows: { file: string; s: Extraction["symbols"][number]; offset: number }[] = [];
   const exports = new Map<string, ExtractedExport[]>();
+  let statementsNotRead = 0;
   for (const plan of plans) {
     const file = plan.entry.path;
     const source = plan.summary === "" ? "none" : plan.extraction ? "header" : "heading";
@@ -311,6 +339,7 @@ function applyLayer(
     insertFileFts.run(layer, file, `${splitWords(file)} ${splitWords(basename(file))}`, plan.summary);
     if (!plan.extraction) continue;
     if (plan.extraction.exports) exports.set(file, plan.extraction.exports);
+    statementsNotRead += plan.extraction.statementsNotRead ?? 0;
     const offset = symbolRows.length;
     for (const s of plan.extraction.symbols) {
       // An unnamed function is no reference's target: nothing names it.
@@ -365,6 +394,7 @@ function applyLayer(
     if (FUNCTION_KINDS.has(s.kind)) functions++;
     ids.push(id);
   }
+  const sources = writeDataSources(db, layer, pending.map((p) => p.edge));
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
   const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
@@ -373,6 +403,11 @@ function applyLayer(
   );
   let unresolved = 0;
   pending.forEach(({ file, symbolIndex, edge }, index) => {
+    if (edge.data !== undefined) {
+      // A link to a data source ends at the layer's one node of its kind and name.
+      insertEdge.run(layer, ids[symbolIndex]!, sources.get(dataSourceKey(edge.data, edge.dst_name))!, edge.dst_name, edge.kind, "exact", edge.line, null, null, null, BUILT_IN);
+      return;
+    }
     // A call its language's tool answered takes the tool's answer, and nothing else (trustmybot/tmb#311).
     const answer = byTool.answers.get(index);
     const link: Link | null = answer === undefined ? resolver.resolve(file, edge) : "node" in answer ? { dst: answer.node, how: "exact" } : null;
@@ -391,12 +426,13 @@ function applyLayer(
   const notRead: NotRead = {
     languages: sortedCounts(unread).map(([name, files]) => ({ name, files })),
     leftOut: sortedCounts(leftOut).map(([rule, files]) => ({ rule, files })),
+    ...(statementsNotRead > 0 ? { statements: statementsNotRead } : {}),
   };
   const stats = {
     layer,
     commit,
     files: plans.length,
-    symbols: ids.length,
+    symbols: ids.length + sources.size,
     edges: pending.length,
     unresolved,
     unresolvedImports,
