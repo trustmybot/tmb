@@ -28,8 +28,12 @@ every function.
 A call's targets are the nodes of the repo the compiler binds it to: every definition of the
 declaration it names, across units, by clang's USR, which carries the file for an entity with
 internal linkage; a pure virtual method's own declaration; and, for a construction, the class's
-definition too, as the page's example links `new Cart` to `Cart`. A call with no target in the repo
-reaches outside it, or a function the repo declares and never defines.
+definition too, as the page's example links `new Cart` to `Cart`, and the class alone when the
+compiler names no constructor, as a placement `new (p) T(…)` in a template does. A call through a
+file-level variable, as `fp(x)` with `static int (*fp)(int);`, has that variable as its target, its
+definition across units by USR, else its own declaration when that is not `extern`: a call links to a
+file-level name whatever it holds. A call with no target in the repo reaches outside it, or a
+function the repo declares and never defines.
 """
 
 import ctypes
@@ -49,6 +53,8 @@ ROOT = os.path.realpath(ROOT) + os.sep
 
 FUNCTION_KINDS = {K.FUNCTION_DECL, K.CXX_METHOD, K.CONSTRUCTOR, K.DESTRUCTOR, K.CONVERSION_FUNCTION, K.FUNCTION_TEMPLATE}
 NAME_KINDS = {K.DECL_REF_EXPR, K.MEMBER_REF_EXPR, K.OVERLOADED_DECL_REF}
+CLASS_KINDS = {K.STRUCT_DECL, K.CLASS_DECL, K.UNION_DECL, K.CLASS_TEMPLATE, K.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION}
+FILE_LEVEL = {K.TRANSLATION_UNIT, K.NAMESPACE, K.LINKAGE_SPEC}
 # KeepGoing: a unit with an error is still parsed to its end, as an editor's clangd does.
 PARSE_OPTIONS = 0x200
 
@@ -123,6 +129,16 @@ def is_function(c):
     return c.is_definition() or (c.kind == K.CXX_METHOD and c.is_pure_virtual_method())
 
 
+def file_level_variable(c):
+    """A variable declared outside every function and class: a name of the file."""
+    return c is not None and c.kind == K.VAR_DECL and c.semantic_parent is not None and c.semantic_parent.kind in FILE_LEVEL
+
+
+def own_declaration(c):
+    """A file-level variable's declaration that is no `extern`: a definition, a tentative one included."""
+    return extent(c) if c.storage_class != cindex.StorageClass.EXTERN else None
+
+
 def units_of(cdb):
     """Each file the database compiles, once, with its command's arguments less the output and the file."""
     units = []
@@ -182,6 +198,10 @@ def main():
                         own = (ext["file"], span)
                         if c.kind != K.LAMBDA_EXPR and c.is_definition() and c.get_usr():
                             defs.setdefault(c.get_usr(), {})[(ext["file"], ext["start"], ext["end"])] = ext
+                if file_level_variable(c) and c.get_usr():
+                    ext = own_declaration(c)
+                    if ext is not None:
+                        defs.setdefault(c.get_usr(), {})[(ext["file"], ext["start"], ext["end"])] = ext
                 if c.kind == K.CALL_EXPR:
                     record_call(c, own)
                 elif c.kind == K.CXX_NEW_EXPR:
@@ -196,8 +216,13 @@ def main():
                 entry = calls[key] = {"file": key[0], "line": at[1], "col": at[2], "name": name, "owner": owner, "construction": False, "refs": []}
             if ref is None:
                 return
-            entry["construction"] = entry["construction"] or ref.kind == K.CONSTRUCTOR
-            r = {"usr": ref.get_usr(), "pure": None, "class": None}
+            entry["construction"] = entry["construction"] or ref.kind in (K.CONSTRUCTOR, *CLASS_KINDS)
+            r = {"usr": ref.get_usr(), "pure": None, "class": None, "variable": None}
+            if ref.kind in CLASS_KINDS:
+                cls_def = ref.get_definition()
+                r["class"] = extent(cls_def) if cls_def is not None else None
+            if file_level_variable(ref):
+                r["variable"] = own_declaration(ref)
             if ref.kind == K.CXX_METHOD and ref.is_pure_virtual_method():
                 r["pure"] = extent(ref)
             if ref.kind == K.CONSTRUCTOR:
@@ -216,6 +241,9 @@ def main():
                 at = spelling(c.location)
                 want = ref.spelling
             elif name_cursor is not None:
+                # A call through a variable: the compiler names no function, the name names the variable.
+                if ref is None and file_level_variable(name_cursor.referenced):
+                    ref = name_cursor.referenced
                 # An operator the code does not name, as `->` on a smart pointer, is not written as a
                 # call; a call through an object's `operator()` is.
                 if ref is not None and ref.spelling != name_cursor.spelling and ref.spelling != "operator()":
@@ -244,6 +272,8 @@ def main():
                         return
                     token = token_at(at[0], at[1], at[2])
                     ctor = next((x.referenced for x in c.get_children() if x.kind == K.CALL_EXPR and x.referenced is not None), None)
+                    if ctor is None and t.referenced is not None and t.referenced.kind in CLASS_KINDS:
+                        ctor = t.referenced
                     if token:
                         record(at, token, own, ctor)
                     return
@@ -254,7 +284,7 @@ def main():
     for entry in calls.values():
         targets = {}
         for r in entry.pop("refs"):
-            for t in [r["def"], r["pure"], r["class"], *defs.get(r["usr"], {}).values()]:
+            for t in [r["def"], r["pure"], r["class"], r["variable"], *defs.get(r["usr"], {}).values()]:
                 if t is not None:
                     targets[(t["file"], t["start"], t["end"])] = t
         entry["targets"] = list(targets.values())

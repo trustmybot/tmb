@@ -20,7 +20,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 31;
+export const EXTRACTOR_VERSION = 32;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -332,7 +332,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
     let answered: ToolAnswer[];
     const places: string[] = [];
     try {
-      answered = opened.answer(
+      answered = await opened.answer(
         { files, configs: toolConfigs, read, nodes, calls },
         (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`),
         (more) => places.push(...more),

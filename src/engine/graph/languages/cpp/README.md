@@ -15,7 +15,7 @@ The code graph's rules for C++ files. They are read through tree-sitter's C++ gr
 - A pure virtual function is a method node, though it has no body ([class.abstract]); so are a deleted and a defaulted function ([dcl.fct.def.delete], [dcl.fct.def.default]). Any other member function with only a declaration is no node.
 - A function of a namespace is a function node named through it. A friend function defined in a class is named by its own name ([class.friend]). A template's lines start at its `template` head.
 - A function whose head a macro's parentheses wrap, `M(static int f(int n)) { … }`, is the function `f`; a word after a function's declarator and before its body, `int f(int n) M(x) { … }`, as an annotation macro writes it, is no function of its own. Each macro is blanked before parsing, every line and column kept.
-- A lambda is an unnamed function, inside the node around it.
+- A lambda is an unnamed function, inside the node around it. A lambda bound to a file-level name, `auto f = [] { … };`, is the function `f`, as in every language: the variable holds the closure and nothing else.
 - A variable of the global namespace or an unnamed one is a data node. A variable of a named namespace is a member of that namespace, a type: a field, no node. Data members, parameters and locals are no nodes.
 - Calls are call expressions, at the name they call (`f` in `f(x)`, `ns::f(x)`, `f<T>(x)` and `o.f(x)`), and `new T(…)`, at the name of `T`. A cast, named or functional to a built-in type, is no call.
 - Every call is linked or not known. No call is linked by its name alone, only by these rules:
@@ -23,6 +23,6 @@ The code graph's rules for C++ files. They are read through tree-sitter's C++ gr
   - In a member function, a construction by the class's own name or by a member class's name links to that class ([class.pre] p2, the injected class name), as the page's "A construction links to the class" says.
   - Outside a class, `f()` with no arguments, which has no argument-dependent lookup ([basic.lookup.argdep]), links when the file declares `f` in the call's namespace before the call and defines one `f` there, with nothing else of that name, compiled wherever the call is.
   - A name a block declares or a `#define` defines is not known, and so is a call written in the arguments of a macro the file defines.
-  - Every other call is not known: an overload, a call through a value, a call with arguments outside a class, a function another file defines. Way B, clangd with the project's compile database, gives these.
+  - Every other call is not known: an overload, a call through a value, a call with arguments outside a class, a function another file defines. Way B, clangd with the project's compile database, gives these ([../c/README.md](../c/README.md#way-b-clangd)). A using-declaration names what it brings in, so a call through `using std::abs;` goes to `abs`.
 
 The benchmark compares the functions, calls and links with clang's own answer, through libclang and the project's compile database ([c_reference.py](../../../../../tests/benchmark/c_reference.py)).

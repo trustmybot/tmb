@@ -16,6 +16,16 @@ The code graph's rules for C files. They are read through tree-sitter's C gramma
 - Every call is linked or not known. No call is linked by its name alone, only by this rule:
   - `f(…)` by a plain name links to the file's one definition of `f` (6.2.1, 6.2.3: one namespace of ordinary identifiers in a file's scope, and no overloading), when no block around the call declares `f`, the file has no other declaration of `f` that is not a function's, no `#define` of `f`, and the definition is compiled wherever the call is: in the same conditional groups of `#if`, `#ifdef` and `#else`.
   - A call written in the arguments of a macro the file defines is not known: the macro decides what its input becomes (6.10.3).
-  - Every other call is not known: a function another file defines, a call through a field or a pointer, a macro, a function a macro writes the head of. Way B, clangd with the project's compile database, gives these.
+  - Every other call is not known: a function another file defines, a call through a field or a pointer, a macro, a function a macro writes the head of. Way B, clangd with the project's compile database, gives these ([Way B: clangd](#way-b-clangd)).
+
+## Way B: clangd
+
+C and C++ share one tool, the user's own `clangd` ([clangd.ts](clangd.ts)). It reads the repo as the project's compile database says, and a file's language is what the database's command for it says, not its ending.
+
+- The database is `compile_commands.json` at the repo's root, else in `build/`. With none, or a partial one, way B does not run, and the layer's note says why. A partial database is one with an entry clangd cannot read, or with an entry whose file is not on disk.
+- The database's own files are asked first, each with its command; then the headers they include, which clangd reads with the command of a file that includes them. Any other file, such as another platform's source, gets no command from the database, so its calls are not known, and the note counts those files.
+- Each call is asked at the name it calls, by clangd's syntax tree alone (`textDocument/symbolInfo`), never by a search of the text. Inside a macro, clangd's answer is the only one: a name it does not answer is not known.
+- A call links to the node of the definition clangd names, else of its declaration: of its name, in its file, the innermost over its line. A construction links to the class. A call clangd answers with a declaration outside the repo, the system's headers, is outside. A function the repo declares and never defines, a call through a field, and a call with an error clangd reports at it are not known.
+- clangd runs with no background index, so it writes nothing into the repo, and without `--query-driver`, so it runs no compiler.
 
 The benchmark compares the functions, calls and links with clang's own answer, through libclang and the project's compile database ([c_reference.py](../../../../../tests/benchmark/c_reference.py)).

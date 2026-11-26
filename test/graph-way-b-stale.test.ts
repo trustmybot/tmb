@@ -11,7 +11,9 @@
 // - Go: the user's `go`; the packages are the modules the repo's go.sum names, in the module cache;
 // - Java: the user's JDK; javac reads no class path, so there are no packages;
 // - Rust: the user's rust-analyzer; the packages are the crates the repo's Cargo.lock resolves
-//   from a registry, in Cargo's registry on disk.
+//   from a registry, in Cargo's registry on disk;
+// - C and C++: the user's clangd; what it reads beyond the commit is the project's compile database,
+//   which a build makes and git does not hold, and the headers outside the repo its answers name.
 // Each expectation is read off the page's rule, not off the graph's output.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -29,6 +31,7 @@ setDefaultTimeout(30_000);
 const HUMAN: Actor = { kind: "human" };
 const HAS_GO = spawnSync("go", ["version"]).status === 0;
 const HAS_JAVA = spawnSync("java", ["-version"]).status === 0;
+const HAS_CLANGD = spawnSync("clangd", ["--version"]).status === 0;
 
 let project: string;
 let bin: string;
@@ -431,6 +434,93 @@ describe("Rust: the user's rust-analyzer, and Cargo's registry", () => {
     const first = await read();
     await tick();
     unpack("elsewhere", "1.0.0");
+    const second = await read();
+    expect(second.builtAt).toBe(first.builtAt);
+  });
+});
+
+describe.skipIf(!HAS_CLANGD)("C and C++: the user's clangd, the compile database, and the headers outside the repo", () => {
+  let outside: string;
+
+  beforeEach(() => {
+    outside = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-wayb-include-")));
+    writeFileSync(path.join(outside, "far.h"), "int far_away(void);\n");
+  });
+  afterEach(() => rmSync(outside, { recursive: true, force: true }));
+
+  /** The compile database a build would write: one entry, compiling pond/pond.c with `flags`. */
+  const database = (flags: string) =>
+    JSON.stringify([{ directory: project, file: "pond/pond.c", command: `cc ${flags} -I${outside} -c pond/pond.c -o pond.o` }]);
+  const CODE = { ".gitignore": ".tmb/\nbuild/\n", "pond/pond.c": '#include "far.h"\n\nint reach(void) { return far_away(); }\n' };
+  const placeDatabase = (flags: string) => write({ "build/compile_commands.json": database(flags) });
+  const reported = () => spawnSync("clangd", ["--version"], { encoding: "utf8" }).stdout.trim().split("\n")[0]!;
+
+  test("the layer records the clangd it was built with, as the first line of `clangd --version` reports it", async () => {
+    commit(CODE);
+    placeDatabase("-std=c11");
+    const { builtWith } = await read();
+    expect(builtWith.clangd?.tool).toBe(reported());
+  });
+
+  test("nothing changed: the layer is still fresh", async () => {
+    commit(CODE);
+    placeDatabase("-std=c11");
+    const first = await read();
+    await tick();
+    const second = await read();
+    expect(second.builtAt).toBe(first.builtAt);
+  });
+
+  test("clangd reports another version: the layer is stale", async () => {
+    commit(CODE);
+    placeDatabase("-std=c11");
+    shim("clangd", "--version", reported(), false);
+    const first = await read();
+    await tick();
+    shim("clangd", "--version", "clangd version 99.0.0 (fake)", false);
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
+  test("the compile database a build made again with other flags: the layer is stale", async () => {
+    commit(CODE);
+    placeDatabase("-std=c11");
+    const first = await read();
+    await tick();
+    placeDatabase("-std=c17 -DPOND=1");
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
+  test("a compile database made where there was none: the layer is stale", async () => {
+    commit(CODE);
+    const first = await read();
+    await tick();
+    placeDatabase("-std=c11");
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
+  test("a header outside the repo that an answer names is gone: the layer is stale", async () => {
+    commit(CODE);
+    placeDatabase("-std=c11");
+    const first = await read();
+    await tick();
+    rmSync(path.join(outside, "far.h"));
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
+  test("a header outside the repo that no answer names arrives: the layer is still fresh", async () => {
+    commit(CODE);
+    placeDatabase("-std=c11");
+    const first = await read();
+    await tick();
+    writeFileSync(path.join(outside, "near.h"), "int near_by(void);\n");
     const second = await read();
     expect(second.builtAt).toBe(first.builtAt);
   });

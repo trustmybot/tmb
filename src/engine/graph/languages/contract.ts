@@ -318,6 +318,10 @@ export type BuiltWith = { tool: string; packages: string };
 // A tool that runs may still tell the reader something its answers rest on, such as a setting of
 // the repo it could not follow: `note` adds it to the answer's freshness. `readFrom` names the
 // places it read the repo's installed packages from, which LanguageTool.builtWith reads again.
+// A tool that runs as its own program, talked to while it works, answers later: `answer` may return
+// a promise.
 export type OpenedTool =
-  | { answer(input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void): ToolAnswer[] }
+  | {
+      answer(input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void): ToolAnswer[] | Promise<ToolAnswer[]>;
+    }
   | { unavailable: string };

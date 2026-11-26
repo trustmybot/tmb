@@ -7,6 +7,7 @@ import cppWasm from 'tree-sitter-cpp/tree-sitter-cpp.wasm' with { type: 'file' }
 import type { Node } from 'web-tree-sitter';
 import type { LanguageModule } from '../contract.ts';
 import { syntaxTree } from '../kit.ts';
+import { clangdTool } from '../c/clangd.ts';
 import { extractFamily, parseFamily } from '../c/family.ts';
 
 // Linguist's heuristic for a `.h` file that is C++ (heuristics.yml, commit cfd7a0113aa1, named
@@ -54,5 +55,7 @@ export const cpp: LanguageModule = {
   grammar: cppWasm,
   comment: 'slash',
   parse: parseFamily('cpp', classHeadMacros),
+  // Way B: clangd, which C shares (c/clangd.ts).
+  tool: clangdTool,
   extract: (file, out) => extractFamily('cpp', syntaxTree(file), file.src, out, file.module),
 };

@@ -562,6 +562,14 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
       data.push({ name: parts[0]!, d });
     }
     let scope = ctx.scope;
+    // A lambda bound to a file-level name, `auto f = [] {…};`, is the function `f` (CODE_GRAPH.md,
+    // "Kinds of symbol"): the variable holds the closure and nothing else, so it is no unnamed function.
+    const lambda = data.length === 1 ? data[0]!.d.childForFieldName('value') : null;
+    if (fileLevel && lambda?.type === 'lambda_expression') {
+      const symbol = symbolOf('function', data[0]!.name, node, node, ctx.container, !ctx.internal && !hasStorage(node, 'static'));
+      visitChildren(lambda, { ...ctx, container: symbol, scope: symbol, owner: symbol });
+      return;
+    }
     if (fileLevel) {
       const made = data.map(({ name }) => symbolOf('const', name, node, node, ctx.container, !ctx.internal && !hasStorage(node, 'static')));
       if (made.length === 1) scope = made[0]!;
@@ -649,9 +657,12 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
       }
       case 'new_expression': {
         // `new T(…)` constructs a T (C++ [expr.new]): a call, at the type's name; a built-in type has no constructor to call.
+        // `new T*[n]` and `new T*()` make pointers, which have no constructor. The grammar ends the
+        // expression at `T` and leaves the `*` after it, so a `*` right after the expression is its type's.
         const type = node.childForFieldName('type');
         const name = type ? typeName(type) : null;
-        if (name) pending.push({ call: node, name, hint: null, scope: ctx.scope, fn: ctx.fn });
+        const pointer = /^\s*\*/.test(src.slice(node.endIndex, node.endIndex + 64));
+        if (name && !pointer) pending.push({ call: node, name, hint: null, scope: ctx.scope, fn: ctx.fn });
         break;
       }
     }
