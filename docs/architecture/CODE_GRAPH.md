@@ -428,11 +428,6 @@ flowchart LR
 
 - **Edge case.** The repo's own copy of the TypeScript compiler in `node_modules` is not the user's copy. It differs from repo to repo, and one machine gives one answer.
 
-**Open, for the Human.**
-
-- Whether a missing tool is installed only on a yes, as above, or without asking.
-- Whether the TypeScript compiler moves out of tmb as pyright does, or stays carried because most repos tmb meets have TypeScript or JavaScript.
-
 ## Data sources
 
 Planned (trustmybot/tmb#339). The graph is a code graph, not a data graph. A data source is a leaf at its edge: the graph says which code reads or writes it and never what is inside it.
