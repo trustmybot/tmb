@@ -15,11 +15,11 @@
 // them is not known. Without `go` on PATH, way B for Go cannot run, and the built-in rules make
 // the links.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import GOTYPES from "./gotypes.go" with { type: "text" };
-import type { LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
+import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 /** The settings files of a Go module or workspace that the go command reads beside the code ("Modules", "Workspaces", "Vendoring"). */
 export const SETTINGS_FILES = ["go.mod", "go.sum", "go.work", "go.work.sum", "vendor/modules.txt"] as const;
@@ -55,12 +55,39 @@ export type HelperCall = {
 
 export type HelperOutput = { go: string; modules: string[]; errors: number; firstErrors: string[]; loaded: string[]; calls: HelperCall[] };
 
-/** Whether the `go` on PATH runs, or why not. */
-function goOnPath(): true | { unavailable: string } {
-  const run = spawnSync("go", ["version"], { encoding: "utf8" });
+/** The `go` on PATH, as `go version` reports it, or why it does not run. */
+function goVersion(): { version: string } | { unavailable: string } {
+  const run = spawnSync("go", ["version"], { encoding: "utf8", env: { ...process.env, ...HELPER_ENV } });
   if (run.error !== undefined) return { unavailable: "no `go` on PATH" };
   if (run.status !== 0) return { unavailable: `\`go version\` failed: ${run.stderr.trim()}` };
-  return true;
+  return { version: run.stdout.trim() };
+}
+
+/** The files that list the module versions a module or a workspace needs, with their checksums ("go.sum files"). */
+const SUM_FILES = ["go.sum", "go.work.sum"] as const;
+
+/**
+ * A module path or version as the module cache writes it: each capital letter as `!` and the letter
+ * in lower case, so the cache is the same on a file system that ignores case (Go Modules Reference,
+ * "Module cache"; golang.org/x/mod/module, EscapePath).
+ */
+const caseEncoded = (text: string): string => text.replace(/[A-Z]/g, (letter) => `!${letter.toLowerCase()}`);
+
+/**
+ * The module cache's folder for each module version the repo's go.sum files list, by path from the
+ * module cache: `<module>@<version>`, case-encoded. A line for a module's go.mod alone
+ * (`<version>/go.mod`) names no module's code, so it names no folder.
+ */
+export function cacheFolders(sums: Iterable<string>): string[] {
+  const out = new Set<string>();
+  for (const text of sums) {
+    for (const line of text.split("\n")) {
+      const [module, version] = line.trim().split(/\s+/);
+      if (module === undefined || version === undefined || version.endsWith("/go.mod")) continue;
+      out.add(`${caseEncoded(module)}@${caseEncoded(version)}`);
+    }
+  }
+  return [...out].sort();
 }
 
 /** Every folder that holds a Go file, and each folder above it, up to the repo's root ("."). */
@@ -131,12 +158,44 @@ export function answerCalls(input: ToolInput, out: HelperOutput): ToolAnswer[] {
   });
 }
 
+/** The go.sum files of every folder that holds Go code, and of each folder above it, at the commit. */
+function sumsOf(input: Pick<ToolInput, "files" | "read">): string[] {
+  const out: string[] = [];
+  for (const dir of foldersOf(input.files.keys())) {
+    for (const name of SUM_FILES) {
+      const text = input.read(dir === "." ? name : `${dir}/${name}`);
+      if (text !== undefined) out.push(text);
+    }
+  }
+  return out;
+}
+
+/** Where the go command keeps the module cache, as `go env` reports it with the user's own settings; null when it does not say. */
+function moduleCache(): string | null {
+  const run = spawnSync("go", ["env", "GOMODCACHE"], { encoding: "utf8", env: { ...process.env, ...HELPER_ENV } });
+  return run.error === undefined && run.status === 0 && run.stdout.trim() !== "" ? run.stdout.trim() : null;
+}
+
 /** Go's type checker, way B's tool for Go. */
 export const goTypeChecker: LanguageTool = {
   name: "Go's type checker (go/types)",
   open() {
-    const go = goOnPath();
-    if (go !== true) return go;
-    return { answer: (input: ToolInput) => answerCalls(input, runHelper(input)) };
+    const go = goVersion();
+    if ("unavailable" in go) return go;
+    return {
+      answer: (input: ToolInput, _note: (text: string) => void, readFrom: (places: readonly string[]) => void) => {
+        readFrom(cacheFolders(sumsOf(input)));
+        return answerCalls(input, runHelper(input));
+      },
+    };
+  },
+  // The tool is the user's `go`, as it reports its version. The installed packages are the module
+  // cache: of each module version go.sum lists, whether the cache holds it.
+  builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
+    const go = goVersion();
+    if ("unavailable" in go) return { tool: `cannot run: ${go.unavailable}`, packages: "" };
+    const cache = moduleCache();
+    const held = places.map((place) => `${place}: ${cache !== null && existsSync(path.join(cache, ...place.split("/"))) ? "held" : "not held"}`);
+    return { tool: go.version, packages: [`module cache: ${cache ?? "none"}`, ...held].join("\n") };
   },
 };

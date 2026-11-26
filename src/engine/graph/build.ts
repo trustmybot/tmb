@@ -2,6 +2,7 @@
 // whole layer in one transaction, so a read never sees half a graph. Each file is parsed once
 // per blob: a later commit reparses only the files it changed.
 import type { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { basename, posix } from "node:path";
 import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
@@ -47,6 +48,8 @@ export type BuildStats = {
   links: LinkWay;
   /** Why a language was built by the built-in rules although its tool was asked for, and what a tool's answers rest on that the reader should know; null when neither. */
   linksNote: string | null;
+  /** What a way B layer was built with (BuiltWithRecord, as JSON); null for a layer built by the built-in rules. */
+  builtWith: string | null;
 };
 
 /** Files of a commit the graph does not read, with counts, most first. */
@@ -199,10 +202,56 @@ async function planCommit(
  */
 export const BUILT_IN_RULES = ", so the built-in rules";
 
-/** The tools' answers for the calls of a commit, by the call's place in the layer's list of edges; and why a language had none. */
-type ToolLinks = { answers: Map<number, ToolAnswer>; note: string | null };
+/**
+ * The tools' answers for the calls of a commit, by the call's place in the layer's list of edges;
+ * why a language had none; and what the tools were built with (BuiltWithRecord, as JSON), null
+ * when no tool was asked.
+ */
+type ToolLinks = { answers: Map<number, ToolAnswer>; note: string | null; builtWith: string | null };
 
-const NO_TOOL_LINKS: ToolLinks = { answers: new Map(), note: null };
+const NO_TOOL_LINKS: ToolLinks = { answers: new Map(), note: null, builtWith: null };
+
+/**
+ * What a way B layer was built with (CODE_GRAPH.md: "A way B graph is stale when the tool or the
+ * installed packages change", trustmybot/tmb#325): for each tool asked for a language of the layer,
+ * by its name, the tool as it reported itself, a digest of the installed packages it read, and the
+ * places it read them from, which a later read reads again.
+ */
+export type BuiltWithRecord = Record<string, { tool: string; packages: string; places: string[] }>;
+
+/** One tool's entry of a BuiltWithRecord, made now. */
+function builtWithEntry(tool: LanguageTool, repoDir: string, places: readonly string[]): BuiltWithRecord[string] {
+  const sorted = [...new Set(places)].sort();
+  const now = tool.builtWith(repoDir, sorted);
+  return { tool: now.tool, packages: createHash("sha256").update(now.packages).digest("hex"), places: sorted };
+}
+
+/** The record as stored: its tools in the order of their names, so one record is one text. */
+const recordText = (record: BuiltWithRecord): string => JSON.stringify(Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b))));
+
+/**
+ * Whether what a way B layer was built with is what it would be built with now: each tool it
+ * records reports the same version and finds the same installed packages at the same places. A
+ * layer that records nothing, as one built before it was recorded, is not; nor is one that names a
+ * tool tmb no longer has.
+ */
+export function stillBuiltWith(repoDir: string, recorded: string | null): boolean {
+  if (recorded === null) return false;
+  let record: BuiltWithRecord;
+  try {
+    record = JSON.parse(recorded) as BuiltWithRecord;
+  } catch {
+    return false;
+  }
+  const tools = new Map(LANGUAGES.flatMap((language) => (language.tool ? [[language.tool.name, language.tool] as const] : [])));
+  for (const [name, entry] of Object.entries(record)) {
+    const tool = tools.get(name);
+    if (tool === undefined) return false;
+    const now = builtWithEntry(tool, repoDir, entry.places);
+    if (now.tool !== entry.tool || now.packages !== entry.packages) return false;
+  }
+  return true;
+}
 
 /** One file's symbols and edges, at their places in the layer's lists, in the order applyLayer writes them. */
 function* layerRows(plans: readonly FilePlan[]): Generator<{ plan: FilePlan; extraction: Extraction; symbolOffset: number; edgeOffset: number }> {
@@ -232,11 +281,14 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
   const toolless = [...present].filter((lang) => languageNamed(lang)?.tool === undefined).sort();
   if (toolless.length > 0) notes.push(`${toolless.join(", ")}: no language tool${BUILT_IN_RULES}`);
   const answers = new Map<number, ToolAnswer>();
+  const builtWith: BuiltWithRecord = {};
   for (const [tool, langs] of tools) {
     if (!langs.some((lang) => present.has(lang))) continue;
     const opened = await tool.open(repoDir);
     if ("unavailable" in opened) {
       notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable})${BUILT_IN_RULES}`);
+      // A tool that could not run is recorded too: once it can, the layer is stale.
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, []);
       continue;
     }
     const mine = new Set(langs);
@@ -278,11 +330,18 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       });
     }
     let answered: ToolAnswer[];
+    const places: string[] = [];
     try {
-      answered = await opened.answer({ files, configs: toolConfigs, read, nodes, calls }, (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`));
+      answered = await opened.answer(
+        { files, configs: toolConfigs, read, nodes, calls },
+        (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`),
+        (more) => places.push(...more),
+      );
     } catch (error) {
       notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)})${BUILT_IN_RULES}`);
       continue;
+    } finally {
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, places);
     }
     answered.forEach((answer, i) => {
       if (!("nodes" in answer)) answers.set(callRows[i]!, answer);
@@ -292,7 +351,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       }
     });
   }
-  return { answers, note: notes.length === 0 ? null : notes.join("; ") };
+  return { answers, note: notes.length === 0 ? null : notes.join("; "), builtWith: recordText(builtWith) };
 }
 
 function ancestorsOf(dir: string): string[] {
@@ -477,9 +536,10 @@ function applyLayer(
     notRead,
     links,
     linksNote: byTool.note,
+    builtWith: byTool.builtWith,
   };
   db.run(
-    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed, not_read, links, links_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed, not_read, links, links_note, built_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
     layer,
     commit,
@@ -495,6 +555,7 @@ function applyLayer(
     JSON.stringify(notRead),
     links,
     byTool.note,
+    byTool.builtWith,
     ],
   );
   return stats;
@@ -523,7 +584,14 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.
       const current = layerRow(db, layer);
-      if (options.force !== true && current !== null && current.commit_sha === commit && current.extractor === EXTRACTOR_VERSION && current.links === links) {
+      if (
+        options.force !== true &&
+        current !== null &&
+        current.commit_sha === commit &&
+        current.extractor === EXTRACTOR_VERSION &&
+        current.links === links &&
+        current.built_with === byTool.builtWith
+      ) {
         return {
           layer,
           commit,
@@ -537,6 +605,7 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
           notRead: parseNotRead(current.not_read),
           links,
           linksNote: current.links_note,
+          builtWith: current.built_with,
         };
       }
       const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs, leftOut, links, byTool);

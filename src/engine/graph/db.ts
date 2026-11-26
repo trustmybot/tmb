@@ -11,7 +11,7 @@ import { PROJECT_DIR_NAME } from "../project.ts";
 import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 8;
+export const GRAPH_SCHEMA_VERSION = 9;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS layers (
   not_parsed INTEGER NOT NULL DEFAULT 0,
   not_read   TEXT NOT NULL DEFAULT '{}',
   links      TEXT NOT NULL DEFAULT '${BUILT_IN}',
-  links_note TEXT
+  links_note TEXT,
+  built_with TEXT
 );
 CREATE TABLE IF NOT EXISTS dirs (
   layer          TEXT NOT NULL,
@@ -166,6 +167,13 @@ CREATE TABLE IF NOT EXISTS misses (
 `;
 
 /**
+ * Schema 9 records what each way B layer was built with: each tool's version and the installed
+ * packages it read (trustmybot/tmb#325). A way B layer built before it records nothing, so it is
+ * stale and the next read rebuilds it; a layer built by the built-in rules rests on neither.
+ */
+const SCHEMA_8_TO_9 = ["ALTER TABLE layers ADD COLUMN built_with TEXT"];
+
+/**
  * Schema 8 records each call's position in its file, so two calls of one name on one line are told
  * apart (trustmybot/tmb#323): the offset where the name it calls is written, else where it starts.
  * Layers built before it are rebuilt by the newer extractor.
@@ -241,6 +249,8 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         if (version >= 1 && version <= 6 && !hasWay) for (const statement of SCHEMA_6_TO_7) db.run(statement);
         const hasPos = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'pos'").get() ?? null) !== null;
         if (version >= 1 && version <= 7 && !hasPos) for (const statement of SCHEMA_7_TO_8) db.run(statement);
+        const hasBuiltWith = (db.query("SELECT 1 FROM pragma_table_info('layers') WHERE name = 'built_with'").get() ?? null) !== null;
+        if (version >= 1 && version <= 8 && !hasBuiltWith) for (const statement of SCHEMA_8_TO_9) db.run(statement);
         db.run(SCHEMA);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
@@ -292,6 +302,8 @@ export type LayerRow = {
   links: string;
   /** Why a language of the layer was built by the built-in rules although the language's tool was asked for; null when none was. */
   links_note: string | null;
+  /** What a way B layer was built with (BuiltWithRecord in build.ts, as JSON); null for one built by the built-in rules, or before it was recorded. */
+  built_with: string | null;
 };
 
 export function layerRow(db: Database, layer: string): LayerRow | null {

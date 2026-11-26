@@ -512,11 +512,15 @@ function taskRequest(args: string[]): Request {
 
 function freshnessLine({ freshness }: GraphAnswer<object>): string {
   const at = `${freshness.baseBranch} at ${freshness.commit.slice(0, 12)}`;
+  const why = [
+    ...(freshness.readerChanged ? ["tmb's reader of the code changed"] : []),
+    ...(freshness.toolChanged ? ["the language's tool or the installed packages changed"] : []),
+  ].join(", and ");
   const forward =
     freshness.broughtForwardFrom !== null
-      ? ` (brought forward from ${freshness.broughtForwardFrom.slice(0, 12)}${freshness.readerChanged ? ", and rebuilt because tmb's reader of the code changed" : ""})`
-      : freshness.readerChanged
-        ? " (rebuilt because tmb's reader of the code changed)"
+      ? ` (brought forward from ${freshness.broughtForwardFrom.slice(0, 12)}${why === "" ? "" : `, and rebuilt because ${why}`})`
+      : why !== ""
+        ? ` (rebuilt because ${why})`
         : "";
   const task = freshness.task === null ? "" : `, with task ${freshness.task.id} at ${freshness.task.commit.slice(0, 12)} on top`;
   const feature = freshness.feature === null ? "" : `, read at the feature branch ${freshness.feature.name} at ${freshness.feature.commit.slice(0, 12)}`;
