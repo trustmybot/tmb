@@ -168,7 +168,7 @@ How two languages write each kind:
 - **A symbol's lines start at its first decorator** and end at its last line, in every language, so a decorated symbol is one node and matches the reference's.
   - **A symbol's lines are its whole declaration.** A function written as the value of a field or of a file-level name is one callable node, and it starts where that declaration starts: its first decorator, else its first modifier or its name.
   - **Example.** `@bind() onChange = () => {}` starts at `@bind()`. A field whose type is written over three lines before the `=` starts at the field's name, not at the arrow.
-  - **Example 2.** Go's file-level `var f = func() {}`, one name bound to one function, is the function `f`.
+  - **Example 2.** Go's file-level `var f = func() {}`, one name bound to one function, is the function `f`. So is a C++ file-level `auto f = [] {}`.
   - **Edge case.** The reference lists the function alone, starting at its arrow. The benchmark pairs the two when the reference's function is the declaration's value. It does not move the node's start.
 - **The language's scope rule decides what is file-level data.** A name the whole file can see is a node, wherever it is written.
   - **Example 1.** TypeScript: `for (const x of xs)` at file level hides `x` from the rest of the file, so `x` is a local.
@@ -328,7 +328,8 @@ flowchart LR
 
 - **A tool tmb cannot carry is the user's own copy.** A tool that is a large program per platform, or needs a runtime, is used from the user's machine. tmb installs nothing. Without it, way A builds the graph and the answer says so.
   - **Example.** A Rust repo on a machine with no rust-analyzer. The graph is built by the built-in rules, and the freshness line names the missing tool.
-  - **Edge case.** C and C++ without the project's compile database. The tool guesses and gives wrong links, so way B does not run.
+  - **Edge case 1.** C and C++ without the project's compile database. The tool guesses and gives wrong links, so way B does not run. The database is found where clangd looks for it.
+  - **Edge case 2.** The database names some files and not others, such as the files for another platform. The tool answers for the files it names and for the headers they include. A call in any other file is not known.
 - **Way B runs no code of the repo and downloads nothing.** It runs the language's tool and nothing the repo ships: no build script, macro program, annotation processor or build tool. What the tool cannot know without them is not known.
   - **Example.** A Go repo whose modules are not on disk. The calls inside the repo are linked; a call into a missing module is not known.
 - **An answer given on an error is no answer.** When the tool reports an error at a call, such as an argument whose type is missing, the call is not known, even if the tool names a target.
@@ -336,7 +337,7 @@ flowchart LR
   - **Example 1.** `cli: Group` is later given a subclass of `Group`. The tool answers with the declared type, so `cli.add()` links to `Group.add`. A call through a base class links to the base's method the same way.
   - **Example 2.** A call under `if TYPE_CHECKING:` is a call like any other. A call in code the tool finds unreachable gets no answer from it, so it is not known.
   - **Edge case.** The tool answers for a different call than the one asked, such as the enclosing call when the called thing is a subscript or another call's result. That is no answer for this call, so it is not known.
-- **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor. An enum variant or a conversion written like a call, such as Go's `Celsius(x)`, links to its type the same way.
+- **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor. An enum variant or a conversion written like a call, such as Go's `Celsius(x)`, links to its type the same way. So does a C++ placement `new (mem) Node(key)`, which links to `Node`.
 - **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it.
   - **Example.** TypeScript: `interface Store { get(key: string): string }` gives the node `Store.get`, and `store.get(k)` on a `Store` links to it.
   - **Edge case 1.** A named type that lists its methods holds them, whatever keyword declares it: `type Store = { get(): string }` gives `Store.get` too.
@@ -535,7 +536,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
 - **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
 - **Links found is scored against the reference**: of the in-repo links the reference gives, the share the graph has. Calls not known are not the measure, because some of them reach outside the repo.
-- **The reference counts what the graph counts.** Where the page says a thing is no node, such as an overload stub, the reference leaves it out too.
+- **The reference counts what the graph counts.** A call through a file-level variable that holds a function links to the variable, so the reference counts the variable as its target. Where the page says a thing is no node, such as an overload stub, the reference leaves it out too.
 - **A reference that grows may raise the built-in rules' misses.** When the reference starts to count links the built-in rules cannot prove, their misses rise with no link lost. The new score is recorded with the issue, as an accepted fall is.
 - **A language with no module is not scored.** It joins the benchmark when its module does (trustmybot/tmb#141).
 - **The repos are named only in the benchmark.** No code of the graph names one ([Two ways to make links](#two-ways-to-make-links)).
