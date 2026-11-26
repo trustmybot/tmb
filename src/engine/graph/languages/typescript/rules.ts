@@ -102,7 +102,7 @@ function receiverTypes(root: Node): Map<string, string> {
     if (n?.type !== 'identifier') continue;
     const type = annotatedType(p!);
     add(n.text, type);
-    if (named(p!).some((c) => c.type === 'accessibility_modifier' || c.type === 'override_modifier') || /^readonly\b/.test(p!.text)) {
+    if (isParameterProperty(p!)) {
       add(`this.${n.text}`, type);
     }
   }
@@ -294,14 +294,47 @@ function memberOf(cls: Node, name: string): 'function' | 'value' | null {
   return bound;
 }
 
-// The bases a class names in its `extends`: a plain name through the file's import aliases,
-// else '' for one that is no plain name.
-function basesOf(cls: Node, target: (name: string) => string): string[] {
+// The bases a class names in its `extends`: a plain name as the file binds it, which the resolver
+// looks up through the file's imports (trustmybot/tmb#287), else '' for one that is no plain name.
+function basesOf(cls: Node): string[] {
   const heritage = named(cls).find((c) => c.type === 'class_heritage');
   const ext = heritage ? named(heritage).find((c) => c.type === 'extends_clause') : undefined;
   const value = ext?.childForFieldName('value');
   if (!value) return [];
-  return [value.type === 'identifier' ? target(value.text) : ''];
+  return [value.type === 'identifier' ? value.text : ''];
+}
+
+// Whether a constructor parameter declares a field too: `private x`, `readonly x`, `override x`.
+const isParameterProperty = (p: Node): boolean =>
+  named(p).some((c) => c.type === 'accessibility_modifier' || c.type === 'override_modifier') || /^readonly\b/.test(p.text);
+
+// The names a class binds on its objects to anything but a method (trustmybot/tmb#287): a member
+// of its body that memberOf calls a value, a constructor's parameter property, and a name its own
+// methods assign on `this` that its body does not declare. Each hides a parent's method.
+function fieldsOf(cls: Node): string[] {
+  const body = cls.childForFieldName('body');
+  if (!body) return [];
+  const declared = new Set<string>();
+  const fields = new Set<string>();
+  for (const m of named(body)) {
+    const key = m.childForFieldName('name') ?? m.childForFieldName('property');
+    if (key) declared.add(keyText(key));
+    if (m.type !== 'method_definition' || !key || keyText(key) !== 'constructor') continue;
+    const params = m.childForFieldName('parameters');
+    for (const p of params ? named(params) : []) {
+      const n = p.childForFieldName('pattern');
+      if (n?.type === 'identifier' && isParameterProperty(p)) fields.add(n.text);
+    }
+  }
+  for (const n of declared) if (memberOf(cls, n) === 'value') fields.add(n);
+  for (const a of body.descendantsOfType('assignment_expression')) {
+    const left = a?.childForFieldName('left');
+    const object = left?.type === 'member_expression' ? left.childForFieldName('object') : null;
+    const property = left?.childForFieldName('property');
+    if (object?.type !== 'this' || !property || declared.has(property.text) || thisClass(object)?.id !== cls.id) continue;
+    fields.add(property.text);
+  }
+  return [...fields].sort();
 }
 
 const isField = (parent: Node, field: string, node: Node): boolean => parent.childForFieldName(field)?.id === node.id;
@@ -584,19 +617,22 @@ export function extractTs(file: SourceFile, out: Collector): void {
     out.edge(scope, kind, dst, at.startPosition.row + 1, hint, bound);
   };
   const boundValue = (node: Node, name: string): boolean => bindings.names.has(name) && localBinding(node, name) === null;
-  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, parent: number): number =>
-    out.symbol({
-      kind,
-      qualified_name: qualifiedName,
-      signature: signatureOf(node, src),
-      doc: docOf(node),
-      start_line: node.startPosition.row + 1,
-      end_line: node.endPosition.row + 1,
-      body_hash: normalizedHash(node),
-      exported: node.parent?.type === 'export_statement' ? 1 : 0,
-      parent,
-      ...(kind === 'function' || kind === 'method' ? { params_json: JSON.stringify(functionParams(node)) } : {}),
-    });
+  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, parent: number, key?: string): number =>
+    out.symbol(
+      {
+        kind,
+        qualified_name: qualifiedName,
+        signature: signatureOf(node, src),
+        doc: docOf(node),
+        start_line: node.startPosition.row + 1,
+        end_line: node.endPosition.row + 1,
+        body_hash: normalizedHash(node),
+        exported: node.parent?.type === 'export_statement' ? 1 : 0,
+        parent,
+        ...(kind === 'function' || kind === 'method' ? { params_json: JSON.stringify(functionParams(node)) } : {}),
+      },
+      key,
+    );
   // Functions whose symbol was made before the walk reached them: a module-level
   // `const f = () => …`, and a registration's handler.
   const made = new Map<number, number>();
@@ -641,9 +677,12 @@ export function extractTs(file: SourceFile, out: Collector): void {
     } else if (t === 'class_declaration' || t === 'abstract_class_declaration') {
       const n = name();
       if (n) {
-        inner = definition(node, 'class', n, container);
-        const bases = basesOf(node, target);
-        if (bases.length > 0) out.symbols[inner]!.bases ??= bases;
+        // Each class is its own symbol, so two classes of one name in a file stay two (trustmybot/tmb#287).
+        inner = definition(node, 'class', n, container, `class\u0000${node.startIndex}`);
+        const bases = basesOf(node);
+        if (bases.length > 0) out.symbols[inner]!.bases = bases;
+        const fields = fieldsOf(node);
+        if (fields.length > 0) out.symbols[inner]!.fields = fields;
         innerCls = n;
         innerContainer = inner;
         innerOwner = inner;
@@ -706,7 +745,8 @@ export function extractTs(file: SourceFile, out: Collector): void {
           receiver = own ?? 'this';
           if (of !== null && own !== null) bound = memberOf(of, callee) === 'value' ? 'value' : 'self';
         } else if (objectNode?.type === 'identifier' && object !== undefined) {
-          receiver = types.get(object) ?? target(object);
+          // The name as the file binds it: the resolver follows an import under a new name to its file.
+          receiver = types.get(object) ?? object;
           if (/^[A-Z]/.test(object) && boundValue(objectNode, object)) reference(scope, 'calls', object, objectNode);
           if (callee !== undefined && localBinding(objectNode, object) === null) mark = outside(object, callee);
         } else receiver = object !== undefined ? (types.get(object) ?? object) : undefined;
@@ -720,6 +760,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         node.startPosition.row + 1,
         spec ?? (callee === undefined || receiver === undefined ? null : memberHint(receiver)),
         callee === undefined ? undefined : bound,
+        undefined,
         mark,
       );
     } else if (t === 'export_statement' && node.parent?.type === 'program') {
@@ -728,7 +769,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
       const spec = node.childForFieldName('source')?.text.slice(1, -1) ?? null;
       for (const s of node.descendantsOfType('import_specifier')) {
         const n = s?.childForFieldName('name')?.text;
-        if (n) out.edge(moduleSymbol, 'imports', n, node.startPosition.row + 1, spec);
+        if (n) out.edge(moduleSymbol, 'imports', n, node.startPosition.row + 1, spec, undefined, s!.childForFieldName('alias')?.text);
       }
       return;
     } else if (t === 'pair') {

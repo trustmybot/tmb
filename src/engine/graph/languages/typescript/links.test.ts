@@ -24,6 +24,7 @@ const FIXTURE: Record<string, string> = {
   "b.ts": "export function render() {\n  return 2;\n}\n",
   "factory.ts": "export class Factory {\n  make = () => 1;\n}\nexport const make = () => 2;\n",
   "index.ts": "export * from './factory';\n",
+  "outside.ts": "export const count = parseInt('7', 10);\n",
   "use.ts": [
     "import { render as renderA } from './a';",
     "import { render as renderB } from './b';",
@@ -112,6 +113,12 @@ describe("the graph's links agree with the compiler on a fixture", () => {
     expect(judge({ ...method, start: 4, end: 4 }, lookup)).toMatchObject({ verdict: "right", reexport: true });
     // A name the line does not hold is not judged.
     expect(judge({ ...method, name: "nothing" }, lookup).verdict).toBe("no reference");
+  });
+
+  test("a link into the repo where the compiler names only a declaration outside the repo is wrong", () => {
+    const lookup = compilerLookup(fixture, commit);
+    const outside: GraphLink = { src: "outside.ts", line: 1, name: "parseInt", dst: "a.ts", start: 1, end: 3, kind: "calls" };
+    expect(judge(outside, lookup).verdict).toBe("wrong");
   });
 });
 

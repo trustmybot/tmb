@@ -24,6 +24,8 @@ export type Candidate = {
   line?: number;
   /** A class's bases as its file names them; '' for one that is no plain name. */
   bases?: readonly string[];
+  /** The names a class binds to anything but a method, each hiding a parent's method of that name. */
+  fields?: readonly string[];
 };
 
 /** Why a reference was linked: `exact` on a proof that names the definition, `name` on a receiver's declared type. */
@@ -79,6 +81,12 @@ type Followed = { origin: Origin | null; cut: boolean };
 
 const originKey = (o: Origin): string => ("namespace" in o ? `*\u0000${o.namespace}` : `${o.path}\u0000${o.name}`);
 
+/** The one item of a list, else undefined: two that share a name prove neither (trustmybot/tmb#287). */
+const sole = <V>(list: readonly V[]): V | undefined => (list.length === 1 ? list[0] : undefined);
+
+/** What a name a file imports is bound to: the file the import names, null when it names none, and the name there. */
+type ImportBinding = { file: string | null; name: string };
+
 function push<V>(map: Map<string, V[]>, key: string, value: V): void {
   const list = map.get(key);
   if (list) list.push(value);
@@ -91,6 +99,8 @@ export class Resolver {
   private readonly byBase = new Map<string, Candidate[]>();
   private readonly fileSet = new Set<string>();
   private readonly importMap = new Map<string, Map<string, string>>();
+  /** Each file's names bound by its own top-level imports, by the name the file uses (trustmybot/tmb#287). */
+  private readonly importBindings = new Map<string, Map<string, ImportBinding | null>>();
   private readonly sourced = new Map<string, string[]>();
   /** The names each file declares at its top level. */
   private readonly topLevel = new Map<string, Set<string>>();
@@ -128,6 +138,14 @@ export class Resolver {
           const map = this.importMap.get(from) ?? new Map<string, string>();
           map.set(edge.dst_name, target);
           this.importMap.set(from, map);
+        }
+        if (edge.bound === undefined) {
+          const names = this.importBindings.get(from) ?? new Map<string, ImportBinding | null>();
+          const local = edge.local ?? edge.dst_name;
+          const known = names.get(local);
+          // A name two imports bind to two things is bound by neither on proof.
+          names.set(local, known === undefined || (known !== null && known.file === target && known.name === edge.dst_name) ? { file: target, name: edge.dst_name } : null);
+          this.importBindings.set(from, names);
         }
       } else if (edge.kind === "sources") {
         const target = this.scriptTarget(edge.dst_name);
@@ -240,32 +258,56 @@ export class Resolver {
   /** The top-level callable `name` declared in `origin`, when it is a declaration: never a class's method of that name. */
   private callableAt(origin: Origin | null): number | undefined {
     if (origin === null || "namespace" in origin) return undefined;
-    return (this.byName.get(origin.name) ?? []).find((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && CALLABLE.has(c.kind))?.id;
+    return sole((this.byName.get(origin.name) ?? []).filter((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && CALLABLE.has(c.kind)))?.id;
   }
 
-  /** The class named `name` as `from` sees it: its own, or the one its import of the name leads to. */
+  /** The classes named `name` that `path` declares. */
+  private classesAt(path: string, name: string): Candidate[] {
+    return (this.byName.get(name) ?? []).filter((c) => c.path === path && c.kind === "class");
+  }
+
+  /**
+   * The class named `name` as `from` sees it: its own, or the one its import binding that name
+   * leads to, an import under a new name included (trustmybot/tmb#287). Null when no one class
+   * is proven: the file declares two of that name, or the import names no class of the repo.
+   */
   private classOf(from: string, name: string): { path: string; name: string } | null {
-    const isClass = (path: string, n: string) => (this.byName.get(n) ?? []).some((c) => c.path === path && c.kind === "class");
-    if (isClass(from, name)) return { path: from, name };
-    const imported = this.importMap.get(from)?.get(name);
-    if (imported === undefined) return null;
-    if (isClass(imported, name)) return { path: imported, name };
-    const origin = this.originOf(imported, name);
-    return origin !== null && "path" in origin && isClass(origin.path, origin.name) ? origin : null;
+    const own = this.classesAt(from, name);
+    if (own.length > 0) return own.length === 1 ? { path: from, name } : null;
+    const bound = this.importBindings.get(from)?.get(name);
+    if (bound === undefined || bound === null || bound.file === null) return null;
+    const there = this.classesAt(bound.file, bound.name);
+    if (there.length > 0) return there.length === 1 ? { path: bound.file, name: bound.name } : null;
+    const origin = this.originOf(bound.file, bound.name);
+    return origin !== null && "path" in origin && this.classesAt(origin.path, origin.name).length === 1 ? origin : null;
+  }
+
+  /** The class `cls` names, once classOf has proven it is the one class of that name in its file. */
+  private classRow(cls: { path: string; name: string }): Candidate | undefined {
+    return sole(this.classesAt(cls.path, cls.name));
+  }
+
+  /** The methods of the class `cls` declares under `name`. */
+  private ownMethods(cls: { path: string; name: string }, name: string): Candidate[] {
+    const qualified = `${cls.name}.${name}`;
+    return (this.byName.get(name) ?? []).filter((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified);
   }
 
   /**
    * The method `name` of a class as the language finds it on the object itself (trustmybot/tmb#246):
-   * the class's own, else its parents', in the repo. Undefined when there is none; null when a
-   * parent is not a class of the repo or two parents give two methods, so no answer is proof.
+   * the class's own, else its parents', in the repo. The first class that has the name decides,
+   * so a field of that name stops the lookup (trustmybot/tmb#287). Undefined when there is none;
+   * null when a class has the name as no one method, a parent is not a class of the repo or two
+   * parents give two methods, so no answer is proof.
    */
   private methodOf(cls: { path: string; name: string }, name: string, seen: ReadonlySet<string>): number | undefined | null {
     const key = `${cls.path}\u0000${cls.name}`;
     if (seen.has(key)) return null;
-    const qualified = `${cls.name}.${name}`;
-    const own = (this.byName.get(name) ?? []).find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified);
-    if (own) return own.id;
-    const bases = (this.byName.get(cls.name) ?? []).find((c) => c.kind === "class" && c.path === cls.path)?.bases ?? [];
+    const row = this.classRow(cls);
+    if (row?.fields?.includes(name)) return null;
+    const own = this.ownMethods(cls, name);
+    if (own.length > 0) return sole(own)?.id ?? null;
+    const bases = row?.bases ?? [];
     const found = new Set<number>();
     for (const base of bases) {
       const parent = base === "" ? null : this.classOf(cls.path, base);
@@ -345,7 +387,8 @@ export class Resolver {
     if (edge.bound === "import") {
       const file = this.importTarget(from, { ...edge, kind: "imports" }).file;
       if (file === null) return null;
-      return link(declared.find((c) => c.path === file)?.id ?? this.callableAt(this.originOf(file, edge.dst_name)), "exact");
+      const there = declared.filter((c) => c.path === file);
+      return link(there.length > 0 ? sole(there)?.id : this.callableAt(this.originOf(file, edge.dst_name)), "exact");
     }
     if (edge.bound === "function") {
       const at = cands.filter((c) => c.path === from && c.reach !== "member" && String(c.line) === edge.hint);
@@ -355,27 +398,27 @@ export class Resolver {
     if (edge.hint === "this") return null;
     if (edge.hint !== null) {
       // `ns.f()` on a name imported from a file that exports it as `export * as ns from`.
-      const imported = this.importMap.get(from)?.get(edge.hint);
-      const namespace = imported === undefined ? null : this.originOf(imported, edge.hint);
+      const imported = this.importBindings.get(from)?.get(edge.hint);
+      const namespace = imported?.file ? this.originOf(imported.file, imported.name) : null;
       if (namespace !== null && "namespace" in namespace) return link(this.callableAt(this.originOf(namespace.namespace, edge.dst_name)), "exact");
       // A receiver's type is only a name: the call links only when that name is proven to be a
       // class of this repo, defined in this file or imported from a file of it.
       const cls = this.classOf(from, edge.hint);
       if (cls === null) return null;
-      const qualified = `${cls.name}.${edge.dst_name}`;
-      return link(cands.find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified)?.id, "exact");
+      return link(sole(this.ownMethods(cls, edge.dst_name))?.id, "exact");
     }
-    const same = declared.find((c) => c.path === from);
-    if (same) return link(same.id, "exact");
+    // A name the file declares twice names neither on proof (trustmybot/tmb#287).
+    const same = declared.filter((c) => c.path === from);
+    if (same.length > 0) return link(sole(same)?.id, "exact");
     // A function nested in another is linked by its bare name from inside its parent, and only when
     // no other nested function of that name is in reach there.
     const nested = cands.filter((c) => c.reach === "nested" && c.path === from && c.within && edge.line >= c.within[0] && edge.line <= c.within[1]);
     if (nested.length === 1) return link(nested[0]!.id, "exact");
     const viaImport = this.importMap.get(from)?.get(edge.dst_name);
     if (viaImport) {
-      const direct = declared.find((c) => c.path === viaImport);
+      const direct = declared.filter((c) => c.path === viaImport);
       // A name the imported file re-exports is linked where it is declared (trustmybot/tmb#233).
-      return link(direct?.id ?? this.callableAt(this.originOf(viaImport, edge.dst_name)), "exact");
+      return link(direct.length > 0 ? sole(direct)?.id : this.callableAt(this.originOf(viaImport, edge.dst_name)), "exact");
     }
     const viaSource = (this.sourced.get(from) ?? []).map((p) => declared.find((c) => c.path === p)).find(Boolean);
     return link(viaSource?.id, "exact");

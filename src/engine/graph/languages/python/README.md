@@ -8,7 +8,10 @@ The code graph's rules for `.py` files. They are read through tree-sitter's Pyth
 - Module-level constants.
 - Imports, with the alias each one binds. An import inside a function holds only inside that function.
 - Calls. A name is looked up as Python looks it up: the function's own names and parameters, the functions around it, then the module and its imports. A name bound there to no function of the repo, such as a parameter or a variable, is not linked.
-- A call through `self` or `cls` is a call of a method of the class or of one of its parents. A base class is linked as an instantiation.
+- A class body binds names too, its imports included, for the statements directly in it. They are not seen inside its methods, lambdas and comprehensions, since a class body is no scope around them; a comprehension's first iterable is evaluated in the class body (trustmybot/tmb#287).
+- A name imported as `from m import a as b` is looked up by `a` in `m`, as a call, as the object of a call and as a base.
+- A call through `self` or `cls` is a call of a method of the class or of one of its parents. The first class that has the name decides: an attribute of the class body, an annotation with no value, or a name its methods assign on `self` or `cls`, stops the lookup, so the call is not linked. A base class is linked as an instantiation.
+- Each class, function and method is its own symbol, so two of one name in a module, such as one under `if` and one under `else`, stay two. A name that names both is not linked.
 - Every call is linked, outside the repo, or not known (trustmybot/tmb#252). It is outside only when its name, or the name it is called on in `x.f()`, is looked up as above and ends at:
   - an import of a module bound once at the top of the module, or in the function, that is not relative and that no file of the repo could be: no `a/b.py` and no folder `a/b/` anywhere in the repo for `a.b`, since Python finds a module in any folder on its search path; or
   - a name of Python's `builtins` module, past every class body around the call and a module that binds it nowhere and has no `from m import *`. On `x.f()`, the builtin must have a callable `f`.
