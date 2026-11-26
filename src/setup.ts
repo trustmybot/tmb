@@ -91,7 +91,7 @@ export class SetupError extends Error {
 }
 
 const HUMAN: Actor = { kind: "human" };
-const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, repos: null };
+const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null };
 const notInitialised = () => `tmb is not set up in this project; run ${runningName()} init first`;
 
 /** The flag answers, checked. */

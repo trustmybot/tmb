@@ -48,7 +48,7 @@ function snapshot(dir: string, base = dir): Record<string, string> {
   return files;
 }
 
-const EMPTY = { base_branch: null, review_mode: null, checks: null };
+const EMPTY = { base_branch: null, review_mode: null, checks: null, graph_links: null };
 
 describe("tmb init", () => {
   test("prepares a fresh project with no question asked, and ends saying how the settings get filled and that the review mode is the Human's", async () => {
@@ -120,12 +120,12 @@ describe("onboarding at the first session", () => {
 
     const client = await connect(project);
     try {
-      const set = await callJson(client, "settings_set", { base_branch: "trunk", review_mode: "agile", checks: ["bun run test"] });
+      const set = await callJson(client, "settings_set", { base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], graph_links: null });
       expect(set.empty).toEqual([]);
     } finally {
       await client.close();
     }
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"] });
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], graph_links: null });
     expect(sessionStart(project)).not.toContain("## The project's settings are empty");
   });
 });
@@ -170,7 +170,7 @@ describe("tmb onboard", () => {
     expect(tmb(["onboard", "--base", "release"], project)).toContain("Recorded 2 changes in the record's audit trail.");
     expect(config(project)).toMatchObject({ base_branch: "release", review_mode: null, checks: ["bun run test"] });
     expect(human(["onboard", "--review-mode", "truest", "--role", "reviewer", "--yes"], project)).toContain("Recorded 2 changes in the record's audit trail.");
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["bun run test"] });
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["bun run test"], graph_links: null });
     expect(tmb(["onboard"], project)).toContain("No setting changed, so nothing was recorded.");
   }, 30_000);
 });

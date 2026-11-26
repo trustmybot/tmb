@@ -1,9 +1,10 @@
 // The project's configuration lives in the record: each change to a setting is one audit
 // entry, and a setting's current value is its newest entry.
 import { runningName } from "../program.ts";
+import { DEFAULT_LINK_WAY, LINK_WAYS, type LinkWay } from "./graph/ways.ts";
 import type { Actor, Role, Store } from "./store/index.ts";
 
-export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "repos"] as const;
+export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "graph_links", "repos"] as const;
 export type SettingName = (typeof SETTING_NAMES)[number];
 
 export const REVIEW_MODES = ["agile", "truest"] as const;
@@ -25,11 +26,19 @@ export const DEFAULT_HOST_ROLE: HostRole = "planner";
  * repo, recorded and left alone (trustmybot/tmb#163). A repo may name its own review mode, the
  * Human's choice; one that names none uses the workspace's (trustmybot/tmb#216).
  */
-export type RepoPolicy = { base_branch?: string; checks?: string[]; review_mode?: ReviewMode; exempt?: boolean; git?: false };
+export type RepoPolicy = { base_branch?: string; checks?: string[]; review_mode?: ReviewMode; graph_links?: LinkWay; exempt?: boolean; git?: false };
 /** Each folder of a workspace by its path from the workspace folder, with forward slashes. */
 export type RepoPolicies = Record<string, RepoPolicy>;
 
-export type SettingValues = { host: string; host_roles: HostRoles; base_branch: string; review_mode: ReviewMode; checks: string[]; repos: RepoPolicies };
+export type SettingValues = {
+  host: string;
+  host_roles: HostRoles;
+  base_branch: string;
+  review_mode: ReviewMode;
+  checks: string[];
+  graph_links: LinkWay;
+  repos: RepoPolicies;
+};
 /** Each setting's current value, null while it has never been set. */
 export type Settings = { [N in SettingName]: SettingValues[N] | null };
 
@@ -49,6 +58,12 @@ function reviewMode(value: unknown): ReviewMode {
     throw new SettingError(`review mode must be ${AVAILABLE_REVIEW_MODES.join(" or ")}, got ${JSON.stringify(value)}`);
   }
   return value as ReviewMode;
+}
+
+/** Checks a way to make the code graph's links (trustmybot/tmb#311). Throws SettingError. */
+function graphLinks(value: unknown): LinkWay {
+  if (!LINK_WAYS.includes(value as LinkWay)) throw new SettingError(`graph links must be ${LINK_WAYS.join(" or ")}, got ${JSON.stringify(value)}`);
+  return value as LinkWay;
 }
 
 /** Checks one host role. Throws SettingError. */
@@ -87,12 +102,12 @@ function repoPolicies(value: unknown): RepoPolicies {
     const given = (value as Record<string, unknown>)[raw];
     if (typeof given !== "object" || given === null || Array.isArray(given)) throw new SettingError(`the repo ${name}'s policy must be an object, got ${JSON.stringify(given)}`);
     const fields = given as Record<string, unknown>;
-    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "review_mode", "exempt", "git"].includes(key));
-    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, review_mode, exempt and git, not ${unknown.join(", ")}`);
+    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "review_mode", "graph_links", "exempt", "git"].includes(key));
+    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, review_mode, graph_links, exempt and git, not ${unknown.join(", ")}`);
     if (fields.git !== undefined) {
       // A folder that is no repo takes no policy: tmb records it and leaves it alone.
       if (fields.git !== false) throw new SettingError(`git is given only as false, for a folder that is not a repo; got ${JSON.stringify(fields.git)} for ${name}`);
-      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks, review_mode or exempt`);
+      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks, review_mode, graph_links or exempt`);
       repos[name] = { git: false };
       continue;
     }
@@ -102,6 +117,7 @@ function repoPolicies(value: unknown): RepoPolicies {
     if (fields.base_branch !== undefined) policy.base_branch = nonEmptyText(`the repo ${name}'s base branch`, fields.base_branch);
     if (fields.checks !== undefined) policy.checks = checkList(fields.checks);
     if (fields.review_mode !== undefined) policy.review_mode = reviewMode(fields.review_mode);
+    if (fields.graph_links !== undefined) policy.graph_links = graphLinks(fields.graph_links);
     if (policy.exempt !== true && policy.base_branch === undefined) throw new SettingError(`the repo ${name} needs a base_branch, or exempt: true`);
     repos[name] = policy;
   }
@@ -121,6 +137,8 @@ export function validateSetting<N extends SettingName>(name: N, value: unknown):
       return reviewMode(value) as SettingValues[N];
     case "checks":
       return checkList(value) as SettingValues[N];
+    case "graph_links":
+      return graphLinks(value) as SettingValues[N];
     case "repos":
       return repoPolicies(value) as SettingValues[N];
   }
@@ -158,6 +176,15 @@ export function reviewModeOf(settings: Settings, repo: string | null): ReviewMod
   return settings.repos?.[repo]?.review_mode ?? settings.review_mode;
 }
 
+/**
+ * The way a repo's code graph makes its links (trustmybot/tmb#311): the repo's own, else the
+ * workspace's, else the built-in rules. `repo` null is the project folder of a single-repo project.
+ */
+export function graphLinksOf(settings: Settings, repo: string | null): LinkWay {
+  const own = repo === null ? undefined : settings.repos?.[repo]?.graph_links;
+  return own ?? settings.graph_links ?? DEFAULT_LINK_WAY;
+}
+
 /** The role the host's main agent takes in the project: its role in the record, else the planner. */
 export function hostRole(store: Store, host: string): HostRole {
   const entry = store.newestAudit(AUDIT_PREFIX + "host_roles");
@@ -165,7 +192,15 @@ export function hostRole(store: Store, host: string): HostRole {
   return Object.hasOwn(roles, host) ? roles[host]! : DEFAULT_HOST_ROLE;
 }
 
-const LABELS: Record<SettingName, string> = { host: "host", host_roles: "host roles", base_branch: "base branch", review_mode: "review mode", checks: "checks", repos: "repos" };
+const LABELS: Record<SettingName, string> = {
+  host: "host",
+  host_roles: "host roles",
+  base_branch: "base branch",
+  review_mode: "review mode",
+  checks: "checks",
+  graph_links: "graph links",
+  repos: "repos",
+};
 
 /**
  * One repo's policy in a line: its base branch, checks and review mode, or exempt. `workspaceMode`
@@ -177,7 +212,8 @@ export function repoPolicyLine(name: string, policy: RepoPolicy, workspaceMode: 
   const checks = policy.checks ?? [];
   const mode =
     policy.review_mode !== undefined ? `, review mode ${policy.review_mode} (its own)` : workspaceMode !== null ? `, review mode ${workspaceMode} (the workspace's)` : "";
-  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}${mode}`;
+  const links = policy.graph_links === undefined ? "" : `, graph links ${policy.graph_links}`;
+  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}${mode}${links}`;
 }
 
 /** One line per setting, as the command line shows them. */
