@@ -294,4 +294,6 @@ export interface LanguageTool {
   open(repoDir: string): OpenedTool | Promise<OpenedTool>;
 }
 
-export type OpenedTool = { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };
+// A tool that runs may still tell the reader something its answers rest on, such as a setting of
+// the repo it could not follow: `note` adds it to the answer's freshness.
+export type OpenedTool = { answer(input: ToolInput, note: (text: string) => void): ToolAnswer[] } | { unavailable: string };
