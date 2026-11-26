@@ -120,7 +120,7 @@ describe("onboarding at the first session", () => {
 
     const client = await connect(project);
     try {
-      const set = await callJson(client, "settings_set", { base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], graph_links: null });
+      const set = await callJson(client, "settings_set", { base_branch: "trunk", review_mode: "agile", checks: ["bun run test"] });
       expect(set.empty).toEqual([]);
     } finally {
       await client.close();
