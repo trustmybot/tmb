@@ -5,6 +5,7 @@
 import ts from "typescript5";
 import { extractFile, languageOf, type SourceLanguage } from "../../extract.ts";
 import type { Parsers } from "../../loader.ts";
+import { bodilessMethods } from "./compiler.ts";
 
 const SCRIPT_KIND: Record<string, ts.ScriptKind> = {
   ts: ts.ScriptKind.TS,
@@ -28,7 +29,11 @@ export function coveredLanguage(relPath: string): SourceLanguage | null {
   return lang === "typescript" || lang === "tsx" || lang === "javascript" ? lang : null;
 }
 
-/** Each function with a body the TypeScript compiler finds, as `start-end` lines. */
+/**
+ * Each function the TypeScript compiler finds, as `start-end` lines: each with a body, and each
+ * method that has only a declaration, an overload set of them once, from its first signature to
+ * its last (compiler.ts, bodilessMethods).
+ */
 export function compilerFunctions(relPath: string, text: string): string[] {
   const file = ts.createSourceFile(relPath, text, ts.ScriptTarget.Latest, true, scriptKind(relPath));
   const out: string[] = [];
@@ -37,6 +42,7 @@ export function compilerFunctions(relPath: string, text: string): string[] {
     if (ts.isFunctionLike(node) && "body" in node && node.body !== undefined) {
       out.push(`${line(node.getStart(file))}-${line(node.getEnd())}`);
     }
+    for (const set of bodilessMethods(ts, node)) out.push(`${line(set[0]!.getStart(file))}-${line(set[set.length - 1]!.getEnd())}`);
     ts.forEachChild(node, visit);
   };
   visit(file);

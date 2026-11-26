@@ -141,3 +141,44 @@ export function originalNames(ts: TypeScriptModule, sf: TS.SourceFile): Map<stri
   }
   return original;
 }
+
+/** A member that runs as a method: a method, a constructor, a getter or a setter. */
+type MethodLike = TS.MethodDeclaration | TS.MethodSignature | TS.ConstructorDeclaration | TS.GetAccessorDeclaration | TS.SetAccessorDeclaration;
+const isMethodLike = (ts: TypeScriptModule, m: TS.Node): m is MethodLike =>
+  ts.isMethodDeclaration(m) || ts.isMethodSignature(m) || ts.isConstructorDeclaration(m) || ts.isGetAccessorDeclaration(m) || ts.isSetAccessorDeclaration(m);
+
+const hasBody = (m: MethodLike): boolean => "body" in m && m.body !== undefined;
+
+/** A member's name as written: its text, a computed name's string inside the brackets, a constructor's keyword. */
+function memberName(ts: TypeScriptModule, m: MethodLike): string {
+  if (ts.isConstructorDeclaration(m)) return "constructor";
+  const name = m.name;
+  if (ts.isComputedPropertyName(name)) return ts.isStringLiteralLike(name.expression) || ts.isNumericLiteral(name.expression) ? name.expression.text : name.getText();
+  return ts.isIdentifier(name) || ts.isPrivateIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name) ? name.text : name.getText();
+}
+
+/**
+ * The methods of a type that have only a declaration (CODE_GRAPH.md, "A function with a
+ * declaration and a definition is one node"; "Kinds of symbol"): in a class or an interface that
+ * has a name, each method, constructor, getter or setter with no body, when the type's own body
+ * holds no member of that name and kind with a body. The signatures of one name and kind in one
+ * body are one method, an overload set, first to last. A signature beside a body of its name is an
+ * overload of that body, which is the node; a type with no name holds no node.
+ */
+export function bodilessMethods(ts: TypeScriptModule, type: TS.Node): MethodLike[][] {
+  if (!(ts.isClassDeclaration(type) || ts.isInterfaceDeclaration(type)) || type.name === undefined) return [];
+  const members = (type.members as TS.NodeArray<TS.Node>).filter((m): m is MethodLike => isMethodLike(ts, m));
+  const keyOf = (m: MethodLike) => `${m.kind}\u0000${memberName(ts, m)}`;
+  const defined = new Set(members.filter(hasBody).map(keyOf));
+  const sets = new Map<string, MethodLike[]>();
+  for (const m of members) {
+    if (hasBody(m) || defined.has(keyOf(m))) continue;
+    sets.set(keyOf(m), [...(sets.get(keyOf(m)) ?? []), m]);
+  }
+  return [...sets.values()];
+}
+
+/** Whether a declaration is a method that has only a declaration, one of {@link bodilessMethods}. */
+export function isBodilessMethod(ts: TypeScriptModule, d: TS.Node): boolean {
+  return isMethodLike(ts, d) && !hasBody(d) && bodilessMethods(ts, d.parent).some((set) => set.includes(d));
+}

@@ -206,6 +206,43 @@ export class Store {
 }
 `;
 
+// Methods that have only a declaration ("A function with a declaration and a definition is one
+// node" in CODE_GRAPH.md, trustmybot/tmb#367): an interface's, an abstract one, one of an ambient
+// class. Each is a method node named through its type; overload signatures of one name in one type
+// are one node, from the first to the last; a signature beside a body of its name is no node, the
+// body is. A signature in a type with no name of its own, an object type, is no node.
+const BODILESS = `export interface Ledger {
+  post(entry: string): void;
+  balance(): number;
+  balance(asOf: Date): number;
+  readonly size: number;
+  get open(): boolean;
+  set open(v: boolean);
+  (raw: string): void;
+  new (seed: number): Ledger;
+}
+
+export abstract class Shape {
+  abstract area(): number;
+  abstract get sides(): number;
+  scale(by: number): Shape;
+  scale(by: string): Shape;
+  scale(by: unknown): Shape {
+    return this;
+  }
+}
+
+declare class Remote {
+  constructor(url: string);
+  fetch(path: string): Promise<string>;
+}
+
+type Bag = { take(): number };
+export function useBag(bag: { give(): number }): Bag {
+  return { take: () => bag.give() };
+}
+`;
+
 function symbols(relPath: string, text: string): ExtractedSymbol[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(relPath);
@@ -227,6 +264,7 @@ describe("every function is a node", () => {
     ["src/decorated.ts", DECORATED],
     ["src/decorated.tsx", DECORATED],
     ["web/decorated.js", DECORATED_JS],
+    ["src/ledger.ts", BODILESS],
   ] as const) {
     test(`${file} matches the TypeScript compiler one to one`, () => {
       const want = compilerFunctions(file, text);
@@ -256,9 +294,36 @@ describe("every function is a node", () => {
     // A returned function and an immediately called one are named by their line.
     expect(fn(all, "function at line 47").unnamed).toBe(1);
     expect(fn(all, "function at line 65").unnamed).toBe(1);
-    // A signature without a body is not a function.
+    // An overload signature is no function: the body is. A method with only a declaration is one.
     expect(all.filter((s) => s.qualified_name === "overloaded").length).toBe(1);
-    expect(all.some((s) => s.qualified_name === "declaredOnly" || s.qualified_name === "Base.shape")).toBe(false);
+    expect(fn(all, "Base.shape").kind).toBe("method");
+  });
+
+  test("a method with only a declaration is a node named through its type; its overloads are one", () => {
+    const all = symbols("src/ledger.ts", BODILESS);
+    const lines = (name: string) => all.filter((s) => s.kind === "method" && s.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    expect(lines("Ledger.post")).toEqual([[2, 2]]);
+    expect(lines("Ledger.balance")).toEqual([[3, 4]]);
+    expect(lines("Ledger.open")).toEqual([[6, 6], [7, 7]]);
+    expect(lines("Shape.area")).toEqual([[13, 13]]);
+    expect(lines("Shape.sides")).toEqual([[14, 14]]);
+    expect(lines("Shape.scale")).toEqual([[17, 19]]);
+    expect(lines("Remote.constructor")).toEqual([[23, 23]]);
+    expect(lines("Remote.fetch")).toEqual([[24, 24]]);
+    // A property, a call signature and a construct signature are no methods; nor is a method of a type with no name.
+    expect(all.some((s) => ["Ledger.size", "take", "give", "Bag.take"].includes(s.qualified_name) && s.kind === "method")).toBe(false);
+    // Each is held by its type.
+    const ledger = all.findIndex((s) => s.kind === "interface" && s.qualified_name === "Ledger");
+    const shape = all.findIndex((s) => s.kind === "class" && s.qualified_name === "Shape");
+    expect(fn(all, "Ledger.post").parent).toBe(ledger);
+    expect(fn(all, "Shape.area").parent).toBe(shape);
+  });
+
+  test("the compiler's list holds a method with only a declaration, its overloads once", () => {
+    const want = compilerFunctions("src/ledger.ts", BODILESS);
+    for (const lines of ["2-2", "3-4", "6-6", "7-7", "13-13", "14-14", "17-19", "23-23", "24-24"]) expect(want).toContain(lines);
+    expect(want).not.toContain("15-15");
+    expect(want).not.toContain("27-27");
   });
 
   test("functions inside JSX are nodes, named by the attribute or call they are passed to", () => {

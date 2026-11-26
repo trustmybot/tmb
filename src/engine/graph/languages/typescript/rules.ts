@@ -447,15 +447,15 @@ function thisClass(node: Node): Node | null {
   return null;
 }
 
-// How a class's own body declares a member: a method, or a field whose value is a function, is
-// a function; a field with any other value or none, or a signature with no body, is a value;
-// null when the body declares no member of that name.
+// How a class's own body declares a member: a method, with a body or only declared, or a field
+// whose value is a function, is a function; a field with any other value or none is a value; null
+// when the body declares no member of that name.
 function memberOf(cls: Node, name: string): 'function' | 'value' | null {
   let bound: 'value' | null = null;
   for (const m of named(cls.childForFieldName('body') ?? cls)) {
     const key = m.childForFieldName('name') ?? m.childForFieldName('property');
     if (!key || keyText(key) !== name) continue;
-    if (m.type === 'method_definition') return 'function';
+    if (m.type === 'method_definition' || METHOD_SIGNATURES.has(m.type)) return 'function';
     if (m.type === 'public_field_definition' || m.type === 'field_definition') {
       const value = unwrapped(m.childForFieldName('value'));
       if (value !== null && FUNCTION_NODES.has(value.type)) return 'function';
@@ -549,6 +549,39 @@ const FUNCTION_NODES = new Set([
   'arrow_function',
   'method_definition',
 ]);
+// A member of a class's or an interface's body that declares a method, a constructor or an
+// accessor with no body of its own.
+const METHOD_SIGNATURES = new Set(['method_signature', 'abstract_method_signature']);
+// The bodies of the types that have a name and hold methods: a class's and an interface's.
+const MEMBER_BODIES = new Set(['class_body', 'interface_body']);
+const NAMED_TYPES = new Set(['class_declaration', 'abstract_class_declaration', 'interface_declaration']);
+
+// Whether a method is a getter or a setter, by its keyword before its name; '' for neither.
+const accessorOf = (m: Node): string => m.children.find((c) => c?.type === 'get' || c?.type === 'set')?.type ?? '';
+
+/**
+ * The method a signature with no body declares, when it is a node ("A function with a declaration
+ * and a definition is one node" in CODE_GRAPH.md): a method, a constructor or an accessor declared
+ * in the body of a class or an interface that has a name, when that body holds no method of the
+ * same name and kind with a body, which would be the node, the signature its overload. The
+ * signatures of one name and kind in one body are one method, keyed by `key`.
+ */
+function bodilessMethod(sig: Node): { type: string; name: string; key: string } | null {
+  const body = sig.parent;
+  const holder = body?.parent;
+  const type = holder && body && MEMBER_BODIES.has(body.type) && NAMED_TYPES.has(holder.type) ? holder.childForFieldName('name')?.text : undefined;
+  const own = sig.childForFieldName('name');
+  if (!body || type === undefined || !own) return null;
+  const name = keyText(own);
+  const accessor = accessorOf(sig);
+  const sameMember = (m: Node): boolean => {
+    const key = m.childForFieldName('name');
+    return key !== null && keyText(key) === name && accessorOf(m) === accessor;
+  };
+  if (named(body).some((m) => m.type === 'method_definition' && sameMember(m))) return null;
+  return { type, name, key: `signature\u0000${body.startIndex}\u0000${accessor}\u0000${name}` };
+}
+
 // Expressions that wrap a value without changing which value it is.
 const VALUE_WRAPPERS = new Set(['parenthesized_expression', 'as_expression', 'satisfies_expression', 'non_null_expression', 'type_assertion']);
 const UNNAMED_LABEL_MAX = 80;
@@ -885,7 +918,14 @@ export function extractTs(file: SourceFile, out: Collector): void {
       innerCls = null;
     } else if (t === 'interface_declaration') {
       const n = name();
-      if (n) definition(node, 'interface', n, container);
+      if (n) innerContainer = definition(node, 'interface', n, container);
+    } else if (METHOD_SIGNATURES.has(t)) {
+      // A method with only a declaration is held by its type; its overloads are one, first to last.
+      const method = bodilessMethod(node);
+      if (method !== null) {
+        const at = definition(node, 'method', `${method.type}.${method.name}`, container, method.key);
+        out.symbols[at]!.end_line = node.endPosition.row + 1;
+      }
     } else if (t === 'type_alias_declaration' || t === 'enum_declaration') {
       const n = name();
       if (n) definition(node, 'type', n, container);

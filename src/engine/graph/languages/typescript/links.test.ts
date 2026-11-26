@@ -203,6 +203,63 @@ describe("links right judges a call by its position", () => {
   });
 });
 
+// "A function with a declaration and a definition is one node" (trustmybot/tmb#367): a method with
+// only a declaration is a node, and a call through its type links to it. Way B asks the compiler.
+// Way A links only on its proof: a class's name written as the type, or the object itself; an
+// interface's name written as the type proves no class, so way A leaves that call unlinked.
+describe("a call through a method with only a declaration", () => {
+  const BODILESS: Record<string, string> = {
+    "vault.ts": [
+      "export interface Vault {",
+      "  read(key: string): string;",
+      "  read(key: number): string;",
+      "}",
+      "export abstract class Engine {",
+      "  abstract spin(): number;",
+      "  run() {",
+      "    return this.spin();",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+    "drive.ts": [
+      "import type { Vault } from './vault';",
+      "import { Engine } from './vault';",
+      "export function drive(v: Vault, e: Engine) {",
+      "  v.read('k');",
+      "  return e.spin();",
+      "}",
+      "",
+    ].join("\n"),
+  };
+  let repo: { dir: string; commit: string };
+  beforeAll(() => {
+    repo = makeRepo(BODILESS);
+  });
+  afterAll(() => {
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+  const named = (all: GraphLink[], src: string, name: string) => all.filter((l) => l.src === src && l.name === name && l.kind === "calls").map((l) => `${l.line} ${l.dst}:${l.start}-${l.end}`);
+
+  test("way B links each call to the method's declaration, an interface's overloads as one node", async () => {
+    const made = await linksOf(repo.dir, repo.commit, LANGUAGE_TOOL);
+    expect(named(made, "drive.ts", "read")).toEqual(["4 vault.ts:2-3"]);
+    expect(named(made, "drive.ts", "spin")).toEqual(["5 vault.ts:6-6"]);
+    expect(named(made, "vault.ts", "spin")).toEqual(["8 vault.ts:6-6"]);
+    const lookup = compilerLookup(repo.dir, repo.commit);
+    for (const l of made) expect(judge(l, lookup).verdict).toBe("right");
+  });
+
+  test("way A links a call on a class's object, and none through an interface", async () => {
+    const made = await linksOf(repo.dir, repo.commit, BUILT_IN);
+    expect(named(made, "drive.ts", "read")).toEqual([]);
+    expect(named(made, "drive.ts", "spin")).toEqual(["5 vault.ts:6-6"]);
+    expect(named(made, "vault.ts", "spin")).toEqual(["8 vault.ts:6-6"]);
+    const lookup = compilerLookup(repo.dir, repo.commit);
+    for (const l of made) expect(judge(l, lookup).verdict).toBe("right");
+  });
+});
+
 function report(repo: string, r: LinkReport, c?: CallReport): void {
   console.log(
     `links vs compiler, ${repo}: ${r.links} links, ${r.right} right, ${r.wrong.length} wrong, not judged ${JSON.stringify(r.notJudged)}; ` +

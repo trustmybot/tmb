@@ -6,11 +6,11 @@
 // - a node, when they are exactly one node of the graph: a declaration of a value in the repo that
 //   is a node by "Kinds of symbol", in the same file, of the same name, its lines overlapping the
 //   node's. An overload set and a merged declaration are one symbol, whose one node is the
-//   declaration that runs;
+//   declaration that runs, or, for a method that has only a declaration, that declaration;
 // - outside, when every declaration is outside the repo: the compiler's lib, or an installed
 //   package;
-// - nothing known, otherwise: a declaration that is no node (a parameter, a local value, a
-//   signature with no body), or more than one node, as a function declared twice in one scope,
+// - nothing known, otherwise: a declaration that is no node (a parameter, a local value, an
+//   overload signature), or more than one node, as a function declared twice in one scope,
 //   where only one of them runs.
 // The call is linked to each symbol's node when at least one has one; else outside when every
 // symbol is outside; else not known, as is a call with no answer. No answer is ever replaced by a
@@ -26,7 +26,7 @@ import path from "node:path";
 import type TS from "typescript5";
 import { loadCarried } from "./carried.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
-import { calleeOf, type CommitFiles, isCallNode, originalNames, type TypeScriptModule } from "./compiler.ts";
+import { calleeOf, type CommitFiles, isBodilessMethod, isCallNode, originalNames, type TypeScriptModule } from "./compiler.ts";
 import { projectsOf } from "./projects.ts";
 
 type NotLinked = { state: "outside" | "not_known" };
@@ -68,13 +68,14 @@ function fileLevel(ts: TypeScriptModule, d: TS.VariableDeclaration | TS.BindingE
 /**
  * Whether a declaration of a called value is a node of the graph by "Kinds of symbol": a callable
  * with a body (a function written as a variable's, a field's or a property's value included), a
- * type that makes objects, or file-level data, a name a statement of the file declares, each name
- * a destructuring binds included (trustmybot/tmb#322). A local is no node: a parameter, or a
- * variable whose value is no function written there, bound inside a callable or by a loop, a
- * block or a catch at the top of the file; nor is a signature with no body.
+ * method that has only a declaration (compiler.ts, isBodilessMethod), a type that makes objects,
+ * or file-level data, a name a statement of the file declares, each name a destructuring binds
+ * included (trustmybot/tmb#322). A local is no node: a parameter, or a variable whose value is no
+ * function written there, bound inside a callable or by a loop, a block or a catch at the top of
+ * the file; nor is any other signature with no body, such as an overload beside its body.
  */
 function isNodeDeclaration(ts: TypeScriptModule, d: TS.Declaration): boolean {
-  if (ts.isFunctionLike(d)) return "body" in d && d.body !== undefined;
+  if (ts.isFunctionLike(d)) return ("body" in d && d.body !== undefined) || isBodilessMethod(ts, d);
   if (ts.isClassLike(d)) return true;
   if (ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d)) return isFunctionValue(ts, d.initializer);
   if (ts.isVariableDeclaration(d)) return isFunctionValue(ts, d.initializer) || fileLevel(ts, d);
@@ -166,7 +167,11 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
     if (decls.length === 0) return NOT_KNOWN;
     const own = decls.filter((d) => inRepo(d.getSourceFile()));
     if (own.length === 0) return OUTSIDE;
-    const nodes = new Set(own.flatMap(nodesOf));
+    // A method declared in one place and defined in another, as an interface merged with a class,
+    // is the definition, the code that runs; its declarations are its nodes only when it has none.
+    const defined = own.filter((d) => !isBodilessMethod(ts, d));
+    const definedNodes = new Set(defined.flatMap(nodesOf));
+    const nodes = definedNodes.size > 0 ? definedNodes : new Set(own.flatMap(nodesOf));
     return nodes.size === 1 ? { node: [...nodes][0]! } : NOT_KNOWN;
   };
 
