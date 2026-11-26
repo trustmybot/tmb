@@ -220,7 +220,7 @@ flowchart TD
 - **Example 2.** A function calls a name imported from an outside package: no link, and not a miss. Outside means a package the project installs, such as one from a public registry. A package that lives in the same repo is the repo's own code and is linked.
 - **Edge case.** `import pkg` followed by `pkg.f()`. Proving the call needs the type of the thing it is called on, so there is no link.
 
-- **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is not a function in the repo, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
+- **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is a function or a file-level name of the repo, the call links to it, whatever the name holds (Planned for a file-level name, trustmybot/tmb#332). If it is anything else, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
   - A name imported inside a Python function holds only in that function. A name imported under a new name is looked up in the file that import names.
   - Left with no link, and planned as proofs of their own (trustmybot/tmb#249): a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
   - Planned (trustmybot/tmb#287): the lookup sees four more bindings. Without them each can give a wrong link.
@@ -845,7 +845,7 @@ All are FTS5 virtual tables.
 |---|---|
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
-| Way A links a call to a file-level name that holds a callable, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
+| Way A links a call to a file-level name, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
