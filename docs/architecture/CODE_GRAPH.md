@@ -446,7 +446,7 @@ flowchart LR
   - **A failed build** means the built-in rules for Go, with a note that names the error.
   - **The layer records** the user's `go` and the helper: its source and the `go` that built it. `tmb tools` lists the helper with Go.
   - **Edge case.** The user sets Go to build for another operating system. The helper is still built for this machine.
-  - **Edge case.** The helper cannot type-check the repo, such as a repo that needs a newer Go. That is an error and the built-in rules are used; it is never taken as "no call is known".
+  - **Edge case.** The helper cannot check a package at all, such as a repo that needs a newer Go. That is an error and the built-in rules are used; it is never taken as "no call is known". An ordinary type error in a file is not this case: its calls are not known, and counted.
 - **Edge case.** The repo's own copy of the TypeScript compiler in `node_modules` is not the user's copy. It differs from repo to repo, and one machine gives one answer.
 
 ## Data sources
