@@ -295,7 +295,7 @@ flowchart LR
 - **Way B makes the call links.** Another use of a name, such as a value passed on or a parent class, keeps its built-in link and records the built-in rules. Way B's answer for those comes with what depends on a symbol beyond calls (trustmybot/tmb#148).
 - **The tool's declaration is matched to a node by place.** Same file, same name, overlapping lines. When two nodes fit, the one that starts on the same line wins. A declaration that fits no node leaves the call not known.
   - **Example.** The compiler says `c.total()` is declared at lines 40 to 52 of `cart.ts`. The node `Cart.total` covers those lines, so the call links to it.
-- **A call that can go to more than one declaration links to each one that is a node.** It is linked when at least one is. This holds only where the language's rule proves each one, such as a union, an intersection, an overload or a merged declaration; several declarations that merely share the name stay unlinked. Planned (trustmybot/tmb#344): today such a call is not known.
+- **A call that can go to more than one declaration links to each one that is a node.** It is linked when at least one is. This holds only where the language's rule proves each one, such as a union, an intersection, an overload or a merged declaration; several declarations that merely share the name stay unlinked.
   - **Example.** `element?.toString()`, where `element` is either a class of the repo or a built-in. The call links to the repo's `toString`.
 - **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. The position is where the name it calls is written, else where the call starts.
   - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
@@ -336,8 +336,8 @@ flowchart LR
   - **Example.** TypeScript: `interface Store { get(key: string): string }` gives the node `Store.get`, and `store.get(k)` on a `Store` links to it.
 - **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
 - **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. A call that the tool resolves to a function's `@overload` stubs links to the function itself. Planned (trustmybot/tmb#368): today each Python stub is a node, so way A leaves such a call unlinked.
-- **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known.
-  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. Planned (trustmybot/tmb#365): today the single folder is tried first, and several environments are not reported.
+- **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known: tmb carries the tool's stubs for the standard library only.
+  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. The config's choice is read the way the tool reads it, also when it names a folder outside the repo; a folder that is not there counts as no environment, and freshness says so. Planned (trustmybot/tmb#365): today the single folder is tried first, and several environments are not reported.
 - **Way B for Go reads the packages already on the machine.** Go's module cache is its installed packages. The helper runs the user's `go` with downloads off and with the user's own Go settings.
   - **Example.** A call into a module in the cache is outside. A call into a module that is not there is not known.
   - **Edge case 1.** A file that needs a C compiler to be read (cgo) is left out of the tool's run. Its functions are nodes, and its calls are not known.
@@ -895,7 +895,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| A call with several proven declarations links to each | trustmybot/tmb#344 |
 | The project's config names the Python environment first | trustmybot/tmb#365 |
 | A receiver's type is read from its own declaration | trustmybot/tmb#364 |
 | A TypeScript method with no body is a node | trustmybot/tmb#367 |
