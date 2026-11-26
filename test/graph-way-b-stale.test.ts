@@ -9,7 +9,9 @@
 //   packages are the `node_modules` folders the compiler looks in;
 // - Python: tmb carries pyright; the packages are those of the environment pyright reads;
 // - Go: the user's `go`; the packages are the modules the repo's go.sum names, in the module cache;
-// - Java: the user's JDK; javac reads no class path, so there are no packages.
+// - Java: the user's JDK; javac reads no class path, so there are no packages;
+// - Rust: the user's rust-analyzer; the packages are the crates the repo's Cargo.lock resolves
+//   from a registry, in Cargo's registry on disk.
 // Each expectation is read off the page's rule, not off the graph's output.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -330,6 +332,107 @@ describe.skipIf(!HAS_JAVA)("Java: the user's JDK, and no packages", () => {
     const second = await read();
     expect(second.builtAt).not.toBe(first.builtAt);
     expect(second.toolChanged).toBe(true);
+  });
+});
+
+/**
+ * A rust-analyzer on PATH that reports `version` and answers as one that resolves no name: `scip`
+ * writes an empty index, and `diagnostics` reports no error. It runs without a real rust-analyzer.
+ */
+function fakeRustAnalyzer(version: string): void {
+  const script = [
+    "#!/bin/sh",
+    `if [ "$1" = "--version" ]; then echo '${version}'; exit 0; fi`,
+    'if [ "$1" = "scip" ]; then while [ $# -gt 0 ]; do if [ "$1" = "--output" ]; then : > "$2"; fi; shift; done; exit 0; fi',
+    'if [ "$1" = "diagnostics" ]; then echo "diagnostic scan complete"; exit 0; fi',
+    "exit 1",
+    "",
+  ].join("\n");
+  writeFileSync(path.join(bin, "rust-analyzer"), script);
+  chmodSync(path.join(bin, "rust-analyzer"), 0o755);
+  if (!("PATH" in saved)) setEnv("PATH", `${bin}${path.delimiter}${process.env.PATH}`);
+}
+
+describe("Rust: the user's rust-analyzer, and Cargo's registry", () => {
+  const CARGO_TOML = '[package]\nname = "orchard"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nfaraway = "1.0.0"\n';
+  const CARGO_LOCK = [
+    "version = 3",
+    "",
+    "[[package]]",
+    'name = "faraway"',
+    'version = "1.0.0"',
+    'source = "registry+https://github.com/rust-lang/crates.io-index"',
+    'checksum = "0000000000000000000000000000000000000000000000000000000000000000"',
+    "",
+    "[[package]]",
+    'name = "orchard"',
+    'version = "0.1.0"',
+    'dependencies = ["faraway"]',
+    "",
+  ].join("\n");
+  const CODE = { "Cargo.toml": CARGO_TOML, "Cargo.lock": CARGO_LOCK, "src/lib.rs": "pub fn reach() -> i32 { faraway::far() }\n" };
+  let cargoHome: string;
+
+  beforeEach(() => {
+    cargoHome = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-wayb-cargo-")));
+    setEnv("CARGO_HOME", cargoHome);
+  });
+  afterEach(() => rmSync(cargoHome, { recursive: true, force: true }));
+
+  /** A crate's sources in Cargo's registry, as Cargo unpacks them: `registry/src/<index>/<name>-<version>`. */
+  const unpack = (name: string, version: string) => {
+    const dir = path.join(cargoHome, "registry", "src", "index.crates.io-0000000000000000", `${name}-${version}`);
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    writeFileSync(path.join(dir, "Cargo.toml"), `[package]\nname = "${name}"\nversion = "${version}"\n`);
+    writeFileSync(path.join(dir, "src", "lib.rs"), "pub fn far() -> i32 { 1 }\n");
+  };
+
+  test("the layer records the rust-analyzer it was built with, as `rust-analyzer --version` reports it", async () => {
+    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    commit(CODE);
+    const { builtWith } = await read();
+    expect(builtWith["rust-analyzer"]?.tool).toBe("rust-analyzer 1.0.0 (fake 2026-01-01)");
+  });
+
+  test("nothing changed: the layer is still fresh", async () => {
+    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    commit(CODE);
+    const first = await read();
+    await tick();
+    const second = await read();
+    expect(second.builtAt).toBe(first.builtAt);
+  });
+
+  test("rust-analyzer reports another version: the layer is stale", async () => {
+    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    commit(CODE);
+    const first = await read();
+    await tick();
+    fakeRustAnalyzer("rust-analyzer 9.9.9 (fake 2026-12-31)");
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
+  test("a crate Cargo.lock resolves arrives in Cargo's registry: the layer is stale", async () => {
+    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    commit(CODE);
+    const first = await read();
+    await tick();
+    unpack("faraway", "1.0.0");
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
+  test("a crate Cargo.lock does not resolve arrives in the registry: the layer is still fresh", async () => {
+    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    commit(CODE);
+    const first = await read();
+    await tick();
+    unpack("elsewhere", "1.0.0");
+    const second = await read();
+    expect(second.builtAt).toBe(first.builtAt);
   });
 });
 

@@ -41,6 +41,7 @@ The code graph's rules for `.rs` files. They are read through tree-sitter's Rust
   - a symbol of the repo with no definition, such as a derived method;
   - a file rust-analyzer does not load: one `cfg` leaves out, or one in no Cargo workspace;
   - `Self(…)`, which rust-analyzer answers with the implementation, not the type.
+- The layer records what it was built with: `rust-analyzer --version`, and, of each crate a Cargo.lock resolves from a registry, whether Cargo has unpacked it under `$CARGO_HOME/registry/src` (The Cargo Book, "Cargo Home"). A read that finds either changed rebuilds the layer (trustmybot/tmb#325).
 - Without `rust-analyzer` on PATH, way B for Rust does not run. The built-in rules make the links, and the layer's note names what is missing.
 
 The coverage test compares the functions and calls with Rust's own parser, rust-analyzer's (`rust-analyzer parse`), through [rust.ts](../../../../../tests/benchmark/rust.ts).
