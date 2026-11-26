@@ -344,8 +344,6 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       builtWith[tool.name] = builtWithEntry(tool, repoDir, places);
     }
     answered.forEach((answer, i) => {
-      // A name in a macro's input that the tool does not answer as a call is dropped (applyLayer).
-      if ("call" in answer) return;
       if (!("nodes" in answer)) answers.set(callRows[i]!, answer);
       else {
         const [first, ...more] = answer.nodes;
@@ -485,12 +483,17 @@ function applyLayer(
   const sources = writeDataSources(db, layer, pending.map((p) => p.edge));
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
-  // A name written as a call in a macro's input is a call only when its language's tool answered it
-  // as one (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"); the rest are dropped.
-  const dropped = (edge: Extraction["edges"][number], index: number): boolean => edge.inMacro === 1 && !byTool.answers.has(index);
+  // A name written as a call in a macro's input that its language's tool does not answer as a call is
+  // dropped (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"). With no tool to ask, it
+  // is a call that is not known, and no link is made from it.
+  const dropped = (edge: Extraction["edges"][number], index: number): boolean => {
+    const answer = edge.inMacro === 1 ? byTool.answers.get(index) : undefined;
+    return answer !== undefined && "call" in answer;
+  };
   const resolver = new Resolver(
     candidates,
-    pending.flatMap(({ file, edge }, index) => (dropped(edge, index) ? [] : [{ from: file, edge }])),
+    // A name in a macro's input is linked by no rule: only the tool links it.
+    pending.flatMap(({ file, edge }) => (edge.inMacro === 1 ? [] : [{ from: file, edge }])),
     new ImportConfig(configs),
     exports,
   );
@@ -512,10 +515,19 @@ function applyLayer(
     const linked = answer !== undefined && "nodes" in answer ? answer.nodes : null;
     // A call the language's own rules prove goes to a symbol of its file links to it (ExtractedEdge.target).
     const proven: Link | null = edge.target === undefined ? null : { dst: symbolIndex - edge.src + edge.target, how: "exact" };
-    const link: Link | null = answer === undefined ? (proven ?? resolver.resolve(file, edge)) : linked !== null ? { dst: linked[0], how: "exact" } : null;
+    const unasked = edge.inMacro === 1 && answer === undefined;
+    const link: Link | null = unasked ? null : answer === undefined ? (proven ?? resolver.resolve(file, edge)) : linked !== null ? { dst: linked[0], how: "exact" } : null;
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
     // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
-    const state = answer !== undefined ? ("state" in answer ? answer.state : "linked") : edge.call === 1 ? callState(resolver, file, edge, link) : null;
+    const state = unasked
+      ? "not_known"
+      : answer !== undefined
+        ? "state" in answer
+          ? answer.state
+          : "linked"
+        : edge.call === 1
+          ? callState(resolver, file, edge, link)
+          : null;
     const way = answer === undefined ? BUILT_IN : LANGUAGE_TOOL;
     insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.pos ?? null, edge.hint, state, way);
     // A call that can go to more than one node links to each (trustmybot/tmb#344): one row per

@@ -117,8 +117,9 @@ export interface ExtractedEdge {
   // language's rules prove none.
   target?: number;
   // 1 on a name written as a call inside a macro's input, which the parser cannot see as code
-  // (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"). It is a call only when the
-  // language's tool answers it as one; with no tool to ask, or one that does not, it is dropped.
+  // (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"). The language's tool says
+  // whether it is a call, and one it does not answer as a call is dropped; with no tool to ask, it
+  // is a call that is not known, and no link is made from it.
   inMacro?: 1;
 }
 

@@ -457,15 +457,34 @@ describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust: a call in a macro's input",
     }
   });
 
-  test("the built-in rules have no tool to ask, so a name in a macro's input is no call", async () => {
-    const { db } = await built("built-in");
-    try {
-      const rows = calls(db, "b");
-      for (const line of [24, 25, 26, 27, 28, 29, 30, 31, 32, 44]) expect({ line, calls: onLine(rows, line) }).toEqual({ line, calls: [] });
-    } finally {
-      db.close();
-    }
-  });
+});
+
+// CODE_GRAPH.md, "Inside a macro, the tool says what is a call", edge cases 1 and 2: the built-in
+// rules have no tool to ask, so each name in a macro's input followed by a group in parentheses is
+// a call that is not known, with no link, in the callable around the macro. A tuple struct or a
+// variant written so is one more such call. `default` is a name; `named!(tare)` writes no call.
+test("the built-in rules keep each name written as a call in a macro's input as a call that is not known, with no link", async () => {
+  const { db } = await built("built-in");
+  try {
+    const rows = calls(db, "b");
+    const notKnown = (src: string, name: string, line: number) => expect(call(rows, src, name, line)).toMatchObject({ dst: null, call_state: "not_known" });
+    notKnown(SIFT, "weigh", 24);
+    notKnown(SIFT, "tare", 24);
+    notKnown(SIFT, "weigh", 25);
+    notKnown(SIFT, "len", 25);
+    notKnown(SIFT, "Grain", 26);
+    notKnown(SIFT, "weigh", 29);
+    notKnown(`${SIEVE_FILE}:function at line 30`, "weigh", 30);
+    notKnown(SIFT, "tare", 31);
+    notKnown(SIFT, "weigh", 32);
+    notKnown(`${SIEVE_FILE}:${SIEVE_FILE}`, "tare", 44);
+    notKnown(`${SIEVE_FILE}:chaff`, "default", 54);
+    expect(onLine(rows, 27)).toEqual([]);
+    // `Some` twice on line 28: `Some(1)` and `Some(_)`.
+    expect(onLine(rows, 28)).toEqual(["Some not_known", "Some not_known"]);
+  } finally {
+    db.close();
+  }
 });
 
 test("without rust-analyzer on PATH, way B for Rust does not run: the built-in rules make the links, and the layer names what is missing", async () => {
