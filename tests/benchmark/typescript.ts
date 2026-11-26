@@ -17,12 +17,12 @@ const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["typescript", "tsx", "ja
 export const REFERENCE = `TypeScript compiler ${ts.version}`;
 
 /**
- * How each way builds the graph. Way B's tool is the 5.9 development dependency, passed in: tmb
- * installs nothing, and the benchmark measures the tool, not a repo's own install of it.
+ * How each way builds the graph, as the program builds it: way B uses the compiler tmb carries,
+ * the one the program uses, and nothing is passed in.
  */
 const BUILD: Record<Way, BuildOptions> = {
   A: { links: "built-in" },
-  B: { links: "language-tool", tools: new Map([["typescript", ts]]) },
+  B: { links: "language-tool" },
 };
 
 /**

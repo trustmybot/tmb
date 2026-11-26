@@ -35,7 +35,7 @@ const TITLES: Record<ScoreName, string> = {
 const INSTALLED: Record<string, Record<Way, string>> = {
   typescript: {
     A: "nothing: tmb's own parser",
-    B: "the TypeScript compiler, version 5 or later with its JavaScript program API, in the repo's node_modules (the benchmark passes the 5.9 development dependency); the repo's packages installed, for its calls of them to be outside",
+    B: "nothing for the compiler: tmb carries it; the repo's packages installed, for its calls of them to be outside",
   },
   python: { A: "nothing: tmb's own parser", B: WAY_B_NOT_BUILT },
 };
