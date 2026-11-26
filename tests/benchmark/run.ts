@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
-import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION, WAY_B_NOT_BUILT as GO_WAY_B_NOT_BUILT } from "./go.ts";
+import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION, WAY_B_NOT_BUILT } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
 import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
@@ -43,7 +43,7 @@ const INSTALLED: Record<string, Record<Way, string>> = {
     B: "nothing for the compiler: tmb carries it; the repo's packages installed, for its calls of them to be outside",
   },
   python: { A: "nothing: tmb's own parser", B: WAY_B_NOT_BUILT },
-  go: { A: "nothing: tmb's own parser", B: GO_WAY_B_NOT_BUILT },
+  go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -68,16 +68,14 @@ async function measureAll(): Promise<Run> {
     }
     console.error(`measuring ${r.repo} (${r.language}) at ${sha.slice(0, 7)}…`);
     const secs = (ms: { graph: number; reference: number }): Seconds => ({ graph: ms.graph / 1000, reference: ms.reference / 1000 });
-    if (r.language === "typescript") {
-      const a = await measureTypescript(where.folder, sha, "A");
-      const b = await measureTypescript(where.folder, sha, "B");
-      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: TS_REFERENCE }, { A: a.scores, B: b.scores }));
+    if (r.language === "typescript" || r.language === "go") {
+      const [a, b] = r.language === "typescript" ? [{ ...(await measureTypescript(where.folder, sha, "A")), reference: TS_REFERENCE }, { ...(await measureTypescript(where.folder, sha, "B")), reference: TS_REFERENCE }] : [await measureGo(where.folder, sha, "A"), await measureGo(where.folder, sha, "B")];
+      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
       seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
       detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
     } else {
-      const python = r.language === "python";
-      const m = python ? await measurePython(where.folder, sha) : await measureGo(where.folder, sha);
-      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, { A: m.scores, B: notBuilt(python ? WAY_B_NOT_BUILT : GO_WAY_B_NOT_BUILT) }));
+      const m = await measurePython(where.folder, sha);
+      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, { A: m.scores, B: notBuilt(WAY_B_NOT_BUILT) }));
       seconds[r.repo] = { A: secs(m.ms) };
       detail[r.repo] = m.detail.map((d) => `way A, ${d}`);
     }
