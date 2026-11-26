@@ -105,44 +105,171 @@ const literalText = (node: Node): string | null =>
     ? node.text.slice(1, -1)
     : null;
 const FUNCTION_VALUES = new Set(['arrow_function', 'function_expression', 'function']);
-const annotatedType = (node: Node): string | undefined => {
-  const t = node.childForFieldName('type')?.namedChildren[0];
-  return t?.type === 'type_identifier' ? t.text : undefined;
+/**
+ * The name of the class one declaration of a receiver writes: its written type when that is a
+ * name, with or without type arguments, else, when no type is written, the class a `new` of a
+ * name constructs; null for anything else, so the type is not known.
+ */
+function writtenClass(decl: Node): Node | null {
+  const written = decl.childForFieldName('type');
+  if (written) {
+    const t = written.namedChildren[0];
+    const name = t?.type === 'generic_type' ? t.childForFieldName('name') : t;
+    return name?.type === 'type_identifier' ? name : null;
+  }
+  const value = decl.type === 'variable_declarator' || decl.type === 'public_field_definition' ? decl.childForFieldName('value') : null;
+  const ctor = value?.type === 'new_expression' ? value.childForFieldName('constructor') : null;
+  return ctor?.type === 'identifier' && localBinding(ctor, ctor.text)?.bound !== 'value' ? ctor : null;
+}
+
+/** Declarations that name a type and are no class: each hides a class of that name. */
+const TYPE_DECLARATIONS = new Set(['interface_declaration', 'type_alias_declaration', 'enum_declaration', 'internal_module', 'module']);
+const CLASS_DECLARATIONS = new Set(['class_declaration', 'abstract_class_declaration']);
+
+// Whether a node declares type parameters, one of them named `name`.
+const typeParameter = (node: Node, name: string): boolean => {
+  const params = node.childForFieldName('type_parameters');
+  return params !== null && named(params).some((p) => p.childForFieldName('name')?.text === name);
 };
 
+/**
+ * The class a written type name names, looked up the way the language looks up a type from where
+ * it is written: the type parameters and the declarations of each scope around it, then the file
+ * and its imports. Null when the first place that has the name holds a type parameter, an
+ * interface, an alias, an enum or a namespace, or when the name reaches the file while a class of
+ * that name is declared below it, out of this scope.
+ */
+function classNamed(name: Node, nestedClasses: Set<string>): string | null {
+  const text = name.text;
+  for (let a = name.parent; a; a = a.parent) {
+    if (typeParameter(a, text)) return null;
+    if (!BLOCK_SCOPES.has(a.type) && a.type !== 'program') continue;
+    const here = named(a)
+      .map(declarationOf)
+      .filter((d) => (CLASS_DECLARATIONS.has(d.type) || TYPE_DECLARATIONS.has(d.type)) && d.childForFieldName('name')?.text === text);
+    if (here.length > 0) return here.every((d) => CLASS_DECLARATIONS.has(d.type)) ? text : null;
+  }
+  return nestedClasses.has(text) ? null : text;
+}
+// A statement as the file declares it: the declaration inside an `export` or a `declare`.
+const declarationOf = (stmt: Node): Node =>
+  stmt.type === 'export_statement' || stmt.type === 'ambient_declaration' ? (stmt.childForFieldName('declaration') ?? named(stmt)[0] ?? stmt) : stmt;
 
-// Receiver text to its declared or constructed class, per file, ignoring
-// scope; a receiver seen with two different types is dropped.
-function receiverTypes(root: Node): Map<string, string> {
-  const seen = new Map<string, string | null>();
-  const add = (key: string, type: string | undefined): void => {
-    if (!type) return;
-    const prev = seen.get(key);
-    seen.set(key, prev === undefined || prev === type ? type : null);
-  };
+// The declarators of a `let`, `const` or `var` statement that bind `name`, as a plain name or in a destructuring.
+const declaratorsOf = (stmt: Node | null, name: string): Node[] =>
+  stmt !== null && (stmt.type === 'lexical_declaration' || stmt.type === 'variable_declaration')
+    ? named(stmt).filter((d) => d.type === 'variable_declarator' && bindsName(d.childForFieldName('name'), name))
+    : [];
+
+/**
+ * A declaration's type when it binds `name` as a plain name; a destructuring, or a parameter with
+ * no written type, binds a value whose type is not known.
+ */
+function bindingType(decls: Node[], name: string, soleType: (decls: Node[]) => string | null): string | null {
+  const plain = decls.every((d) => {
+    const n = d.type === 'variable_declarator' ? d.childForFieldName('name') : d.childForFieldName('pattern');
+    return n?.type === 'identifier' && n.text === name;
+  });
+  return plain ? soleType(decls) : null;
+}
+
+/**
+ * The type of the object a method is called on, read where the language reads it (trustmybot/tmb#364):
+ * - a name: the declaration its name finds in its own scope, as localBinding walks it: the
+ *   function's parameters and `var`s, the blocks and functions around it, then the file;
+ * - `this.x`: the members named `x` of the class `this` is an instance of, a constructor's
+ *   parameter property among them.
+ * A string is the receiver's class. Null is a value whose type is not known: no plain name is
+ * written, two declarations disagree, or `this.x` names no field of its own class. Undefined is a
+ * name no variable binds: a class, a function, an import, or nothing in the file.
+ */
+function receiverTypes(root: Node): (object: Node) => string | null | undefined {
+  // Each `var` by the scope it hoists to, which holds it whatever block it is written in.
+  const vars = new Map<number, Node[]>();
   for (const d of root.descendantsOfType('variable_declarator')) {
-    const n = d?.childForFieldName('name');
-    if (n?.type !== 'identifier') continue;
-    const value = d!.childForFieldName('value');
-    const ctor = value?.type === 'new_expression' ? value.childForFieldName('constructor') : null;
-    add(n.text, annotatedType(d!) ?? (ctor?.type === 'identifier' ? ctor.text : undefined));
+    if (d?.parent?.type !== 'variable_declaration') continue;
+    let scope = d.parent.parent;
+    while (scope && !VAR_SCOPES.has(scope.type)) scope = scope.parent;
+    if (scope) vars.set(scope.id, [...(vars.get(scope.id) ?? []), d]);
   }
-  for (const p of root.descendantsOfType(['required_parameter', 'optional_parameter'])) {
-    const n = p?.childForFieldName('pattern');
-    if (n?.type !== 'identifier') continue;
-    const type = annotatedType(p!);
-    add(n.text, type);
-    if (isParameterProperty(p!)) {
-      add(`this.${n.text}`, type);
+  // Classes declared below the file: a name that reaches the file is none of them.
+  const nestedClasses = new Set<string>();
+  for (const c of root.descendantsOfType([...CLASS_DECLARATIONS])) {
+    const holder = c?.parent?.type === 'export_statement' ? c.parent.parent : c?.parent;
+    const n = c?.childForFieldName('name')?.text;
+    if (n && holder?.type !== 'program') nestedClasses.add(n);
+  }
+  // The one class every declaration names, or null when any names none or two disagree.
+  const soleType = (decls: Node[]): string | null => {
+    const types = new Set(decls.map((d) => {
+      const n = writtenClass(d);
+      return n === null ? null : classNamed(n, nestedClasses);
+    }));
+    const [only] = types;
+    return types.size === 1 && only !== undefined ? only : null;
+  };
+  const hoisted = (scope: Node, name: string): Node[] => (vars.get(scope.id) ?? []).filter((d) => bindsName(d.childForFieldName('name'), name));
+
+  const ofName = (object: Node): string | null | undefined => {
+    const name = object.text;
+    for (let a = object.parent; a; a = a.parent) {
+      if (FUNCTION_SCOPES.has(a.type)) {
+        const params = a.childForFieldName('parameters');
+        const single = a.childForFieldName('parameter');
+        const bound = [...(params ? named(params) : single ? [single] : []).filter((p) => bindsName(p, name)), ...hoisted(a, name)];
+        if (bound.length > 0) return bindingType(bound, name, soleType);
+        if (!NAME_BINDS_OUTSIDE.has(a.type) && a.childForFieldName('name')?.text === name) return undefined;
+      } else if (BLOCK_SCOPES.has(a.type) || a.type === 'program') {
+        const statements = named(a).map(declarationOf);
+        const bound = statements.flatMap((s) => declaratorsOf(s, name));
+        // A file's `var`s written in its blocks are the file's too.
+        const seen = new Set(bound.map((d) => d.id));
+        if (a.type === 'program') bound.push(...hoisted(a, name).filter((d) => !seen.has(d.id)));
+        if (bound.length > 0) return bindingType(bound, name, soleType);
+        if (statements.some((s) => declaredAs(s, name) !== null)) return undefined;
+      } else if (a.type === 'class_static_block') {
+        const bound = hoisted(a, name);
+        if (bound.length > 0) return bindingType(bound, name, soleType);
+      } else if (a.type === 'for_statement') {
+        const bound = declaratorsOf(a.childForFieldName('initializer'), name);
+        if (bound.length > 0) return bindingType(bound, name, soleType);
+      } else if (a.type === 'for_in_statement') {
+        if (a.childForFieldName('kind') && bindsName(a.childForFieldName('left'), name)) return null;
+      } else if (a.type === 'catch_clause') {
+        if (bindsName(a.childForFieldName('parameter'), name)) return null;
+      }
     }
-  }
-  for (const f of root.descendantsOfType('public_field_definition')) {
-    const n = f?.childForFieldName('name');
-    if (n?.type === 'property_identifier' || n?.type === 'private_property_identifier') add(`this.${n.text}`, annotatedType(f!));
-  }
-  const types = new Map<string, string>();
-  for (const [k, v] of seen) if (v) types.set(k, v);
-  return types;
+    return undefined;
+  };
+
+  const ofField = (self: Node, field: string): string | null => {
+    const cls = thisClass(self);
+    const body = cls?.childForFieldName('body');
+    if (!body) return null;
+    const decls: Node[] = [];
+    for (const m of named(body)) {
+      const key = m.childForFieldName('name') ?? m.childForFieldName('property');
+      if (key && keyText(key) === field) {
+        // A method or an accessor of that name is no field with a type written.
+        if (m.type !== 'public_field_definition') return null;
+        decls.push(m);
+      }
+      if (m.type !== 'method_definition' || !key || keyText(key) !== 'constructor') continue;
+      const params = m.childForFieldName('parameters');
+      for (const p of params ? named(params) : []) {
+        if (p.childForFieldName('pattern')?.text === field && isParameterProperty(p)) decls.push(p);
+      }
+    }
+    return decls.length > 0 ? soleType(decls) : null;
+  };
+
+  return (object: Node): string | null | undefined => {
+    if (object.type === 'identifier') return ofName(object);
+    const self = object.type === 'member_expression' ? object.childForFieldName('object') : null;
+    const field = object.childForFieldName('property');
+    if (self?.type === 'this' && field) return ofField(self, field.text);
+    return undefined;
+  };
 }
 
 interface ModuleBindings {
@@ -205,6 +332,8 @@ const FUNCTION_SCOPES = new Set([
   'method_definition',
 ]);
 const BLOCK_SCOPES = new Set(['statement_block', 'switch_case', 'switch_default']);
+/** Where a `var` is scoped: the function, the class's static block, or the file around it. */
+const VAR_SCOPES = new Set([...FUNCTION_SCOPES, 'class_static_block', 'program']);
 // Whether a pattern binds `name`: a plain name, or one inside a destructuring, a default or a
 // rest. A default value, a key and a type annotation bind nothing.
 function bindsName(pattern: Node | null, name: string): boolean {
@@ -638,7 +767,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
   const { src, module: moduleSymbol } = file;
   const root = file.root;
   if (!root) throw new Error(`no syntax tree for ${file.relPath}`);
-  const types = receiverTypes(root);
+  const typeOf = receiverTypes(root);
   const bindings = moduleBindings(root);
   const names = fileNames(root);
   // Where a call's lookup ends past the functions, blocks and declarations of the file
@@ -831,11 +960,15 @@ export function extractTs(file: SourceFile, out: Collector): void {
           receiver = own ?? 'this';
           if (of !== null && own !== null) bound = memberOf(of, callee) === 'value' ? 'value' : 'self';
         } else if (objectNode?.type === 'identifier' && object !== undefined) {
-          // The name as the file binds it: the resolver follows an import under a new name to its file.
-          receiver = types.get(object) ?? object;
+          // A variable's type as its own scope declares it, else the name as the file binds it: the
+          // resolver follows an import under a new name to its file. A variable whose type is not
+          // known is a value, never the class or import its name shares.
+          const type = typeOf(objectNode);
+          receiver = type ?? object;
+          if (type === null) bound = 'value';
           if (/^[A-Z]/.test(object) && boundValue(objectNode, object)) reference(scope, 'calls', object, objectNode);
           if (callee !== undefined && localBinding(objectNode, object) === null) mark = outside(object, callee);
-        } else receiver = object !== undefined ? (types.get(object) ?? object) : undefined;
+        } else receiver = objectNode && object !== undefined ? (typeOf(objectNode) ?? object) : undefined;
       }
       // A call whose callee is no name, such as `f()()` or `handlers[k]()`, is a call all the same:
       // it is named by its callee's text and is not known. Its position is where its name is

@@ -1,5 +1,5 @@
-// The link check of trustmybot/tmb#242: every cross-file `calls` and `instantiates` link the code
-// graph makes with resolution `exact` in TypeScript and JavaScript is compared with the
+// The link check of trustmybot/tmb#242: every `calls` and `instantiates` link the code graph
+// makes, in the same file or across files, with resolution `exact` in TypeScript and JavaScript is compared with the
 // TypeScript compiler's own answer for the same name. A link the graph did not make is no
 // failure; a link to another file or declaration than the compiler's is, and so is a link into
 // the repo where the compiler names only a declaration outside it (trustmybot/tmb#287). The
@@ -268,13 +268,13 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
 /** `import { a as b }`: the graph names a reference to `b` by the name `a` it is declared as. */
 const originalNames = (sf: ts.SourceFile) => originalIn(ts, sf);
 
-/** Every cross-file `calls` and `instantiates` link of a layer resolved `exact`, between TypeScript or JavaScript files. */
+/** Every `calls` and `instantiates` link of a layer resolved `exact` between TypeScript or JavaScript files, in the same file or across files: every link is judged (CODE_GRAPH.md, Benchmark). */
 export function graphLinks(db: Database, layer = BASE_LAYER): GraphLink[] {
   const rows = db
     .query(
       `SELECT s.path AS src, e.line AS line, e.pos AS pos, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end, e.kind AS kind
          FROM edges e JOIN symbols s ON s.id = e.src_id JOIN symbols d ON d.id = e.dst_id
-        WHERE e.layer = ? AND e.kind IN ('calls', 'instantiates') AND e.resolution = 'exact' AND s.path != d.path`,
+        WHERE e.layer = ? AND e.kind IN ('calls', 'instantiates') AND e.resolution = 'exact'`,
     )
     .all(layer) as { src: string; line: number; pos: number | null; name: string; dst: string; start: number | null; end: number | null; kind: string }[];
   return rows

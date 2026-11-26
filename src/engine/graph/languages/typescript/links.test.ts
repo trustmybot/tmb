@@ -26,6 +26,7 @@ const FIXTURE: Record<string, string> = {
   "factory.ts": "export class Factory {\n  make = () => 1;\n}\nexport const make = () => 2;\n",
   "index.ts": "export * from './factory';\n",
   "outside.ts": "export const count = parseInt('7', 10);\n",
+  "local.ts": "function inner() {\n  return 3;\n}\nexport function outer() {\n  return inner();\n}\n",
   "use.ts": [
     "import { render as renderA } from './a';",
     "import { render as renderB } from './b';",
@@ -101,8 +102,8 @@ describe("the graph's links agree with the compiler on a fixture", () => {
     const { calls } = await checkRepo(fixture);
     expectCallsAccounted(calls);
     // use(): renderA, renderB, make and `.map` written in it, and `render()` in its arrow; and
-    // `parseInt` at the top of outside.ts, a global, outside the repo.
-    expect(calls.accounted).toBe(6);
+    // `parseInt` at the top of outside.ts, a global, outside the repo; and `inner()` in local.ts.
+    expect(calls.accounted).toBe(7);
     expect(calls.outside).toBe(1);
   });
 
@@ -120,6 +121,14 @@ describe("the graph's links agree with the compiler on a fixture", () => {
     expect(report.right).toBe(report.links);
     expect(report.links).toBeGreaterThanOrEqual(5);
     expect(report.reexports.right).toBe(1);
+  });
+
+  test("a link in the same file is judged too", () => {
+    const local = links.filter((l) => l.src === "local.ts" && l.dst === "local.ts");
+    expect(local.map((l) => `${l.name} ${l.line}`)).toEqual(["inner 5"]);
+    const lookup = compilerLookup(fixture, commit);
+    expect(judge(local[0]!, lookup).verdict).toBe("right");
+    expect(judge({ ...local[0]!, start: 4, end: 6 }, lookup).verdict).toBe("wrong");
   });
 
   test("a link to another file or another declaration than the compiler's is wrong", () => {
