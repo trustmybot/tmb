@@ -20,7 +20,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 30;
+export const EXTRACTOR_VERSION = 31;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -134,6 +134,7 @@ async function planCommit(
   const readmes = new Map<string, string>();
   let reused = 0;
   for (const entry of entries) {
+    // A file whose language its text decides (an extensionless script, a `.h` header) waits for its text.
     let headless = false;
     const lang = languageOf(entry.path, () => {
       headless = true;
@@ -157,7 +158,13 @@ async function planCommit(
   for (const plan of plans) {
     const text = texts.get(plan.entry.blob) ?? null;
     if (plan.lang === null && text !== null && byExtension.get(plan.entry.path) === null) {
-      plan.lang = languageOf(plan.entry.path, () => text.slice(0, 120));
+      plan.lang = languageOf(plan.entry.path, () => text);
+      const cached = plan.lang !== null ? cachedParse(db, plan.entry.blob, plan.lang) : null;
+      if (cached) {
+        reused++;
+        plan.extraction = cached.extraction;
+        plan.error = cached.error;
+      }
     }
   }
   // Only the grammars of the files this commit parses anew are loaded (trustmybot/tmb#157).

@@ -65,9 +65,12 @@ afterEach(() => {
 test("languages by Linguist's programming endings; the first-listed language wins a shared ending", () => {
   expect(unreadLanguageOf("cmd/Root.kt")).toBe("Kotlin");
   expect(unreadLanguageOf("src/main.rb")).toBe("Ruby");
-  expect(unreadLanguageOf("include/x.h")).toBe("C");
+  expect(unreadLanguageOf("lib/x.m")).toBe("MATLAB");
   expect(unreadLanguageOf("App.vue")).toBe("Vue");
   expect(unreadLanguageOf("src/a.ts")).toBeNull();
+  // C and C++ are read (trustmybot/tmb#355).
+  expect(unreadLanguageOf("include/x.h")).toBeNull();
+  expect(unreadLanguageOf("src/x.cc")).toBeNull();
   expect(unreadLanguageOf("README.md")).toBeNull();
 });
 

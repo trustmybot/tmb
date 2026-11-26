@@ -1,5 +1,5 @@
 // The benchmark's scores and their arithmetic (trustmybot/tmb#244), as CODE_GRAPH.md's Benchmark
-// section defines them. Nothing here reads a repo: the measures in typescript.ts, python.ts and go.ts
+// section defines them. Nothing here reads a repo: the measures in typescript.ts, python.ts, go.ts, java.ts and c.ts
 // count, and this file turns counts into shares and compares a run with the stored one.
 import { surplus } from "../../src/engine/graph/languages/typescript/coverage.ts";
 
@@ -30,7 +30,7 @@ export type WayScores = Record<ScoreName, Score> & { missesByCause: Causes | Not
 export const WAYS = ["A", "B"] as const;
 export type Way = (typeof WAYS)[number];
 
-export type Language = "typescript" | "python" | "go" | "java" | "rust";
+export type Language = "typescript" | "python" | "go" | "java" | "rust" | "c" | "cpp";
 
 /** One repo's scores: the commit measured, the reference used, and one set per way. */
 export type Entry = { repo: string; language: Language; commit: string; reference: string; ways: Record<Way, WayScores> };
