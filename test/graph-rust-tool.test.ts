@@ -144,6 +144,14 @@ const CRATES = lines(
   "pub fn split() -> u32 {", //                                  9
   "    slat(1, 2)", //                                           10
   "}", //                                                        11
+  "", //                                                         12
+  "pub fn r#yield() -> u32 {", //                                13
+  "    1", //                                                    14
+  "}", //                                                        15
+  "", //                                                         16
+  "pub fn lift() -> u32 {", //                                   17
+  "    r#yield() + crate::crates::r#yield()", //                 18
+  "}", //                                                        19
 );
 
 const LEFT_OUT = lines(
@@ -216,6 +224,12 @@ describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust", () => {
       expect(call(rows, GATHER, "ripen", 37)).toMatchObject({ dst: "src/orchard.rs:Fruit.ripen", call_state: "linked" });
       expect(call(rows, GATHER, "deep")).toMatchObject({ dst: "src/orchard.rs:inner.deep", call_state: "linked" });
       expect(call(rows, "src/crates.rs:stack", "slat")).toMatchObject({ dst: "src/crates.rs:slat", call_state: "linked" });
+      // A raw identifier, `r#yield`, is the name `yield` (The Rust Reference, "Identifiers"): both
+      // calls link to the function it names, by its bare name and by its path.
+      const lift = rows.filter((r) => r.src === "src/crates.rs:lift");
+      expect(lift).toHaveLength(2);
+      const target = db.query("SELECT path || ':' || qualified_name AS dst FROM symbols WHERE layer = 'b' AND path = 'src/crates.rs' AND start_line = 13").get() as { dst: string };
+      for (const r of lift) expect(r).toMatchObject({ dst: target.dst, call_state: "linked" });
     } finally {
       db.close();
     }
