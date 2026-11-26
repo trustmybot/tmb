@@ -218,6 +218,9 @@ export function runRustAnalyzer(input: Pick<ToolInput, "files" | "configs" | "re
   }
 }
 
+/** The name an identifier is: a raw identifier, `r#fn`, is the name `fn` (The Rust Reference, "Identifiers"). */
+export const identifierName = (identifier: string): string => identifier.replace(/^r#/, "");
+
 /** Where a symbol is defined in the repo: its file, the line of its name (1-based), and its name. */
 export type Definition = { file: string; line: number; name: string };
 
@@ -263,8 +266,7 @@ export function readAnswers(files: ReadonlyMap<string, string>, out: RustAnalyze
       const s = startsOf(file, text);
       const start = offsetOf(text, s, o.line, o.start, doc.encoding);
       const end = offsetOf(text, s, o.endLine, o.end, doc.encoding);
-      // A raw identifier, `r#fn`, names `fn` (The Rust Reference, "Identifiers").
-      const name = text.slice(start, end).replace(/^r#/, "");
+      const name = identifierName(text.slice(start, end));
       const prior = defined.get(o.symbol);
       if (prior === undefined) defined.set(o.symbol, { file, line: o.line + 1, name });
       else if (prior.file !== file || prior.line !== o.line + 1) twice.add(o.symbol);
@@ -338,7 +340,7 @@ export function answerCalls(input: ToolInput, out: RustAnalyzerOutput, parser: P
   // The node a definition is, by place: in its file, of its name, its lines holding the
   // definition's; when two hold it, the one that starts on its line.
   const nodeOf = (d: Definition): ToolAnswer => {
-    const holding = (nodesByFile.get(d.file) ?? []).filter((n) => n.name === d.name && n.start <= d.line && n.end >= d.line);
+    const holding = (nodesByFile.get(d.file) ?? []).filter((n) => identifierName(n.name) === d.name && n.start <= d.line && n.end >= d.line);
     const chosen = holding.length > 1 ? holding.filter((n) => n.start === d.line) : holding;
     return chosen.length === 1 ? { nodes: [chosen[0]!.index] } : NOT_KNOWN;
   };
