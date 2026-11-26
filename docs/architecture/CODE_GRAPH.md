@@ -312,7 +312,9 @@ flowchart LR
   - **Edge case.** A file under no config gets the compiler's own defaults. tmb picks none of its own.
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
-- **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
+- **A way B graph is stale when the tool or the installed packages change.** The layer records the tool's version, as the tool reports it, and the installed packages it read. A read that finds either changed rebuilds the layer, and the answer's freshness says so. A layer built by the built-in rules rests on neither.
+  - **Example.** `npm install` moves a package to a new version. The next read rebuilds the TypeScript layer.
+  - **Edge case.** The tool could not run when the layer was built. That is recorded too, so the layer is rebuilt once the tool can run.
 - **Way B per language.** Each tool was chosen by its own A/B test. C and C++ are Planned (trustmybot/tmb#355).
 
 | Language | Tool | Whose copy | Needs from the user |
@@ -556,7 +558,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 
 ## Schema
 
-The code graph lives in its own SQLite file, apart from the record, so a build never holds the record's write lock: `.tmb/graph.db`, or in a multi-repo workspace one per repo, `.tmb/graphs/<repo>.db`. Its schema is `src/engine/graph/db.ts`, at `GRAPH_SCHEMA_VERSION = 5`.
+The code graph lives in its own SQLite file, apart from the record, so a build never holds the record's write lock: `.tmb/graph.db`, or in a multi-repo workspace one per repo, `.tmb/graphs/<repo>.db`. Its schema is `src/engine/graph/db.ts`.
 
 **This section lists every table and column of the graph file.** A schema change updates it in the same pull request. Planned: a generator with a freshness test that fails when it drifts.
 
@@ -596,6 +598,7 @@ erDiagram
         TEXT not_read "NOT NULL"
         TEXT links "NOT NULL"
         TEXT links_note
+        TEXT built_with
     }
     dirs {
         TEXT layer PK "NOT NULL"
@@ -723,6 +726,7 @@ erDiagram
 | `not_read` | TEXT | NOT NULL | `'{}'` |  |
 | `links` | TEXT | NOT NULL | `'built-in'` |  |
 | `links_note` | TEXT | nullable |  |  |
+| `built_with` | TEXT | nullable |  |  |
 
 #### `dirs`
 
@@ -916,7 +920,6 @@ All are FTS5 virtual tables.
 | A call into a store package links to the store | trustmybot/tmb#378 |
 | Calls inside a macro's input | trustmybot/tmb#383 |
 | C and C++, with clangd | trustmybot/tmb#355 |
-| A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A file's language comes from Linguist's list | trustmybot/tmb#154 |
