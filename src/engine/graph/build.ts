@@ -19,7 +19,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 19;
+export const EXTRACTOR_VERSION = 20;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -478,6 +478,7 @@ export type BuildOptions = {
  */
 export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: BuildOptions = {}): Promise<BuildStats> {
   const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
+  // Built-in, not DEFAULT_LINK_WAY: a caller that names no way gets the built-in rules, so the links-right check judges way A on its own; the callers that read settings apply graph_links.
   const links = options.links ?? BUILT_IN;
   const byTool = links === LANGUAGE_TOOL ? toolLinks(repoDir, commit, plans, configs) : NO_TOOL_LINKS;
   const stats = db
