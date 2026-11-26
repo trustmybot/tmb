@@ -1,0 +1,296 @@
+// Way B for Rust (trustmybot/tmb#354): rust-analyzer, the user's own, makes the links of the graph's
+// calls ("Two ways to make links"). Each expectation is read off the page and the Rust Reference
+// (https://doc.rust-lang.org/reference/), call by call: the definition a call names by Rust's rules,
+// not what the graph happens to return. Way B runs no code of the repo and downloads nothing; a call
+// it cannot prove, it leaves not known. The fixture is a small crate of its own.
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import type { Database } from "bun:sqlite";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { buildLayer } from "../src/engine/graph/build.ts";
+import { layerRow, openGraphDb } from "../src/engine/graph/db.ts";
+
+setDefaultTimeout(30_000);
+
+const HAS_RUST_ANALYZER = spawnSync("rust-analyzer", ["--version"]).status === 0;
+
+let project: string;
+let cargoHome: string;
+const saved: Record<string, string | undefined> = {};
+
+function git(cwd: string, ...args: string[]): string {
+  const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function commit(files: Record<string, string>): string {
+  for (const [file, text] of Object.entries({ ".gitignore": ".tmb/\n", ...files })) {
+    mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
+    writeFileSync(path.join(project, file), text);
+  }
+  git(project, "add", "-A");
+  git(project, "commit", "-q", "-m", "first");
+  return git(project, "rev-parse", "HEAD");
+}
+
+/** Sets an environment variable for one test; afterEach puts it back. */
+function setEnv(name: string, value: string): void {
+  if (!(name in saved)) saved[name] = process.env[name];
+  process.env[name] = value;
+}
+
+beforeEach(() => {
+  project = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-rust-analyzer-")));
+  git(project, "init", "-q", "-b", "main");
+  // An empty Cargo home of the test's own: the crate the repo depends on is not on disk.
+  cargoHome = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-cargo-")));
+  setEnv("CARGO_HOME", cargoHome);
+});
+
+afterEach(() => {
+  for (const [name, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+    delete saved[name];
+  }
+  rmSync(project, { recursive: true, force: true });
+  rmSync(cargoHome, { recursive: true, force: true });
+});
+
+const lines = (...l: string[]): string => `${l.join("\n")}\n`;
+
+const CARGO_TOML = lines(
+  "[package]",
+  'name = "grove"',
+  'version = "0.1.0"',
+  'edition = "2021"',
+  'build = "build.rs"',
+  "",
+  "[dependencies]",
+  'faraway = "1"',
+);
+
+const LIB = lines(
+  "pub mod orchard;", //                                         1
+  "mod crates;", //                                              2
+  "// `cfg(any())` holds for no build, so this file is never compiled (The Rust Reference, \"Conditional compilation\").", // 3
+  "#[cfg(any())]", //                                            4
+  "mod leftout;", //                                             5
+);
+
+const ORCHARD = lines(
+  "pub trait Fruit {", //                                        1
+  "    fn ripen(&self, days: u32) -> bool;", //                  2
+  "}", //                                                        3
+  "", //                                                         4
+  "pub struct Plum {", //                                        5
+  "    pub name: String,", //                                    6
+  "}", //                                                        7
+  "", //                                                         8
+  "impl Fruit for Plum {", //                                    9
+  "    fn ripen(&self, days: u32) -> bool {", //                 10
+  "        days as usize > self.name.len()", //                  11
+  "    }", //                                                    12
+  "}", //                                                        13
+  "", //                                                         14
+  "pub struct Kilos(pub u32);", //                               15
+  "", //                                                         16
+  "impl Kilos {", //                                             17
+  "    pub fn zero() -> Self {", //                              18
+  "        Self(0)", //                                          19
+  "    }", //                                                    20
+  "}", //                                                        21
+  "", //                                                         22
+  "pub enum Crop {", //                                          23
+  "    Bushel(u32),", //                                         24
+  "    Empty,", //                                               25
+  "}", //                                                        26
+  "", //                                                         27
+  "pub mod inner {", //                                          28
+  "    pub fn deep() -> u32 {", //                               29
+  "        1", //                                                30
+  "    }", //                                                    31
+  "}", //                                                        32
+  "", //                                                         33
+  "pub fn gather(fs: &[&dyn Fruit]) -> u32 {", //                34
+  "    let mut n = 0;", //                                       35
+  "    for f in fs {", //                                        36
+  "        if f.ripen(3) {", //                                  37
+  "            n += 1;", //                                      38
+  "        }", //                                                39
+  "    }", //                                                    40
+  '    let p = Plum { name: String::from("x") };', //            41
+  "    p.ripen(1);", //                                          42
+  "    let w = Kilos(n);", //                                    43
+  "    let _c = Crop::Bushel(2);", //                            44
+  "    let pluck = || 1;", //                                    45
+  "    pluck();", //                                             46
+  "    w.0 + crate::crates::stack() + inner::deep()", //         47
+  "}", //                                                        48
+);
+
+const CRATES = lines(
+  "pub fn stack() -> u32 {", //                                  1
+  "    slat(2)", //                                              2
+  "}", //                                                        3
+  "", //                                                         4
+  "fn slat(n: u32) -> u32 {", //                                 5
+  "    n", //                                                    6
+  "}", //                                                        7
+  "", //                                                         8
+  "pub fn split() -> u32 {", //                                  9
+  "    slat(1, 2)", //                                           10
+  "}", //                                                        11
+);
+
+const LEFT_OUT = lines(
+  "fn unused() -> u32 {", //                                     1
+  "    near()", //                                               2
+  "}", //                                                        3
+  "", //                                                         4
+  "fn near() -> u32 {", //                                       5
+  "    1", //                                                    6
+  "}", //                                                        7
+);
+
+const MAIN = lines(
+  "fn main() {", //                                              1
+  "    grove::orchard::gather(&[]);", //                         2
+  "    faraway::away();", //                                     3
+  "}", //                                                        4
+);
+
+/** A build script that would leave a file behind if it ran. */
+const buildScript = (marker: string): string => lines(`fn main() { std::fs::write(${JSON.stringify(marker)}, "ran").unwrap(); }`);
+
+type CallRow = { src: string; dst_name: string; line: number; dst: string | null; call_state: string };
+
+function calls(db: Database, layer: string): CallRow[] {
+  return db
+    .query(
+      `SELECT s.path || ':' || s.qualified_name AS src, e.dst_name, e.line, d.path || ':' || d.qualified_name AS dst, e.call_state
+         FROM edges e JOIN symbols s ON s.id = e.src_id LEFT JOIN symbols d ON d.id = e.dst_id
+        WHERE e.layer = ? AND e.call_state IS NOT NULL ORDER BY e.pos`,
+    )
+    .all(layer) as CallRow[];
+}
+
+/** The one call named `name` that `src` makes, on `line` when given. */
+function call(rows: CallRow[], src: string, name: string, line?: number): CallRow {
+  const found = rows.filter((r) => r.src === src && r.dst_name === name && (line === undefined || r.line === line));
+  if (found.length !== 1) throw new Error(`${found.length} calls of ${name} in ${src}`);
+  return found[0]!;
+}
+
+const marker = () => path.join(project, "ran.txt");
+
+async function built(links: "language-tool" | "built-in" = "language-tool"): Promise<{ db: Database; note: string | null }> {
+  const sha = commit({
+    "Cargo.toml": CARGO_TOML,
+    "build.rs": buildScript(marker()),
+    "src/lib.rs": LIB,
+    "src/orchard.rs": ORCHARD,
+    "src/crates.rs": CRATES,
+    "src/leftout.rs": LEFT_OUT,
+    "src/main.rs": MAIN,
+  });
+  const db = openGraphDb(project, null);
+  const stats = await buildLayer(db, project, sha, "b", { force: true, links });
+  return { db, note: stats.linksNote };
+}
+
+const GATHER = "src/orchard.rs:gather";
+
+describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust", () => {
+  test("a call links to the definition rust-analyzer names: in another file, in another crate of the package, a method through a value, through a trait object, and a function of a module by its path", async () => {
+    const { db } = await built();
+    try {
+      const rows = calls(db, "b");
+      expect(call(rows, GATHER, "stack")).toMatchObject({ dst: "src/crates.rs:stack", call_state: "linked" });
+      expect(call(rows, "src/main.rs:main", "gather")).toMatchObject({ dst: GATHER, call_state: "linked" });
+      expect(call(rows, GATHER, "ripen", 42)).toMatchObject({ dst: "src/orchard.rs:Plum.ripen", call_state: "linked" });
+      // Through `dyn Fruit`, the call names the trait's method, a declaration with no body: a node.
+      expect(call(rows, GATHER, "ripen", 37)).toMatchObject({ dst: "src/orchard.rs:Fruit.ripen", call_state: "linked" });
+      expect(call(rows, GATHER, "deep")).toMatchObject({ dst: "src/orchard.rs:inner.deep", call_state: "linked" });
+      expect(call(rows, "src/crates.rs:stack", "slat")).toMatchObject({ dst: "src/crates.rs:slat", call_state: "linked" });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a tuple struct's constructor and an enum's variant link to their type; the standard library is outside", async () => {
+    const { db } = await built();
+    try {
+      const rows = calls(db, "b");
+      expect(call(rows, GATHER, "Kilos")).toMatchObject({ dst: "src/orchard.rs:Kilos", call_state: "linked" });
+      expect(call(rows, GATHER, "Bushel")).toMatchObject({ dst: "src/orchard.rs:Crop", call_state: "linked" });
+      expect(call(rows, "src/orchard.rs:Kilos.zero", "Self")).toMatchObject({ dst: "src/orchard.rs:Kilos", call_state: "linked" });
+      expect(call(rows, GATHER, "from")).toMatchObject({ dst: null, call_state: "outside" });
+      expect(call(rows, "src/orchard.rs:Plum.ripen", "len")).toMatchObject({ dst: null, call_state: "outside" });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a local, a call rust-analyzer reports an error in, a file `cfg` leaves out, and a crate not on disk are not known", async () => {
+    const { db } = await built();
+    try {
+      const rows = calls(db, "b");
+      expect(call(rows, GATHER, "pluck")).toMatchObject({ dst: null, call_state: "not_known" });
+      // `slat` takes one argument: rust-analyzer reports an error in this call, so its answer is no answer.
+      expect(call(rows, "src/crates.rs:split", "slat")).toMatchObject({ dst: null, call_state: "not_known" });
+      // `cfg(any())` leaves leftout.rs out of every build, so no call in it is proven.
+      expect(call(rows, "src/leftout.rs:unused", "near")).toMatchObject({ dst: null, call_state: "not_known" });
+      // The crate `faraway` is a dependency, not on disk, and nothing is downloaded.
+      expect(call(rows, "src/main.rs:main", "away")).toMatchObject({ dst: null, call_state: "not_known" });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("way B runs no code of the repo and downloads nothing", async () => {
+    const { db, note } = await built();
+    db.close();
+    expect(note).toBeNull();
+    expect(existsSync(marker())).toBe(false);
+    // Cargo's home holds no crate it fetched.
+    const fetched = ["registry/cache", "registry/src", "git/db"].filter((dir) => existsSync(path.join(cargoHome, dir)) && readdirSync(path.join(cargoHome, dir)).length > 0);
+    expect(fetched).toEqual([]);
+  });
+
+  test("the same files read by the built-in rules leave a call through a path not known, and link one in a file `cfg` leaves out", async () => {
+    const { db } = await built("built-in");
+    try {
+      const rows = calls(db, "b");
+      expect(call(rows, GATHER, "stack")).toMatchObject({ dst: null, call_state: "not_known" });
+      expect(call(rows, "src/leftout.rs:unused", "near")).toMatchObject({ dst: "src/leftout.rs:near", call_state: "linked" });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test("without rust-analyzer on PATH, way B for Rust does not run: the built-in rules make the links, and the layer names what is missing", async () => {
+  const empty = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-nopath-")));
+  try {
+    // A PATH that holds git alone: the graph reads the commit through it.
+    const gitPath = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+    symlinkSync(gitPath, path.join(empty, "git"));
+    const sha = commit({ "Cargo.toml": CARGO_TOML, "src/crates.rs": CRATES });
+    setEnv("PATH", empty);
+    const db = openGraphDb(project, null);
+    try {
+      const stats = await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
+      expect(stats.linksNote).toContain("rust: rust-analyzer cannot run (no `rust-analyzer` on PATH), so the built-in rules");
+      expect(layerRow(db, "b")?.links_note).toBe(stats.linksNote);
+      expect(call(calls(db, "b"), "src/crates.rs:stack", "slat")).toMatchObject({ dst: "src/crates.rs:slat", call_state: "linked" });
+    } finally {
+      db.close();
+    }
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+});
