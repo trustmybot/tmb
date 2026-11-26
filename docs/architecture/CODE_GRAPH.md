@@ -627,6 +627,47 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 
 The code graph lives in its own SQLite file, apart from the record, so a build never holds the record's write lock: `.tmb/graph.db`, or in a multi-repo workspace one per repo, `.tmb/graphs/<repo>.db`. Its schema is `src/engine/graph/db.ts`.
 
+### How the graph is stored
+
+**The graph is rows in SQLite tables, not a graph database.** A node is a row and a link is a row that names two nodes. "Graph" is what the data means. The storage is relational.
+
+```mermaid
+flowchart LR
+    subgraph M["What it means: a graph"]
+        A["Cart.total, a method"] -- calls --> B["tax, a function"]
+    end
+    subgraph S["How it is stored: tables"]
+        R1["symbols: one row for Cart.total, one for tax"]
+        R2["edges: one row, from Cart.total to tax, kind calls"]
+    end
+    M --> S
+```
+
+| What the graph has | Where it is stored |
+|---|---|
+| A node: a directory, a file, a symbol | A row in `dirs`, `files` or `symbols` |
+| A link: holds, calls, imports, reads, writes | A row in `edges`, naming the two nodes and the kind of link |
+| The commit a graph was built at | A row in `layers` |
+
+- **Example 1.** "Who calls `tax`?" is one lookup: the rows of `edges` whose target is `tax`.
+- **Example 2.** "What does a change to `tax` reach?" follows links several steps. tmb repeats the one-step lookup. The storage has no path query of its own.
+- **The diagram below is an entity-relationship diagram.** It fits because the storage is tables: it shows the tables and how their rows point at each other. It is not a picture of a project's graph. What a node and a link mean is in [Kinds of symbol](#kinds-of-symbol) and [Links on proof](#links-on-proof).
+
+**Why SQLite.**
+
+| Reason | What it means |
+|---|---|
+| Nothing to install or run | SQLite is inside the tmb program. A graph database is a server to run or one more engine to carry, and tmb runs no background program ([PHILOSOPHY.md](PHILOSOPHY.md#9-gate-the-outcome-never-babysit)) |
+| One file per repo | The graph is a cache built from git. It is thrown away and rebuilt as one file, and it works offline |
+| One step per write | A whole layer is applied in one transaction, so a reader sees the old graph or the new one |
+| Search is built in | Search by name uses SQLite's own text index |
+| The same store as the record | One kind of storage to upgrade, check and debug |
+| The questions are short | Almost every question is one step or a few: who calls this, what is in this file. A graph database earns its place on long path queries, which tmb does not ask |
+
+- **Edge case.** A question that needs many steps over a very large repo would be slower than in a graph database. No such question is asked today.
+
+### What the file holds
+
 **This section lists every table and column of the graph file.** A schema change updates it in the same pull request. Planned: a generator with a freshness test that fails when it drifts.
 
 | Group | Tables | Rebuilt from |
