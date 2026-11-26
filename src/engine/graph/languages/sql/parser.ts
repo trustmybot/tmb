@@ -5,8 +5,8 @@
 import { readFileSync } from "node:fs";
 import wasmFile from "./sql-tables.wasm" with { type: "file" };
 
-/** Where a statement reads or writes: a table by name, the store alone, or a bucket. */
-export type SqlPlace = { to: "table"; name: string } | { to: "store" } | { to: "bucket"; name?: string };
+/** Where a statement reads or writes: a table by name, or the store alone. */
+export type SqlPlace = { to: "table"; name: string } | { to: "store" };
 
 export type SqlRef = { op: "read" | "write"; at: SqlPlace };
 
@@ -16,9 +16,13 @@ export type SqlStatement = {
   end: number;
   /** False when no dialect parses it, or two that parse it name different tables. */
   read: boolean;
+  /** How many dialects the parser tried. */
+  of: number;
+  /** How many of them parsed it, when it was read. */
+  parsed?: number;
+  /** Whether the general dialect parsed it, when it was read. */
+  general?: boolean;
   refs?: SqlRef[];
-  /** The tables, views and virtual tables it creates. */
-  defines?: { kind: string; name: string }[];
   triggers?: { name: string; on: SqlPlace | null; refs: SqlRef[] }[];
 };
 
@@ -69,6 +73,6 @@ export function readSql(text: string, hole: string): SqlStatement[] {
     return JSON.parse(json) as SqlStatement[];
   } catch {
     loaded = null;
-    return [{ line: 1, end: text.split("\n").length, read: false }];
+    return [{ line: 1, end: text.split("\n").length, read: false, of: 0 }];
   }
 }

@@ -11,7 +11,6 @@ export type SymbolKind =
   | 'type'
   | 'const'
   | 'sh_function'
-  | 'sql_table'
   | 'sql_trigger'
   | 'data_source'
   | 'module'
@@ -24,19 +23,12 @@ export type EdgeKind =
   | 'instantiates'
   | 'sources'
   | 'runs'
-  | 'reads_table'
-  | 'writes_table'
-  | 'reads_store'
-  | 'writes_store'
+  | 'reads_data'
+  | 'writes_data'
   | 'triggers_on'
   | 'bundles'
   | 'reads_config'
   | 'covers';
-
-// The kinds of a data source (CODE_GRAPH.md, "Data sources"): a leaf at the graph's edge, one node
-// per kind and name in a layer, whichever files name it. It is no code: no language's tool links a
-// call to it.
-export const DATA_SOURCE_KINDS: ReadonlySet<SymbolKind> = new Set<SymbolKind>(['sql_table', 'data_source']);
 
 // A language's name, as its module in the registry gives it.
 export type SourceLanguage = string;
@@ -74,9 +66,6 @@ export interface ExtractedSymbol {
   // a signature with no body in TypeScript, an attribute in Python. Each hides a method of the
   // same name further up its parents. Absent when it has none, and on every other kind.
   fields?: string[];
-  // On a data source: 1 where a statement defines it, such as a CREATE TABLE; absent where it is
-  // only named. The layer's one node of the name is at a definition when there is one.
-  defined?: 1;
 }
 
 export interface ParamInfo {
@@ -111,6 +100,10 @@ export interface ExtractedEdge {
   // grammar writes one, whatever its callee (trustmybot/tmb#252). Absent on every other reference,
   // such as a function passed as a value or a class a class extends.
   call?: 1;
+  // On a link to a data source (CODE_GRAPH.md, "Data sources"): the data source's kind, such as a
+  // table. Its name is dst_name, '' when the code does not state one. A data source is no symbol
+  // of a file: the layer holds one node of each kind and name, and links to it.
+  data?: string;
   // On a call: its position in the file, which tells two calls of one name on one line apart
   // (CODE_GRAPH.md, "Two ways to make links"). See CallMark.
   pos?: number;
@@ -192,6 +185,11 @@ export class Collector {
     this.symbols.push(s);
     this.byKey.set(key, this.symbols.length - 1);
     return this.symbols.length - 1;
+  }
+
+  // A link to a data source of this kind and name ('' when the code does not state it).
+  dataLink(src: number, kind: EdgeKind, data: string, name: string, line: number): void {
+    this.edges.push({ src, kind, dst_name: name, line, hint: null, data });
   }
 
   edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt): void {

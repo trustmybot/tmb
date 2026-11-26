@@ -1,6 +1,6 @@
 // Links a reference to its definition only on proof, carried over from the plugin's resolver:
 // the same file, a resolved import, an explicit path, a declared receiver type, or the one
-// definition of a table or script. A bare name that matches a symbol elsewhere is never
+// definition of a script. A bare name that matches a symbol elsewhere is never
 // proof, so such a reference stays unresolved rather than risk a wrong link.
 import { basename, posix } from "node:path";
 import type { EdgeKind, ExtractedEdge, ExtractedExport, SymbolKind } from "./extract.ts";
@@ -31,14 +31,6 @@ export type Candidate = {
 export type Link = { dst: number; how: "exact" | "name" };
 
 const CALLABLE = new Set<SymbolKind>(["function", "method", "class", "sh_function"]);
-/** The links to a data source, by the kind of node each ends at (CODE_GRAPH.md, "Data sources"). */
-const DATA_SOURCE_EDGES = new Map<EdgeKind, SymbolKind>([
-  ["reads_table", "sql_table"],
-  ["writes_table", "sql_table"],
-  ["triggers_on", "sql_table"],
-  ["reads_store", "data_source"],
-  ["writes_store", "data_source"],
-]);
 /** Edges that name a key, not a symbol: they are never linked. */
 export const NAME_ONLY_EDGES: ReadonlySet<EdgeKind> = new Set<EdgeKind>(["reads_config", "covers"]);
 
@@ -375,12 +367,6 @@ export class Resolver {
     }
     if (edge.kind === "bundles") return link(this.modules.get(edge.dst_name), "exact");
     if (edge.kind === "runs" || edge.kind === "sources") return link(this.scriptTarget(edge.dst_name)?.id, "exact");
-    const source = DATA_SOURCE_EDGES.get(edge.kind);
-    if (source !== undefined) {
-      // A layer holds one node of each data source's kind and name, whichever files name it.
-      const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => c.kind === source);
-      return link(cands.length === 1 ? cands[0]!.id : undefined, "exact");
-    }
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
     // A bare or imported name is never a class's method of that name (trustmybot/tmb#242).
     const declared = cands.filter((c) => c.reach === undefined && c.kind !== "method");

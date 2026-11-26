@@ -5,7 +5,8 @@
 //! - A text is split into statements at each `;` outside a trigger's body (a trigger's body ends
 //!   at `END ;`, as SQLite's sqlite3_complete reads it), by the general dialect's tokenizer.
 //! - Each statement is parsed by the general dialect, then by every other dialect the crate has.
-//!   Its tables count when every dialect that parses it names the same ones; else it is unread.
+//!   When every dialect that parses it names the same tables, those are its tables, with how many
+//!   dialects parsed it and whether the general one did, for the caller to weigh; else it is unread.
 //! - A name is its last part. A name holding the hole marker, which a caller puts where code
 //!   interpolates a value, is not stated: the link goes to the store alone.
 
@@ -13,7 +14,7 @@ use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 
 use sqlparser::ast::{
-    CopyIntoSnowflakeKind, CopySource, CopyTarget, FromTable, ObjectName, ObjectNamePart, ObjectType, Query, Statement,
+    CopyIntoSnowflakeKind, CopySource, FromTable, ObjectName, ObjectNamePart, ObjectType, Query, Statement,
     TableFactor, TableObject, TableWithJoins, Visit, Visitor,
 };
 use sqlparser::dialect::{Dialect, GenericDialect};
@@ -21,16 +22,11 @@ use sqlparser::keywords::Keyword;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, TokenWithSpan, Tokenizer};
 
-/// URL schemes that name an object store's bucket as their host, as DuckDB's httpfs and Azure
-/// extensions read them: `s3://bucket/key`.
-const OBJECT_STORAGE_SCHEMES: &[&str] = &["s3", "s3a", "s3n", "gs", "gcs", "r2", "az", "azure", "abfs", "abfss", "wasb", "wasbs"];
-
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum To {
     Table(String),
     /// The store alone: the statement does not state the table's name.
     Store,
-    Bucket(Option<String>),
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -49,8 +45,6 @@ struct Trigger {
 #[derive(Clone, PartialEq, Eq, Default)]
 struct Tables {
     refs: BTreeSet<Ref>,
-    /// What the statement defines: (kind, name).
-    defines: BTreeSet<(String, String)>,
     triggers: Vec<Trigger>,
 }
 
@@ -80,18 +74,6 @@ impl Names<'_> {
         }
     }
 
-    fn bucket(&self, url: &str) -> Option<To> {
-        let (scheme, rest) = url.split_once("://")?;
-        if !OBJECT_STORAGE_SCHEMES.contains(&scheme.to_lowercase().as_str()) {
-            return None;
-        }
-        let host = rest.split('/').next().unwrap_or("");
-        if host.is_empty() || (!self.hole.is_empty() && host.to_lowercase().contains(self.hole)) {
-            Some(To::Bucket(None))
-        } else {
-            Some(To::Bucket(Some(host.to_string())))
-        }
-    }
 }
 
 /// Every table a part of a statement reads: each table in a FROM, a JOIN or a subquery that no
@@ -213,18 +195,9 @@ fn tables_of(statement: &Statement, names: &Names) -> Option<Tables> {
                 skip.push(&merge.table);
             }
         }
-        Statement::CreateTable(create) => {
-            write(&mut tables, names.last(&create.name));
-            define(&mut tables, "table", names.last(&create.name));
-        }
-        Statement::CreateView(create) => {
-            write(&mut tables, names.last(&create.name));
-            define(&mut tables, "view", names.last(&create.name));
-        }
-        Statement::CreateVirtualTable { name, .. } => {
-            write(&mut tables, names.last(name));
-            define(&mut tables, "virtual table", names.last(name));
-        }
+        Statement::CreateTable(create) => write(&mut tables, names.last(&create.name)),
+        Statement::CreateView(create) => write(&mut tables, names.last(&create.name)),
+        Statement::CreateVirtualTable { name, .. } => write(&mut tables, names.last(name)),
         Statement::CreateIndex(index) => write(&mut tables, names.last(&index.table_name)),
         Statement::AlterTable(alter) => write(&mut tables, names.last(&alter.name)),
         Statement::AlterView(alter) => write(&mut tables, names.last(&alter.name)),
@@ -249,37 +222,22 @@ fn tables_of(statement: &Statement, names: &Names) -> Option<Tables> {
                 write(&mut tables, names.last(&rename.new_name));
             }
         }
-        Statement::Copy { source, to, target, .. } => {
+        // An address the statement copies from or to is not read: only the table.
+        Statement::Copy { source, to, .. } => {
             if let CopySource::Table { table_name, .. } = source {
                 if let Some(t) = names.last(table_name) {
                     tables.refs.insert(Ref { write: !*to, to: t });
                 }
             }
-            if let CopyTarget::File { filename } = target {
-                if let Some(b) = names.bucket(filename) {
-                    tables.refs.insert(Ref { write: *to, to: b });
+        }
+        Statement::CopyIntoSnowflake { kind, into, from_obj, .. } => match kind {
+            CopyIntoSnowflakeKind::Table => write(&mut tables, names.last(into)),
+            CopyIntoSnowflakeKind::Location => {
+                if let Some(t) = from_obj.as_ref().and_then(|n| names.last(n)) {
+                    tables.refs.insert(Ref { write: false, to: t });
                 }
             }
-        }
-        Statement::CopyIntoSnowflake { kind, into, from_obj, stage_params, .. } => {
-            let url = stage_params.url.as_deref().and_then(|u| names.bucket(u));
-            match kind {
-                CopyIntoSnowflakeKind::Table => {
-                    write(&mut tables, names.last(into));
-                    if let Some(b) = url {
-                        tables.refs.insert(Ref { write: false, to: b });
-                    }
-                }
-                CopyIntoSnowflakeKind::Location => {
-                    if let Some(b) = url {
-                        tables.refs.insert(Ref { write: true, to: b });
-                    }
-                    if let Some(t) = from_obj.as_ref().and_then(|n| names.last(n)) {
-                        tables.refs.insert(Ref { write: false, to: t });
-                    }
-                }
-            }
-        }
+        },
         Statement::CreateTrigger(trigger) => {
             let mut body = BTreeSet::new();
             if let Some(statements) = &trigger.statements {
@@ -307,12 +265,6 @@ fn write(tables: &mut Tables, to: Option<To>) {
     }
 }
 
-fn define(tables: &mut Tables, kind: &str, name: Option<To>) {
-    if let Some(To::Table(n)) = name {
-        tables.defines.insert((kind.to_string(), n));
-    }
-}
-
 fn reads<V: Visit>(names: &Names, node: &V, skip: Vec<*const TableFactor>) -> BTreeSet<Ref> {
     let mut visitor = Reads { names, skip, ctes: Vec::new(), out: BTreeSet::new() };
     let _ = node.visit(&mut visitor);
@@ -324,11 +276,13 @@ fn dialects() -> Vec<Box<dyn Dialect>> {
     sqlparser::test_utils::all_dialects().dialects
 }
 
-/// One statement's tables when every dialect that parses it agrees; None when none parses it or
-/// two disagree.
-fn agreed(text: &str, names: &Names, dialects: &[Box<dyn Dialect>]) -> Option<Tables> {
+/// One statement's tables when every dialect that parses it agrees, with how many parsed it and
+/// whether the general one (the first) did; None when none parses it or two disagree.
+fn agreed(text: &str, names: &Names, dialects: &[Box<dyn Dialect>]) -> Option<(Tables, usize, bool)> {
     let mut answer: Option<Tables> = None;
-    for dialect in dialects {
+    let mut parsed = 0;
+    let mut general = false;
+    for (i, dialect) in dialects.iter().enumerate() {
         let Ok(statements) = Parser::parse_sql(dialect.as_ref(), text) else { continue };
         if statements.len() != 1 {
             continue;
@@ -339,8 +293,10 @@ fn agreed(text: &str, names: &Names, dialects: &[Box<dyn Dialect>]) -> Option<Ta
             Some(known) if *known == tables => {}
             Some(_) => return None,
         }
+        parsed += 1;
+        general |= i == 0;
     }
-    answer
+    answer.map(|t| (t, parsed, general))
 }
 
 struct Piece {
@@ -466,12 +422,6 @@ fn json_to(out: &mut String, to: &To) {
             out.push('}');
         }
         To::Store => out.push_str("{\"to\":\"store\"}"),
-        To::Bucket(None) => out.push_str("{\"to\":\"bucket\"}"),
-        To::Bucket(Some(n)) => {
-            out.push_str("{\"to\":\"bucket\",\"name\":");
-            json_string(out, n);
-            out.push('}');
-        }
     }
 }
 
@@ -488,8 +438,8 @@ fn json_refs(out: &mut String, refs: &BTreeSet<Ref>) {
     out.push(']');
 }
 
-/// The statements of `text` as JSON: each one's first and last line, whether it was read, and its
-/// tables.
+/// The statements of `text` as JSON: each one's first and last line, whether it was read, how many
+/// of the dialects (`of`) parsed it and whether the general one did, and its tables.
 pub fn analyze(text: &str, hole: &str) -> String {
     let names = Names { hole };
     let dialects = dialects();
@@ -501,22 +451,12 @@ pub fn analyze(text: &str, hole: &str) -> String {
             out.push(',');
         }
         first = false;
-        out.push_str(&format!("{{\"line\":{},\"end\":{},\"read\":{}", piece.line, piece.end_line, tables.is_some()));
-        if let Some(t) = tables {
+        out.push_str(&format!("{{\"line\":{},\"end\":{},\"read\":{},\"of\":{}", piece.line, piece.end_line, tables.is_some(), dialects.len()));
+        if let Some((t, parsed, general)) = tables {
+            out.push_str(&format!(",\"parsed\":{},\"general\":{}", parsed, general));
             out.push_str(",\"refs\":");
             json_refs(&mut out, &t.refs);
-            out.push_str(",\"defines\":[");
-            for (i, (kind, name)) in t.defines.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push_str("{\"kind\":");
-                json_string(&mut out, kind);
-                out.push_str(",\"name\":");
-                json_string(&mut out, name);
-                out.push('}');
-            }
-            out.push_str("],\"triggers\":[");
+            out.push_str(",\"triggers\":[");
             for (i, trigger) in t.triggers.iter().enumerate() {
                 if i > 0 {
                     out.push(',');

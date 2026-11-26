@@ -6,14 +6,14 @@ import { basename, posix } from "node:path";
 import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
-import { DATA_SOURCE_KINDS, type LanguageTool, type ToolAnswer, type ToolCall, type ToolNode } from "./languages/contract.ts";
+import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
 import { LANGUAGES, languageNamed } from "./languages/registry.ts";
 import { unreadLanguageOf } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
 import { type Candidate, callState, type Link, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
 import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
-import { isTestPath, laneOf } from "./test-paths.ts";
+import { laneOf } from "./test-paths.ts";
 import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
@@ -244,8 +244,7 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
       if (plan.lang === null || !mine.has(plan.lang)) continue;
       const file = plan.entry.path;
       extraction.symbols.forEach((s, i) => {
-        // A data source is no code: no call is linked to it.
-        if (s.kind === "module" || s.unnamed === 1 || DATA_SOURCE_KINDS.has(s.kind)) return;
+        if (s.kind === "module" || s.unnamed === 1) return;
         nodes.push({ path: file, name: ownName(s.qualified_name), start: s.start_line, end: s.end_line });
         nodeRows.push(symbolOffset + i);
       });
@@ -274,23 +273,26 @@ function ancestorsOf(dir: string): string[] {
   return out;
 }
 
+const dataSourceKey = (kind: string, name: string): string => `${kind}\u0000${name}`;
+
 /**
- * The rows of the layer's one node of each data source (CODE_GRAPH.md, "Data sources"), by file
- * and index in its extraction: every file that names a table has a row of it, and the layer keeps
- * one, at a definition before a mention, outside the tests before in them, then in path order.
+ * The layer's data sources (CODE_GRAPH.md, "Data sources"): one node of each kind and name its
+ * links reach, in no file and in nothing, its kind as its signature and its name ('' for a store
+ * the code does not name). Returns each one's id by dataSourceKey.
  */
-function dataSourceNodes(plans: readonly FilePlan[]): Set<string> {
-  const kept = new Map<string, { at: string; rank: number }>();
-  for (const plan of plans) {
-    plan.extraction?.symbols.forEach((s, i) => {
-      if (!DATA_SOURCE_KINDS.has(s.kind)) return;
-      const key = `${s.kind}\u0000${s.qualified_name}`;
-      const rank = (s.defined === 1 ? 0 : 2) + (isTestPath(plan.entry.path) ? 1 : 0);
-      const known = kept.get(key);
-      if (known === undefined || rank < known.rank) kept.set(key, { at: `${plan.entry.path}\u0000${i}`, rank });
-    });
+function writeDataSources(db: Database, layer: string, edges: readonly Extraction["edges"][number][]): Map<string, number> {
+  const insert = db.prepare("INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, exported, unnamed) VALUES (?, '', 'data_source', ?, ?, ?, '', 0, 0)");
+  const insertFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, '')");
+  const ids = new Map<string, number>();
+  for (const edge of edges) {
+    if (edge.data === undefined) continue;
+    const key = dataSourceKey(edge.data, edge.dst_name);
+    if (ids.has(key)) continue;
+    const id = Number(insert.run(layer, edge.dst_name, edge.dst_name, edge.data).lastInsertRowid);
+    insertFts.run(id, layer, `${splitWords(edge.dst_name)} ${splitWords(edge.data)}`);
+    ids.set(key, id);
   }
-  return new Set([...kept.values()].map((k) => k.at));
+  return ids;
 }
 
 /** Writes one whole layer, replacing what it held. */
@@ -327,9 +329,6 @@ function applyLayer(
   const pending: Pending[] = [];
   const symbolRows: { file: string; s: Extraction["symbols"][number]; offset: number }[] = [];
   const exports = new Map<string, ExtractedExport[]>();
-  const sources = dataSourceNodes(plans);
-  /** Rows of a data source the layer holds at another file's row: never written, never a target. */
-  const merged = new Set<number>();
   let statementsNotRead = 0;
   for (const plan of plans) {
     const file = plan.entry.path;
@@ -340,12 +339,7 @@ function applyLayer(
     if (plan.extraction.exports) exports.set(file, plan.extraction.exports);
     statementsNotRead += plan.extraction.statementsNotRead ?? 0;
     const offset = symbolRows.length;
-    for (const [i, s] of plan.extraction.symbols.entries()) {
-      if (DATA_SOURCE_KINDS.has(s.kind) && !sources.has(`${file}\u0000${i}`)) {
-        merged.add(symbolRows.length);
-        symbolRows.push({ file, s, offset });
-        continue;
-      }
+    for (const s of plan.extraction.symbols) {
       // An unnamed function is no reference's target: nothing names it.
       if (s.unnamed !== 1) {
         const parent = s.reach === "nested" && s.parent !== undefined ? plan.extraction.symbols[s.parent] : undefined;
@@ -373,13 +367,7 @@ function applyLayer(
   // A symbol's container and owner come before it in its file's list, so their ids are known.
   const ids: number[] = [];
   let functions = 0;
-  let written = 0;
-  for (const [row, { file, s, offset }] of symbolRows.entries()) {
-    if (merged.has(row)) {
-      ids.push(-1);
-      continue;
-    }
-    written++;
+  for (const { file, s, offset } of symbolRows) {
     const parentId = s.parent === undefined ? null : ids[offset + s.parent]!;
     const namedId = s.unnamed === 1 && s.owner !== undefined ? ids[offset + s.owner]! : null;
     const id = Number(
@@ -404,6 +392,7 @@ function applyLayer(
     if (FUNCTION_KINDS.has(s.kind)) functions++;
     ids.push(id);
   }
+  const sources = writeDataSources(db, layer, pending.map((p) => p.edge));
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
   const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
@@ -412,6 +401,11 @@ function applyLayer(
   );
   let unresolved = 0;
   pending.forEach(({ file, symbolIndex, edge }, index) => {
+    if (edge.data !== undefined) {
+      // A link to a data source ends at the layer's one node of its kind and name.
+      insertEdge.run(layer, ids[symbolIndex]!, sources.get(dataSourceKey(edge.data, edge.dst_name))!, edge.dst_name, edge.kind, "exact", edge.line, null, null, null, BUILT_IN);
+      return;
+    }
     // A call its language's tool answered takes the tool's answer, and nothing else (trustmybot/tmb#311).
     const answer = byTool.answers.get(index);
     const link: Link | null = answer === undefined ? resolver.resolve(file, edge) : "node" in answer ? { dst: answer.node, how: "exact" } : null;
@@ -436,7 +430,7 @@ function applyLayer(
     layer,
     commit,
     files: plans.length,
-    symbols: written,
+    symbols: ids.length + sources.size,
     edges: pending.length,
     unresolved,
     unresolvedImports,
