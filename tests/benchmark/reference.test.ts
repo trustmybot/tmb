@@ -50,6 +50,33 @@ const METHOD = [
   "",
 ].join("\n");
 
+// Overload stubs are one function (trustmybot/tmb#368): `typing.overload` and
+// `typing_extensions.overload`, however the file names them; a decorator that only shares the name
+// is not it.
+const STUBS = [
+  "import typing as t", // 1
+  "from typing_extensions import overload as alt", // 2
+  "from glaze import overload", // 3
+  "", // 4
+  "@t.overload", // 5
+  "def roll(n: int) -> int: ...", // 6
+  "@t.overload", // 7
+  "def roll(n: str) -> str:", // 8
+  "    return check(n)", // 9: a stub's call belongs to the code around it
+  "def roll(n):", // 10
+  "    return n", // 11
+  "", // 12
+  "class Wheel:", // 13
+  "    @alt", // 14
+  "    def spin(self, x: int) -> int: ...", // 15
+  "    def spin(self, x):", // 16
+  "        return x", // 17
+  "", // 18
+  "@overload", // 19: glaze's, not typing's
+  "def coil(x): ...", // 20
+  "",
+].join("\n");
+
 const hasPython = spawnSync("python3", ["-I", "-c", "pass"]).status === 0;
 
 describe("Python's own parser as the reference", () => {
@@ -84,6 +111,12 @@ describe("Python's own parser as the reference", () => {
     expect(functions.get("box.py")).toEqual(["1-2", "2-2", "4-5", "8-10"]);
     // The reference counts a class body's calls for the file.
     expect(Object.fromEntries(calls)).toEqual({ "box.py:": 2, "box.py:8-10": 1 });
+  });
+
+  test("an @overload stub is no function, and its body's calls belong to the code around it", () => {
+    const { functions, calls } = referenceCounts(pythonReference(new Map([["wheel.py", STUBS]])));
+    expect(functions.get("wheel.py")).toEqual(["10-11", "16-17", "19-20"]);
+    expect(Object.fromEntries(calls)).toEqual({ "wheel.py:": 1 });
   });
 
   test("a file Python cannot parse is named, not scored", () => {

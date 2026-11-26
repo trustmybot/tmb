@@ -111,8 +111,17 @@ function pyImports(root: Node, out: Collector, moduleSymbol: number): { aliases:
   return { aliases, sources, bound };
 }
 
-/** How a scope binds a name: an import of `name` from `module`, a function defined there, or any other value. */
-type PyBinding = { kind: 'import'; name: string; module: string } | { kind: 'function'; line: number } | { kind: 'value' };
+/**
+ * How a scope binds a name: an import of `name` from `module`, a module itself (`import a.b as m`
+ * binds `m` to `a.b`; `import a.b` binds `a` to `a`), a function defined there, an `@overload`
+ * stub, or any other value.
+ */
+type PyBinding = { kind: 'import'; name: string; module: string } | { kind: 'module'; module: string } | { kind: 'function'; line: number } | { kind: 'stub' } | { kind: 'value' };
+
+// The decorator that marks a definition as an overload stub (The Python Standard Library,
+// `typing.overload`): `overload` of `typing`, or of `typing_extensions`, which re-exports it.
+const OVERLOAD = 'overload';
+const OVERLOAD_MODULES = new Set(['typing', 'typing_extensions']);
 
 // The names a target binds: a plain name, or each name of a tuple or list of targets; an
 // attribute or a subscript binds none.
@@ -137,8 +146,8 @@ function paramName(p: Node): string | null {
 // assignment, loop, `with … as`, `except … as`, `:=`, import, and function or class defined
 // there. Scopes inside it are not entered. A name declared `global` or `nonlocal` is not its
 // own. A name bound more than once is a value, unless each time by the same import: no one
-// place proves it.
-function pyScopeBindings(scope: Node): Map<string, PyBinding> {
+// place proves it. `isStub` says which definitions are `@overload` stubs; with none given, none is.
+function pyScopeBindings(scope: Node, isStub: (definition: Node) => boolean = () => false): Map<string, PyBinding> {
   const found = new Map<string, PyBinding[]>();
   const add = (name: string, b: PyBinding): void => {
     const list = found.get(name);
@@ -157,7 +166,7 @@ function pyScopeBindings(scope: Node): Map<string, PyBinding> {
         case 'function_definition':
         case 'class_definition': {
           const n = c.childForFieldName('name')?.text;
-          if (n) add(n, c.type === 'function_definition' ? { kind: 'function', line: (c.parent?.type === 'decorated_definition' ? c.parent : c).startPosition.row + 1 } : { kind: 'value' });
+          if (n) add(n, c.type !== 'function_definition' ? { kind: 'value' } : isStub(c) ? { kind: 'stub' } : { kind: 'function', line: (c.parent?.type === 'decorated_definition' ? c.parent : c).startPosition.row + 1 });
           continue;
         }
         case 'lambda':
@@ -189,8 +198,9 @@ function pyScopeBindings(scope: Node): Map<string, PyBinding> {
           for (const n of c.childrenForFieldName('name')) {
             if (!n) continue;
             const alias = n.type === 'aliased_import' ? n.childForFieldName('alias')?.text : undefined;
-            const name = alias ?? (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text.split('.')[0];
-            if (name) add(name, { kind: 'value' });
+            const dotted = (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text;
+            const name = alias ?? dotted?.split('.')[0];
+            if (name && dotted) add(name, { kind: 'module', module: alias ? dotted : name });
           }
           continue;
         case 'import_from_statement': {
@@ -211,6 +221,8 @@ function pyScopeBindings(scope: Node): Map<string, PyBinding> {
     // A class body binds names too (trustmybot/tmb#287), for the statements directly in it.
     const body = scope.childForFieldName('body');
     if (body) walk(body);
+  } else if (scope.type === 'module') {
+    walk(scope);
   } else if (scope.type === 'lambda') {
     // A lambda binds only its parameters.
   } else {
@@ -221,10 +233,15 @@ function pyScopeBindings(scope: Node): Map<string, PyBinding> {
     }
   }
   const bindings = new Map<string, PyBinding>();
-  for (const [name, list] of found) {
+  for (const [name, all] of found) {
     if (notOwn.has(name)) continue;
+    // An `@overload` stub binds its name to a stand-in that the definition after it replaces: the
+    // stubs are one function with it. Stubs with no other binding are a value.
+    const list = all.some((b) => b.kind !== 'stub') ? all.filter((b) => b.kind !== 'stub') : [{ kind: 'value' } as const];
     const first = list[0]!;
-    const same = list.length === 1 || list.every((b) => b.kind === 'import' && first.kind === 'import' && b.name === first.name && b.module === first.module);
+    const sameImport = (b: PyBinding): boolean =>
+      (b.kind === 'import' && first.kind === 'import' && b.name === first.name && b.module === first.module) || (b.kind === 'module' && first.kind === 'module' && b.module === first.module);
+    const same = list.length === 1 || list.every(sameImport);
     bindings.set(name, same ? first : { kind: 'value' });
   }
   return bindings;
@@ -440,20 +457,47 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
   );
   const target = (name: string): string => aliases.get(name) ?? name;
   const isClass = (name: string): boolean => classes.has(name) || (bound.has(name) && /^[A-Z]/.test(target(name)));
-  const scopes = new Map<number, Map<string, PyBinding>>();
-  const bindingsOf = (scope: Node): Map<string, PyBinding> => {
-    let bindings = scopes.get(scope.id);
-    if (!bindings) {
-      bindings = pyScopeBindings(scope);
-      scopes.set(scope.id, bindings);
-    }
-    return bindings;
+  // Each scope's bindings, cached: `bare` tells no `@overload` stub from another function, and is
+  // what a decorator is looked up in, since whether a definition is a stub rests on its decorators.
+  const cached = (stubs: (definition: Node) => boolean) => {
+    const scopes = new Map<number, Map<string, PyBinding>>();
+    return (scope: Node): Map<string, PyBinding> => {
+      let bindings = scopes.get(scope.id);
+      if (!bindings) {
+        bindings = pyScopeBindings(scope, stubs);
+        scopes.set(scope.id, bindings);
+      }
+      return bindings;
+    };
   };
+  const bare = cached(() => false);
+  // Whether a definition is an `@overload` stub: one of its decorators is `typing.overload` or
+  // `typing_extensions.overload`, looked up as Python looks up the decorator, where the definition
+  // is written: a name an import of `overload` from either binds, or `overload` of a name bound to
+  // either module.
+  const isStub = (definition: Node): boolean => {
+    const decorated = definition.parent?.type === 'decorated_definition' ? definition.parent : null;
+    for (const decorator of decorated ? named(decorated).filter((c) => c.type === 'decorator') : []) {
+      const e = named(decorator).find((c) => c.type !== 'comment');
+      const lookup = (n: Node): PyBinding | undefined => scopedBinding(bare, n, n.text) ?? bare(root).get(n.text);
+      if (e?.type === 'identifier') {
+        const b = lookup(e);
+        if (b?.kind === 'import' && b.name === OVERLOAD && OVERLOAD_MODULES.has(b.module)) return true;
+      } else if (e?.type === 'attribute' && e.childForFieldName('attribute')?.text === OVERLOAD) {
+        const object = e.childForFieldName('object');
+        const b = object?.type === 'identifier' ? lookup(object) : undefined;
+        if (b?.kind === 'module' && OVERLOAD_MODULES.has(b.module)) return true;
+      }
+    }
+    return false;
+  };
+  const bindingsOf = cached(isStub);
   // How the scopes around a node bind a name, the innermost first (trustmybot/tmb#246); undefined
   // when none does, so the module's own names and imports answer for it. A class body's names
   // hold for the statements directly in it, and not inside the functions, lambdas and
   // comprehensions there, since a class body is no scope around them (trustmybot/tmb#287).
-  const localBinding = (node: Node, name: string): PyBinding | undefined => {
+  const localBinding = (node: Node, name: string): PyBinding | undefined => scopedBinding(bindingsOf, node, name);
+  function scopedBinding(of: (scope: Node) => Map<string, PyBinding>, node: Node, name: string): PyBinding | undefined {
     let crossed = false;
     let child = node;
     let grandchild: Node | null = null;
@@ -462,12 +506,12 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       if (!classScope && !PY_SCOPES.has(a.type)) continue;
       if (evaluatedOutside(a, child, grandchild)) continue;
       if (classScope && crossed) continue;
-      const b = bindingsOf(a).get(name);
+      const b = of(a).get(name);
       if (b) return b;
       if (!classScope) crossed = true;
     }
     return undefined;
-  };
+  }
   // Where a call's lookup ends past the functions around it (trustmybot/tmb#252): the class body
   // the call is written in directly, then the module, then Python's builtins. `member` is the
   // name called on the object, which the builtin must have as a callable attribute.
@@ -541,8 +585,9 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     } else if (t === 'function_definition') {
       const n = node.childForFieldName('name')?.text;
       innerPlace = 'nested';
-      if (n && place === 'module') inner = definition(node, 'function', n, exportedName(n), scope);
-      else if (n && place === 'class' && cls) inner = definition(node, 'method', `${cls}.${n}`, 0, scope);
+      // An `@overload` stub is no node: the one definition that runs is (CODE_GRAPH.md, "Overload stubs are one function").
+      if (n && place === 'module' && !isStub(node)) inner = definition(node, 'function', n, exportedName(n), scope);
+      else if (n && place === 'class' && cls && !isStub(node)) inner = definition(node, 'method', `${cls}.${n}`, 0, scope);
     } else if (t === 'expression_statement' && node.parent?.type === 'module') {
       const assignment = node.namedChildren[0];
       const hasValue = assignment?.type === 'assignment' && assignment.childForFieldName('right') !== null;
@@ -577,7 +622,8 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
         const b = localBinding(fn, fn.text);
         if (b === undefined) moduleReference(scope, isClass(fn.text) ? 'instantiates' : 'calls', fn.text, line, { ...outside(fn, fn.text), ...at(fn) });
         else if (b.kind === 'import') out.edge(scope, /^[A-Z]/.test(b.name) ? 'instantiates' : 'calls', b.name, line, b.module, 'import', undefined, { ...importMark(b.module), ...at(fn) });
-        else out.edge(scope, 'calls', fn.text, line, b.kind === 'function' ? String(b.line) : null, b.kind, undefined, at(fn));
+        else if (b.kind === 'function') out.edge(scope, 'calls', fn.text, line, String(b.line), b.kind, undefined, at(fn));
+        else out.edge(scope, 'calls', fn.text, line, null, 'value', undefined, at(fn));
         written = true;
       } else if (fn?.type === 'attribute') {
         const attribute = fn.childForFieldName('attribute');
