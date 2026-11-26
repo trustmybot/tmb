@@ -139,7 +139,7 @@ flowchart LR
 | Refuse an outcome | Task close, review, push | Strong: the engine or git enforces it |
 | Remember | The record | Lets a new session or host carry on |
 
-- **Example 1.** A worker edits a file outside its task. Nothing stops the edit. The close refuses the commit.
+- **Example 1.** A worker's change breaks a test. Nothing stops the edit. The close runs the task's checks on the commit and refuses it.
 - **Example 2.** A host fails to raise an event. The push gate still checks every commit: a later checkpoint catches what an earlier one missed.
 - **Edge case.** The Human switches tmb off. That is the Human's choice. tmb does not enforce against its own user.
 - **What tmb cannot do.** Make an agent act, see an agent's reasoning, or steer a model mid-turn. So a rule is a refusal or a tool, never a hope.

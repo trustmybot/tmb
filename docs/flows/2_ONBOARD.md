@@ -43,16 +43,28 @@ What first contact settles, and who settles it.
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
 | Issue sync | Planned, inside the syncer (trustmybot/tmb#70). | | |
 
-- **Init asks nothing.** It never waits for input, on a terminal or not (trustmybot/tmb#162). It sets the host and its role and, in a multi-repo workspace, each repo's base branch and found checks. Every other setting stays empty.
-- **Onboarding happens by itself.** When a planner's session starts and the base branch, the review mode or the checks is empty, the engine says so, with what it found. The planner applies what it recommends before other work and shows it. It reminds the Human that `tmb onboard` can be run again, and that it can change a value when asked.
-- **The review mode is the Human's choice** (trustmybot/tmb#114). It decides how many tokens a project uses. Three ways set it: the planner's question, `tmb onboard` on a terminal, or its review-mode flag with a typed yes. The record keeps which. It is a step only the Human may take ([HOSTS.md](../architecture/HOSTS.md#ways-into-the-engine)).
-- **Unattended runs.** The planner applies its recommendations and names each value in its answer. It never sets the review mode, so the first task is refused and the refusal names `tmb onboard`. One exception: a run with no terminal may set a mode where none is set, never change one (trustmybot/tmb#223).
-- **Re-runs keep what stands.** `tmb onboard` offers each stored value first and changes a setting only when the Human gives a new one. Init run again keeps every stored setting and, in a multi-repo workspace, each repo's policy; it adds repos that appeared and drops those that are gone, one line each. The same answers change no file and record nothing.
-- **Every change is kept.** Each change to a setting is an entry in the record's audit trail, and the newest entry is the value in force.
-- **Without a terminal `tmb onboard` never waits.** Each question takes its default, and the review mode stays as it is.
+## Init asks nothing
+
+Init never waits for input, on a terminal or not (trustmybot/tmb#162). It sets the host and its role. Every other setting stays empty.
+
+- **Example.** In a multi-repo workspace init also sets each repo's base branch and the checks found in it.
 - **Repos come from init.** Init records every top-level folder of a workspace, repo or not, and finds repos up to two folders down. Later steps never scan or guess ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
-- **Nothing lands in the repo's working tree** beyond the ignore lines: settings live in the record, so there is no file for the Human to commit.
-- **Failures.** Init with no host installed stops and changes nothing. `tmb onboard` before init says so and changes nothing.
+- **Edge case.** No host is installed. Init stops and changes nothing.
+
+## The planner onboards by itself
+
+When a planner's session starts and the base branch, the review mode or the checks is empty, the engine says so, with what it found. The planner applies what it recommends before other work and shows it.
+
+- **Example.** The planner reminds the Human that `tmb onboard` can be run again, and that it can change a value when asked.
+- **Edge case: an unattended run.** The planner applies its recommendations and names each value in its answer. It never sets the review mode.
+
+## The review mode is the Human's choice
+
+The review mode decides how many tokens a project uses, so only the Human may set it (trustmybot/tmb#114, [HOSTS.md](../architecture/HOSTS.md#ways-into-the-engine)). No task starts until it is set.
+
+- **Three ways set it:** the planner's question, `tmb onboard` on a terminal, or its review-mode flag with a typed yes. The record keeps which.
+- **Edge case 1.** An unattended run leaves the mode unset. The first task is refused, and the refusal names `tmb onboard`.
+- **Edge case 2.** One exception: a run with no terminal may set a mode where none is set, never change one (trustmybot/tmb#223).
 
 ## The repo's checks
 
@@ -75,19 +87,22 @@ flowchart TD
     S -. the Human or the planner changes them at any time .-> S
 ```
 
-- **Detect runs nothing.** It reads the files a stack leaves behind and suggests commands: a package manifest's lint, typecheck and test scripts, run with the tool its lockfile names, and the usual test command of a Python, Rust or Go project. It reads the repo's top folder only. The list is in the [reference](../reference/README.md#onboard).
-- **A suggestion, never the rule.** The planner works out what it recommends from the suggestion and the project. The Human confirms or replaces it.
-- **The repo is the source of truth.** Teammates, CI and editors enforce the same rules without tmb, so tmb suggests only commands the repo already defines.
-- **A stored list is never overwritten by a new detection.** The checks change only when the Human or the planner changes them. A repo that changed keeps its stored checks until then.
-- **One list per repo.** A project of one repo has one list. In a multi-repo workspace each repo has its own, and the project-wide list is not read ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
-- **A task adds its own.** A task's spec can name more checks. At close the stored checks run first, then the task's, each with a time limit, in the task's worktree. A task with no checks at all never closes ([3_TASKS.md](3_TASKS.md)).
+| Rule | Detail |
+|---|---|
+| Detect runs nothing | It reads the files a stack leaves behind and suggests commands: a package manifest's lint, typecheck and test scripts, run with the tool its lockfile names, and the usual test command of a Python, Rust or Go project. It reads the repo's top folder only. The list is in the [reference](../reference/README.md#onboard). |
+| A suggestion, never the rule | The planner works out what it recommends from the suggestion and the project. The Human confirms or replaces it. |
+| The repo is the source of truth | Teammates, CI and editors enforce the same rules without tmb, so tmb suggests only commands the repo already defines. |
+| A stored list is never overwritten by a new detection | The checks change only when the Human or the planner changes them. A repo that changed keeps its stored checks until then. |
+| One list per repo | A project of one repo has one list. In a multi-repo workspace each repo has its own, and the project-wide list is not read ([3_GIT.md](3_GIT.md#multi-repo-workspaces)). |
+| A task adds its own | A task's spec can name more checks. At close the stored checks run first, then the task's, each with a time limit, in the task's worktree. A task with no checks at all never closes ([3_TASKS.md](3_TASKS.md)). |
 
 ## How a card is written
 
 The planner asks through its host's question tool. A person who has never used tmb must be able to answer from the card alone.
 
 - **A card only when the Human must choose.** The planner applies the base branch and the checks without a card and shows them. It asks for the review mode, the areas to keep and, on stable, the feedback program.
-- **One option is recommended, with its cost.** For the review mode: one option per mode with what it costs, agile marked as recommended. A card that asks for consent recommends nothing.
+- **One option is recommended, with its cost.** For the review mode: one option per mode with what it costs, agile marked as recommended.
+- **Edge case.** A card that asks for consent recommends nothing.
 - **Repo modes are asked only in a multi-repo workspace.** A project of one repo takes the project's mode.
 
 Planned:
@@ -98,3 +113,17 @@ Planned:
 - **The card shows the actual values.** Commands and branch names appear on the card, shortened with a count when the list is long.
 - **Plain, short sentences.** Setting names and file formats stay off the card.
 - **The planner recommends a mode per repo** from what each repo shows, with the reason beside it.
+
+## Settings live in the record
+
+Nothing lands in the repo's working tree beyond the ignore lines, so there is no file for the Human to commit. Each change to a setting is an entry in the record's audit trail, and the newest entry is the value in force.
+
+## Re-runs keep what stands
+
+`tmb onboard` and init can both run again. Neither changes a setting the Human did not change.
+
+- **Example 1.** `tmb onboard` offers each stored value first and changes a setting only when the Human gives a new one.
+- **Example 2.** Init run again keeps every stored setting and, in a multi-repo workspace, each repo's policy. It adds repos that appeared and drops those that are gone, one line each.
+- **Example 3.** The same answers change no file and record nothing.
+- **Edge case 1.** Without a terminal `tmb onboard` never waits. Each question takes its default, and the review mode stays as it is.
+- **Edge case 2.** `tmb onboard` before init says so and changes nothing.

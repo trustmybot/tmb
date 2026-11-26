@@ -1,10 +1,24 @@
 # Trajectories
 
-The record of the work: what was asked, what was decided, what each agent did and how it ended. Any session can resume from it without the conversation that came before. This page covers what the record holds and how it answers "why is this still running?" and "why did this stop?" from records, not guesses. A task's own trajectory is in [3_TASKS.md](../flows/3_TASKS.md#task-lifecycle); this page covers the things a task runs inside: sessions, agent runs, gate decisions and check runs.
+The record of the work: what was asked, what was decided, what each agent did and how it ended. Any session can resume from it without the conversation that came before, and it answers "why is this still running?" and "why did this stop?" from records, not guesses.
+
+A task's own trajectory is in [3_TASKS.md](../flows/3_TASKS.md#task-lifecycle). This page covers what a task runs inside: sessions, agent runs, gate decisions and check runs.
+
+```mermaid
+flowchart LR
+    B["A run or a check run begins"] --> S["The engine writes its start"]
+    S --> E["Later, a second event: the end and its outcome"]
+    S --> F["No end: a finding"]
+    F --> P["Listed for the planner, who decides"]
+```
+
+## 1. Outcomes are recorded at checkpoints
 
 tmb records outcomes at checkpoints. It does not record each tool call or each step of an agent.
 
-## What is recorded
+- **Example 1.** A worker closes its task. The check run at close is recorded, with each command and its result.
+- **Example 2.** The gate denies a worker's start. The deny is recorded with its reason.
+- **Not recorded:** file writes and shell commands. tmb reads neither.
 
 | Record | Holds |
 |---|---|
@@ -34,17 +48,22 @@ flowchart TD
     G -.-> R2
 ```
 
-## The rule
+## 2. A start and an end are two events
 
-- **Start is a fact.** A run and a check run each write their start before any work.
-- **End is a second event.** It carries the outcome. A start is never edited into an end: the record only adds events, and the current state is derived from them.
-- **A start without an end is a finding.** It is still running, or it stopped without saying so.
-- **Each names what it belongs to.** A run names its task, or its feature branch for a branch review. A review names the run that wrote it. A check run names its task and commit.
-- **Every record names who made it.** The Human, or the role and host that acted. A push tmb makes for an agent is that agent's; a push typed by hand is the Human's (trustmybot/tmb#134). Every command-line call is the Human's, which is why a step only the Human may take needs a terminal and a typed yes ([HOSTS.md](HOSTS.md)).
-- **The engine is the only writer.** Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
-- **Reads return small pieces.** A brief, a section or a ranked snippet, never a dump.
-- **Ids never collide across machines.** A record can be copied to another machine without renumbering.
-- **Writes stay cheap.** The database takes one writer at a time, so a record at a checkpoint is one small insert.
+A run and a check run each write their start before any work. The end is a second event, and it carries the outcome.
+
+- **Example.** A check run starts at close and writes its start. When the checks end, a second event adds the result. The start is never edited into an end: the record only adds events, and the current state is derived from them.
+- **Edge case.** A start without an end is a finding: the work is still running, or it stopped without saying so.
+
+## 3. Every record names what it belongs to and who made it
+
+Each record points at its parent, so the work forms a tree. Each record also names its maker: the Human, or the role and host that acted.
+
+| Record | Names |
+|---|---|
+| Run | Its task, or its feature branch for a branch review |
+| Review | The run that wrote it |
+| Check run | Its task and its commit |
 
 ```mermaid
 flowchart TD
@@ -57,9 +76,86 @@ flowchart TD
 
 The chart is one moment of a real tree. To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. The tree starts at the run. Planned: the session level and the link from a run to its session.
 
-## Sessions
+- **Example 1.** A push tmb makes for an agent is that agent's.
+- **Example 2.** A push typed by hand is the Human's (trustmybot/tmb#134).
+- **Edge case.** Every command-line call is the Human's. That is why a step only the Human may take needs a terminal and a typed yes ([HOSTS.md](HOSTS.md)).
 
-Planned (trustmybot/tmb#63, trustmybot/tmb#254). A record names the role and host, not the session; the session record is what tells the work of two sessions on one project apart.
+## 4. The engine is the only writer
+
+Agents, the command line and the dashboard change the record only through the engine, so every rule is enforced in one place.
+
+| Rule | In practice |
+|---|---|
+| Reads return small pieces | A brief, a section or a ranked snippet, never a dump |
+| Ids never collide across machines | A record can be copied to another machine without renumbering |
+| Writes stay cheap | The database takes one writer at a time, so a record at a checkpoint is one small insert |
+
+## 5. A run is one start of a worker or the reviewer
+
+A run ends as finished or stopped (trustmybot/tmb#133).
+
+```mermaid
+stateDiagram-v2
+    [*] --> running: the gate allows the start
+    running --> finished: a worker's task left the open state
+    running --> finished: a reviewer recorded a verdict
+    running --> stopped: any other end
+    running --> stopped: the host failed to make the agent
+    finished --> [*]
+    stopped --> [*]
+```
+
+- **Example.** A reviewer gives no verdict. Its run is stopped.
+- **Edge case.** The gate allows a start and the host then fails to make the agent. No agent ran, so no stop would come to end the run. The run is stopped (trustmybot/tmb#285).
+- **A denied start opens no run.** It is recorded as a guard decision with its reason, so "why did the worker never start?" has a record.
+- **The planner's own turns are not a run.** They belong to the session record, which is Planned.
+- **A reviewer that is a host's main agent** has no subagent start. Its run opens at that host's session start and ends with its verdict.
+
+**Cost is tokens, per model:** input, output, cache read and cache write, given by the host's adapter.
+
+- **Edge case.** A run whose usage cannot be read has no cost, and that is not an error.
+- **tmb records no price.** Prices change, and a subscription has none per run.
+
+**Planned:** a fixed list of causes on a stopped run (failed, out of turns, killed), and a resumed run that names the run it resumes.
+
+## 6. A check run is one execution of a task's checks on one commit
+
+Verification is recorded as check runs. The checks run at close, and again after a fold or a rebase moved the commit.
+
+```mermaid
+stateDiagram-v2
+    [*] --> running: the checks start
+    running --> passed: every command passed
+    running --> failed: naming the command
+    running --> not_run: with the reason
+    passed --> [*]
+    failed --> [*]
+    not_run --> [*]
+```
+
+- **Edge case.** A check run killed with its session keeps its start and has no end, so it shows as a finding.
+
+## 7. A guard decision is one answer of the gate
+
+In tmb a hook runs only at a checkpoint: a session start, an agent's start or stop, and git's pre-push hook. Every answer is recorded, allow and deny, with the event and the reason.
+
+```mermaid
+stateDiagram-v2
+    [*] --> asked: the host or git raises the event
+    asked --> allowed: recorded with the reason
+    asked --> denied: recorded with the reason and what would be allowed
+    asked --> denied: the record cannot be read or written
+    allowed --> [*]
+    denied --> [*]
+```
+
+- **Edge case.** A gate never fails open on a broken record. It denies when it cannot read or write the record, and allows only where tmb was never set up.
+- **Not events:** a task's start and close. The engine checks them when asked, and a refusal goes to the caller without a guard decision.
+- **A decision is written once, when it is made.** Planned: a start written before the hook's work, so a hook that hangs or crashes leaves a record.
+
+## 8. A session holds the runs
+
+Planned (trustmybot/tmb#63, trustmybot/tmb#254). A record names the role and host, not the session. The session record is what tells the work of two sessions on one project apart.
 
 ```mermaid
 stateDiagram-v2
@@ -75,66 +171,14 @@ stateDiagram-v2
 - **A session's own tokens** are recorded with the same four counts as a run's, apart from its runs' counts, so a total counts nothing twice.
 - **tmb starts no session and assigns no work between sessions.** [RESPONSIBILITIES.md](RESPONSIBILITIES.md#parallel-lanes) covers parallel sessions.
 
-## Agent runs
+## 9. Nothing is skipped silently
 
-One run is one start of a worker or the reviewer. The planner's own turns are not a run; they belong to the session record, which is Planned.
+A step that did not run is recorded as not run, with the reason.
 
-```mermaid
-stateDiagram-v2
-    [*] --> running: the gate allows the start
-    running --> finished: a worker's task left the open state
-    running --> finished: a reviewer recorded a verdict
-    running --> stopped: any other end
-    running --> stopped: the host failed to make the agent
-    finished --> [*]
-    stopped --> [*]
-```
+- **Examples.** A check that could not run, a backup push that was skipped, a commit status that could not be sent, a push allowed in an exempt repo.
+- **Edge case.** The host does not name the role of an agent it starts. The start is allowed and recorded as a finding.
 
-- **Finished or stopped** (trustmybot/tmb#133). A reviewer that gave no verdict is stopped. So is a start the gate allowed and the host then failed to make: no agent ran, so no stop would come to end its run (trustmybot/tmb#285).
-- **A denied start is recorded too,** as a guard decision with its reason, so "why did the worker never start?" has a record. It opens no run.
-- **A reviewer that is a host's main agent** has no subagent start. Its run opens at that host's session start and ends with its verdict.
-- **Cost is tokens, per model:** input, output, cache read and cache write, given by the host's adapter. A run whose usage cannot be read has no cost, and that is not an error.
-- **tmb records no price.** Prices change, and a subscription has none per run.
-- **Planned:** a fixed list of causes on a stopped run (failed, out of turns, killed), and a resumed run that names the run it resumes.
-
-## Hook runs
-
-In tmb a hook runs only at a checkpoint: a session start, an agent's start or stop, and git's pre-push hook. Each answer is one guard decision.
-
-```mermaid
-stateDiagram-v2
-    [*] --> asked: the host or git raises the event
-    asked --> allowed: recorded with the reason
-    asked --> denied: recorded with the reason and what would be allowed
-    asked --> denied: the record cannot be read or written
-    allowed --> [*]
-    denied --> [*]
-```
-
-- **Every decision is recorded,** allow and deny, with the event and the reason.
-- **A gate never fails open on a broken record.** It denies when it cannot read or write the record, and allows only where tmb was never set up.
-- **Not recorded:** file writes and shell commands. tmb reads neither.
-- **Not events:** a task's start and close. The engine checks them when asked, and a refusal goes to the caller without a guard decision.
-- **A decision is written once, when it is made.** Planned: a start written before the hook's work, so a hook that hangs or crashes leaves a record.
-
-## Verification runs
-
-Recorded as check runs. One run is one execution of a task's checks on one commit: at close, and again after a fold or a rebase moved the commit.
-
-```mermaid
-stateDiagram-v2
-    [*] --> running: the checks start
-    running --> passed: every command passed
-    running --> failed: naming the command
-    running --> not_run: with the reason
-    passed --> [*]
-    failed --> [*]
-    not_run --> [*]
-```
-
-A check run killed with its session keeps its start and has no end, so it shows as a finding.
-
-## Finding and ending what is stuck
+## 10. Stuck work is listed, never ended
 
 tmb has no watcher and no timer: it runs only when something calls it (trustmybot/tmb#160).
 
@@ -151,13 +195,12 @@ flowchart TD
 - **Last activity needs no heartbeat.** It is the newest record under the run.
 - **Nothing is ended for the agent.** tmb lists what has no end and deletes nothing.
 
-## Nothing is skipped silently
+## 11. One database file per project
 
-A step that did not run is recorded as not run, with the reason: a check that could not run, a backup push that was skipped, a commit status that could not be sent, a push allowed in an exempt repo. An agent start whose role the host did not name is allowed and recorded as a finding.
+The file sits inside the project's folder and is left out of git. The engine creates it at init and is the only program that migrates it.
 
-## Where it lives
-
-One database file per project, inside the project's folder and left out of git. A workspace of several repos shares one, in the workspace folder ([3_GIT.md](../flows/3_GIT.md#multi-repo-workspaces)). Each feature branch and task names its repo; one with none belongs to the project folder itself. The engine creates the file at init and is the only program that migrates it.
+- **Example 1.** A multi-repo workspace shares one file, in the workspace folder ([3_GIT.md](../flows/3_GIT.md#multi-repo-workspaces)).
+- **Example 2.** Each feature branch and task names its repo. One with none belongs to the project folder itself.
 
 | State | Gate | Other commands |
 |---|---|---|
@@ -168,7 +211,7 @@ One database file per project, inside the project's folder and left out of git. 
 - **The code graph is separate.** It can be rebuilt from git at any time and lives in its own file, one per repo. Indexing is not recorded in the trajectory ([CODE_GRAPH.md](CODE_GRAPH.md)).
 - **Plugin projects.** A one-way migration carries a plugin project's records into a new tmb database and leaves the plugin's database untouched. A kind of record tmb does not have is left behind, not folded into another kind.
 
-## Debugging with it
+## 12. Debugging with it
 
 | Question | Where the answer is |
 |---|---|

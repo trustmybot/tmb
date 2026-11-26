@@ -1,16 +1,36 @@
 # Agent task handling
 
-Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md). A task is one change that one agent can finish in one run. It is one of two kinds: a **code task**, which a worker implements, and a **docs task**, a docs or prompts change the planner writes itself. Both kinds end in the same push gate, retry paths and pull request comment triage, and the [quality layers](#quality-layers) rules hold for every step. [3_GIT.md](3_GIT.md) covers where the task's work sits at each stage.
+Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md): a task from the Human's ask to the merge, with the push gate, the retry paths and pull request comment triage. [3_GIT.md](3_GIT.md) covers where the task's work sits at each stage.
+
+```mermaid
+flowchart LR
+    A["Human asks"] --> B["Planner: issue and spec"]
+    B --> C["Engine starts the task"]
+    C --> D["Author works, unwatched"]
+    D --> E["Checkpoint: checks at close"]
+    E --> F["Checkpoint: the review"]
+    F --> G["Checkpoint: the push gate"]
+    G --> H["Human merges"]
+    E -. fails .-> X["3.4: back to its owner"]
+    F -. fails .-> X
+    G -. fails .-> X
+```
 
 **tmb gates the outcome.** It does not watch a task's steps: no guard on each edit, no reading of shell commands, no per-step metering. It checks at three checkpoints, like CI: the checks at close, the review, and the push gate (trustmybot/tmb#98).
 
-Every record a task leaves lives in the record, the cold store [MEMORY.md](../architecture/MEMORY.md) describes; an agent reads it back from there, never from chat. [TRAJECTORY.md](../architecture/TRAJECTORY.md) lists what is recorded.
+**Every record a task leaves lives in the record,** the cold store [MEMORY.md](../architecture/MEMORY.md) describes. An agent reads it back from there, never from chat. [TRAJECTORY.md](../architecture/TRAJECTORY.md) lists what is recorded.
 
 ## Units of work
 
-- **Issue.** One goal of the Human's, with the notes and decisions that shaped it.
-- **Task.** One change, with a spec: the intent, the files it may touch, the checks that must pass and the success criteria. Planned (trustmybot/tmb#301): it names the flow or design page it implements.
-- **Milestone.** A group of issues the Human wants to judge as a whole, such as a first usable build.
+A task is one change that one agent can finish in one run.
+
+| Unit | What it is |
+|---|---|
+| **Issue** | One goal of the Human's, with the notes and decisions that shaped it |
+| **Task** | One change, with a spec: the intent, the files it may touch, the checks that must pass and the success criteria. Planned (trustmybot/tmb#301): it names the flow or design page it implements |
+| **Milestone** | A group of issues the Human wants to judge as a whole, such as a first usable build |
+
+A task is one of two kinds: a **code task**, which a worker implements ([3.1](#31-code-task)), and a **docs task**, a docs or prompts change the planner writes itself ([3.2](#32-non-code-task)). Both end in the same push gate, retry paths and pull request comment triage.
 
 The [review mode](3_WORKFLOW.md) decides where a task's review happens. It is set per repo, only by the Human, and a task keeps the mode it was started in.
 
@@ -19,11 +39,33 @@ The [review mode](3_WORKFLOW.md) decides where a task's review happens. It is se
 | **Agile** (recommended; the Human chooses) | Once, on the whole feature branch | One pull request per milestone |
 | **Truest** | On every task, before its push | One pull request per task |
 
+## Quality layers
+
+The rules behind every step table below. Each step owns one level of quality and hands the next a ready state. The method is deterministic or judgment. No two roles check the same thing: each check has one owner, and no step redoes another step's check.
+
+```mermaid
+flowchart LR
+    H["Human: intent"] --> P["Planner: spec and design fit"]
+    P --> W["Author: functionality<br/>checkpoint: checks at close"]
+    W --> R["Reviewer: the diff<br/>checkpoint: the review"]
+    R --> G["git: every push<br/>checkpoint: the push gate"]
+    G --> CI["CI confirms, it does not discover"]
+```
+
+- **Code enforces; prompts guide.** The three checkpoints are the engine's. An agent can ignore a prompt; it cannot skip a checkpoint.
+- **Checkpoints, not steps.** The only thing the host is asked before it happens is an agent's start. Everything else is judged by what is delivered.
+- **Failures return to their owner.** A failed check goes back to the author, a review finding to the author, a design misfit to the planner's spec.
+- **Leaks point upstream.** When a later step or CI catches a cheap check, the fix is to move that check into the step that owns it. A leak rate per step as the health metric is Planned.
+
 ## 3.1 Code task
 
-Any change that touches code. The planner plans and judges, a worker implements, the reviewer reviews, and the Human merges. The engine, not an agent, cuts branches and worktrees, runs checks, folds, pushes and opens pull requests. Agents ask for these through tmb's tools, so every step is recorded and no agent is trusted to follow a git procedure.
+Any change that touches code. The planner plans and judges, a worker implements, the reviewer reviews, and the Human merges.
+
+**The engine does the git steps, not an agent.** It cuts branches and worktrees, runs checks, folds, pushes and opens pull requests. Agents ask for these through tmb's tools, so every step is recorded and no agent is trusted to follow a git procedure.
 
 ### Code task succeeds
+
+From the ask to the close, the same in both modes:
 
 ```mermaid
 flowchart TD
@@ -33,6 +75,13 @@ flowchart TD
     D --> E["Host starts the worker, the gate checks the task is open<br/>Record: guard decision, run start"]
     E --> F["Worker implements and commits in the worktree<br/>no step is watched"]
     F --> G{"Close: the engine runs the checks on the commit<br/>Record: check run"}
+```
+
+From the close to the merge, by review mode:
+
+```mermaid
+flowchart TD
+    G{"Close: the checks pass"}
     G -- agile --> H["Task closed and folded into the feature branch<br/>branch pushed as a backup, no pull request"]
     H --> I["Milestone: base branch brought in<br/>reviewer passes the whole branch<br/>Record: review, run"]
     I --> J["Planner judges design fit"]
@@ -52,26 +101,9 @@ flowchart TD
 
 ### Code task fails a step
 
-Each failure returns to its owner. 3.4 lists the paths and marks what is Planned.
+Each failure returns to its owner. [3.4](#34-retry-and-escalation) lists every path and marks what is Planned.
 
-```mermaid
-flowchart TD
-    S0[Worker start names no open task] --> S1["Start denied, with what would be allowed<br/>Record: guard decision"]
-    S2[Host fails to make the worker] --> S3["Record: the run ends as stopped"]
-    C0[A check fails at close] --> C1["Close refused, naming the check<br/>Record: failing check run"]
-    C1 --> W["Task stays open: the worker fixes and closes again"]
-    C2[Uncommitted work, or a fold conflict] --> C3["Close refused, naming the files<br/>the step is undone"]
-    C3 --> W
-    V0[Reviewer fails a truest task] --> V1["Record: review with blocking findings<br/>task open again in the same worktree"]
-    V1 --> W
-    V2[Reviewer fails a feature branch] --> V3["Planner starts a fix task per blocking finding<br/>the new tip is reviewed again"]
-    R0[Truest rebase conflicts, or its checks fail] --> R1["Rebase undone, task open again"]
-    R1 --> W
-    R2[Rebased change differs] --> R3["Stays in review: a fresh review of the new commit"]
-    D0[Wrong approach, or nobody will finish it] --> D1["Planner or Human drops the task with a reason<br/>a new task can name the one it replaces"]
-    P0[Push carries a commit no pass or waiver covers] --> P1["git refuses the push<br/>Record: guard decision"]
-    X0[A run started and never ended] --> X1["Named at the next session start and by the health check<br/>the planner decides"]
-```
+### Code task steps
 
 | Step | Owner | Method | What it guarantees and hands over |
 |---|---|---|---|
@@ -88,11 +120,13 @@ flowchart TD
 | Pull request | engine | deterministic | opens only when a pass or a Human waiver covers the tip or commit. A truest task is rebased first when the base branch moved |
 | Merge | Human | judgment | the pull request merges. tmb reads the result later and never deletes a branch |
 
-- **A close reports, and refuses only on its checks.** Out-of-spec files are named and the spec stays as written. Main-folder changes go to the Human as a report with the command that puts each file back; tmb puts nothing back, because the change may be the Human's own.
-- **Two tasks may change the same file.** There is no lock. git settles it at the fold, and a clash holds back the later task's close.
+- **A close reports, and refuses only on its checks.**
+  - **Example 1.** The commit changes a file the spec does not list. The close names the file and the spec stays as written.
+  - **Example 2.** A file in the main folder changed since the task started. The Human gets a report with the command that puts each file back. tmb puts nothing back, because the change may be the Human's own.
 - **Checks never fail open.** A check that could not run is recorded as not run, with the reason, and the task stays open.
-- **Planned at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
+- **Two tasks may change the same file.** There is no lock. git settles it at the fold, and a clash holds back the later task's close.
 - **The planner closes the issue.** Planned: it closes itself once all its tasks' commits reach the base branch.
+- **Planned at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
 
 ## 3.2 Non-code task
 
@@ -114,14 +148,14 @@ flowchart TD
 
 ### Non-code task fails a step
 
-```mermaid
-flowchart TD
-    C0[The commit touches a file that is not a docs type] --> C1["Close refused, naming the file"]
-    C1 --> C2[The code part becomes a code task for a worker]
-    K0[A check fails at close] --> K1["Task stays open: the planner fixes and closes again"]
-    V0[Reviewer finds the docs task changed behaviour] --> V1["Blocking finding: that part is redone as a code task"]
-    I0[Fold conflict, rebase conflict, or a failing check after rebase] --> I1[As for a code task]
-```
+| What goes wrong | What happens |
+|---|---|
+| The commit touches a file that is not a docs type | The close is refused and names the file. The code part becomes a code task for a worker |
+| A check fails at close | The task stays open: the planner fixes and closes again |
+| The reviewer finds the docs task changed behaviour | A blocking finding: that part is redone as a code task |
+| Fold conflict, rebase conflict, or a failing check after rebase | As for a code task ([3.4](#34-retry-and-escalation)) |
+
+### Non-code task steps
 
 | Step | Owner | Method | What it guarantees and hands over |
 |---|---|---|---|
@@ -133,6 +167,111 @@ flowchart TD
 | Pull request, merge | engine, then Human | as in 3.1 | as in 3.1 |
 
 - **Planned: the doc-review skill.** The author's self-check and the reviewer's matching checklist.
+
+## 3.3 Push gate
+
+The reviewer step of both task kinds, and the gate on every push.
+
+```mermaid
+flowchart TD
+    A["Checks passed at close"] --> B["Host starts the reviewer<br/>Record: run start"]
+    B --> C["Reviewer reads the brief, probes read-only, asks the code graph"]
+    C --> D{"Verdict on the exact commit<br/>Record: review"}
+    D -- fail --> E["Work goes back: task reopens (truest) or fix tasks start (agile)"]
+    D -- "pass, or Human waiver" --> F["Engine pushes and opens the pull request"]
+    F --> G{"git's pre-push hook: does a pass or waiver cover every commit?"}
+    G -- yes --> H[Push goes]
+    G -- no --> I["Push refused, with the reason<br/>Record: guard decision"]
+    D --> M["Commit status on GitHub: success or failure"]
+```
+
+### The review
+
+| Step | Owner | What it guarantees |
+|---|---|---|
+| Start | planner → reviewer | the reviewer is named the feature branch or the task. Its start is recorded as a run, which a verdict needs |
+| Probe | reviewer | reads the brief, each task's spec and the diff; finds what calls or reads each changed thing through the code graph at the branch's tip or the task's commit; probes with read-only commands |
+| Verdict | reviewer | judgment: pass or fail on the exact commit. Each finding blocks, does not block, or was already there. A verdict on a tip that has moved is not taken |
+| Pass | planner | reads the verdict from the record, judges design fit and asks for the pull request without being told |
+| Fail | planner | sends the work back to its author without asking the Human |
+
+**The record is append-only.** Verdicts are never rewritten; the newest review of a commit decides.
+
+### The gate
+
+**The gate is git's own pre-push hook.** It does not depend on the host, so it holds for a push typed by hand. The engine reads no shell command to find a push.
+
+| Mode | The push goes to | It carries | Result |
+|---|---|---|---|
+| Every mode | The base branch | A commit no pass or waiver covers | Refused |
+| Truest | Any other branch | A task's commit no pass or waiver covers | Refused |
+| Every mode | Any other branch | A commit of no task | Goes through, so the Human's own branches are not stopped |
+
+**No unreviewed commit reaches an open pull request.** While it is open, new folds stay local until the new tip is reviewed or waived; then the same pull request is updated.
+
+**When the record cannot be read:**
+
+| The record is | The push |
+|---|---|
+| Absent | Goes, because tmb stays out of projects it was never set up in |
+| Damaged, empty, or from a newer tmb | Denied |
+| For a repo that is exempt or not registered | Allowed, with the reason recorded |
+
+### Around the gate
+
+- **A mark on GitHub** (trustmybot/tmb#101). A local hook can be skipped, so each verdict or waiver also sets a commit status on that exact commit. The repo's branch protection can require it; tmb says whether it does and never changes protection settings. A mark that could not be sent is recorded and sent later; it never fails the review. It is a convention, not proof.
+- **Another tool's hook** (trustmybot/tmb#184). Where a repo already has a pre-push hook, tmb leaves it alone and says the gate is off there at every session start. With the Human's yes, tmb adds one line first in that hook; removal takes out that line alone.
+- **One project per repo.** The hook names its project, so the gate never searches. A project may be one package of a monorepo (trustmybot/tmb#178).
+- **Planned:** a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
+- **Planned: freeze** (trustmybot/tmb#64). The Human stops all work in a project with one request: task and agent starts, closes and pull requests are denied until it is lifted. Reads stay allowed.
+
+## 3.4 Retry and escalation
+
+Every failure and its path, in the order a task meets them. Nothing here waits for a timer: tmb runs only when something calls it.
+
+| Cause | Path |
+|---|---|
+| A worker start names no open task | the start is denied, with what would be allowed; the guard decision is recorded |
+| The host fails to make the worker | the run ends as stopped, in the record |
+| Worker runs out of turns | **Planned:** it commits a checkpoint and hands back; the next run resumes |
+| Broken environment or contradictory spec | the worker stops and reports. **Planned:** the task is marked failed and the planner reopens it |
+| A check fails at close | close refused naming the check, and the failing check run is recorded; the task stays open, the worker fixes and closes again |
+| Uncommitted work at close | close refused naming the files; then as for a failed check |
+| Fold or rebase conflict | the step is undone and names the files; the task stays open until settled |
+| Review fail, truest | the review is recorded with its blocking findings and the task reopens in the same worktree; a worker reworks it and closes again for a new review |
+| Review fail, feature branch | the planner starts a fix task per blocking finding on the branch; the new tip is reviewed again |
+| Two review fails in a row | **Planned:** no worker starts on the task until the planner records the root cause |
+| Base branch moved under a feature branch | the engine merges it in before the review; a conflict changes nothing and is settled in a task |
+| Checks fail after a truest rebase | the rebase is undone and the task is open again; the worker fixes and closes again |
+| Rebased truest commit whose change differs | the task stays in review: one new review of the rebased commit |
+| A push carries a commit no pass or waiver covers | git refuses the push; the guard decision is recorded |
+| A check or a comment fails an open pull request | the planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned:** bringing the comments in (3.5) |
+| Pull request closed without a merge | the branch is recorded as closed and named at session start; a new pull request or a rework task reopens it |
+| Work merged outside the flow | the push gate refuses the uncovered push. **Planned:** its open tasks close, each recorded as a bypass when no review passed |
+| Design drift | the planner drops the task and replaces it. **Planned:** the planner amends the spec and reopens |
+| Wrong approach, or nobody will finish | the planner or the Human drops the task with a reason; a new task names the one it replaces |
+| Nobody will merge the feature branch | the branch is dropped with a reason and kept in git |
+| A run started and never ended | named at the next session start and by the health check; the planner decides |
+
+- **Rework is bounded** (Planned). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
+- **Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
+
+## 3.5 PR comment triage
+
+Planned (trustmybot/tmb#70).
+
+```mermaid
+flowchart TD
+    A["Trigger: sync with the remote, or the Human points at the pull request"] --> B["Each comment stored once on the linked issue"]
+    B --> C{"Would it change the issue's intent or scope?"}
+    C -- yes --> D["Recorded on the issue: the planner asks the Human"]
+    C -- no --> E["Grouped into fix tasks through 3.1 or 3.2, on the same branch"]
+    E --> F["New tip reviewed or waived, then the same pull request is updated"]
+```
+
+- **Stored once.** A per-pull-request cursor means a re-fetch returns only newer comments.
+- **Intent stays the Human's.**
+- **Unresolvable pull requests are skipped,** and the gap is recorded.
 
 ## Task lifecycle
 
@@ -155,15 +294,6 @@ stateDiagram-v2
     dropped --> [*]
 ```
 
-- **Closed and dropped are final.** Rework on closed agile work is a new fix task on the feature branch. A dropped task's work reaches no branch; a new task can name the dropped task it replaces, so a chain of retries reads as one line.
-- **In review keeps its worktree.** Nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
-- **Ready is for a repo with no remote** (trustmybot/tmb#183). Nothing is pushed and no pull request opens; the Human merges locally with the command tmb gives. tmb counts the work as merged when the local base branch holds the tip, or when merging it would change nothing, as after a squash by hand. A ready task the Human will not merge is dropped.
-- **Dropping keeps what holds work.** The worktree goes unless it holds uncommitted work, and the branch stays while it holds commits (trustmybot/tmb#170).
-- **Agile review state is on the branch, not the task.** An agile task closes unreviewed, with its mode recorded. The pass or waiver is recorded for the feature branch's tip ([3_WORKFLOW.md](3_WORKFLOW.md)).
-- **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the audit trail. The planner never waives.
-- **A rebase with the same change keeps its pass.** The checks run again; a change that differs needs a fresh review. An open pull request is never rebased.
-- **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
-
 | State | Means |
 |---|---|
 | open | Work may be done on it. The task's runs say whether an agent is on it. A stuck task stays open until the planner resumes or drops it |
@@ -173,107 +303,18 @@ stateDiagram-v2
 | dropped | Final, with a reason. The task that replaces it names it |
 | failed | **Planned.** A task whose worker stopped on a broken environment or a contradictory spec ([3.4](#34-retry-and-escalation)) |
 
+- **Closed and dropped are final.** Rework on closed agile work is a new fix task on the feature branch. A dropped task's work reaches no branch; a new task can name the dropped task it replaces, so a chain of retries reads as one line.
+- **In review keeps its worktree.** Nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
+- **Ready is for a repo with no remote** (trustmybot/tmb#183). Nothing is pushed and no pull request opens; the Human merges locally with the command tmb gives. tmb counts the work as merged when the local base branch holds the tip, or when merging it would change nothing, as after a squash by hand. A ready task the Human will not merge is dropped.
+- **Dropping keeps what holds work.** The worktree goes unless it holds uncommitted work, and the branch stays while it holds commits (trustmybot/tmb#170).
+- **Agile review state is on the branch, not the task.** An agile task closes unreviewed, with its mode recorded. The pass or waiver is recorded for the feature branch's tip ([3_WORKFLOW.md](3_WORKFLOW.md)).
+- **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the audit trail. The planner never waives.
+- **A rebase with the same change keeps its pass.** The checks run again; a change that differs needs a fresh review. An open pull request is never rebased.
+- **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
 - **Planned:** each move names a cause from a fixed list and the record it rests on, and the record refuses a move without it.
 - **Planned:** a move the planner takes by hand carries a note saying why, so no bypass is silent.
 - **Planned:** closing an issue ends its open tasks.
 - **Open, for the Human:** waivers wider than one task or one branch (a listed set, an issue, a session's docs tasks).
-
-## 3.3 Push gate
-
-The reviewer step of both task kinds, and the gate on every push.
-
-```mermaid
-flowchart TD
-    A["Checks passed at close"] --> B["Host starts the reviewer<br/>Record: run start"]
-    B --> C["Reviewer reads the brief, probes read-only, asks the code graph"]
-    C --> D{"Verdict on the exact commit<br/>Record: review"}
-    D -- fail --> E["Work goes back: task reopens (truest) or fix tasks start (agile)"]
-    D -- "pass, or Human waiver" --> F["Engine pushes and opens the pull request"]
-    F --> G{"git's pre-push hook: does a pass or waiver cover every commit?"}
-    G -- yes --> H[Push goes]
-    G -- no --> I["Push refused, with the reason<br/>Record: guard decision"]
-    D --> M["Commit status on GitHub: success or failure"]
-```
-
-| Step | Owner | What it guarantees |
-|---|---|---|
-| Start | planner → reviewer | the reviewer is named the feature branch or the task. Its start is recorded as a run, which a verdict needs |
-| Probe | reviewer | reads the brief, each task's spec and the diff; finds what calls or reads each changed thing through the code graph at the branch's tip or the task's commit; probes with read-only commands |
-| Verdict | reviewer | judgment: pass or fail on the exact commit. Each finding blocks, does not block, or was already there. A verdict on a tip that has moved is not taken |
-| Pass | planner | reads the verdict from the record, judges design fit and asks for the pull request without being told |
-| Fail | planner | sends the work back to its author without asking the Human |
-
-- **The gate is git's own hook.** It does not depend on the host, so it holds for a push typed by hand. The engine reads no shell command to find a push.
-- **What it refuses.** In every mode: a push to the base branch that carries a commit no pass or waiver covers. In truest also: a push to any other branch that carries a task's commit without one. A commit of no task, pushed to another branch, goes through, so the Human's own branches are not stopped.
-- **No unreviewed commit reaches an open pull request.** While it is open, new folds stay local until the new tip is reviewed or waived; then the same pull request is updated.
-- **When the record cannot be read.** No record: the push goes, because tmb stays out of projects it was never set up in. A damaged or empty record, or one from a newer tmb: denied. A repo that is exempt or not registered: allowed, with the reason recorded.
-- **Append-only record.** Verdicts are never rewritten; the newest review of a commit decides.
-- **A mark on GitHub** (trustmybot/tmb#101). A local hook can be skipped, so each verdict or waiver also sets a commit status on that exact commit. The repo's branch protection can require it; tmb says whether it does and never changes protection settings. A mark that could not be sent is recorded and sent later; it never fails the review. It is a convention, not proof.
-- **Another tool's hook** (trustmybot/tmb#184). Where a repo already has a pre-push hook, tmb leaves it alone and says the gate is off there at every session start. With the Human's yes, tmb adds one line first in that hook; removal takes out that line alone.
-- **One project per repo.** The hook names its project, so the gate never searches. A project may be one package of a monorepo (trustmybot/tmb#178).
-- **Planned:** a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
-- **Planned: freeze** (trustmybot/tmb#64). The Human stops all work in a project with one request: task and agent starts, closes and pull requests are denied until it is lifted. Reads stay allowed.
-
-## 3.4 Retry and escalation
-
-Nothing here waits for a timer: tmb runs only when something calls it.
-
-| Cause | Path |
-|---|---|
-| A check fails at close | close refused naming the check; the worker fixes and closes again |
-| Review fail, truest | the task reopens in its worktree; a worker reworks it and closes again for a new review |
-| Review fail, feature branch | the planner starts fix tasks on the branch; the new tip is reviewed again |
-| Two review fails in a row | **Planned:** no worker starts on the task until the planner records the root cause |
-| Fold or rebase conflict | the step is undone and names the files; the task stays open until settled |
-| Base branch moved under a feature branch | the engine merges it in before the review; a conflict changes nothing and is settled in a task |
-| Rebased truest commit whose change differs | one new review of the rebased commit |
-| A check or a comment fails an open pull request | the planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned:** bringing the comments in (3.5) |
-| Pull request closed without a merge | the branch is recorded as closed and named at session start; a new pull request or a rework task reopens it |
-| Wrong approach, or nobody will finish | the task is dropped with a reason; a new task names the one it replaces |
-| Nobody will merge the feature branch | the branch is dropped with a reason and kept in git |
-| A run started and never ended | named at session start and by the health check; the planner decides |
-| Worker runs out of turns | **Planned:** it commits a checkpoint and hands back; the next run resumes |
-| Broken environment or contradictory spec | the worker stops and reports. **Planned:** the task is marked failed and the planner reopens it |
-| Design drift | the planner drops the task and replaces it. **Planned:** the planner amends the spec and reopens |
-| Work merged outside the flow | the push gate refuses the uncovered push. **Planned:** its open tasks close, each recorded as a bypass when no review passed |
-
-- **Rework is bounded** (Planned). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
-- **Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
-
-## 3.5 PR comment triage
-
-Planned (trustmybot/tmb#70).
-
-```mermaid
-flowchart TD
-    A["Trigger: sync with the remote, or the Human points at the pull request"] --> B["Each comment stored once on the linked issue"]
-    B --> C{"Would it change the issue's intent or scope?"}
-    C -- yes --> D["Recorded on the issue: the planner asks the Human"]
-    C -- no --> E["Grouped into fix tasks through 3.1 or 3.2, on the same branch"]
-    E --> F["New tip reviewed or waived, then the same pull request is updated"]
-```
-
-- **Stored once.** A per-pull-request cursor means a re-fetch returns only newer comments.
-- **Intent stays the Human's.**
-- **Unresolvable pull requests are skipped,** and the gap is recorded.
-
-## Quality layers
-
-The rules behind every step table above. Each step owns one level of quality and hands the next a ready state. The method is deterministic or judgment. No two roles check the same thing: each check has one owner, and no step redoes another step's check.
-
-```mermaid
-flowchart LR
-    H["Human: intent"] --> P["Planner: spec and design fit"]
-    P --> W["Author: functionality<br/>checkpoint: checks at close"]
-    W --> R["Reviewer: the diff<br/>checkpoint: the review"]
-    R --> G["git: every push<br/>checkpoint: the push gate"]
-    G --> CI["CI confirms, it does not discover"]
-```
-
-- **Code enforces; prompts guide.** The three checkpoints are the engine's. An agent can ignore a prompt; it cannot skip a checkpoint.
-- **Checkpoints, not steps.** The only thing the host is asked before it happens is an agent's start. Everything else is judged by what is delivered.
-- **Leaks point upstream.** When a later step or CI catches a cheap check, the fix is to move that check into the step that owns it. A leak rate per step as the health metric is Planned.
-- **Failures return to their owner.** A failed check goes back to the author, a review finding to the author, a design misfit to the planner's spec.
 
 ## Debugging a stuck task
 

@@ -1,23 +1,8 @@
 # Architecture
 
-tmb's design of record: how tmb is shaped and why. Read it to understand a part of tmb before you change it, or to check that a change still fits the design.
+tmb's design of record: how tmb is shaped and why. Read it before you change a part of tmb, or to check that a change still fits the design.
 
 A rule that is decided but not built carries **Planned**. A rule the Human has not settled carries **Open, for the Human**.
-
-## Two kinds of page
-
-| Kind | Pages | For |
-|---|---|---|
-| **High-level design** | This page, [PHILOSOPHY.md](PHILOSOPHY.md), [RESPONSIBILITIES.md](RESPONSIBILITIES.md) | What tmb is and who does what. Short and chart-first. The Human reviews these. |
-| **Low-level design** | Every other page | The detail under a high-level page: every other case, failures, and how to debug them. For building and debugging tmb. |
-
-- **Two folders.** `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. [`docs/flows/`](../flows/README.md) holds the design in time: the steps tmb takes.
-- **The docs are the ground truth, and nothing overrules them silently.** When two pages disagree, or code, a spec or an issue disagrees with a page, the question goes to the Human. No side wins by rank. After the Human's answer both sides are changed to agree. The rule covers every folder of these docs ([docs/README.md](../README.md#when-two-things-disagree)).
-- **No schedule here.** Versions, milestones and the state of the work live on the GitHub board and in the record. These pages hold the design only, so they do not go stale when work moves.
-
-## The shape
-
-tmb harnesses the agents a host runs. It is one compiled program per platform, not a plugin of any agent program.
 
 ```mermaid
 flowchart TD
@@ -36,21 +21,36 @@ flowchart TD
     E --> Git["git, checks, pull requests"]
 ```
 
-- The **host** runs the agents under the Human's own login. Its main agent is the planner, and every other agent is a subagent the host starts: tmb's worker and reviewer, and any agent the project adds.
-- The **engine** holds three parts. The **harness** is the workflow and the gate that enforces it: it briefs the agents and gates the outcome. The **trajectory** records what they do. The **code graph** maps the code.
-- The **host adapter** is the only part that knows a host ([HOSTS.md](HOSTS.md)).
+## The shape
+
+tmb harnesses the agents a host runs. It is one compiled program per platform, not a plugin of any agent program.
+
+| Part | What it does |
+|---|---|
+| **Host** | Runs the agents under the Human's own login. Its main agent is the planner. Every other agent is a subagent the host starts: tmb's worker and reviewer, and any agent the project adds. |
+| **Host adapter** | The only part that knows a host ([HOSTS.md](HOSTS.md)). |
+| **Engine** | Holds the three parts below. |
+| Harness | The workflow and the gate that enforces it. It briefs the agents and gates the outcome. |
+| Trajectory | Records what the agents do. |
+| Code graph | Maps the code. |
 
 ## Three layers of knowledge
 
-tmb keeps each fact in exactly one of three layers, at the level of detail that layer holds best:
+tmb keeps each fact in exactly one of three layers: the lowest layer that can hold it.
 
-- **High-level design: these docs.** Components, boundaries, flows, invariants and the reasons behind them. They name no functions, files, tables or tool parameters, so a refactor does not make them stale.
-- **Mid-level relationships: the code graph.** What lives where and what depends on what, derived from the code so it cannot drift from it.
-- **Low-level logic: the code.** How a step is done, in self-explaining names and tests.
+| Layer | Kept in | Holds |
+|---|---|---|
+| High-level design | These docs | Components, boundaries, flows, invariants and the reasons behind them. They name no functions, files, tables or tool parameters, so a refactor does not make them stale. |
+| Mid-level relationships | The code graph | What lives where and what depends on what, derived from the code so it cannot drift from it. |
+| Low-level logic | The code | How a step is done, in self-explaining names and tests. |
 
-A fact belongs in the lowest layer that can hold it. A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay here. When a page here starts naming symbols, the detail has drifted into the wrong layer: move it down, don't copy it. Two exceptions: a generated page guarded by a freshness test, such as the schema sections of [TRAJECTORY.md](TRAJECTORY.md#schema) and [CODE_GRAPH.md](CODE_GRAPH.md#schema) and the keys in [CONFIG.md](CONFIG.md#keys); and the install and debugging sections of a detail page, which may name what a user types or sees (commands, settings, environment variables, messages and file locations), never internal functions or tables.
-
-This rule comes from our experience of design and code drifting apart, not from research evidence that it prevents that drift.
+- **Example 1.** A rule that a check can enforce goes in code.
+- **Example 2.** A relationship that the code graph can derive goes in the code graph.
+- **Example 3.** Only the design and its reasons stay in these docs.
+- **Edge case.** A page here starts naming symbols. The detail has drifted into the wrong layer: move it down, do not copy it.
+- **Exception 1.** A generated page guarded by a freshness test: the schema sections of [TRAJECTORY.md](TRAJECTORY.md#schema) and [CODE_GRAPH.md](CODE_GRAPH.md#schema), and the keys in [CONFIG.md](CONFIG.md#keys).
+- **Exception 2.** The install and debugging sections of a detail page may name what a user types or sees: commands, settings, environment variables, messages and file locations. They never name internal functions or tables.
+- **Where the rule comes from.** Our experience of design and code drifting apart, not research evidence that it prevents that drift.
 
 **In a user's project** tmb offers the same three layers. The code graph and the code are always there. The top layer depends on where the project keeps its design, so onboarding asks. Planned (trustmybot/tmb#302):
 
@@ -60,7 +60,18 @@ This rule comes from our experience of design and code drifting apart, not from 
 | Has code and no design docs | Where to keep the design | In a folder in the repo, or in the record |
 | Is empty | Where to keep the design | In a folder in the repo, or in the record |
 
-A project that wants no docs in its code keeps the design in the record, and the planner reads and writes it there.
+- **Edge case.** A project wants no docs in its code. It keeps the design in the record, and the planner reads and writes it there.
+
+## Two kinds of page
+
+| Kind | Pages | For |
+|---|---|---|
+| **High-level design** | This page, [PHILOSOPHY.md](PHILOSOPHY.md), [RESPONSIBILITIES.md](RESPONSIBILITIES.md) | What tmb is and who does what. Short and chart-first. The Human reviews these. |
+| **Low-level design** | Every other page | The detail under a high-level page: every other case, failures, and how to debug them. For building and debugging tmb. |
+
+- **Two folders.** `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. [`docs/flows/`](../flows/README.md) holds the design in time: the steps tmb takes.
+- **The docs are the ground truth, and nothing overrules them silently.** When two pages disagree, or code, a spec or an issue disagrees with a page, the question goes to the Human. No side wins by rank. After the Human's answer both sides are changed to agree. The rule covers every folder of these docs ([docs/README.md](../README.md#when-two-things-disagree)).
+- **No schedule here.** Versions, milestones and the state of the work live on the GitHub board and in the record. These pages hold the design only, so they do not go stale when work moves.
 
 ## Reading guide
 

@@ -1,10 +1,6 @@
 # Configuration
 
-tmb's settings are a fixed list of six keys, kept in the record. There is no settings table: each change to a setting is one entry in the record's audit trail, named `setting:<key>`, and the newest entry is the value in force. The planner reads them with `settings_get` and writes them with `settings_set`; `tmb init` and `tmb onboard` write them from the terminal; `tmb config` shows them. Hooks only read them. The user's guide to each is in the [reference](../reference/README.md#set-up-a-project).
-
-**This page lists every key in `src/engine/settings.ts`.** Planned: a generator with a freshness test.
-
-## Where settings live
+tmb's settings: where each one lives, who may set it and what it does. The user's guide to each is in the [reference](../reference/README.md#set-up-a-project).
 
 ```mermaid
 flowchart LR
@@ -20,24 +16,15 @@ flowchart LR
     E --> T
 ```
 
-- **Project settings** are the six keys below. They belong to the workspace and are the same for every session in it.
+## Settings live in three places
+
+- **Project settings** are the six [keys](#keys). They belong to the workspace and are the same for every session in it.
 - **Machine settings** belong to the person, not the project ([Kept per machine](#kept-per-machine-not-in-the-record)).
 - **Environment variables** hold for one run ([Environment variables](#environment-variables)).
 
-**Planned: a config file** (trustmybot/tmb#305). The project settings move out of the record into one text file in the workspace, with a table per purpose. A text file needs no reader and can be read when the database cannot, and the record is then for trajectory only. Writes still go through tmb, which records each change in the audit trail. A Human-only key stays fenced: tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal. Open, for the Human: whether the file is committed to git, so a team shares it.
+## A project setting is an audit entry
 
-## Keys
-
-| Key | Type | Default | Set by | Effect |
-|---|---|---|---|---|
-| `host` | string: a host id | unset until `tmb init`, which stores the host it wired | `tmb init`; `tmb onboard --host <id>` names another wired host | The host the project is set up for. |
-| `host_roles` | object: `{"<host id>": "planner" \| "reviewer"}` | a host with no entry is `planner` | `tmb init --role`, `tmb onboard --role` | The role each host's main agent takes: it plans, or it only reviews. A worker is always a subagent. |
-| `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a multi-repo workspace, where each repo has its own in `repos`. |
-| `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its push. No task starts while it is unset. |
-| `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a multi-repo workspace. |
-| `repos` | object: `{"<repo path>": policy}` | unset in a single-repo project. In a multi-repo workspace `tmb init` fills it with the repos it finds | `tmb init`; the planner via `settings_set`; `tmb onboard --repo <name>` | One policy per folder of a workspace, by its path from the workspace folder. |
-
-A value equal to the one in force records nothing. An unknown key, a blank text or a value of the wrong shape is refused.
+The project settings are a fixed list of six keys, kept in the record. There is no settings table: each change is one entry in the record's audit trail, named `setting:<key>`, and the newest entry is the value in force.
 
 ```mermaid
 flowchart LR
@@ -48,7 +35,27 @@ flowchart LR
     V --> R["settings_get, tmb config, session start, hooks"]
 ```
 
+The planner reads them with `settings_get` and writes them with `settings_set`. `tmb init` and `tmb onboard` write them from the terminal, and `tmb config` shows them. Hooks only read them.
+
+- **Example 1.** The planner sets `base_branch` to the value already in force. Nothing is recorded.
+- **Example 2.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
+
+## Keys
+
+**This table lists every key in `src/engine/settings.ts`.** Planned: a generator with a freshness test.
+
+| Key | Type | Default | Set by | Effect |
+|---|---|---|---|---|
+| `host` | string: a host id | unset until `tmb init`, which stores the host it wired | `tmb init`; `tmb onboard --host <id>` names another wired host | The host the project is set up for. |
+| `host_roles` | object: `{"<host id>": "planner" \| "reviewer"}` | a host with no entry is `planner` | `tmb init --role`, `tmb onboard --role` | The role each host's main agent takes: it plans, or it only reviews. A worker is always a subagent. |
+| `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a multi-repo workspace, where each repo has its own in `repos`. |
+| `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its push. No task starts while it is unset. |
+| `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a multi-repo workspace. |
+| `repos` | object: `{"<repo path>": policy}` | unset in a single-repo project. In a multi-repo workspace `tmb init` fills it with the repos it finds | `tmb init`; the planner via `settings_set`; `tmb onboard --repo <name>` | One policy per folder of a workspace, by its path from the workspace folder. |
+
 ### The `repos` policy
+
+A repo is named by its path inside the workspace, relative and with forward slashes, such as `tmb` or `apps/web`. Any field not in this table is refused.
 
 | Field | Type | Effect |
 |---|---|---|
@@ -58,13 +65,17 @@ flowchart LR
 | `exempt` | `true` | tmb does no work in the repo and wires nothing in it. |
 | `git` | `false` only | The folder is not a repo: tmb records it and leaves it alone. It takes no other field. |
 
-A repo is named by its path inside the workspace, relative and with forward slashes, such as `tmb` or `apps/web`. Any other field is refused.
+## Unset means not set
 
-## Reading the settings
+Every key is null until it is first set. Readers treat null as "not set", never as a silent default.
 
-Every key is null until it is first set, and readers treat null as "not set", never as a silent default. The one fallback is a host's role: a host with no entry in `host_roles` is the planner. When a session starts as the planner and `base_branch`, `review_mode` or `checks` is empty, the session start says so, and the planner applies the base branch and checks it recommends ([`2_ONBOARD.md`](../flows/2_ONBOARD.md)).
+- **Example 1.** `review_mode` is null. No task starts, and tmb does not pick `agile` for the Human.
+- **Example 2.** A session starts as the planner and `base_branch`, `review_mode` or `checks` is empty. The session start says so, and the planner applies the base branch and checks it recommends ([`2_ONBOARD.md`](../flows/2_ONBOARD.md)).
+- **Edge case.** The one fallback is a host's role: a host with no entry in `host_roles` is the planner.
 
-Two more audit entries record how a review mode was chosen, beside the setting itself:
+## The way a review mode was chosen is recorded
+
+Two more audit entries sit beside the setting itself and record how a review mode was chosen:
 
 | Entry | Holds |
 |---|---|
@@ -73,7 +84,10 @@ Two more audit entries record how a review mode was chosen, beside the setting i
 
 ## Branch policy is per repo in a multi-repo workspace
 
-In a single-repo project the branch policy is the two project keys, `base_branch` and `checks`. In a multi-repo workspace they are not used: each repo has its own in `repos`, and `settings_set` refuses the project keys there. There is no branching model key: a repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
+A single-repo project keeps its branch policy in the two project keys, `base_branch` and `checks`. A multi-repo workspace does not use them: each repo has its own in `repos`.
+
+- **Example.** In a multi-repo workspace the planner calls `settings_set` for `base_branch`. tmb refuses the project key there.
+- **No branching model key.** A repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
 
 ## Kept per machine, not in the record
 
@@ -96,3 +110,12 @@ One setting belongs to the person, not the project. It is kept in each channel's
 | `TMB_RELEASES_URL`, `TMB_RELEASES_API` | Name another release repo for the installer and the updater. |
 | `TMB_CHANNEL`, `TMB_INSTALL_VERSION` | Read by the installer: the channel to install, or one exact release. |
 | `TMB_NO_MODIFY_PATH` | Read by the installer: leave the shell's PATH setup alone. |
+
+## Planned: a config file
+
+Planned (trustmybot/tmb#305). The project settings move out of the record into one text file in the workspace, with a table per purpose.
+
+- **Why.** A text file needs no reader and can be read when the database cannot. The record is then for trajectory only.
+- **Writes still go through tmb,** which records each change in the audit trail.
+- **A Human-only key stays fenced.** tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal.
+- **Open, for the Human:** whether the file is committed to git, so a team shares it.
