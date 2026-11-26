@@ -130,7 +130,7 @@ flowchart TD
 | Unread languages | Named from a copy of Linguist's programming languages, plus Vue and Svelte. Where languages share a file ending and Linguist's rules settle nothing, the file is named as one of them |
 | Not counted | Prose, data, settings and images; code in a file ending tmb does not know |
 
-**Planned (trustmybot/tmb#154): a file's language comes from Linguist's data.** tmb carries a copy of Linguist's language list and its rules for shared file endings, taken from a Linguist release. It asks in Linguist's own order: the file's name, its first line naming an interpreter, its ending, then the rules for a shared ending.
+**A file's language comes from Linguist's data** (trustmybot/tmb#154). tmb carries a copy of Linguist's language list and its rules for shared file endings, taken from a Linguist release. It asks in Linguist's own order: the file's name, its first line naming an interpreter, its ending, then the rules for a shared ending.
 
 - **Example 1.** `Makefile` is Makefile by its name. `api.proto` is Protocol Buffer by its ending.
 - **Example 2.** `run` has no ending and starts with `#!/usr/bin/env python3`. It is Python.
@@ -943,6 +943,5 @@ All are FTS5 virtual tables.
 | Every C and C++ function a node | trustmybot/tmb#387 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
-| A file's language comes from Linguist's data | trustmybot/tmb#154 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
 | The planner keeps concepts and areas written: a rule for when it writes them, and a view of the code not yet placed | trustmybot/tmb#310 |
