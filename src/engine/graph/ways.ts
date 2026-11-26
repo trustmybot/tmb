@@ -6,9 +6,13 @@
 export const LINK_WAYS = ["built-in", "language-tool"] as const;
 export type LinkWay = (typeof LINK_WAYS)[number];
 
-/** The way a repo's graph is built when its setting names none. */
-export const DEFAULT_LINK_WAY: LinkWay = "built-in";
 /** Way A: the syntax tree and tmb's own lookup rules. */
 export const BUILT_IN: LinkWay = "built-in";
 /** Way B: the language's compiler or indexer. */
 export const LANGUAGE_TOOL: LinkWay = "language-tool";
+/**
+ * The way a repo's graph is built when its setting names none: the language's tool, where the
+ * language has one. A language with no tool, or whose tool cannot run, is built by the built-in
+ * rules all the same, and the layer's note says so (trustmybot/tmb#337).
+ */
+export const DEFAULT_LINK_WAY: LinkWay = LANGUAGE_TOOL;

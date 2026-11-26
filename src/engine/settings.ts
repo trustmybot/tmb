@@ -178,7 +178,7 @@ export function reviewModeOf(settings: Settings, repo: string | null): ReviewMod
 
 /**
  * The way a repo's code graph makes its links (trustmybot/tmb#311): the repo's own, else the
- * workspace's, else the built-in rules. `repo` null is the project folder of a single-repo project.
+ * workspace's, else the language's tool (DEFAULT_LINK_WAY; trustmybot/tmb#337). `repo` null is the project folder of a single-repo project.
  */
 export function graphLinksOf(settings: Settings, repo: string | null): LinkWay {
   const own = repo === null ? undefined : settings.repos?.[repo]?.graph_links;

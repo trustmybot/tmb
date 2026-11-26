@@ -99,7 +99,7 @@ export const settingsSetSchema: InputSchema = {
     graph_links: {
       type: "string",
       description:
-        "Which way makes the code graph's links: built-in, tmb's own rules (the default), or language-tool, the language's own tool, which must be installed in the repo. A language with no tool uses built-in, and the graph's answer says so. In a workspace, the workspace's; a repo's own in repos.",
+        "Which way makes the code graph's links: language-tool, the language's own tool (the default; tmb carries the TypeScript compiler), or built-in, tmb's own rules. A language with no tool uses built-in, and the graph's answer says so. In a workspace, the workspace's; a repo's own in repos.",
       enum: LINK_WAYS,
     },
     repos: {

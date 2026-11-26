@@ -42,6 +42,8 @@ async function build(files: Record<string, string>): Promise<{ db: Database; lay
   if (!opened.ok) throw opened.error;
   store = opened.store;
   writeSetting(store, HUMAN, "base_branch", "main");
+  // These test the built-in rules, so the repo names them; the default is the language's tool (trustmybot/tmb#337).
+  writeSetting(store, HUMAN, "graph_links", "built-in");
   await indexProject(project, store, { rebuild: false });
   const view = await openView(project, store);
   return { db: view.db, layer: view.layer, close: () => view.db.close() };

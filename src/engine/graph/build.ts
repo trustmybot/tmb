@@ -16,7 +16,7 @@ import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
 import { laneOf } from "./test-paths.ts";
 import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
-import { BUILT_IN, DEFAULT_LINK_WAY, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
+import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
 export const EXTRACTOR_VERSION = 18;
@@ -428,7 +428,10 @@ function applyLayer(
 
 export type BuildOptions = {
   force?: boolean;
-  /** The way to make links, from the repo's `graph_links` setting; the built-in rules by default. */
+  /**
+   * The way to make links, from the repo's `graph_links` setting (graphLinksOf, whose default is the
+   * language's tool). A caller that names none, such as a check of the built-in rules, gets them.
+   */
   links?: LinkWay;
 };
 
@@ -439,7 +442,7 @@ export type BuildOptions = {
  */
 export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: BuildOptions = {}): Promise<BuildStats> {
   const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
-  const links = options.links ?? DEFAULT_LINK_WAY;
+  const links = options.links ?? BUILT_IN;
   const byTool = links === LANGUAGE_TOOL ? toolLinks(repoDir, commit, plans, configs) : NO_TOOL_LINKS;
   const stats = db
     .transaction(() => {
