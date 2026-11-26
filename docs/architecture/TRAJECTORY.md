@@ -34,6 +34,7 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 | Doc | **Planned** (trustmybot/tmb#302). One design document: where it lives, in a repo or outside it such as a wiki, what it is for, and its repo |
 | Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
 | Pull request | **Planned** (trustmybot/tmb#405). One pull request, what it carries and its state on the remote |
+| Milestone | **Planned** (trustmybot/tmb#70). One milestone, open or closed, matched to the remote's |
 
 ```mermaid
 flowchart TD
@@ -565,6 +566,7 @@ erDiagram
     sessions |o--o{ guard_decisions : "asked in"
     runs |o--o{ runs : "resumed from"
     runs |o--o{ guard_decisions : "about"
+    milestones |o--o{ issues : "groups"
     issues ||--o{ issue_links : "from"
     issues ||--o{ issue_links : "to"
     features |o--o{ pull_requests : "carried by"
@@ -580,7 +582,7 @@ erDiagram
 | Change | Tables | Why | Issue |
 |---|---|---|---|
 | Settings leave the record | new `setting_changes` keeps the trail; the values go to a config file | The record is for trajectory only, and a text file is readable when the database is not | trustmybot/tmb#305 |
-| `audit` goes | new `waivers`, `review_marks`, `setting_changes`, `feedback_reports`, `imports`; `reviews`, `features` | A gate reads a waiver as a row with columns, not as text in a catch-all | trustmybot/tmb#408 |
+| `audit` goes | new `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`; `reviews`, `features` | A gate reads a waiver as a row with columns, not as text in a catch-all | trustmybot/tmb#408 |
 | Value lists move to the engine | `events` | A list checked in the schema cannot change without copying the table | trustmybot/tmb#404 |
 | tmb is an actor | `events` | The syncer and a migration write what no person or agent did | trustmybot/tmb#404 |
 | A session is a record | new `sessions`; `events`, `runs`, `tasks`, `guard_decisions` name it | Parallel sessions and a session's own cost | trustmybot/tmb#63, trustmybot/tmb#254 |
@@ -588,6 +590,7 @@ erDiagram
 | An issue keeps priority, type, labels and links | `issues`, new `issue_links` | The planner orders work, and the syncer matches the remote issue | trustmybot/tmb#402 |
 | A pull request is a record | new `pull_requests`; the two `pr_url` columns go | Its state on the remote needs a place | trustmybot/tmb#405 |
 | A review and a guard decision name their parent | `reviews`, `guard_decisions` | Today a review's target is text and a guard decision names nothing | trustmybot/tmb#406 |
+| The syncer has what it needs | `issues`, `discussions`, `pull_requests`, `events`; new `milestones`, `sync_state` | A remote change is matched to its record by an id that never changes, and a poll asks only for what is new | trustmybot/tmb#70 |
 | A design document is a record | new `docs` | The planner finds the design wherever it lives | trustmybot/tmb#302 |
 | Search covers tasks and docs | `search` | A spec and a design are searched like an issue | trustmybot/tmb#406, trustmybot/tmb#302 |
 
@@ -595,10 +598,11 @@ erDiagram
 
 | Column | Change |
 |---|---|
-| `record_kind` | The list is checked by the engine, not by a CHECK. It gains `session`, `pull_request`, `issue_link`, `doc`, `waiver`, `review_mark`, `setting_change`, `feedback_report` and `import`, and loses `audit` |
+| `record_kind` | The list is checked by the engine, not by a CHECK. It gains `session`, `pull_request`, `issue_link`, `doc`, `milestone`, `waiver`, `review_mark`, `setting_change`, `freeze`, `feedback_report` and `import`, and loses `audit` |
 | `actor_kind` | Gains `tmb`, for a write no person or agent made. A `tmb` actor names its source, such as the syncer |
 | `actor_role` | The list is checked by the engine, so a role a project creates is a new value |
 | `actor_session` | New, nullable. The session that acted; NULL for the Human at a terminal and for tmb |
+| `actor_remote` | New, nullable. On an event the syncer wrote, the remote account that made the change |
 
 - **Edge case.** A write with an unknown record kind or role is still refused, by the engine. The lists are in [ENUMS.md](../contributing/ENUMS.md).
 
@@ -644,7 +648,9 @@ One row per host session. A projection: record kind `session`.
 | `type` | TEXT, nullable | The kind of work, such as bug or feature |
 | `labels` | TEXT, NOT NULL, default `'[]'` | A JSON list of free labels, such as an area or a theme |
 | `repo` | TEXT, nullable | The repo the issue belongs to, named as `tasks.repo` names its own |
+| `milestone_id` | TEXT, nullable | FK → `milestones.id`. Replaces the `milestone` name |
 | `remote_url` | TEXT, nullable, UNIQUE | The issue's address on the remote |
+| `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT, nullable | What the syncer matches by, [below](#planned-what-the-syncer-needs) |
 
 `issue_links` is one row per link. A projection: record kind `issue_link`.
 
@@ -667,14 +673,58 @@ What a GitHub issue has, and what the record takes:
 | Priority, a built-in field | `issues.priority`, the same four values | The planner orders work by it. On the remote it is the field, not a label (trustmybot/tmb#403) |
 | Type | `issues.type` | One fact per issue, so a column. On the remote it is GitHub's issue type, not a `type/` label (trustmybot/tmb#403) |
 | Labels | `issues.labels` | Free words a project chooses |
-| Milestone | `issues.milestone`, as built | A feature branch is the work of a milestone |
+| Milestone | A `milestones` row, named by `issues.milestone_id` | The syncer mirrors its state, and a misspelt name cannot make a second one |
 | Relationships: parent, blocked by, duplicate | `issue_links` | The order of work depends on them |
 | Assignees | Left out | A session and a run say who works on it |
 | Projects | Left out | A board is a view, and the dashboard is tmb's |
 | Status, effort, start and target dates | Left out | State comes from tasks, effort belongs to a run, and the record holds no schedule |
 | "Relates to" | Left out | It changes no order of work |
 
-- **Open, for the Human:** whether a milestone stays a name or gets its own table. As a name, a milestone is one text column on the issue: it has no state, description or remote address, and a misspelt name is a second milestone. As a table, it is one row that is open or closed, that the syncer matches to the remote milestone, and that an issue and a feature branch name by id.
+#### Planned: what the syncer needs
+
+Planned (trustmybot/tmb#70). **Every record the remote also holds carries the remote's own id, and the record remembers where each poll stopped.**
+
+- **Example 1.** An issue is closed in the browser. The syncer finds its row by `remote_id` and writes one `updated` event, made by tmb, naming the account that closed it.
+- **Example 2.** Nothing changed since the last poll. The syncer sends back the tag it kept in `sync_state`, the remote answers "not modified", and no event is written.
+- **Example 3.** A comment is added on the remote. It becomes a `discussions` row of kind `comment`, with its remote id and author.
+- **Edge case.** An issue is transferred to another repo. Its address changes and its `remote_id` does not, so the row is kept and its address updated.
+- **Edge case.** An issue is deleted on the remote. The full pass sets `remote_gone_at`; the row and its history stay.
+- **Edge case.** A comment is edited on the remote. The row's body follows it, and each version stays in `events`.
+
+On each mirrored table, `issues`, `discussions`, `pull_requests` and `milestones`:
+
+| Column | Holds |
+|---|---|
+| `remote_id` | The remote's own id for the item, which a rename or a transfer does not change. UNIQUE, NULL for a record with no remote |
+| `remote_updated_at` | The remote's time of last change, so an unchanged item is skipped |
+| `remote_gone_at` | When the syncer found it deleted or out of reach. NULL while it is there |
+
+`discussions` also gains the kind `comment`, a `remote_author`, and the right to change: a comment's `body` follows the remote's.
+
+`milestones` is one row per milestone. A projection: record kind `milestone`.
+
+| Column | Type | Null | Holds |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `title` | TEXT | NOT NULL | UNIQUE with `repo` |
+| `description` | TEXT | NOT NULL | Default `''` |
+| `state` | TEXT | NOT NULL | `open` or `closed` |
+| `repo` | TEXT | nullable | Named as `tasks.repo` names its own |
+| `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
+
+- **No due date.** The record holds no schedule.
+
+`sync_state` is one row per repo and list. Like `meta` it is not folded from events: a poll that finds nothing writes no event. A lost row costs one full pass.
+
+| Column | Holds |
+|---|---|
+| `repo`, `list` | The key: which repo, and issues, comments, pull requests or milestones |
+| `tag` | The tag the remote gave last time, sent back to ask "has anything changed?" |
+| `since` | The time the next "what changed?" asks from |
+| `synced_at`, `full_pass_at` | When the last poll and the last full pass ended, so a reader knows how old the copy is |
+| `wait_until` | Set when the remote asks for a wait. No poll runs before it |
+| `claimed_by`, `claim_until` | The short claim one syncer holds, which runs out by itself |
+| `last_error` | Why the last poll failed, NULL after a good one |
 
 #### Planned: `pull_requests`
 
@@ -689,6 +739,8 @@ One row per pull request. A projection: record kind `pull_request`.
 | `task_id` | TEXT | nullable | FK → `tasks.id`. Exactly one of `feature_id` and `task_id` is set |
 | `state` | TEXT | NOT NULL | `open`, `merged` or `closed` |
 | `head_commit` | TEXT | nullable | The commit at its tip when last seen |
+| `review_decision`, `checks` | TEXT | nullable | The remote's review decision and the result of its checks, when last seen |
+| `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | What the syncer matches by, [below](#planned-what-the-syncer-needs) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
 - **Example.** tmb opens a pull request: a row made by the planner. The Human merges it in the browser: an update made by tmb, from the syncer.
@@ -721,6 +773,7 @@ Planned (trustmybot/tmb#408). **Each kind of entry is its own record, with its o
 | A review carried over a rebase | A `reviews` row with `carried_from` |
 | A setting change, how a review mode was chosen, which tmb program the project is tied to, tmb moved or removed | A `setting_changes` row |
 | A base branch brought into a feature branch | An `updated` event on the feature branch, with the base commit |
+| A freeze of every session's work, and its lifting (trustmybot/tmb#64) | A `freezes` row |
 | A feedback report filed or its form opened | A `feedback_reports` row |
 | A migration from the plugin | An `imports` row |
 
@@ -729,6 +782,7 @@ Planned (trustmybot/tmb#408). **Each kind of entry is its own record, with its o
 | `waivers` | `task_id` or `feature_id` (exactly one), `commit_sha`, `reason`. Only the Human writes one |
 | `review_marks` | `feature_id`, `commit_sha`, `state`, `sent_at` (NULL until the remote has it) |
 | `setting_changes` | `key`, `repo` (nullable), `old_value`, `new_value`, `how` (asked, default or set) |
+| `freezes` | `reason`, `session_id`, `lifted_by`, `lifted_at` (NULL while frozen). Only the Human's request writes one |
 | `feedback_reports` | `route`, `url`, `issue_id` (nullable) |
 | `imports` | `source`, `repo`, `detail` |
 
@@ -739,7 +793,6 @@ Planned (trustmybot/tmb#408). **Each kind of entry is its own record, with its o
 | A table per review finding | A finding has no state of its own; the next review judges the next commit |
 | A table for handoffs between sessions | The record is the handoff |
 | A table for agents a project creates | Creating one is an event, and its file is the host's ([ROLES.md](ROLES.md#agents-a-project-creates)) |
-| A milestone table | A name is enough until the syncer mirrors milestones. Open, above |
 
 #### Planned: `docs`
 
