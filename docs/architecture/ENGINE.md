@@ -33,7 +33,7 @@ tmb has no slash commands: each action is a terminal command or a tool the plann
 
 - **The steps.** Waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
 - **One exception, for a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode where none is set, for the workspace or for one repo. It never changes a mode that is set, so an agent that turns unattended mode on for its own command cannot undo the Human's choice. Nothing else passes.
-- **What the fence is not.** It stops an agent that takes the plain path. It is not proof: an agent that writes a script which opens its own terminal can pass it. A fence no agent can pass needs something only the Human has, such as the operating system's own password prompt. Open, for the Human: whether tmb builds one.
+- **What the fence is not.** It stops an agent that takes the plain path. It is not proof: an agent that writes a script which opens its own terminal can pass it. tmb builds no stronger fence: deliberate evasion is outside what it guards against, and the host's own permission prompt shows the Human a command before an agent runs it.
 
 ## Unattended mode
 
