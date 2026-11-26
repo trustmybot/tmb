@@ -77,7 +77,7 @@ const FILES: Record<string, string> = {
   // a few lenient dialects read as a statement.
   "src/labels.ts":
     'export const insertLabel = "Insert row";\nexport function caption() {\n  return "Update available";\n}\nexport function removeCaption() {\n  return "Delete row";\n}\n',
-  // A trigger in a string lives in the function that holds the string.
+  // A trigger in a string: only a few dialects parse a trigger.
   "src/install.ts":
     'declare const db: { run(s: string): unknown };\nexport function installShelfTrigger() {\n  return db.run("CREATE TRIGGER shelf_added AFTER INSERT ON shelves BEGIN UPDATE crates SET size = 0; END");\n}\n',
   // A placeholder where a query or a table's name would be, in a statement few dialects read.
@@ -196,9 +196,9 @@ describe("a statement's tables, from the parser", () => {
     ]);
   });
 
-  test("a trigger in a string lives in the function that holds the string", () => {
-    expect(nodes).toContain("sql_trigger:shelf_added @src/install.ts in installShelfTrigger");
-    expect(linksFrom("shelf_added")).toEqual([`shelf_added triggers_on ${TABLE}shelves`, `shelf_added writes_data ${TABLE}crates`]);
+  test("a trigger in a string, which only a few dialects parse, gives nothing", () => {
+    expect(nodes.some((n) => n.includes("shelf_added"))).toBe(false);
+    expect(linksFrom("installShelfTrigger")).toEqual([]);
   });
 
   test("an FTS virtual table is a table node", () => {
