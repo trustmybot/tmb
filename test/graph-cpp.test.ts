@@ -472,3 +472,35 @@ describe("macros around a head", () => {
     }
   });
 });
+
+// `new T*[n]` and `new T*()` make pointers to T, and a pointer has no constructor ([expr.new]: the
+// object made is of the new-type-id's type, here a pointer); `new T[n]` and `new T()` make T's, so
+// they are constructions of T.
+const PANTRY = lines(
+  "namespace pantry {", //                                     1
+  "class Jar {", //                                            2
+  " public:", //                                               3
+  "  Jar() {}", //                                             4
+  "  Jar** Shelf(int n) { return new Jar*[n]; }", //           5
+  "  Jar** Slot() { return new Jar*(); }", //                  6
+  "  Jar* Row(int n) { return new Jar[n]; }", //               7
+  "  Jar* One() { return new Jar(); }", //                     8
+  "};", //                                                     9
+  "}  // namespace pantry", //                                 10
+);
+
+describe("a new pointer", () => {
+  test("`new T*[n]` and `new T*()` make pointers, which have no constructor: no call; `new T[n]` and `new T()` construct T ([expr.new])", async () => {
+    const db = await built({ "pantry/jar.cc": PANTRY });
+    try {
+      const rows = calls(db, "a").filter((r) => r.src.startsWith("pantry/jar.cc:"));
+      expect(rows.filter((r) => r.line === 5 || r.line === 6)).toEqual([]);
+      expect(rows.filter((r) => r.line === 7 || r.line === 8).map(({ line, dst_name, dst }) => ({ line, dst_name, dst }))).toEqual([
+        { line: 7, dst_name: "Jar", dst: "pantry/jar.cc:pantry.Jar" },
+        { line: 8, dst_name: "Jar", dst: "pantry/jar.cc:pantry.Jar" },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+});
