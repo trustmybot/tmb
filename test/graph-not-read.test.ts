@@ -35,7 +35,7 @@ const FIXTURE: Record<string, string> = {
   "build/script.ts": "export function buildSite() { return 2; }\n",
   "Command.kt": "class Command { fun executeC(): Int = 0 }\n",
   "Args.kt": "class Args { fun noArgs(): Int = 0 }\n",
-  "lib/thing.rs": "pub fn thing() {}\n",
+  "lib/thing.rb": "def thing; end\n",
   "dist/app.js": "export function bundled() {}\n",
   "dist/app.js.map": "{}\n",
   "package-lock.json": "{}\n",
@@ -64,7 +64,7 @@ afterEach(() => {
 
 test("languages by Linguist's programming endings; the first-listed language wins a shared ending", () => {
   expect(unreadLanguageOf("cmd/Root.kt")).toBe("Kotlin");
-  expect(unreadLanguageOf("src/main.rs")).toBe("Rust");
+  expect(unreadLanguageOf("src/main.rb")).toBe("Ruby");
   expect(unreadLanguageOf("include/x.h")).toBe("C");
   expect(unreadLanguageOf("App.vue")).toBe("Vue");
   expect(unreadLanguageOf("src/a.ts")).toBeNull();
@@ -83,14 +83,14 @@ test("the index names the languages it does not read and the files it left out, 
   expect(stats.notRead).toEqual({
     languages: [
       { name: "Kotlin", files: 2 },
-      { name: "Rust", files: 1 },
+      { name: "Ruby", files: 1 },
     ],
     leftOut: [
       { rule: "dist/", files: 2 },
       { rule: "lockfiles", files: 1 },
     ],
   });
-  expect(notReadSummary(stats.notRead)).toBe("not read: Kotlin 2 files, Rust 1 file; left out: dist/ 2 files, lockfiles 1 file");
+  expect(notReadSummary(stats.notRead)).toBe("not read: Kotlin 2 files, Ruby 1 file; left out: dist/ 2 files, lockfiles 1 file");
   // Unread languages are not "not parsed": that stays for files tmb reads and could not.
   expect(stats.notParsed).toBe(0);
 });
@@ -109,12 +109,12 @@ test("a lookup that finds nothing names the languages the graph does not read", 
   const found = await graphFind(store, PLANNER, { query: "executeC" }, context());
   expect(found.hits.some((h) => h.kind === "symbol")).toBe(false);
   expect(found.hits).toEqual([]);
-  expect(found.unreadLanguages).toEqual([{ name: "Kotlin", files: 2 }, { name: "Rust", files: 1 }]);
+  expect(found.unreadLanguages).toEqual([{ name: "Kotlin", files: 2 }, { name: "Ruby", files: 1 }]);
 
   const symbol = await graphSymbol(store, PLANNER, { name: "executeC" }, context());
   expect(symbol.cards).toEqual([]);
-  expect(symbol.unreadLanguages?.map((l) => l.name)).toEqual(["Kotlin", "Rust"]);
-  expect(notReadLines(symbol)).toEqual(["The code graph does not read Kotlin (2 files), Rust (1 file); what is there is not searched."]);
+  expect(symbol.unreadLanguages?.map((l) => l.name)).toEqual(["Kotlin", "Ruby"]);
+  expect(notReadLines(symbol)).toEqual(["The code graph does not read Kotlin (2 files), Ruby (1 file); what is there is not searched."]);
 
   const scoped = await graphScope(store, PLANNER, { objective: "zzzqqq" }, context());
   expect([scoped.files, scoped.tests]).toEqual([[], []]);
