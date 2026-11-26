@@ -16,6 +16,9 @@ export const LINKS_NOT_JUDGED = "not judged: Python's links have no reference ye
 /** Why Python has no way B yet: its tool is not built. */
 export const WAY_B_NOT_BUILT = "not built (SCIP, trustmybot/tmb#156)";
 
+/** The version of the Python reference, raised when the reference changes what it counts. */
+export const REFERENCE_VERSION = 1;
+
 const SCRIPT = path.join(import.meta.dir, "python_reference.py");
 
 /** The answer of python_reference.py for each file. */

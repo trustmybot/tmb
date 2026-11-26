@@ -167,6 +167,46 @@ describe("a fall fails", () => {
   });
 });
 
+// A language's reference has a version, stored with the scores. When the reference changes, its
+// version is raised, and the run is a new baseline for that language when no score misses more
+// than before: a score's misses are `of - n`, for links right the wrong links. With the same
+// version, a lower share is a fall, as above.
+describe("a new reference version is a new baseline when no miss rose", () => {
+  const versioned = (a: WayScores, typescript: number): Stored => ({ ...stored(a), referenceVersions: { typescript } });
+  const missing = (n: number, of: number, right = { n: of, of }): WayScores => ({ ...scored(n, of), linksRight: right });
+
+  test("the version changed and no score misses more: the run is accepted, though a share is lower", () => {
+    // 6 of 7 misses 1; 5 of 6 misses 1, a lower share over a smaller reference.
+    expect(falls(versioned(scored(6, 7), 1), versioned(scored(5, 6), 2))).toEqual([]);
+    expect(falls(versioned(scored(6, 7), 1), versioned(scored(9, 9), 2))).toEqual([]);
+  });
+
+  test("the version changed and a score misses more: the run is refused, naming the score", () => {
+    expect(falls(versioned(scored(6, 7), 1), versioned(scored(5, 7), 2))).toEqual([expect.stringContaining("r typescript way A linksFoundByReference")]);
+    // Links right misses its wrong links: none before, one now.
+    expect(falls(versioned(missing(6, 7), 1), versioned(missing(6, 7, { n: 3, of: 4 }), 2))).toEqual([expect.stringContaining("way A linksRight")]);
+  });
+
+  test("the same version: a lower share is a fall, as strict as without versions", () => {
+    expect(falls(versioned(scored(6, 7), 2), versioned(scored(5, 6), 2))).toEqual([expect.stringContaining("way A linksFoundByReference")]);
+    expect(falls(versioned(scored(6, 7), 2), versioned(scored(12, 14), 2))).toEqual([]);
+  });
+
+  test("stored scores with no version are at the first version", () => {
+    expect(falls(stored(scored(6, 7)), versioned(scored(5, 6), 1))).toEqual([expect.stringContaining("way A linksFoundByReference")]);
+    expect(falls(stored(scored(6, 7)), versioned(scored(5, 6), 2))).toEqual([]);
+  });
+
+  test("a version raised for one language leaves the other's scores as strict", () => {
+    const both = (ts: number, py: WayScores, version: number): Stored => ({
+      command: "test",
+      referenceVersions: { typescript: version, python: 1 },
+      entries: [entry({ repo: "t", language: "typescript", commit: "c", reference: "ref" }, { A: scored(ts, 7), B: notBuilt(NOT_BUILT) }), entry({ repo: "p", language: "python", commit: "c", reference: "ref" }, { A: py, B: notBuilt(NOT_BUILT) })],
+    });
+    expect(falls(both(6, scored(6, 7), 1), both(6, scored(5, 6), 2))).toEqual([expect.stringContaining("p python way A linksFoundByReference")]);
+  });
+});
+
 describe("way B is not built, not zero", () => {
   test("every score of way B says it is not built, and none is a number", () => {
     const e = entry({ repo: "r", language: "python", commit: "c", reference: "ref" }, { A: scored(1, 2), B: notBuilt(NOT_BUILT) });

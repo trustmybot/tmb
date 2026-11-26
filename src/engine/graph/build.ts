@@ -5,7 +5,7 @@ import type { Database } from "bun:sqlite";
 import { basename, posix } from "node:path";
 import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, NODE_MODULES_RULE, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
-import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
+import { commitReader, listTree, readBlobs, type TreeEntry } from "./git-source.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
 import { LANGUAGES, languageNamed } from "./languages/registry.ts";
 import { unreadLanguageOf } from "./languages/unread.ts";
@@ -229,7 +229,9 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
     const mine = new Set(langs);
     // Every file of the tool's languages at the commit, so the tool sees what an import names;
     // installed packages are not the repo's and are left to the tool.
-    const entries = listTree(repoDir, commit).filter((e) => e.size <= MAX_PARSE_BYTES && leftOutRule(e.path) !== NODE_MODULES_RULE && mine.has(languageOf(e.path, () => "") ?? ""));
+    const tree = listTree(repoDir, commit);
+    const read = commitReader(repoDir, tree);
+    const entries = tree.filter((e) => e.size <= MAX_PARSE_BYTES && leftOutRule(e.path) !== NODE_MODULES_RULE && mine.has(languageOf(e.path, () => "") ?? ""));
     const blobs = readBlobs(repoDir, entries.map((e) => e.blob));
     const files = new Map<string, string>();
     for (const e of entries) {
@@ -256,7 +258,7 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
     }
     let answered: ToolAnswer[];
     try {
-      answered = opened.answer({ files, configs, nodes, calls });
+      answered = opened.answer({ files, configs, read, nodes, calls });
     } catch (error) {
       notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)}), so the built-in rules`);
       continue;
