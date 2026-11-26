@@ -24,11 +24,15 @@ export function splitWords(s: string): string {
 
 export const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 export const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
-export function normalizedHash(node: Node): string {
+
+/** The node type most grammars give a comment; a grammar with others names its own. */
+const COMMENT_TYPES: readonly string[] = ['comment'];
+
+export function normalizedHash(node: Node, commentTypes: readonly string[] = COMMENT_TYPES): string {
   const base = node.startIndex;
   let text = node.text;
   const comments = node
-    .descendantsOfType('comment')
+    .descendantsOfType([...commentTypes])
     .filter((c): c is Node => c !== null)
     .sort((a, b) => b.startIndex - a.startIndex);
   for (const c of comments) text = text.slice(0, c.startIndex - base) + text.slice(c.endIndex - base);
@@ -66,13 +70,14 @@ export function afterLastBanner(lines: string[]): string[] {
 
 // The comment block whose last row is the row right above a definition (or
 // above its export), with no blank row between, from after its last banner
-// line on; '' when nothing follows that banner.
-export function docOf(node: Node): string {
+// line on; '' when nothing follows that banner. `commentTypes` are the
+// grammar's node types for a comment.
+export function docOf(node: Node, commentTypes: readonly string[] = COMMENT_TYPES): string {
   const anchor = node.parent?.type === 'export_statement' ? node.parent : node;
   const blocks: string[] = [];
   let edge = anchor.startPosition.row;
   let prev = anchor.previousNamedSibling;
-  while (prev && prev.type === 'comment' && prev.endPosition.row === edge - 1) {
+  while (prev && commentTypes.includes(prev.type) && prev.endPosition.row === edge - 1) {
     blocks.unshift(prev.text);
     edge = prev.startPosition.row;
     prev = prev.previousNamedSibling;

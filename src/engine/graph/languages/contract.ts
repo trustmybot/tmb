@@ -112,6 +112,10 @@ export interface ExtractedEdge {
   // On a call: where the language's lookup ends for its name, or for the name of the object it is
   // called on, when that is no definition of the repo it could link.
   outside?: Outside;
+  // On a call: the one symbol of the same file the language's own lookup proves it goes to, as an
+  // index into Extraction.symbols. That symbol is its link, with no lookup by name; absent when the
+  // language's rules prove none.
+  target?: number;
 }
 
 // Where a call's lookup ends outside the file's own definitions (trustmybot/tmb#252):
@@ -125,7 +129,7 @@ export interface ExtractedEdge {
 export type Outside = { kind: 'builtin'; name: string } | { kind: 'import'; module: string; searched?: readonly string[] };
 
 /** What a call edge adds to a reference. */
-export type CallMark = { outside?: Outside };
+export type CallMark = { outside?: Outside; target?: number };
 
 // A call edge's mark and its position: the offset in the file's text, in UTF-16 code units as the
 // parser reports it, where the name it calls is written, else, when it calls no name, where the
@@ -204,7 +208,11 @@ export class Collector {
       hint,
       ...(bound ? { bound } : {}),
       ...(local ? { local } : {}),
-      ...(call ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}) } : at !== undefined ? { pos: at } : {}),
+      ...(call
+        ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}), ...(call.target !== undefined ? { target: call.target } : {}) }
+        : at !== undefined
+          ? { pos: at }
+          : {}),
     });
   }
 
