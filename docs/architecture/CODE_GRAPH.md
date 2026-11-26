@@ -222,7 +222,7 @@ flowchart TD
 
 - **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is a function or a file-level name of the repo, the call links to it, whatever the name holds. If it is anything else, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
   - A name imported inside a Python function holds only in that function. A name imported under a new name is looked up in the file that import names.
-  - Left with no link, and planned as proofs of their own (trustmybot/tmb#249): a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
+  - Left with no link by the built-in rules, and linked by the language's tool: a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
   - Planned (trustmybot/tmb#287): the lookup sees four more bindings. Without them each can give a wrong link.
 - **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147). A TypeScript or JavaScript import that is not a relative path is resolved the way the TypeScript compiler does it: through the nearest project settings file above the importing file, read at the indexed commit. An import of a package that lives in the same repo links to that package's entry file. Two packages of the same name are not linked.
   - **Example.** `import { total } from "@app/cart"` and `import { total } from "../cart"` reach the same file, so both link to the one `total` symbol. An alias adds a name, never a second symbol.
@@ -253,8 +253,6 @@ Every call is in exactly one state (trustmybot/tmb#252), and a function's answer
 - **A built-in is outside only when nothing nearer declares the name.** The scope and the repo are looked up first, so a repo function named `parse` is never taken for the built-in.
 - **The lists of built-ins are generated, never written by hand.** Each language module's list comes from the language's own tool, and a test fails when it is stale.
 - **Edge case.** A language with no lookup of its own (bash, Perl, SQL): its calls get no state and are counted apart, so 100% holds for the languages that have one.
-
-The design for links is trustmybot/tmb#250. Its next steps are in [Planned](#planned).
 
 ## Two ways to make links
 
@@ -310,7 +308,7 @@ flowchart LR
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
   - **Example 2.** A Python repo with no virtual environment. Way B still links the calls inside the repo. A call into a package is not known.
   - **Edge case.** A call decided only at run time, such as a method picked by a string. Neither way links it. It is counted as not known.
-- **Way A keeps growing.** Its next proofs are the stated types (trustmybot/tmb#249), the four bindings (trustmybot/tmb#287) and the other languages (trustmybot/tmb#141).
+- **Way A does not grow toward what a tool does.** Where a language has a tool, a link the built-in rules miss is the tool's to make. The built-in rules grow only for a language with no tool.
 - **No rule is written for one repo.** A rule in either way is the language's rule. Neither way names a benchmark repo, a file or a symbol of one, and a failing benchmark case is fixed by the rule or left unlinked.
 
 ## Data sources
@@ -863,8 +861,6 @@ All are FTS5 virtual tables.
 | The tools for Go, Rust, Java, C and C++ | trustmybot/tmb#346 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
-| Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
-| A method call linked when the object's type is written in the same function or class: the object itself, an object made there by the class's name, a written type, or a module's or class's name. The method must exist on that type or a parent of it, in the repo. Types worked out from callers, return values or chained calls are not used, because they cost much and find little | trustmybot/tmb#249 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A file's language comes from Linguist's list | trustmybot/tmb#154 |
 | A same-repo package whose entry is build output links to its source, only where the package's TypeScript settings state both the source and the output folder | trustmybot/tmb#236 |
