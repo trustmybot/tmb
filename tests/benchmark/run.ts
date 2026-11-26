@@ -26,9 +26,9 @@ import { resolveCommit } from "../../src/engine/graph/git-source.ts";
 import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION } from "./java.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
-import { measureRust, REFERENCE_VERSION as RUST_REFERENCE_VERSION, WAY_B_NOT_BUILT as RUST_WAY_B_NOT_BUILT } from "./rust.ts";
+import { measureRust, REFERENCE_VERSION as RUST_REFERENCE_VERSION } from "./rust.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
-import { acceptFallIssue, acceptFalls, carryAccepted, type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
+import { acceptFallIssue, acceptFalls, carryAccepted, type Entry, entry, falls, format, isNotScored, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE, REFERENCE_VERSION as TS_REFERENCE_VERSION } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
@@ -54,7 +54,7 @@ const INSTALLED: Record<string, Record<Way, string>> = {
   },
   go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
   java: { A: "nothing: tmb's own parser", B: "a JDK, whose `java` runs the adapter tmb carries; no class path, so the repo's calls of its libraries are not known" },
-  rust: { A: "nothing: tmb's own parser", B: RUST_WAY_B_NOT_BUILT },
+  rust: { A: "nothing: tmb's own parser", B: "the user's own rust-analyzer; the repo's crates in Cargo's home, for its calls of them to be outside" },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -88,9 +88,7 @@ async function measureAll(): Promise<Run> {
             ? await measureGo(where.folder, sha, way)
             : r.language === "java"
               ? await measureJava(where.folder, sha, way)
-              : way === "A"
-                ? await measureRust(where.folder, sha)
-                : { scores: notBuilt(RUST_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" };
+              : await measureRust(where.folder, sha, way);
     const a = await measure("A");
     const b = await measure("B");
     entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
