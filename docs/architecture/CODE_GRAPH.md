@@ -17,8 +17,10 @@ This page is the code graph in space: what it holds, how its parts connect and w
 |---|---|---|
 | Node | One thing in the graph: a directory, a file, or a symbol | The file `cart.ts`; the function `total` in it |
 | Symbol | Something the code declares. [Kinds of symbol](#kinds-of-symbol) lists them | `class Cart`, `function total()` |
-| Function | A callable declared on its own, outside any class | `function total()` |
-| Method | A callable declared inside a class or an object. A constructor, a getter and a setter are methods | `Cart.total()`, `Cart.constructor` |
+| Callable | Code that can be called: a function or a method | `total()`, `Cart.total()` |
+| Function | A callable declared outside any type | `function total()` |
+| Method | A callable declared inside a type, such as a class. A constructor and an accessor are methods | `Cart.total()` |
+| Field | Data stored on a type or on each of its objects | `Cart.items` |
 | Name | The word the code uses for a symbol at one place. A name is not the symbol: the same word can mean different symbols in different files, and one symbol can be reached under several names | `total` in `cart.ts` and `total` in `report.ts` are two symbols. `import { total as sum }` makes `sum` a second name for one symbol |
 | Qualified name | A symbol's full name inside its file, which tells it apart from others of the same name | `Cart.total` |
 | Link | A proven relation between two nodes: a call, an import, a database read or write, or a test covering code | `checkout()` calls `Cart.total` |
@@ -120,20 +122,40 @@ flowchart TD
 
 ### Kinds of symbol
 
-The lowest node is a member of a class or a callable. Nothing inside a function is a node.
+The graph uses one set of kinds for every language. Each language module maps its own syntax to them. The lowest node is a callable or a field. Nothing inside a function is a node.
 
-| Level | Kinds | A node |
+| Kind | Meaning, in any language | A node |
 |---|---|---|
-| Container | File, class, interface, type | Yes |
-| Callable | Function, method, constructor, getter, setter, unnamed function | Yes |
-| Data on a class | Field, property | Planned (trustmybot/tmb#312) |
-| Data in a file | Top-level constant, database table, index and trigger | Yes |
-| Inside a function | Local variable, parameter, statement | No |
+| File | One source file. The physical container | Yes |
+| Type | A named shape that holds members: a class, an interface, a struct, a trait | Yes |
+| Function | A callable declared outside any type | Yes |
+| Method | A callable declared inside a type. It may need an object or only the type | Yes |
+| Constructor | The method that runs when an object is made | Yes, as a method |
+| Accessor | A method that is called like a field: a getter or a setter | Yes, as a method |
+| Unnamed function | A callable written as a value with no name | Yes, hidden |
+| Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
+| File-level data | A constant or variable declared outside any type or function; a database table, index or trigger | Yes |
+| Local | A variable, a parameter or a statement inside a callable | No |
 
-- **Example 1.** `class Cart { total() {} }` gives two nodes: the class `Cart` and the method `Cart.total`.
-- **Example 2.** `class Cart { items = [] }`: `items` is a field. Planned: it is a node, so "who reads or writes `Cart.items`" has an answer.
-- **Edge case.** `class Cart { onChange = () => {} }`: a field whose value is a function is a callable node today.
-- **Why it stops there.** A local variable cannot be reached from another function, so no question across the code needs it.
+How two languages write each kind:
+
+| Kind | TypeScript | Python |
+|---|---|---|
+| Type | `class Cart {}`, `interface Item {}` | `class Cart:` |
+| Function | `function total() {}` | `def total():` at the top of a file |
+| Method | `total() {}` in a class; `static round() {}` | `def total(self):`; `@staticmethod`, `@classmethod` |
+| Constructor | `constructor(owner) {}` | `def __init__(self, owner):` |
+| Accessor | `get items() {}`, `set items(v) {}` | `@property`, `@items.setter` |
+| Unnamed function | `x => x.price` | `lambda x: x.price` |
+| Field | `items = []` in a class | `tax_rate = 0.08` in a class; `self.owner = owner` in a method |
+| File-level data | `const MAX = 10` | `MAX = 10` |
+
+- **Example 1.** A class `Cart` with a method `total` gives two nodes in either language: the type `Cart` and the method `Cart.total`.
+- **Example 2.** Python's `@property def items(self)` is read as `cart.items`, with no call marks. It is an accessor, so it is a method node. The data behind it, `self._items`, is the field.
+- **Example 3.** Planned: `Cart.items` as a field node, so "who reads or writes `Cart.items`" has an answer.
+- **Edge case 1.** A field whose value is a function, `onChange = () => {}`. It is called like a method, so it is a callable node.
+- **Edge case 2.** A Python field has no declaration: `self.owner = owner` in any method creates it. The field's node is that name on the class, and each assignment is a write link.
+- **Why it stops at callables and fields.** A local cannot be reached from another callable, so no question across the code needs it.
 
 ### Languages
 
@@ -687,7 +709,7 @@ All are FTS5 virtual tables.
 | Piece | Tracked in |
 |---|---|
 | Two ways to make links, built side by side and compared ([Two ways to make links](#two-ways-to-make-links)) | trustmybot/tmb#311 |
-| A class's fields and properties are nodes, with read and write links | trustmybot/tmb#312 |
+| A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
 | A function says how many of its calls are not linked: linked, to code outside the repo, and not known. An agent that sees calls not known searches by text for the rest | trustmybot/tmb#252 |
