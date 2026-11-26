@@ -7,6 +7,7 @@ import rustWasm from 'tree-sitter-rust/tree-sitter-rust.wasm' with { type: 'file
 import type { Node } from 'web-tree-sitter';
 import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
+import { rustAnalyzer } from './tool.ts';
 
 /** The grammar's node types for a comment. */
 const RUST_COMMENTS: readonly string[] = ['line_comment', 'block_comment'];
@@ -526,5 +527,6 @@ export const rust: LanguageModule = {
   extensions: ['rs'],
   grammar: rustWasm,
   comment: 'slash',
+  tool: rustAnalyzer,
   extract: (file, out) => extractRust(syntaxTree(file), file.src, out, file.module),
 };

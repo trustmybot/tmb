@@ -227,7 +227,6 @@ describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust", () => {
       const rows = calls(db, "b");
       expect(call(rows, GATHER, "Kilos")).toMatchObject({ dst: "src/orchard.rs:Kilos", call_state: "linked" });
       expect(call(rows, GATHER, "Bushel")).toMatchObject({ dst: "src/orchard.rs:Crop", call_state: "linked" });
-      expect(call(rows, "src/orchard.rs:Kilos.zero", "Self")).toMatchObject({ dst: "src/orchard.rs:Kilos", call_state: "linked" });
       expect(call(rows, GATHER, "from")).toMatchObject({ dst: null, call_state: "outside" });
       expect(call(rows, "src/orchard.rs:Plum.ripen", "len")).toMatchObject({ dst: null, call_state: "outside" });
     } finally {
@@ -240,6 +239,9 @@ describe.skipIf(!HAS_RUST_ANALYZER)("way B for Rust", () => {
     try {
       const rows = calls(db, "b");
       expect(call(rows, GATHER, "pluck")).toMatchObject({ dst: null, call_state: "not_known" });
+      // rust-analyzer answers `Self(0)` with the implementation, which declares no node; it names no
+      // type for it, so the call is not known ("The tool's answer stands").
+      expect(call(rows, "src/orchard.rs:Kilos.zero", "Self")).toMatchObject({ dst: null, call_state: "not_known" });
       // `slat` takes one argument: rust-analyzer reports an error in this call, so its answer is no answer.
       expect(call(rows, "src/crates.rs:split", "slat")).toMatchObject({ dst: null, call_state: "not_known" });
       // `cfg(any())` leaves leftout.rs out of every build, so no call in it is proven.
