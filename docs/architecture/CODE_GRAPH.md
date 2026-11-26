@@ -297,11 +297,18 @@ flowchart LR
 - **Way B follows the project's own configs.** A file is resolved under the config that owns it. Planned (trustmybot/tmb#324): today only the root config is read.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
-- **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Other languages read a SCIP index, the open format language indexers write (trustmybot/tmb#156).
+- **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Python uses pyright, which tmb carries the same way (Planned, trustmybot/tmb#347). Each other language's tool is chosen by its own A/B test (trustmybot/tmb#346).
+- **The tool's answer stands.** tmb neither adds to it nor corrects it. A link the tool proves is made, whatever the proof rests on, and a call the tool does not answer is not known.
+  - **Example 1.** `cli: Group` is later given a subclass of `Group`. The tool answers with the declared type, so `cli.add()` links to `Group.add`. A call through a base class links to the base's method the same way.
+  - **Example 2.** A call in unreachable code or under `if TYPE_CHECKING:`. It is a call like any other: the tool's answer, or not known.
+  - **Edge case.** The tool answers for a different call than the one asked, such as the enclosing call when the called thing is a subscript or another call's result. That is no answer for this call, so it is not known.
+- **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor.
+- **Overload stubs are one function.** A call that the tool resolves to a function's `@overload` stubs links to the function itself, the one definition that runs.
+- **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known.
 - **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
-  - **Example 2.** A Python repo with no virtual environment. Way B cannot run. The graph is built by way A, and the answer's freshness says so.
+  - **Example 2.** A Python repo with no virtual environment. Way B still links the calls inside the repo. A call into a package is not known.
   - **Edge case.** A call decided only at run time, such as a method picked by a string. Neither way links it. It is counted as not known.
 - **Way A keeps growing.** Its next proofs are the stated types (trustmybot/tmb#249), the four bindings (trustmybot/tmb#287) and the other languages (trustmybot/tmb#141).
 - **No rule is written for one repo.** A rule in either way is the language's rule. Neither way names a benchmark repo, a file or a symbol of one, and a failing benchmark case is fixed by the rule or left unlinked.
@@ -844,6 +851,8 @@ All are FTS5 virtual tables.
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | The benchmark judges same-file links | trustmybot/tmb#343 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
+| Way B for Python, with pyright | trustmybot/tmb#347 |
+| The tools for Go, Rust, Java, C and C++ | trustmybot/tmb#346 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
