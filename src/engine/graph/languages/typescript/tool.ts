@@ -1,14 +1,20 @@
 // Way B for TypeScript and JavaScript (trustmybot/tmb#311): the TypeScript compiler makes the links
 // of the graph's calls. It asks the compiler; it does not imitate it. For each call the built-in
-// parser found, the compiler's checker names the callee's declarations, and the call is:
-// - linked, when they are exactly one node of the graph: a declaration of a value in the repo
-//   that is a node by "Kinds of symbol", in the same file, of the same name, its lines
-//   overlapping the node's;
+// parser found, the compiler's checker names what the callee is: one symbol, or, for a member of a
+// union or an intersection type, one symbol per member type, each of which the call can go to
+// (trustmybot/tmb#344). Each symbol's declarations give it:
+// - a node, when they are exactly one node of the graph: a declaration of a value in the repo that
+//   is a node by "Kinds of symbol", in the same file, of the same name, its lines overlapping the
+//   node's. An overload set and a merged declaration are one symbol, whose one node is the
+//   declaration that runs;
 // - outside, when every declaration is outside the repo: the compiler's lib, or an installed
 //   package;
-// - not known, otherwise: no answer, a declaration that is no node (a parameter, a local value, a
-//   signature with no body), or more than one node.
-// No answer is ever replaced by a guess.
+// - nothing known, otherwise: a declaration that is no node (a parameter, a local value, a
+//   signature with no body), or more than one node, as a function declared twice in one scope,
+//   where only one of them runs.
+// The call is linked to each symbol's node when at least one has one; else outside when every
+// symbol is outside; else not known, as is a call with no answer. No answer is ever replaced by a
+// guess.
 //
 // tmb carries the TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"): way B needs no
 // install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one
@@ -23,8 +29,9 @@ import type { LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "..
 import { calleeOf, type CommitFiles, isCallNode, originalNames, type TypeScriptModule } from "./compiler.ts";
 import { projectsOf } from "./projects.ts";
 
-const NOT_KNOWN: ToolAnswer = { state: "not_known" };
-const OUTSIDE: ToolAnswer = { state: "outside" };
+type NotLinked = { state: "outside" | "not_known" };
+const NOT_KNOWN: NotLinked = { state: "not_known" };
+const OUTSIDE: NotLinked = { state: "outside" };
 
 /** The compiler tmb carries, with its default library, loaded on first use: way B alone needs it. */
 type Carried = { ts: TypeScriptModule; library: ReadonlyMap<string, string> };
@@ -138,6 +145,23 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
         return NOT_KNOWN;
       }
     }
+    // A member of a union or an intersection type is each member type's own member: the compiler
+    // gives one symbol for each, its root symbols, and the call can go to any of them.
+    const linked = new Set<number>();
+    let outside = 0;
+    const roots = checker.getRootSymbols(sym);
+    for (const root of roots) {
+      const answer = symbolAnswer(root);
+      if ("node" in answer) linked.add(answer.node);
+      else if (answer.state === "outside") outside++;
+    }
+    const [first, ...more] = [...linked];
+    if (first !== undefined) return { nodes: [first, ...more] };
+    return outside === roots.length && roots.length > 0 ? OUTSIDE : NOT_KNOWN;
+  };
+
+  /** One symbol's answer: its one node, outside when every declaration is, else not known. */
+  const symbolAnswer = (sym: TS.Symbol): { node: number } | NotLinked => {
     const decls = sym.declarations ?? [];
     if (decls.length === 0) return NOT_KNOWN;
     const own = decls.filter((d) => inRepo(d.getSourceFile()));
