@@ -8,7 +8,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
-import { DEFAULT_LINK_WAY, LINK_WAYS } from "./ways.ts";
+import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
 export const GRAPH_SCHEMA_VERSION = 8;
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS layers (
   functions  INTEGER NOT NULL DEFAULT 0,
   not_parsed INTEGER NOT NULL DEFAULT 0,
   not_read   TEXT NOT NULL DEFAULT '{}',
-  links      TEXT NOT NULL DEFAULT '${DEFAULT_LINK_WAY}',
+  links      TEXT NOT NULL DEFAULT '${BUILT_IN}',
   links_note TEXT
 );
 CREATE TABLE IF NOT EXISTS dirs (
@@ -175,11 +175,12 @@ const SCHEMA_7_TO_8 = ["ALTER TABLE edges ADD COLUMN pos INTEGER"];
 /**
  * Schema 7 records the way that made each link or gave each call its state, and the way each layer
  * was asked to be built by, with why a language was built by the built-in rules instead
- * (trustmybot/tmb#311). Layers built before it are rebuilt by the newer extractor.
+ * (trustmybot/tmb#311). Layers built before it are rebuilt by the newer extractor. A layer that
+ * names no way was built by the built-in rules, the only way there was, whatever the default is now.
  */
 const SCHEMA_6_TO_7 = [
   `ALTER TABLE edges ADD COLUMN way TEXT CHECK (way IN (${WAYS_SQL}))`,
-  `ALTER TABLE layers ADD COLUMN links TEXT NOT NULL DEFAULT '${DEFAULT_LINK_WAY}'`,
+  `ALTER TABLE layers ADD COLUMN links TEXT NOT NULL DEFAULT '${BUILT_IN}'`,
   "ALTER TABLE layers ADD COLUMN links_note TEXT",
 ];
 
