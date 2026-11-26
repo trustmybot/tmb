@@ -8,7 +8,7 @@ import type { BuildOptions } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER } from "../../src/engine/graph/db.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { compilerFunctions, coveredLanguage } from "../../src/engine/graph/languages/typescript/coverage.ts";
-import { checkLayer, type CompilerCall, type CompilerLookup, compilerProgram, commitTexts, type GraphLink, judge } from "../../src/engine/graph/languages/typescript/links.ts";
+import { checkLayer, type CompilerCall, type CompilerLookup, compilerProgram, commitTexts, type GraphLink, graphLinks, judge } from "../../src/engine/graph/languages/typescript/links.ts";
 import { graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
 import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type Way, type WayScores } from "./score.ts";
 
@@ -158,22 +158,6 @@ function graphCalls(db: Database, files: ReadonlySet<string>): GraphCall[] {
   return rows.filter((r) => files.has(r.file)).map((r) => ({ ...r, start: r.start ?? 0, end: r.end ?? r.start ?? 0 }));
 }
 
-/**
- * Every link of the layer for a call or a construction, resolved `exact`, between TypeScript or
- * JavaScript files: in the same file or across files, since every link is judged (CODE_GRAPH.md,
- * Benchmark).
- */
-function everyLink(db: Database): GraphLink[] {
-  const rows = db
-    .query(
-      `SELECT s.path AS src, e.line AS line, e.pos AS pos, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end, e.kind AS kind
-         FROM edges e JOIN symbols s ON s.id = e.src_id JOIN symbols d ON d.id = e.dst_id
-        WHERE e.layer = ? AND e.kind IN ('calls', 'instantiates') AND e.resolution = 'exact'`,
-    )
-    .all(BASE_LAYER) as { src: string; line: number; pos: number | null; name: string; dst: string; start: number | null; end: number | null; kind: string }[];
-  return rows.filter((r) => coveredLanguage(r.src) !== null && coveredLanguage(r.dst) !== null).map((r) => ({ ...r, start: r.start ?? 0, end: r.end ?? r.start ?? 0 }));
-}
-
 /** Links right's counts: every link judged, those in the same file apart, and each wrong one with the compiler's answer. */
 export type LinksRight = { links: number; sameFile: number; right: number; wrong: string[]; notJudged: { unknown: number; noReference: number } };
 
@@ -184,7 +168,7 @@ export type LinksRight = { links: number; sameFile: number; right: number; wrong
  * counted and not judged.
  */
 export function linksRight(db: Database, lookup: CompilerLookup): LinksRight {
-  const links = everyLink(db);
+  const links = graphLinks(db);
   const out: LinksRight = { links: links.length, sameFile: 0, right: 0, wrong: [], notJudged: { unknown: 0, noReference: 0 } };
   for (const link of links) {
     if (link.src === link.dst) out.sameFile++;
