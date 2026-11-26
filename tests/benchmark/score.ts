@@ -16,6 +16,13 @@ export const NOT_BUILT = "not built (trustmybot/tmb#311)";
 export const SCORE_NAMES = ["functionsFound", "linksRight", "linksFoundByState", "linksFoundByReference", "callsAccountedFor"] as const;
 export type ScoreName = (typeof SCORE_NAMES)[number];
 
+/**
+ * The scores that may not fall. Links found is scored against the reference (CODE_GRAPH.md,
+ * Benchmark); links found from the call states is shown beside it and never enforced, because
+ * some calls not known reach outside the repo.
+ */
+export const ENFORCED: readonly ScoreName[] = SCORE_NAMES.filter((name) => name !== "linksFoundByState");
+
 /** The missing links of the reference, counted by the kind of code that hides them. */
 export type Causes = Record<string, number>;
 
@@ -141,25 +148,25 @@ function compare(a: Ratio, b: Ratio): number {
 
 const keyOf = (e: Entry) => `${e.repo} ${e.language}`;
 
-/** Each pair of stored and current scores that both hold a share. */
-function pairs(stored: Stored, now: Stored): { where: string; before: Score; after: Score | undefined }[] {
+/** Each pair of stored and current scores, for the named scores. */
+function pairs(stored: Stored, now: Stored, names: readonly ScoreName[]): { where: string; before: Score; after: Score | undefined }[] {
   const current = new Map(now.entries.map((e) => [keyOf(e), e]));
   const out: { where: string; before: Score; after: Score | undefined }[] = [];
   for (const e of stored.entries) {
     const c = current.get(keyOf(e));
-    for (const way of WAYS) for (const name of SCORE_NAMES) out.push({ where: `${keyOf(e)} way ${way} ${name}`, before: e.ways[way][name], after: c?.ways[way][name] });
+    for (const way of WAYS) for (const name of names) out.push({ where: `${keyOf(e)} way ${way} ${name}`, before: e.ways[way][name], after: c?.ways[way][name] });
   }
   return out;
 }
 
 /**
- * Every stored score the current run is below: a lower share, a share that is no longer scored, or
- * a repo no longer measured. A stored score with no value cannot fall.
+ * Every enforced stored score the current run is below: a lower share, a share that is no longer
+ * scored, or a repo no longer measured. A stored score with no value cannot fall.
  */
 export function falls(stored: Stored, now: Stored): string[] {
   const current = new Set(now.entries.map(keyOf));
   const out = stored.entries.filter((e) => !current.has(keyOf(e))).map((e) => `${keyOf(e)}: no longer measured`);
-  for (const { where, before, after } of pairs(stored, now)) {
+  for (const { where, before, after } of pairs(stored, now, ENFORCED)) {
     if (!isRatio(before) || before.of === 0 || after === undefined) continue;
     if (!isRatio(after) || after.of === 0) out.push(`${where}: was ${format(before)}, now ${format(after)}`);
     else if (compare(after, before) < 0) out.push(`${where}: fell from ${format(before)} to ${format(after)}`);
@@ -170,7 +177,7 @@ export function falls(stored: Stored, now: Stored): string[] {
 /** Every stored score the current run is above, which the pull request that stores it shows the run for. */
 export function rises(stored: Stored, now: Stored): string[] {
   const out: string[] = [];
-  for (const { where, before, after } of pairs(stored, now)) {
+  for (const { where, before, after } of pairs(stored, now, SCORE_NAMES)) {
     if (after === undefined || !isRatio(after) || after.of === 0) continue;
     if (!isRatio(before) || before.of === 0) out.push(`${where}: now ${format(after)}, was ${format(before)}`);
     else if (compare(after, before) > 0) out.push(`${where}: rose from ${format(before)} to ${format(after)}`);

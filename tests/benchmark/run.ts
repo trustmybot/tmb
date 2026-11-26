@@ -3,12 +3,15 @@
 // language and per repo.
 //
 //   bun tests/benchmark/run.ts           measure, print the scores, and say which stored ones fell or rose
-//   bun tests/benchmark/run.ts --check   the same, and fail when a stored score fell (the heavy test)
+//   bun tests/benchmark/run.ts --check   the same, and fail when an enforced stored score fell (the heavy test)
 //   bun tests/benchmark/run.ts --write   measure and store the scores in scores.json, refused when one fell
 //
 // scores.json is written by `--write` alone, never by hand. A pull request that raises a stored
-// score shows the run's output. tmb is measured at its HEAD commit; the public repos at their
-// pinned commits, fetched with `bun tests/lib/pinned-repo.ts <name>`.
+// score shows the run's output. Every repo is at a fixed commit: tmb at its pin in repos.ts, read
+// from its own history; the public repos at theirs, fetched with `bun tests/lib/pinned-repo.ts <name>`.
+// A pin moves only in a pull request that runs `--write`, which still refuses when a score fell.
+// Links found against the reference is the score of record; links found from the call states is
+// shown and stored beside it, and never fails the run.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
@@ -23,7 +26,7 @@ const COMMAND = "bun tests/benchmark/run.ts --write";
 const TITLES: Record<ScoreName, string> = {
   functionsFound: "Functions found",
   linksRight: "Links right",
-  linksFoundByState: "Links found, by call state",
+  linksFoundByState: "Links found, by call state (shown, not enforced)",
   linksFoundByReference: "Links found, against the reference",
   callsAccountedFor: "Calls accounted for",
 };
