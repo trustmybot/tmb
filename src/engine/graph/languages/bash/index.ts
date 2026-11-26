@@ -3,8 +3,20 @@ import bashWasm from 'tree-sitter-bash/tree-sitter-bash.wasm' with { type: 'file
 import { basename } from 'node:path';
 import type { Node } from 'web-tree-sitter';
 import type { Collector, LanguageModule } from '../contract.ts';
-import { docOf, named, normalizedHash, syntaxTree } from '../kit.ts';
-import { sqlRefs } from '../sql/index.ts';
+import { docOf, named, normalizedHash, spliced, syntaxTree } from '../kit.ts';
+import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
+
+// What the shell puts in a string or a here-document when it runs (Bash Reference Manual, "Shell
+// Expansions"): each is a value the code does not state.
+const EXPANSIONS = new Set(['expansion', 'simple_expansion', 'command_substitution', 'arithmetic_expansion', 'process_substitution']);
+
+// A string's value as SQL reads it (CODE_GRAPH.md, "Data sources"): a double-quoted string or a
+// here-document with each expansion as SQL_HOLE, a single-quoted string as written.
+function stringValue(node: Node): string {
+  if (node.type === 'raw_string') return node.text.slice(1, -1);
+  const quoted = node.type === 'string' ? 1 : 0;
+  return spliced(node, quoted, node.text.length - quoted, (c) => (EXPANSIONS.has(c.type) ? SQL_HOLE : null));
+}
 
 const SH_BUILTINS = new Set(
   'echo printf local export declare readonly return exit set unset shift cd test [ [[ true false read eval exec trap wait source . if then else fi for do done while case esac cat grep sed awk tr cut head tail sort uniq wc mkdir rm cp mv ln chmod touch date sleep command type jq git basename dirname xargs find tee env mktemp pwd kill ps sqlite3 node bash sh python3 curl gh'.split(
@@ -48,8 +60,7 @@ function extractBash(root: Node, out: Collector, moduleSymbol: number): void {
         out.edge(scope, 'runs', basename(args[0]), line);
       } else if (name && /^[A-Za-z_][\w-]*$/.test(name) && !SH_BUILTINS.has(name)) out.edge(scope, 'calls', name, line);
     } else if (t === 'string' || t === 'raw_string' || t === 'heredoc_body') {
-      const line = node.startPosition.row + 1;
-      for (const [kind, table] of sqlRefs(node.text)) out.edge(scope, kind, table, line);
+      sqlInCode(stringValue(node), scope, node.startPosition.row + 1, node.endPosition.row + 1, out);
     }
     for (const c of named(node)) visit(c, inner);
   };

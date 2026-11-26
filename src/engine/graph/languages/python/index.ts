@@ -2,8 +2,51 @@
 import pythonWasm from 'tree-sitter-python/tree-sitter-python.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
 import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
-import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
+import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, spliced, syntaxTree } from '../kit.ts';
+import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { BUILTINS } from './builtins.ts';
+
+// The character a Python escape sequence stands for (The Python Language Reference, "Escape
+// sequences"); an unknown one stays as written.
+const ESCAPED: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', a: '\x07', '0': '\0', '\\': '\\', "'": "'", '"': '"', '\n': '' };
+function unescaped(text: string): string {
+  return text.replace(/\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[\s\S])/g, (all, body: string) =>
+    body.length > 1 ? String.fromCodePoint(parseInt(body.slice(1), 16)) : (ESCAPED[body] ?? all),
+  );
+}
+
+const isPlus = (node: Node | null): boolean => node?.type === 'binary_operator' && node.childForFieldName('operator')?.text === '+';
+const joinsStrings = (node: Node | null): boolean => isPlus(node) || node?.type === 'concatenated_string';
+
+// A string's value as SQL reads it (CODE_GRAPH.md, "Data sources"): escapes as what they stand
+// for, and each value the code puts in as SQL_HOLE: an f-string's replacement field, a field of a
+// string `.format` is called on, and a conversion `%s` or `%(name)s`, which both `%` and the DB-API's
+// parameters fill. Joined across implicit concatenation and `+`, with any operand that is no string
+// literal as SQL_HOLE. Null when no part is a string literal.
+function stringValue(node: Node): string | null {
+  if (node.type === 'string') {
+    const start = named(node).find((c) => c.type === 'string_start');
+    const end = named(node).find((c) => c.type === 'string_end');
+    if (!start || !end) return null;
+    const prefix = start.text.replace(/['"]+$/, '').toLowerCase();
+    let text = spliced(node, start.endIndex - node.startIndex, end.startIndex - node.startIndex, (c) => (c.type === 'interpolation' ? SQL_HOLE : null));
+    const call = node.parent?.type === 'attribute' && node.parent.childForFieldName('attribute')?.text === 'format';
+    if (call) text = text.replace(/\{[^{}]*\}/g, SQL_HOLE);
+    if (prefix.includes('f') || call) text = text.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
+    if (!prefix.includes('r')) text = unescaped(text);
+    return text.replace(/%(\([^)]*\))?[-#0 +]*\d*(\.\d+)?[sdifrxXeEgGc]/g, SQL_HOLE).replace(/%%/g, '%');
+  }
+  if (node.type === 'concatenated_string') {
+    const parts = named(node).map(stringValue);
+    return parts.every((p) => p === null) ? null : parts.map((p) => p ?? SQL_HOLE).join('');
+  }
+  if (!isPlus(node)) return null;
+  const left = node.childForFieldName('left');
+  const right = node.childForFieldName('right');
+  const l = left ? stringValue(left) : null;
+  const r = right ? stringValue(right) : null;
+  return l === null && r === null ? null : `${l ?? SQL_HOLE}${r ?? SQL_HOLE}`;
+}
 
 // The string a body opens with, Python's docstring; '' when it opens with
 // anything else.
@@ -552,6 +595,11 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       // A call whose callee is no name, such as `f()()` or `handlers[k]()`, is a call all the same:
       // it is named by its callee's text and is not known.
       if (!written) out.edge(scope, 'calls', clip(oneLine((fn ?? node).text), CALLEE_TEXT_MAX), line, null, undefined, undefined, at(node));
+    }
+    if ((t === 'string' || joinsStrings(node)) && !joinsStrings(node.parent)) {
+      // SQL in a string, read whole across what joins it.
+      const text = stringValue(node);
+      if (text !== null) sqlInCode(text, inner, node.startPosition.row + 1, node.endPosition.row + 1, out);
     }
     for (const c of named(node)) visit(c, inner, innerCls, innerPlace);
   };

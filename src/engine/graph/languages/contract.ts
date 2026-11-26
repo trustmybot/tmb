@@ -11,9 +11,8 @@ export type SymbolKind =
   | 'type'
   | 'const'
   | 'sh_function'
-  | 'sql_table'
-  | 'sql_index'
   | 'sql_trigger'
+  | 'data_source'
   | 'module'
   | 'hook'
   | 'runner';
@@ -24,9 +23,8 @@ export type EdgeKind =
   | 'instantiates'
   | 'sources'
   | 'runs'
-  | 'reads_table'
-  | 'writes_table'
-  | 'indexes'
+  | 'reads_data'
+  | 'writes_data'
   | 'triggers_on'
   | 'bundles'
   | 'reads_config'
@@ -102,6 +100,10 @@ export interface ExtractedEdge {
   // grammar writes one, whatever its callee (trustmybot/tmb#252). Absent on every other reference,
   // such as a function passed as a value or a class a class extends.
   call?: 1;
+  // On a link to a data source (CODE_GRAPH.md, "Data sources"): the data source's kind, such as a
+  // table. Its name is dst_name, '' when the code does not state one. A data source is no symbol
+  // of a file: the layer holds one node of each kind and name, and links to it.
+  data?: string;
   // On a call: its position in the file, which tells two calls of one name on one line apart
   // (CODE_GRAPH.md, "Two ways to make links"). See CallMark.
   pos?: number;
@@ -161,6 +163,9 @@ export interface Extraction {
   edges: ExtractedEdge[];
   // Absent when the file re-exports nothing.
   exports?: ExtractedExport[];
+  // Statements the language's parser could not read, each of which gave no link (CODE_GRAPH.md,
+  // "Data sources"); absent when there are none.
+  statementsNotRead?: number;
 }
 
 // Gathers one file's symbols and references as a language's rules find them.
@@ -168,6 +173,7 @@ export class Collector {
   readonly symbols: ExtractedSymbol[] = [];
   readonly edges: ExtractedEdge[] = [];
   readonly exports: ExtractedExport[] = [];
+  statementsNotRead = 0;
   private readonly byKey = new Map<string, number>();
 
   // A symbol seen again under the same key is the same row: by default its
@@ -179,6 +185,11 @@ export class Collector {
     this.symbols.push(s);
     this.byKey.set(key, this.symbols.length - 1);
     return this.symbols.length - 1;
+  }
+
+  // A link to a data source of this kind and name ('' when the code does not state it).
+  dataLink(src: number, kind: EdgeKind, data: string, name: string, line: number): void {
+    this.edges.push({ src, kind, dst_name: name, line, hint: null, data });
   }
 
   edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt): void {
