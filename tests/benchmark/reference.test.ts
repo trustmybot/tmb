@@ -124,7 +124,7 @@ const USE: [string, string, string | null][] = [
   ["  typed.total();", "total", CAUSES.written],
   ["  new Cart().total();", "total", CAUSES.chain],
   // A signature with no body, a parameter and a local holding no function written there: no node.
-  ["  s.area();", "area", null],
+  ["  s.area();", "area", CAUSES.written],
   ["  cb();", "cb", null],
   ["  const local = helper;", "", null],
   ["  local();", "local", null],
