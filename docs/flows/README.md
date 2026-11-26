@@ -48,7 +48,7 @@ Start with [FLOWS.md](FLOWS.md), then open the detail page of the flow you need.
 | How is tmb installed and updated, and what do I check when it is missing or degraded? | [1_INSTALL.md](1_INSTALL.md) |
 | What does first contact ask, and what does it record? | [2_ONBOARD.md](2_ONBOARD.md) |
 | How does the planner learn a repo's checks? | [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) |
-| How does the planner know where code lives? | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) |
+| How is the code graph built and kept fresh? | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) |
 | Who owns which quality check? | [3_TASKS.md](3_TASKS.md#quality-layers) |
 | Why is my task stuck? | [3_TASKS.md](3_TASKS.md) |
 | What does agile review mode skip, and when is the skipped review done? | [3_WORKFLOW.md](3_WORKFLOW.md) |
@@ -77,10 +77,7 @@ The words for the steps. The first column names the page a word comes from. The 
 |---|---|---|
 | [2_ONBOARD](2_ONBOARD.md) | Init (`tmb init`) | Preparing a project folder for tmb. It asks nothing. |
 | [2_ONBOARD](2_ONBOARD.md) | Onboard (`tmb onboard`) | Setting tmb's settings for a project. The planner also onboards a project by itself at the first session with empty settings. |
-| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Code graph | The index of a project's files, its symbols and the links between them. |
 | [2_CODE_GRAPH](2_CODE_GRAPH.md) | Index (`tmb index`) | Building the code graph. |
-| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Area | One component of a project, such as login or billing, mapped to its files: the design in space. A named group of files, written by the planner. "tests" is built in. |
-| [2_CODE_GRAPH](2_CODE_GRAPH.md) | Concept | One flow or rule of the design, mapped to the code that carries it out: the design in time. An ordered list of anchors to functions or files, written by an agent. It may cross areas. |
 | [3_TASKS](3_TASKS.md) | Task | One change that one agent can finish in one run, with its spec. |
 | [3_TASKS](3_TASKS.md) | Docs task | A task that changes only docs or prompts. The planner writes it. |
 | [3_TASKS](3_TASKS.md) | Start a task | The engine cuts the task's branch and worktree, so a worker can be started on it. |

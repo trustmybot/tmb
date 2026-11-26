@@ -39,7 +39,7 @@ What first contact settles, and who settles it.
 | The review mode | Agile or truest, the Human's choice. tmb recommends agile and never picks. In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own (trustmybot/tmb#216). | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
 | The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it (trustmybot/tmb#184). A repo marked exempt gets none. | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
 | The checks | Found in the project and stored as a setting, not as a file in the repo ([The repo's checks](#the-repos-checks)). | the planner, or `tmb onboard` | the checks, per repo in a multi-repo workspace |
-| The areas | Once the code graph is built, the planner proposes named parts of the project, one line each, and writes those the Human keeps ([2_CODE_GRAPH.md](2_CODE_GRAPH.md)). | the planner | the areas |
+| The areas | Once the code graph is built, the planner proposes named parts of the project, one line each, and writes those the Human keeps ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
 | Issue sync | Planned, inside the syncer (trustmybot/tmb#70). | | |
 

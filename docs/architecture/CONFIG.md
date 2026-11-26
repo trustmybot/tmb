@@ -1,8 +1,30 @@
-# Settings keys
+# Configuration
 
 tmb's settings are a fixed list of six keys, kept in the record. There is no settings table: each change to a setting is one entry in the record's audit trail, named `setting:<key>`, and the newest entry is the value in force. The planner reads them with `settings_get` and writes them with `settings_set`; `tmb init` and `tmb onboard` write them from the terminal; `tmb config` shows them. Hooks only read them. The user's guide to each is in the [reference](../reference/README.md#set-up-a-project).
 
 **This page lists every key in `src/engine/settings.ts`.** Planned: a generator with a freshness test.
+
+## Where settings live
+
+```mermaid
+flowchart LR
+    subgraph P["Per project, in the workspace"]
+        S["The six keys"]
+    end
+    subgraph M["Per machine, in the home folder"]
+        F["The feedback program"]
+    end
+    E["Environment variables: one run"]
+    S --> T["tmb"]
+    F --> T
+    E --> T
+```
+
+- **Project settings** are the six keys below. They belong to the workspace and are the same for every session in it.
+- **Machine settings** belong to the person, not the project ([Kept per machine](#kept-per-machine-not-in-the-record)).
+- **Environment variables** hold for one run ([Environment variables](#environment-variables)).
+
+**Planned: a config file** (trustmybot/tmb#305). The project settings move out of the record into one text file in the workspace, with a table per purpose. A text file needs no reader and can be read when the database cannot, and the record is then for trajectory only. Writes still go through tmb, which records each change in the audit trail. A Human-only key stays fenced: tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal. Open, for the Human: whether the file is committed to git, so a team shares it.
 
 ## Keys
 

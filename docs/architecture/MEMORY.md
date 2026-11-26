@@ -67,7 +67,7 @@ flowchart TD
 ```
 
 - **Record search** returns ranked snippets from issue titles and bodies, notes and decisions. Every word of the query must match.
-- **Code search** is by name, by path and by the words in a name or a summary, ranked. It asks for every word first and falls back to any word. See [2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md).
+- **Code search** is by name, by path and by the words in a name or a summary, ranked. It asks for every word first and falls back to any word. See [CODE_GRAPH.md](CODE_GRAPH.md).
 - **Agent search first.** A skill (Planned) teaches the planner to search with several word queries and to follow the graph from each hit.
 - **Embeddings only on evidence.** Search by meaning is added only if measured misses show that word search and the graph do not find what is there. Graph misses are recorded for that measurement; misses of record search are not.
 
@@ -86,7 +86,7 @@ flowchart TD
 ```
 
 - **The nearest record wins**, so a session that moved into a subfolder, or into one repo of a workspace, still finds its project. A `.tmb` folder with no database in it is passed over.
-- **The code graph is not in the record.** It has its own file beside it, `.tmb/graph.db`, or in a multi-repo workspace one per repo, `.tmb/graphs/<repo>.db` ([2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md#substrate)).
+- **The code graph is not in the record.** It has its own file beside it, `.tmb/graph.db`, or in a multi-repo workspace one per repo, `.tmb/graphs/<repo>.db` ([CODE_GRAPH.md](CODE_GRAPH.md#substrate)).
 - **The engine is the only writer and the only migrator.** Agents, the command line and the dashboard change the record only through it. A record an older tmb wrote is upgraded by the next tmb command.
 - **Other records are shown, not merged.** The health check lists records in a folder above the project or below it.
 

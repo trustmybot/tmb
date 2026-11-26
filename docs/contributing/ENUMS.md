@@ -10,7 +10,7 @@ The engine, the role prompts and the planner decide what to do from these values
 
 A vocabulary is owned in one of two places:
 
-- **By a `CHECK` in the schema**, shown per column in [`ERD.md`](../architecture/ERD.md). The record's schema is `src/engine/store/schema.ts`; the code graph's is `src/engine/graph/db.ts`.
+- **By a `CHECK` in the schema**, shown per column in [the schema in `TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema). The record's schema is `src/engine/store/schema.ts`; the code graph's is `src/engine/graph/db.ts`.
 - **By the code that writes it**, when the column has no `CHECK`. `tasks.state`, `features.state`, `reviews.verdict`, `runs.outcome` and `audit.what` are such columns. Each table below names its source.
 
 ---
@@ -52,7 +52,7 @@ Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 | `actor_role` | `worker` | The subagent that carries out one task |
 | `actor_role` | `reviewer` | The agent that judges a branch or a task it did not write |
 
-Schema enforces via `CHECK`. `runs.role` takes the same three roles. A host's main agent takes one of two, `planner` or `reviewer` (the `host_roles` setting, [`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md)).
+Schema enforces via `CHECK`. `runs.role` takes the same three roles. A host's main agent takes one of two, `planner` or `reviewer` (the `host_roles` setting, [`CONFIG.md`](../architecture/CONFIG.md)).
 
 ### `issues.state` — issue lifecycle
 
@@ -193,7 +193,7 @@ Owned by the code that writes each entry; the schema only refuses a blank value.
 
 | Value | Written when |
 |---|---|
-| `setting:host`, `setting:host_roles`, `setting:base_branch`, `setting:review_mode`, `setting:checks`, `setting:repos` | A setting changed; `detail` is the new value ([`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md)) |
+| `setting:host`, `setting:host_roles`, `setting:base_branch`, `setting:review_mode`, `setting:checks`, `setting:repos` | A setting changed; `detail` is the new value ([`CONFIG.md`](../architecture/CONFIG.md)) |
 | `review_mode_chosen` | The Human chose the review mode; `detail` is the way: `init`, `onboard` or `planner` |
 | `repo_review_mode_chosen` | The Human chose one repo's own review mode |
 | `program` | The project was tied to the program whose init wired it |
@@ -275,7 +275,7 @@ Symbol and edge kinds are the one contract every language of the code graph meet
 
 1. Open a PR that adds the value to the schema or code that consumes it, and to this page.
 2. Add a test that covers the new value's path.
-3. A value in a `CHECK` needs a new schema step: SQLite cannot change a `CHECK` in place ([`ERD.md`](../architecture/ERD.md#schema-migration-policy)).
+3. A value in a `CHECK` needs a new schema step: SQLite cannot change a `CHECK` in place ([`TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema-migration-policy)).
 
 ---
 
@@ -288,4 +288,4 @@ Planned: a lint that compares every table on this page with the code in both dir
 ## Related
 
 - [`LABELS.md`](LABELS.md) — same governance rule for GH issue labels
-- [`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md) — the settings keys
+- [`CONFIG.md`](../architecture/CONFIG.md) — the settings keys

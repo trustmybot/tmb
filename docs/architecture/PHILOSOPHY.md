@@ -6,8 +6,9 @@ The principles behind how tmb is shaped. Each is the reason a design looks the w
 
 Work starts as the Human's idea and reaches code only through two conversions, each recorded where the next actor will look.
 
-- **Idea to goal.** The planner grounds the idea in past decisions and the code graph, then asks two questions before anything is built: is it actionable, and does something existing (a maintained package or a published capability) already cover it? An actionable idea becomes an issue: the goal. Its plan lives in the issue, and every later choice is recorded as a decision; when two decisions conflict, the newest wins.
+- **Idea to goal.** The planner grounds the idea in past decisions and the code graph, then asks two questions before anything is built: is it actionable, and does something existing (a maintained package or a published capability) already cover it? An actionable idea becomes an issue: the goal. Its plan lives in the issue, and every later choice is recorded as a decision. When two decisions conflict, the planner asks the Human, and the Human's answer is the decision in force.
 - **Goal to tasks.** The planner splits the goal into tasks. Each task's spec is a contract: the intent, numbered success criteria, the files it may touch, and the checks that verify it. A spec too large for one worker run splits into linked tasks, so each run fits in one context.
+- **A confirmed change reaches both ends.** When the Human confirms a change at the level of the architecture, it is written into the high-level design: the project's docs or wiki, where it has one. The code that follows is picked up by the code graph, so the design and the code stay one picture ([CODE_GRAPH.md](CODE_GRAPH.md)).
 
 Every later check is judged against these records, never against what someone remembers the Human meant.
 

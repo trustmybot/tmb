@@ -19,7 +19,7 @@ The rules for moving tmb doctrine out of prompts and into code: the layers, what
 
 The layers stack: a rule a prompt states should also be caught by a harder layer, so a dropped prompt line fails loudly (a block, a rejection) instead of silently. Layers 1 and 4 and git's pre-push hook hold in every host configuration; the rest of layer 2 depends on the host firing tmb's hooks.
 
-Source of truth for each layer's implementation: the gate's rules in `src/engine/decide.ts` and `src/engine/push-gate.ts` (each host's hooks are wired under `src/adapters/`), tools under `src/engine/handlers/`, role files from `roles/` and `src/engine/roles.ts`, constraints in `src/engine/store/schema.ts`, tmb's settings in [`CONFIG_KEYS.md`](../architecture/CONFIG_KEYS.md).
+Source of truth for each layer's implementation: the gate's rules in `src/engine/decide.ts` and `src/engine/push-gate.ts` (each host's hooks are wired under `src/adapters/`), tools under `src/engine/handlers/`, role files from `roles/` and `src/engine/roles.ts`, constraints in `src/engine/store/schema.ts`, tmb's settings in [`CONFIG.md`](../architecture/CONFIG.md).
 
 ## What stays in layer 6
 
@@ -179,5 +179,5 @@ In tmb the session-start hook is the only one that injects context: it puts the 
 - [`JUDGMENT_LAYER.md`](JUDGMENT_LAYER.md) — how to write and grade the layer 6 prompts.
 - [`RESPONSIBILITIES.md`](../architecture/RESPONSIBILITIES.md) — agent roles and boundaries.
 - [`FLOWS.md`](../flows/FLOWS.md) — workflows: who acts, what each step guarantees, and the state each flow leaves.
-- [`ERD.md`](../architecture/ERD.md) — schema.
+- [the schema in `TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema) — schema.
 - [`common.ts`](../../src/engine/handlers/common.ts) — defines the `requireRole` check behind layer 1; each tool's allowed roles are set at its `requireRole(...)` call in [`handlers/*.ts`](../../src/engine/handlers/).

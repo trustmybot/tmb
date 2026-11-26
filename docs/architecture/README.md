@@ -48,7 +48,7 @@ tmb keeps each fact in exactly one of three layers, at the level of detail that 
 - **Mid-level relationships: the code graph.** What lives where and what depends on what, derived from the code so it cannot drift from it.
 - **Low-level logic: the code.** How a step is done, in self-explaining names and tests.
 
-A fact belongs in the lowest layer that can hold it. A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay here. When a page here starts naming symbols, the detail has drifted into the wrong layer: move it down, don't copy it. Two exceptions: a generated page guarded by a freshness test, such as [ERD.md](ERD.md) and [CONFIG_KEYS.md](CONFIG_KEYS.md); and the install and debugging sections of a detail page, which may name what a user types or sees (commands, settings, environment variables, messages and file locations), never internal functions or tables.
+A fact belongs in the lowest layer that can hold it. A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay here. When a page here starts naming symbols, the detail has drifted into the wrong layer: move it down, don't copy it. Two exceptions: a generated page guarded by a freshness test, such as the schema sections of [TRAJECTORY.md](TRAJECTORY.md#schema) and [CODE_GRAPH.md](CODE_GRAPH.md#schema) and the keys in [CONFIG.md](CONFIG.md#keys); and the install and debugging sections of a detail page, which may name what a user types or sees (commands, settings, environment variables, messages and file locations), never internal functions or tables.
 
 This rule comes from our experience of design and code drifting apart, not from research evidence that it prevents that drift.
 
@@ -70,6 +70,7 @@ New to tmb? Read in this order:
 2. [RESPONSIBILITIES.md](RESPONSIBILITIES.md) — who does each step.
 3. [HOSTS.md](HOSTS.md) — how tmb works with any host through an adapter.
 4. [MEMORY.md](MEMORY.md) and [TRAJECTORY.md](TRAJECTORY.md) — what agents remember and what is recorded.
+5. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from.
 
 What happens step by step is in [the flows folder](../flows/README.md), with its own reading guide.
 
@@ -82,9 +83,11 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 | May tmb write to this path? | [HOSTS.md](HOSTS.md#containment) |
 | What does an agent see at the start of a turn? | [MEMORY.md](MEMORY.md) |
 | What is recorded, and how is work resumed from it? | [TRAJECTORY.md](TRAJECTORY.md) |
-| What does the record store? | [ERD.md](ERD.md) |
+| What does the record store? | [the schema in `TRAJECTORY.md`](TRAJECTORY.md#schema) |
 | How are issues labelled, and how do I find what waits on me? | [ISSUES.md](ISSUES.md) |
-| Which project settings exist? | [CONFIG_KEYS.md](CONFIG_KEYS.md) |
+| How does the planner know where code lives? | [CODE_GRAPH.md](CODE_GRAPH.md) |
+| What does the code graph store? | [CODE_GRAPH.md](CODE_GRAPH.md#schema) |
+| Which project settings exist, and where are they kept? | [`CONFIG.md`](CONFIG.md) |
 | What happens when the Human asks for Y? | [The flows folder](../flows/README.md) |
 | What do I type? | [The reference](../reference/README.md) |
 | Where does function X live? | Not here: ask the code graph |
@@ -95,10 +98,10 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 - [RESPONSIBILITIES.md](RESPONSIBILITIES.md) — What each shipped role is for, what it may and may not do, and why the roles are split this way.
 - [HOSTS.md](HOSTS.md) — How tmb works with an agent program without being built for one: the engine, the adapter, what each host can and cannot do, containment (what tmb writes and where, and how its gates fail), and several hosts on one record.
 - [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold storage in the record, hot session context, and pinned prompts, with the cost of each tier.
-- [TRAJECTORY.md](TRAJECTORY.md) — The record: what is kept of sessions, agent runs and checks, and how a hang or a dead run is found from it.
+- [TRAJECTORY.md](TRAJECTORY.md) — The record: what is kept of sessions, agent runs and checks, how a hang or a dead run is found from it, and its schema.
+- [CODE_GRAPH.md](CODE_GRAPH.md) — The code graph: what it holds, how links are proven, areas and concepts, who reads it, and its schema.
 - [ISSUES.md](ISSUES.md) — The groups of issue labels, the rules for each, and how a project makes the scheme its own.
-- [ERD.md](ERD.md) — The record's schema as an entity relationship diagram. Generated from the schema.
-- [CONFIG_KEYS.md](CONFIG_KEYS.md) — Every project setting tmb reads, with its default and what it changes. Generated from the code.
+- [CONFIG.md](CONFIG.md) — Where settings live, and every project setting tmb reads, with its default and what it changes.
 
 ## Decisions
 
@@ -140,5 +143,8 @@ The words for tmb's parts. tmb prefers the name a developer already knows. The p
 | [HOSTS](HOSTS.md) | Host | An agent program, such as Claude Code, that runs the agents. |
 | [HOSTS](HOSTS.md) | Host adapter | The one part of tmb that knows a host: its file formats, its events and its limits. |
 | [TRAJECTORY](TRAJECTORY.md) | Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |
+| [CODE_GRAPH](CODE_GRAPH.md) | Code graph | The index of a project's files, its symbols and the links between them. |
+| [CODE_GRAPH](CODE_GRAPH.md) | Area | One component of a project, such as login or billing, mapped to its files: the design in space. A named group of files, written by the planner. "tests" is built in. |
+| [CODE_GRAPH](CODE_GRAPH.md) | Concept | One flow or rule of the design, mapped to the code that carries it out: the design in time. An ordered list of anchors to functions or files, written by an agent. It may cross areas. |
 | [ISSUES](ISSUES.md) | Issue | One goal of the Human's, with the discussion and decisions that shaped it. |
 | [ISSUES](ISSUES.md) | Milestone | A group of issues the Human wants to judge as a whole. |
