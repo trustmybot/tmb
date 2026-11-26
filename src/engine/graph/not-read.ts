@@ -47,11 +47,12 @@ export function unreadLanguagesText(notRead: NotRead): string {
   return notRead.languages.map((l) => `${l.name} (${l.files} ${l.files === 1 ? "file" : "files"})`).join(", ");
 }
 
-/** "not read: Go 49 files; left out: dist/ 12 files", or "" when the graph reads everything. */
+/** "not read: Go 49 files; left out: dist/ 12 files; statements not parsed: 3", or "" when the graph reads everything. */
 export function notReadSummary(notRead: NotRead): string {
   const count = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
   const parts: string[] = [];
   if (notRead.languages.length > 0) parts.push(`not read: ${notRead.languages.map((l) => `${l.name} ${count(l.files)}`).join(", ")}`);
   if (notRead.leftOut.length > 0) parts.push(`left out: ${notRead.leftOut.map((l) => `${l.rule} ${count(l.files)}`).join(", ")}`);
+  if (notRead.statements) parts.push(`statements not parsed: ${notRead.statements}`);
   return parts.join("; ");
 }

@@ -1,0 +1,25 @@
+# The tables an SQL statement reads and writes, from sqlparser-rs (CODE_GRAPH.md, "Data sources").
+# Built to WebAssembly by scripts/build-sql-parser.sh at the versions pinned here and in
+# rust-toolchain.toml; tmb carries the built file, sql-tables.wasm, beside this folder.
+[package]
+name = "sql-tables"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+# "recursive-protection", a default feature, needs a native stack and does not build for wasm.
+sqlparser = { version = "=0.64.0", default-features = false, features = ["std", "visitor"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+incremental = false
