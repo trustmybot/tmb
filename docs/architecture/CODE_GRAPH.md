@@ -202,7 +202,7 @@ An area is a logical part of the project, such as login or billing, with a one-l
 - **Example 1.** `billing/` holds only billing code. One path pattern places every function in it.
 - **Example 2.** `utils.ts` holds `formatInvoice` and `hashPassword`. The first is in billing and the second in login.
 - **Example 3.** A test file tests both billing and login. Its billing tests are in billing and tests, its login tests in login and tests. The file is in all three.
-- Open, for the Human: how the planner places functions at scale: by name, by a pattern on qualified names, or proposed from the links.
+- **The planner judges, tmb stores.** Which functions belong to an area is the planner's call, as naming the areas is. tmb decides no placement by rule: it stores what the planner places, checks it at each index and lists what is not placed yet.
 
 Until then an area is a named group of files, as below.
 
