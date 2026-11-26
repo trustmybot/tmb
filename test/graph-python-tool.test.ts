@@ -298,6 +298,78 @@ describe("the environment is the repo's own, in its working tree", () => {
   });
 });
 
+// CODE_GRAPH.md, "Way B for Python reads the environment in the working tree", "Which
+// environment": the one the project's config names, else the one folder at the top of the repo
+// that holds `pyvenv.cfg`; two or more with no config naming one count as none, and the answer's
+// freshness says so. The config is pyright's own: `venvPath` and `venv`, in `pyrightconfig.json` or
+// in `pyproject.toml` under `[tool.pyright]`.
+describe("which environment", () => {
+  const USES_QUILL = { "desk/write.py": lines("from quill import scratch", "", "", "def letter():", "    return scratch(2)") };
+  const QUILL = { "quill/__init__.py": lines("def scratch(n):", "    return n") };
+  const NOTHING = { "other/__init__.py": "" };
+  // The environments are the working tree's, never the commit's.
+  const IGNORED = { ".gitignore": lines(".tmb/", ".venv/", "py/", "envs/", "alpha/", "beta/", "tools-env/") };
+
+  /** The freshness line the layer records. */
+  const note = (db: Database): string | null => (db.query("SELECT links_note AS note FROM layers WHERE layer = 'b'").get() as { note: string | null }).note;
+
+  test("the config names one of two environments in pyproject.toml: that one is read, from disk", async () => {
+    const { db, rows, stats } = await wayB(
+      { ...IGNORED, ...USES_QUILL, "pyproject.toml": lines("[project]", 'name = "desk"', "", "[tool.pyright]", 'venvPath = "."', 'venv = "py"') },
+      { ...environment(".venv", NOTHING), ...environment("py", QUILL) },
+    );
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
+    expect(stats.linksNote).toBeNull();
+    expect(note(db)).toBeNull();
+    db.close();
+  });
+
+  test("the config's choice wins over the one folder at the top: pyrightconfig.json names one in a folder below", async () => {
+    const { db, rows, stats } = await wayB(
+      { ...IGNORED, ...USES_QUILL, "pyrightconfig.json": JSON.stringify({ venvPath: "envs", venv: "work" }) },
+      { ...environment(".venv", NOTHING), ...environment("envs/work", QUILL) },
+    );
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
+    expect(stats.linksNote).toBeNull();
+    db.close();
+  });
+
+  test("two environments and no config naming one: none is read, and the freshness names them", async () => {
+    const { db, rows, stats } = await wayB({ ...IGNORED, ...USES_QUILL }, { ...environment("alpha", QUILL), ...environment("beta", QUILL) });
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "not_known", way: "language-tool" });
+    expect(stats.linksNote).not.toBeNull();
+    expect(stats.linksNote).toContain("alpha");
+    expect(stats.linksNote).toContain("beta");
+    expect(note(db)).toBe(stats.linksNote);
+    db.close();
+  });
+
+  test("two environments and a config that names none: none is read, and the freshness says so", async () => {
+    const { db, rows, stats } = await wayB(
+      { ...IGNORED, ...USES_QUILL, "pyproject.toml": lines("[tool.pyright]", 'include = ["desk"]') },
+      { ...environment("alpha", QUILL), ...environment("beta", QUILL) },
+    );
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "not_known" });
+    expect(stats.linksNote).toContain("alpha");
+    expect(stats.linksNote).toContain("beta");
+    db.close();
+  });
+
+  test("one environment and no config: that one is read, and the freshness says nothing", async () => {
+    const { db, rows, stats } = await wayB({ ...IGNORED, ...USES_QUILL }, environment("tools-env", QUILL));
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
+    expect(stats.linksNote).toBeNull();
+    db.close();
+  });
+
+  test("one environment and a config that names none: that one is read", async () => {
+    const { db, rows, stats } = await wayB({ ...IGNORED, ...USES_QUILL, "pyproject.toml": lines("[tool.pyright]", 'include = ["desk"]') }, environment("tools-env", QUILL));
+    expect(call(rows, "desk/write.py:letter", "scratch")).toMatchObject({ dst: null, call_state: "outside" });
+    expect(stats.linksNote).toBeNull();
+    db.close();
+  });
+});
+
 describe("a construction links to the class", () => {
   test("a class called links to the class, not its __init__ or __new__", async () => {
     const { db, rows } = await wayB({

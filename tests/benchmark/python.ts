@@ -4,7 +4,7 @@
 // (trustmybot/tmb#347), built as the program builds it.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import type { BuildOptions } from "../../src/engine/graph/build.ts";
+import { BUILT_IN_RULES, type BuildOptions } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER, layerRow } from "../../src/engine/graph/db.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { graphCallCounts, graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
@@ -58,8 +58,11 @@ export function referenceCounts(ref: PythonReference): { functions: Map<string, 
 export async function measurePython(repoDir: string, sha: string, way: Way): Promise<Measured & { reference: string }> {
   return withGraph(repoDir, sha, BUILD[way], (db, graphMs) => {
     // A way B graph whose Python fell back to the built-in rules is no measure of way B. The note
-    // names, per part, the languages it is about: `python, …: why`.
-    const note = (layerRow(db, BASE_LAYER)?.links_note ?? "").split("; ").find((part) => part.split(":")[0]!.split(", ").some((lang) => LANGUAGES.has(lang as SourceLanguage)));
+    // names, per part, the languages it is about: `python, …: why`; a part about what pyright's
+    // answers rest on, such as which environment it read, is no fallback.
+    const note = (layerRow(db, BASE_LAYER)?.links_note ?? "")
+      .split("; ")
+      .find((part) => part.endsWith(BUILT_IN_RULES) && part.split(":")[0]!.split(", ").some((lang) => LANGUAGES.has(lang as SourceLanguage)));
     if (way === "B" && note !== undefined) throw new Error(`way B was not built: ${note}`);
     const t = performance.now();
     const texts = languageTexts(repoDir, sha, LANGUAGES);
