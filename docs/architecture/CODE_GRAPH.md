@@ -290,6 +290,10 @@ flowchart LR
   - **Example.** `element?.toString()`, where `element` is either a class of the repo or a built-in. The call links to the repo's `toString`.
 - **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. The position is where the name it calls is written, else where the call starts.
   - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
+- **Every link has a position, a use that is no call too.** The position is where the used name is written, in every language.
+  - **Example 1.** In `items.map(format)` the link to `format` is at the word `format`.
+  - **Example 2.** In `class B extends A` the link to `A` is at `A`; in `<Card />` it is at `Card`.
+  - **Edge case.** In a shell script, `deploy --dry-run` links to the function `deploy` at the word `deploy`.
 - **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
 - **Way B follows the project's own configs.** A file is resolved under the config that owns it.
   - **Example.** A repo has a root config and one in `benchmarks/`. A file in `benchmarks/` is resolved by that folder's config, with whatever it extends.
