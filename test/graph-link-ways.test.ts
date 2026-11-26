@@ -10,12 +10,14 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import ts5 from "typescript5";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { BASE_LAYER, GRAPH_SCHEMA_VERSION, graphDbPath, layerRow, openGraphDb } from "../src/engine/graph/db.ts";
 import { indexProject, openView } from "../src/engine/graph/fresh.ts";
+import { baseOptions, commitProgram } from "../src/engine/graph/languages/typescript/compiler.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import { graphLinksOf, readSettings, validateSetting } from "../src/engine/settings.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
@@ -418,6 +420,16 @@ describe("the compiler tmb uses", () => {
     view.db.close();
   });
 
+  test("a repo that installs the very compiler tmb carries reads its declarations as any installed package: its calls are outside", async () => {
+    commit({ "lib/parse.ts": ['import ts from "typescript";', "export function parse(text: string) {", '  return ts.createSourceFile("a.ts", text, ts.ScriptTarget.Latest);', "}", ""].join("\n") });
+    // The repo's own typescript is the package tmb carries, installed where the repo installs packages.
+    mkdirSync(path.join(project, "node_modules"), { recursive: true });
+    symlinkSync(path.dirname(require.resolve("typescript5/package.json")), path.join(project, "node_modules", "typescript"), "dir");
+    const view = await indexed("language-tool");
+    expect(call(edges(view.db, view.layer), "lib/parse.ts:parse", "createSourceFile")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
+    view.db.close();
+  });
+
   test("changing the setting rebuilds the layer the new way", async () => {
     commit(CART, PADDER);
     const first = await indexed(null);
@@ -428,6 +440,20 @@ describe("the compiler tmb uses", () => {
     expect(layerRow(second.db, BASE_LAYER)?.links).toBe("language-tool");
     expect(call(edges(second.db, second.layer), "src/use.ts:checkout", "total").way).toBe("language-tool");
     second.db.close();
+  });
+});
+
+describe("the compiler's default library", () => {
+  test("a carried library is read from what is carried, never from the compiler's folder", () => {
+    const options = baseOptions(ts5);
+    const name = path.basename(ts5.getDefaultLibFilePath(options));
+    const carried = "declare function onlyCarried(): number;\n";
+    const texts = new Map([["main.ts", "export const n = onlyCarried();\n"]]);
+    const program = commitProgram(ts5, project, texts.keys(), { texts, installed: false, library: new Map([[name, carried]]) }, options);
+    const sf = program.getSourceFile(path.join(project, "main.ts"))!;
+    const call = (sf.statements[0] as import("typescript5").VariableStatement).declarationList.declarations[0]!.initializer as import("typescript5").CallExpression;
+    const decl = program.getTypeChecker().getSymbolAtLocation(call.expression)?.declarations?.[0];
+    expect(decl?.getSourceFile().text).toBe(carried);
   });
 });
 

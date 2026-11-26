@@ -60,11 +60,13 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
   const host = ts.createCompilerHost(options, true);
   const dirs = new Set<string>();
   for (const file of files.texts.keys()) for (let d = path.posix.dirname(file); d !== "."; d = path.posix.dirname(d)) dirs.add(d);
-  // The folder the compiler looks in for its default library; with a carried library, a name
-  // there is one of the carried files or nothing.
+  // The folder the compiler looks in for its default library. With a carried library, each of its
+  // files is read from what is carried; any other file there is read where it lives, as an
+  // installed package's declarations beside the compiler's own are.
   const libraryDir = path.dirname(ts.getDefaultLibFilePath(options));
   const { library } = files;
-  const at = (file: string): Place => (library !== undefined && path.dirname(file) === libraryDir ? { from: "library", name: path.basename(file) } : placeOf(root, file, files.installed));
+  const at = (file: string): Place =>
+    library !== undefined && path.dirname(file) === libraryDir && library.has(path.basename(file)) ? { from: "library", name: path.basename(file) } : placeOf(root, file, files.installed);
   const textOf = (p: Exclude<Place, { from: "disk" }>): string | undefined => (p.from === "library" ? library?.get(p.name) : files.texts.get(p.rel));
   const { getSourceFile } = host;
   return {
