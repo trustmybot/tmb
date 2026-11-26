@@ -2,6 +2,16 @@
 
 The code graph is the stable, queryable picture of a project: its directories, files and symbols, and the links between them. The planner is the architect of every project it works on and reasons from this picture. Agents ask it where something lives and what depends on it, instead of reading whole files.
 
+It has two purposes, and the second stands on the first.
+
+| Purpose | What it means | State |
+|---|---|---|
+| 1. Cover the codebase | An agent understands the code as well as by reading all of it, or better, without reading all of it. A text search returns unrelated hits and misses real ones; the graph returns proven links. So the graph must hold close to 100% of the code's relationships | Built in part; measured in [Benchmark](#benchmark) |
+| 2. Bridge design and code | Design and code drift apart in every real project. The graph ties a design to the code that carries it out, so drift is seen | Open, for the Human. [Concepts](#concepts) and [Areas](#areas) are its first parts |
+
+- **Example 1.** A worker is about to change `Cart.total`. A text search for "total" returns every use of the word. The graph returns the callers of that one method.
+- **Example 2.** A bridge on a graph that misses half the calls would tie a design to half the code. So coverage comes first.
+
 | Reader | Reads it through |
 |---|---|
 | Agents: planner, worker, reviewer | tmb's tools, as calls that return an answer |
