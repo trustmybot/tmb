@@ -12,3 +12,8 @@ declare module "*.go" {
   const text: string;
   export default text;
 }
+
+declare module "*.java" {
+  const text: string;
+  export default text;
+}

@@ -4,7 +4,7 @@
     "typescript": 3,
     "python": 2,
     "go": 2,
-    "java": 1
+    "java": 2
   },
   "entries": [
     {
@@ -322,7 +322,7 @@
       "repo": "jsoup",
       "language": "java",
       "commit": "d90d57521d931db7bf7ee464a4c0a1a9293db088",
-      "reference": "javac 21.0.13.1+2-LTS parser",
+      "reference": "javac 21.0.13.1+2-LTS parser and attribution",
       "ways": {
         "A": {
           "functionsFound": {
@@ -330,42 +330,51 @@
             "of": 5418
           },
           "linksRight": {
-            "notScored": "not judged: Java's links have no reference yet (javac, trustmybot/tmb#353)"
+            "n": 1121,
+            "of": 1121
           },
           "linksFoundByState": {
             "n": 1145,
             "of": 36578
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Java's links have no reference yet (javac, trustmybot/tmb#353)"
+            "n": 1121,
+            "of": 22659
           },
           "callsAccountedFor": {
             "n": 36992,
             "of": 36992
           },
           "missesByCause": {
-            "notScored": "not judged: Java's links have no reference yet (javac, trustmybot/tmb#353)"
+            "a method, called through a value or a type": 18882,
+            "a method, called by its simple name": 1423,
+            "a construction of a class": 1200,
+            "`super(…)`, a constructor of the superclass": 33
           }
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (javac, trustmybot/tmb#353)"
+            "n": 5418,
+            "of": 5418
           },
           "linksRight": {
-            "notScored": "not built (javac, trustmybot/tmb#353)"
+            "n": 22659,
+            "of": 22659,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "notScored": "not built (javac, trustmybot/tmb#353)"
+            "n": 22659,
+            "of": 30658
           },
           "linksFoundByReference": {
-            "notScored": "not built (javac, trustmybot/tmb#353)"
+            "n": 22659,
+            "of": 22659
           },
           "callsAccountedFor": {
-            "notScored": "not built (javac, trustmybot/tmb#353)"
+            "n": 36992,
+            "of": 36992
           },
-          "missesByCause": {
-            "notScored": "not built (javac, trustmybot/tmb#353)"
-          }
+          "missesByCause": {}
         }
       }
     }

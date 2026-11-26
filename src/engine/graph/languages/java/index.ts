@@ -8,6 +8,7 @@ import type { Node } from 'web-tree-sitter';
 import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
 import { docOf, memberHint, named, normalizedHash, signatureOf, syntaxTree } from '../kit.ts';
 import { INHERITED, JAVA_LANG_TYPES } from './builtins.ts';
+import { javacTool } from './tool.ts';
 
 /** The grammar's node types for a comment. */
 const JAVA_COMMENTS: readonly string[] = ['line_comment', 'block_comment'];
@@ -435,4 +436,5 @@ export const java: LanguageModule = {
   grammar: javaWasm,
   comment: 'slash',
   extract: (file, out) => extractJava(syntaxTree(file), file.src, out, file.module),
+  tool: javacTool,
 };
