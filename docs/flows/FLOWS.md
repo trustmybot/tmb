@@ -233,7 +233,7 @@ flowchart LR
 ```
 
 - **Edge case.** A run never ended. Nothing waits for a timer: tmb runs only when something calls it, so a stuck task is found at the next session start or by `tmb doctor`.
-- **Planned (trustmybot/tmb#165).** After two review fails in a row, no worker starts on the task until the planner has recorded the cause.
+- **Planned (trustmybot/tmb#400).** After two review fails in a row, no worker starts on the task until the planner has recorded the cause.
 
 ### 3.5 PR comment triage
 
