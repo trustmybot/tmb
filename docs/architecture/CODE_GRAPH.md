@@ -144,7 +144,7 @@ The graph uses one set of kinds for every language. Each language module maps it
 | Accessor | A method that is called like a field: a getter or a setter | Yes, as a method |
 | Unnamed function | A callable written as a value with no name | Yes, hidden |
 | Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
-| File-level data | A constant or variable declared outside any type or function; a database table, index or trigger | Yes. Planned (trustmybot/tmb#322): each name a destructuring binds, `const { a, b } = make()` |
+| File-level data | A constant or variable declared outside any type or function, each name a destructuring binds included; a database table, index or trigger | Yes |
 | Local | A variable, a parameter or a statement inside a callable; a name bound by a block, a loop or a catch at file level, which the rest of the file cannot see | No |
 
 How two languages write each kind:
@@ -244,7 +244,7 @@ Every call is in exactly one state (trustmybot/tmb#252), and a function's answer
 
 - **What a call is.** A place where the code runs a callable: a call, a construction with `new` or by a class's name, a tagged template, a dynamic import, a call to the parent's constructor, and a decorator written as a call, `@cache()`.
   - **Not a call.** Naming a parent class, a JSX element, and a decorator written as a bare name, `@cache`. They are uses, and belong with what depends on a symbol beyond calls (trustmybot/tmb#148).
-- **Who owns a call.** The nearest callable around it. A call in a field's initial value belongs to the type. A decorator's call belongs to what encloses the decorated thing, since it runs when that thing is defined and not when it is called: the type for anything inside a type (a method, an accessor, a field, or a parameter of one), the file for a top-level function or type. A call in a parameter's default value follows when the language runs it: with the definition in Python, `def build(self, x=make())`, so it belongs to what encloses the function, as a decorator's call does; on each call in TypeScript and JavaScript, so it belongs to the function. A call in an unnamed function is answered under the nearest named one.
+- **Who owns a call.** The nearest callable around it. A call in a field's initial value belongs to the type. A call in a file-level name's value, `const x = make()`, belongs to that name; when one value binds several names, `const { a, b } = make()`, it belongs to the file. A decorator's call belongs to what encloses the decorated thing, since it runs when that thing is defined and not when it is called: the type for anything inside a type (a method, an accessor, a field, or a parameter of one), the file for a top-level function or type. A call in a parameter's default value follows when the language runs it: with the definition in Python, `def build(self, x=make())`, so it belongs to what encloses the function, as a decorator's call does; on each call in TypeScript and JavaScript, so it belongs to the function. A call in an unnamed function is answered under the nearest named one.
 - **A built-in is outside only when nothing nearer declares the name.** The scope and the repo are looked up first, so a repo function named `parse` is never taken for the built-in.
 - **The lists of built-ins are generated, never written by hand.** Each language module's list comes from the language's own tool, and a test fails when it is stale.
 - **Edge case.** A language with no lookup of its own (bash, Perl, SQL): its calls get no state and are counted apart, so 100% holds for the languages that have one.
@@ -779,8 +779,8 @@ All are FTS5 virtual tables.
 |---|---|
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
-| Each name a file-level destructuring binds is a node | trustmybot/tmb#322 |
 | tmb carries the TypeScript compiler for way B | trustmybot/tmb#328 |
+| Way A links a call to a file-level name that holds a callable, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
