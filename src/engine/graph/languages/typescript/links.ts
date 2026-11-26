@@ -13,9 +13,11 @@ import path from "node:path";
 import ts from "typescript5";
 import { buildLayer, FUNCTION_KINDS } from "../../build.ts";
 import { BASE_LAYER, openGraphDb } from "../../db.ts";
-import { listTree, readBlobs, resolveCommit } from "../../git-source.ts";
-import { baseOptions, calleeOf as calleeIn, commitProgram, isCallNode, originalNames as originalIn } from "./compiler.ts";
+import { commitReader, listTree, readBlobs, resolveCommit } from "../../git-source.ts";
+import { isImportConfigPath } from "../../import-config.ts";
+import { calleeOf as calleeIn, isCallNode, originalNames as originalIn } from "./compiler.ts";
 import { coveredLanguage, scriptKind } from "./coverage.ts";
+import { projectsOf } from "./projects.ts";
 
 /** Files larger than this the graph does not parse, so the compiler does not read them either. */
 const MAX_BYTES = 1_000_000;
@@ -60,8 +62,11 @@ export type CompilerCall = {
   answer: Answer;
 };
 
-/** The compiler's program of a repo at a commit: its answer for a name on a line, and every call of a file. */
-export type CompilerProgram = { lookup: CompilerLookup; calls: (file: string) => CompilerCall[]; checker: ts.TypeChecker };
+/**
+ * The compiler's programs of a repo at a commit: its answer for a name on a line, every call of a
+ * file, and the checker of the program a file is resolved in.
+ */
+export type CompilerProgram = { lookup: CompilerLookup; calls: (file: string) => CompilerCall[]; checkerOf: (file: string) => ts.TypeChecker };
 
 /** One link of the graph: the call's file, line and position, the name it calls, and the declaration it links. */
 export type GraphLink = { src: string; line: number; pos: number | null; name: string; dst: string; start: number; end: number; kind: string };
@@ -115,18 +120,32 @@ export function compilerLookup(repoDir: string, commit: string, texts = commitTe
   return compilerProgram(repoDir, commit, texts).lookup;
 }
 
-/** The compiler's program of the repo at `commit`, read from git as the graph reads it. */
+/**
+ * The compiler's programs of the repo at `commit`, read from git as the graph reads it: each file
+ * in the program of the config that owns it, as way B resolves it (CODE_GRAPH.md, "Two ways to make
+ * links"), with the repo's configs and the files they name. No installed package is read.
+ */
 export function compilerProgram(repoDir: string, commit: string, texts = commitTexts(repoDir, commit)): CompilerProgram {
   const root = path.resolve(repoDir);
-  // No project settings and no installed package is read: the reference is the same for every repo.
-  const options: ts.CompilerOptions = { ...baseOptions(ts), types: [] };
-  const program = commitProgram(ts, root, texts.keys(), { texts, installed: false }, options);
-  const checker = program.getTypeChecker();
+  const tree = listTree(root, commit);
+  const configEntries = tree.filter((e) => isImportConfigPath(e.path));
+  const blobs = readBlobs(
+    root,
+    configEntries.map((e) => e.blob),
+  );
+  const withConfigs = new Map(texts);
+  for (const e of configEntries) {
+    const text = blobs.get(e.blob);
+    if (text !== undefined && !withConfigs.has(e.path)) withConfigs.set(e.path, text);
+  }
+  const projects = projectsOf(ts, root, { texts: withConfigs, installed: false, read: commitReader(root, tree) }, texts.keys());
+  const programOf = (file: string) => projects.programOf(file);
+  const checkerOf = (file: string) => programOf(file).getTypeChecker();
   const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
   const inRepo = (sf: ts.SourceFile) => texts.has(rel(sf.fileName));
 
   /** The file an imported name's import names, when the name is an import of a file of the repo. */
-  const importFileOf = (sym: ts.Symbol | undefined): string | null => {
+  const importFileOf = (checker: ts.TypeChecker, sym: ts.Symbol | undefined): string | null => {
     if (sym === undefined || (sym.flags & ts.SymbolFlags.Alias) === 0) return null;
     let node: ts.Node | undefined = sym.declarations?.[0];
     while (node !== undefined && !ts.isImportDeclaration(node) && !ts.isImportEqualsDeclaration(node) && !ts.isSourceFile(node)) node = node.parent;
@@ -136,13 +155,13 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
     return target !== undefined && ts.isSourceFile(target) && inRepo(target) ? rel(target.fileName) : null;
   };
 
-  const answer = (id: ts.Identifier | ts.PrivateIdentifier): Answer => {
+  const answer = (checker: ts.TypeChecker, id: ts.Identifier | ts.PrivateIdentifier): Answer => {
     const parent = id.parent;
     let sym = parent !== undefined && ts.isShorthandPropertyAssignment(parent) && parent.name === id ? checker.getShorthandAssignmentValueSymbol(parent) : checker.getSymbolAtLocation(id);
     if (sym === undefined) return { kind: "unknown" };
     // The import the name reaches its declaration through: its own, or its namespace's for `ns.f`.
     const receiver = parent !== undefined && ts.isPropertyAccessExpression(parent) && parent.name === id && ts.isIdentifier(parent.expression) ? checker.getSymbolAtLocation(parent.expression) : undefined;
-    const importFile = importFileOf(sym) ?? importFileOf(receiver);
+    const importFile = importFileOf(checker, sym) ?? importFileOf(checker, receiver);
     if (sym.flags & ts.SymbolFlags.Alias) {
       try {
         sym = checker.getAliasedSymbol(sym);
@@ -176,7 +195,7 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
     if (known !== undefined) return known;
     const refs: FileRefs = { byLine: new Map(), byPos: new Map() };
     byFile.set(file, refs);
-    const sf = program.getSourceFile(path.join(root, file));
+    const sf = programOf(file).getSourceFile(path.join(root, file));
     if (sf === undefined) return refs;
     const original = originalNames(sf);
     const put = (into: Map<string, Ref[]>, at: number, name: string, ref: Ref) => {
@@ -206,9 +225,10 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
   };
 
   const answers = new Map<ts.Node, Answer>();
-  const answerOf = (node: ts.Identifier | ts.PrivateIdentifier): Answer => {
+  // A file's names are answered by the checker of the program the file is resolved in.
+  const answerOf = (file: string, node: ts.Identifier | ts.PrivateIdentifier): Answer => {
     let a = answers.get(node);
-    if (a === undefined) answers.set(node, (a = answer(node)));
+    if (a === undefined) answers.set(node, (a = answer(checkerOf(file), node)));
     return a;
   };
   // A call: the reference at its position, of its name. A use that is no call: every reference to
@@ -216,11 +236,11 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
   const lookup: CompilerLookup = (file, at, name) => {
     const refs = refsOf(file);
     const found = at.pos === null ? refs.byLine.get(`${at.line}\u0000${name}`) : refs.byPos.get(`${at.pos}\u0000${name}`);
-    return (found ?? []).map((r) => answerOf(r.node));
+    return (found ?? []).map((r) => answerOf(file, r.node));
   };
 
   const calls = (file: string): CompilerCall[] => {
-    const sf = program.getSourceFile(path.join(root, file));
+    const sf = programOf(file).getSourceFile(path.join(root, file));
     if (sf === undefined) return [];
     const original = originalNames(sf);
     const out: CompilerCall[] = [];
@@ -230,14 +250,14 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
         const names = callee === null ? [] : [callee.text];
         const imported = callee === null ? undefined : original.get(callee.text);
         if (imported !== undefined) names.push(imported);
-        out.push({ file, node, callee, line: lineOf(sf, node.getStart(sf)), pos: (callee ?? node).getStart(sf), names, answer: callee === null ? { kind: "unknown" } : answerOf(callee) });
+        out.push({ file, node, callee, line: lineOf(sf, node.getStart(sf)), pos: (callee ?? node).getStart(sf), names, answer: callee === null ? { kind: "unknown" } : answerOf(file, callee) });
       }
       ts.forEachChild(node, visit);
     };
     visit(sf);
     return out;
   };
-  return { lookup, calls, checker };
+  return { lookup, calls, checkerOf };
 }
 
 /** `import { a as b }`: the graph names a reference to `b` by the name `a` it is declared as. */

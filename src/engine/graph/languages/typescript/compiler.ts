@@ -1,7 +1,7 @@
 // The TypeScript compiler's program of a repo at one commit, with the compiler module given as an
 // input: no fixed compiler is loaded here. The repo's own files are read from the commit, as the
 // graph reads them, never from the working folder. The link check (links.ts) and way B
-// (tool.ts) both build their program here.
+// (tool.ts) both read the commit through the host here, in the programs of projects.ts.
 import path from "node:path";
 import type TS from "typescript5";
 
@@ -30,6 +30,11 @@ export type CommitFiles = {
   texts: ReadonlyMap<string, string>;
   /** Whether the project's installed dependencies (a `node_modules` folder) are read from disk. */
   installed: boolean;
+  /**
+   * Any other file of the commit, by path from its top, read when asked for: a config that another
+   * config names by `extends` or `references`, whatever its name.
+   */
+  read?: (rel: string) => string | undefined;
   /**
    * The compiler's default library files by name, when the program carries them: then they are
    * read from here, never from the compiler's folder on disk. Without it they are read from disk.

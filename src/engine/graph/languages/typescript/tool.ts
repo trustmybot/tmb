@@ -95,7 +95,7 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
   // tmb carries, and the installed packages of the working tree. Each file with calls is answered
   // in the program of the project that owns it (projects.ts).
   const texts = new Map<string, string>([...input.configs, ...input.files]);
-  const files: CommitFiles = { texts, installed: true, library };
+  const files: CommitFiles = { texts, installed: true, library, read: input.read };
   const projects = projectsOf(ts, root, files, new Set(input.calls.map((call) => call.path)));
   const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
   const inRepo = (sf: TS.SourceFile) => input.files.has(rel(sf.fileName));

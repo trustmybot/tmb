@@ -185,8 +185,9 @@ export async function measureTypescript(repoDir: string, sha: string, way: Way):
     const refCalls: ReferenceCall[] = [];
     for (const file of read) {
       for (const call of program.calls(file)) {
-        if (call.answer.kind !== "declared" || !declaresANode(call, program.checker)) continue;
-        refCalls.push({ file, line: call.line, pos: call.pos, names: call.names, decls: call.answer.decls, cause: causeOf(call, program.checker) });
+        const checker = program.checkerOf(file);
+        if (call.answer.kind !== "declared" || !declaresANode(call, checker)) continue;
+        refCalls.push({ file, line: call.line, pos: call.pos, names: call.names, decls: call.answer.decls, cause: causeOf(call, checker) });
       }
     }
     const byReference = linksFoundByReference(refCalls, graphCalls(db, read));

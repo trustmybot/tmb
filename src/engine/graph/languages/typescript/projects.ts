@@ -90,11 +90,18 @@ export function projectsOf(ts: TypeScriptModule, root: string, files: CommitFile
     return { files: here?.files ?? [], directories: [...(here?.directories ?? [])] };
   };
 
+  // A config reads any file of the commit it names by `extends` or `references`, whatever its name,
+  // as the compiler reads it on disk.
+  const named = (file: string): string | undefined => {
+    const rel = path.relative(root, path.resolve(file));
+    return rel.startsWith("..") || path.isAbsolute(rel) ? undefined : files.read?.(rel.split(path.sep).join("/"));
+  };
+  const readConfig = (file: string): string | undefined => reader.readFile(file) ?? named(file);
   const configHost: TS.ParseConfigFileHost = {
     useCaseSensitiveFileNames: true,
     getCurrentDirectory: () => root,
-    fileExists: (file) => reader.fileExists(file),
-    readFile: (file) => reader.readFile(file),
+    fileExists: (file) => reader.fileExists(file) || named(file) !== undefined,
+    readFile: readConfig,
     readDirectory: (dir, extensions, excludes, includes, depth) => matchFiles(dir, extensions, excludes, includes, true, root, depth, entries, (file) => file),
     // A config that cannot be read owns no file.
     onUnRecoverableConfigFileDiagnostic: () => {},
@@ -104,7 +111,7 @@ export function projectsOf(ts: TypeScriptModule, root: string, files: CommitFile
   const parsedConfig = (config: string): TS.ParsedCommandLine | null => {
     const known = parsed.get(config);
     if (known !== undefined) return known;
-    const read = reader.fileExists(config) ? (ts.getParsedCommandLineOfConfigFile(config, undefined, configHost, extendedConfigCache) ?? null) : null;
+    const read = configHost.fileExists(config) ? (ts.getParsedCommandLineOfConfigFile(config, undefined, configHost, extendedConfigCache) ?? null) : null;
     parsed.set(config, read);
     return read;
   };

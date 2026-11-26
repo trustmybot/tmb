@@ -53,6 +53,22 @@ export function listTree(repoDir: string, commit: string): TreeEntry[] {
   return entries;
 }
 
+/**
+ * A reader of the commit's files by path, each read from git when first asked for: for the few
+ * files known only once others are read.
+ */
+export function commitReader(repoDir: string, entries: readonly TreeEntry[]): (path: string) => string | undefined {
+  const blobOf = new Map(entries.map((e) => [e.path, e.blob]));
+  const read = new Map<string, string | undefined>();
+  return (file) => {
+    if (read.has(file)) return read.get(file);
+    const blob = blobOf.get(file);
+    const text = blob === undefined ? undefined : readBlobs(repoDir, [blob]).get(blob);
+    read.set(file, text);
+    return text;
+  };
+}
+
 /** The text of each blob, read in one `git cat-file --batch`. */
 export function readBlobs(repoDir: string, blobs: readonly string[]): Map<string, string> {
   const texts = new Map<string, string>();
