@@ -44,25 +44,33 @@ function carriedCompiler(): Carried | { unavailable: string } {
 const isFunctionValue = (ts: TypeScriptModule, e: TS.Expression | undefined): boolean =>
   e !== undefined && (ts.isArrowFunction(e) || ts.isFunctionExpression(e) || ts.isClassExpression(e));
 
-/** Whether a declaration sits inside a callable. */
-function insideCallable(ts: TypeScriptModule, d: TS.Node): boolean {
-  for (let n: TS.Node | undefined = d.parent; n !== undefined; n = n.parent) if (ts.isFunctionLike(n)) return true;
-  return false;
+/**
+ * Whether a variable, or a name a destructuring binds, is declared by a statement of the file
+ * itself, exported or not: a name the whole file can see. One bound by a loop, a block, a catch or
+ * a function is a local.
+ */
+function fileLevel(ts: TypeScriptModule, d: TS.VariableDeclaration | TS.BindingElement): boolean {
+  let n: TS.Node = d;
+  while (ts.isBindingElement(n) || ts.isObjectBindingPattern(n) || ts.isArrayBindingPattern(n)) n = n.parent;
+  if (!ts.isVariableDeclaration(n)) return false;
+  const statement = n.parent.parent;
+  return ts.isVariableStatement(statement) && ts.isSourceFile(statement.parent);
 }
 
 /**
  * Whether a declaration of a called value is a node of the graph by "Kinds of symbol": a callable
  * with a body (a function written as a variable's, a field's or a property's value included), a
- * type that makes objects, or data declared outside every callable, each name a destructuring
- * binds there included (trustmybot/tmb#322). A local is no node: a parameter, or a variable inside
- * a callable whose value is no function written there; nor is a signature with no body.
+ * type that makes objects, or file-level data, a name a statement of the file declares, each name
+ * a destructuring binds included (trustmybot/tmb#322). A local is no node: a parameter, or a
+ * variable whose value is no function written there, bound inside a callable or by a loop, a
+ * block or a catch at the top of the file; nor is a signature with no body.
  */
 function isNodeDeclaration(ts: TypeScriptModule, d: TS.Declaration): boolean {
   if (ts.isFunctionLike(d)) return "body" in d && d.body !== undefined;
   if (ts.isClassLike(d)) return true;
   if (ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d)) return isFunctionValue(ts, d.initializer);
-  if (ts.isVariableDeclaration(d)) return isFunctionValue(ts, d.initializer) || !insideCallable(ts, d);
-  if (ts.isBindingElement(d)) return !insideCallable(ts, d);
+  if (ts.isVariableDeclaration(d)) return isFunctionValue(ts, d.initializer) || fileLevel(ts, d);
+  if (ts.isBindingElement(d)) return fileLevel(ts, d);
   return false;
 }
 
