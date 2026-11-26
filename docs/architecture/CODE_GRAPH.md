@@ -2,9 +2,27 @@
 
 The code graph is the stable, queryable picture of a project: its directories, files and symbols, and the links between them. The planner is the architect of every project it works on and reasons from this picture. Agents ask it where something lives and what depends on it, instead of reading whole files.
 
+| Reader | Reads it through |
+|---|---|
+| Agents: planner, worker, reviewer | tmb's tools, as calls that return an answer |
+| The Human | The dashboard's Code page, and the command line |
+
 It is the middle of the three knowledge layers ([README.md](README.md#three-layers-of-knowledge)): it holds the relationships the docs leave out and the code leaves implicit. A change to the code reaches it at the next index, so it never drifts from the code.
 
 This page is the code graph in space: what it holds, how its parts connect and why. How it is built, kept fresh and read through a task's layer is flow 2.2, in [2_CODE_GRAPH.md](../flows/2_CODE_GRAPH.md).
+
+## Terms
+
+| Word | Meaning | Example |
+|---|---|---|
+| Node | One thing in the graph: a directory, a file, or a symbol | The file `cart.ts`; the function `total` in it |
+| Symbol | Something the code declares: a function, a class or a method | `class Cart`, `function total()` |
+| Name | The word the code uses for a symbol at one place. A name is not the symbol: the same word can mean different symbols in different files, and one symbol can be reached under several names | `total` in `cart.ts` and `total` in `report.ts` are two symbols. `import { total as sum }` makes `sum` a second name for one symbol |
+| Qualified name | A symbol's full name inside its file, which tells it apart from others of the same name | `Cart.total` |
+| Link | A proven relation between two nodes: a call, an import, a database read or write, or a test covering code | `checkout()` calls `Cart.total` |
+| Resolve | To find which symbol a name means at the place it is used | `sum(...)` in `checkout.ts` resolves to `total` in `cart.ts` |
+| Layer | One snapshot of a repo at one commit | The base branch's commit; an open task's commit |
+| Unnamed function | A function written without a name, as a value | The callback in `items.map(x => x.price)` |
 
 ```mermaid
 flowchart LR
@@ -22,7 +40,14 @@ flowchart LR
 | Directories and files | Each directory with a summary from its README. Each file with a short summary from its header | Git |
 | Symbols | Each file's definitions and the links between them: calls, imports, database reads and writes, and which tests cover what. Every function is a node | Git |
 | Concepts | Flows and rules, each an ordered list of anchors to symbols or files. See [Concepts](#concepts) | Agents |
-| Areas | The project's logical parts, such as login or billing, each a named group of files. See [Areas](#areas) | The planner |
+| Areas | The project's logical parts, such as login or billing. Each is a named group of files; Planned (trustmybot/tmb#308): of functions. See [Areas](#areas) | The planner |
+
+Two things contain a symbol:
+
+| Container | Kind | Decided by | Example |
+|---|---|---|---|
+| File | Physical | Git, with no judgment | A file with 10 classes and 100 functions holds all 110 symbols |
+| Area | Logical | The planner's judgment | "billing" holds the code that bills, wherever its files are |
 
 - **Example.** The symbols answer "where is X" and "who calls X" without re-reading code.
 - **Edge case.** Summaries come from file contents, so every read presents them as untrusted: data, never instructions.
@@ -31,14 +56,18 @@ flowchart LR
 
 The code graph is not part of the record. It lives in its own file beside it, one per repo in a multi-repo workspace, and every row but the agent-written ones can be rebuilt from git.
 
-| | Code graph | The record |
+| | The code graph holds | The record holds, not the graph |
 |---|---|---|
 | Content | The project's map: directories, files, symbols, concepts and areas | Issues, notes and decisions, feature branches, tasks, runs, checks, reviews |
 | Answers | "What does this project look like?", "Where does X live?", "Who calls X?" | "What did we decide?", "What's open?", "What did the worker commit?" |
 | Source | Git, at a commit | The work, as it happens |
 
-- **Built from git, never from the working folder.** Each repo is indexed at the commit of its base branch, so every session and worktree reads the same graph. One limit: the base branch is the local one, so a merge on GitHub is not seen until it is fetched.
+- **Built from git, never from the working folder.** Each repo is indexed at the commit of its base branch, so every session and worktree reads the same graph. One limit: the base branch is the local one, so a merge on GitHub is not seen until it is fetched. Planned (trustmybot/tmb#70): the syncer brings what happened on the remote in, so the graph follows it.
 - **One snapshot per repo, not history.** The graph holds each repo at one commit. On top sit layers: one per open feature branch and one per open task ([Task overlay](../flows/2_CODE_GRAPH.md#task-overlay)). Git is the history store: what changed between two commits is a diff, and the graph can be rebuilt at any commit.
+- **The commit is on the layer, not on each node.** A layer records the one commit it was built at. A node records its file and its lines. The graph links no commit to another and keeps no node's past.
+  - **Example 1.** "Who calls `total` now?" is a graph question, answered at the layer's commit.
+  - **Example 2.** "When did `total` change, and why?" is a git question: git's history of that file and those lines answers it.
+- **The graph file is not committed with the code.** It is a cache built from a commit, and the commit names it. Checking out an older commit and indexing gives that commit's graph again.
 - **It can always be rebuilt.** Everything except concepts and areas is derived from git. A rebuild throws the rest away, builds it again, keeps the concepts and areas and re-checks each against the new graph. One whose code is gone is marked broken, never dropped.
 - **One step per write.** An index reads and parses first, then applies the whole layer at once. A reader sees the old graph or the new one, never a mix.
 - **The commit and the graph are written together.** The commit a repo is indexed at, and the indexer version it was built with, are stored with the graph in one step. So an absent or emptied file always reads as never indexed.
@@ -64,14 +93,19 @@ flowchart TD
 ```
 
 - **Every function is a node, unnamed ones included** (trustmybot/tmb#140), in TypeScript and JavaScript ([Languages](#languages)). Each symbol links to what contains it: a function, a class or the file.
-  - **Example.** An unnamed function is named by where it is used, such as the callback of the call it is passed to, or else by its line.
-- **Agents' answers do not change.** A lookup names the nearest named function, and unnamed functions stay out of search.
+  - **What an unnamed function is.** A function written as a value with no name: an arrow function or a function expression in TypeScript and JavaScript, a `lambda` in Python (Planned, trustmybot/tmb#141). A nested helper that has a name is a named function, not this.
+  - **Example 1.** In `items.map(x => x.price)` the callback is an unnamed function. Its node is named by where it is used, here the callback of `map`, or else by its line.
+  - **Example 2.** `function outer() { function helper() {} }`: `helper` is a named function inside `outer`.
+  - **Why it is a node.** A call made inside a callback needs an owner, and the count of functions can then be checked one to one against the compiler's list.
+- **Unnamed functions never show to a reader.** They stay out of search, and a lookup names the nearest named function instead.
+  - **Example.** A test calls `total()` inside `it("adds", () => { ... })`. The answer to "who calls `total`" names the nearest named function around the callback, not the callback.
+  - Open, for the Human: whether unnamed functions stay as hidden nodes, or are not nodes at all and their calls belong to the enclosing named function.
 - **A coverage test holds it at 100%** (trustmybot/tmb#247). [Benchmark](#benchmark) has the test and its targets.
 - **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and indexing prints how many there are. "Not parsed" means only a file in a language tmb reads that failed to parse.
 - **What the graph does not read is named and counted** (trustmybot/tmb#234).
   - **Example 1.** A lookup finds nothing. Its answer names the unread languages, so "not there" is never mistaken for "not read".
   - **Example 2.** A lookup of a file in an unread language says the file is there and its language is not read.
-- **A minified file is kept as a file and not parsed** (trustmybot/tmb#232), whatever its name. The test is GitHub Linguist's: lines that average more than 110 characters. It holds for TypeScript and JavaScript.
+- **A minified file is kept as a file and not parsed** (trustmybot/tmb#232), whatever its name. The test is the one used by [GitHub Linguist](https://github.com/github-linguist/linguist), the library GitHub uses to tell a repo's languages and to mark vendored and generated files: lines that average more than 110 characters. It holds for TypeScript and JavaScript.
   - **Why.** One bundle of one line can add thousands of functions and answer a search first.
 
 | What is not read | Rule |
@@ -95,9 +129,14 @@ Each language is a module of its own (trustmybot/tmb#157). Every module answers 
 
 The graph never guesses. A link is made only on proof, and that is the one promise. What could not be resolved is reported as unresolved. There is no second set of less-sure links, marked or not: studies of agents show wrong links cost more than missing ones, and none shows that marking a link as less sure helps.
 
+**How a name is resolved.** Not by searching for the word. tmb parses each file into its syntax tree with a parser (tree-sitter), so it knows which words are calls and imports and which are variables, strings or comments. It then resolves each called or imported name by the language's own scope rules, the way the compiler would. tmb does not run the compiler to build the graph; the TypeScript compiler is the independent check that every link is right ([Benchmark](#benchmark)).
+
+- **Example 1.** `total` appears as a variable in one file and a function in another. Only a call or an import of `total` is resolved, and only to the symbol the scope rules give.
+- **Example 2.** Two files each declare `total`. A call in `checkout.ts` links to the one `checkout.ts` imports, never to the other.
+
 ```mermaid
 flowchart TD
-    A[A name is used in a file] --> B["Look it up as the language does: the function, the functions around it, the file, then its imports"]
+    A[A call or an import uses a name] --> B["Look it up as the language does: the function, the functions around it, the file, then its imports"]
     B --> C{First place that has the name}
     C -- "a function in the repo" --> L[Link]
     C -- "an import" --> D{Resolves to a file of the repo?}
@@ -112,7 +151,7 @@ flowchart TD
 ```
 
 - **Example 1.** A function calls a function declared in the same file: link.
-- **Example 2.** A function calls a name imported from an outside package: no link, and not a miss.
+- **Example 2.** A function calls a name imported from an outside package: no link, and not a miss. Outside means a package the project installs, such as one from a public registry. A package that lives in the same repo is the repo's own code and is linked.
 - **Edge case.** `import pkg` followed by `pkg.f()`. Proving the call needs the type of the thing it is called on, so there is no link.
 
 - **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is not a function in the repo, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
@@ -120,6 +159,7 @@ flowchart TD
   - Left with no link, and planned as proofs of their own (trustmybot/tmb#249): a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
   - Planned (trustmybot/tmb#287): the lookup sees four more bindings. Without them each can give a wrong link.
 - **Imports through a path alias or a package name resolve to their files** (trustmybot/tmb#147). A TypeScript or JavaScript import that is not a relative path is resolved the way the TypeScript compiler does it: through the nearest project settings file above the importing file, read at the indexed commit. An import of a package that lives in the same repo links to that package's entry file. Two packages of the same name are not linked.
+  - **Example.** `import { total } from "@app/cart"` and `import { total } from "../cart"` reach the same file, so both link to the one `total` symbol. An alias adds a name, never a second symbol.
 - **A name that reaches a file through a re-export links to where it is declared** (trustmybot/tmb#233). A re-export is proof. The import's link to the re-exporting file stays.
 
 | Re-exports | Followed | Not followed |
@@ -135,7 +175,17 @@ The design for links is trustmybot/tmb#250. Its next steps are in [Planned](#pla
 
 ## Concepts
 
-A concept is a flow or a rule, written by an agent. It is the bridge from a design page to the code that carries it out.
+A concept is a flow or a rule, written by an agent. It is the bridge from a design page to the code that carries it out: a name, a one-line meaning, and an ordered list of anchors, each a symbol or a file.
+
+| Concept | Kind | Anchors, in order |
+|---|---|---|
+| "Checkout" | Flow | `Cart.total`, then `chargeCard`, then `saveOrder`, then `sendReceipt` |
+| "Only an admin deletes a user" | Rule | `requireAdmin`, then `deleteUser` |
+| "Sign-up" | Flow across areas | `validateEmail` in login, `createAccount` in accounts, `sendWelcome` in mail |
+
+- **Example 1.** The design says "an order is charged before it is saved". The planner asks for the concept "Checkout" and gets the four functions in that order, without searching.
+- **Example 2.** A worker changes `chargeCard`. The concept shows it is step two of "Checkout", so the reviewer knows which flow to probe.
+- **Area or concept.** An area answers "which part of the project is this code in". A concept answers "which code carries out this flow or rule, and in what order". One concept may cross several areas.
 
 - **Agents write concepts**, through one tool, with at least one anchor. Every anchor must be in the base branch's graph. Writing a name that exists replaces that concept. Any role may write one. Open, for the Human: whether only the planner writes concepts, at each close, and a worker only proposes them.
 - **Every index of the base branch re-checks them.** A rebuild keeps and re-checks them too ([Substrate](#substrate)).
@@ -145,7 +195,16 @@ A concept is a flow or a rule, written by an agent. It is the bridge from a desi
 
 ## Areas
 
-An area is a named group of files, with a one-line purpose. With areas the planner can say which logical part a piece of code belongs to, and tests are one area (trustmybot/tmb#146).
+An area is a logical part of the project, such as login or billing, with a one-line purpose. With areas the planner can say which part a piece of code belongs to, and tests are one area (trustmybot/tmb#146).
+
+**Planned: an area holds functions, not only files** (trustmybot/tmb#308). Folders match the design only in a well-kept codebase, so an area is a group of nodes at function level. A path pattern stays as the shortcut for whole files, and one file may hold functions of several areas.
+
+- **Example 1.** `billing/` holds only billing code. One path pattern places every function in it.
+- **Example 2.** `utils.ts` holds `formatInvoice` and `hashPassword`. The first is in billing and the second in login.
+- **Example 3.** A test file tests both billing and login. Its billing tests are in billing and tests, its login tests in login and tests. The file is in all three.
+- Open, for the Human: how the planner places functions at scale: by name, by a pattern on qualified names, or proposed from the links.
+
+Until then an area is a named group of files, as below.
 
 - **Defined by path patterns**, to include and to leave out. A path rule cannot tell login from billing, so the planner names the areas and tmb stores and checks them. A function takes its file's area.
 - **Only the planner writes or removes an area.** It proposes the areas to the Human at onboarding ([2_ONBOARD.md](../flows/2_ONBOARD.md)). Every role can list them, and so can the Human from the command line.
@@ -163,7 +222,8 @@ flowchart TD
     T["tests always comes last"] -.-> C
 ```
 
-- **Example.** A test file inside billing has billing as its main area and is also in tests.
+- **Example 1.** A test file inside billing has billing as its main area and is also in tests.
+- **Example 2.** A test file that both a billing pattern and a login pattern match is in billing, login and tests. Its main area is the one with the most exact pattern.
 - **Why the most exact pattern wins.** In a CODEOWNERS file, the usual standard for "who owns which paths", the last matching pattern wins. Areas have no order between them, so the most exact pattern wins, as in URL routing.
 
 | Case | What happens |
@@ -565,7 +625,7 @@ All are FTS5 virtual tables.
 
 ## Planned
 
-| Piece | Issue |
+| Piece | Tracked in |
 |---|---|
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
