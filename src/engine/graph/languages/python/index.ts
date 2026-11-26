@@ -374,6 +374,10 @@ function evaluatedOutside(scope: Node, child: Node, grandchild: Node | null): bo
   return first !== undefined && child.id === first.id && grandchild !== null && grandchild.id === first.childForFieldName('right')?.id;
 }
 
+/** How much of a module-level assignment's text its signature reads, and the longest a signature is kept. */
+const DATA_SIGNATURE_TEXT = 140;
+const SIGNATURE_MAX = 200;
+
 // Module-level classes, functions and `NAME = …` constants, methods of those
 // classes, and the calls each makes. A call of a class the file defines, or
 // of an imported CapWords name (PEP 8 class naming), is 'instantiates'; a
@@ -498,17 +502,25 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       const assignment = node.namedChildren[0];
       const hasValue = assignment?.type === 'assignment' && assignment.childForFieldName('right') !== null;
       const left = hasValue ? assignment.childForFieldName('left') : null;
-      if (left?.type === 'identifier') {
-        inner = out.symbol({
+      const data = (name: string): number =>
+        out.symbol({
           kind: 'const',
-          qualified_name: left.text,
-          signature: clip(oneLine(src.slice(node.startIndex, Math.min(node.endIndex, node.startIndex + 140))), 200),
+          qualified_name: name,
+          signature: clip(oneLine(src.slice(node.startIndex, Math.min(node.endIndex, node.startIndex + DATA_SIGNATURE_TEXT))), SIGNATURE_MAX),
           doc: docOf(node),
           start_line: node.startPosition.row + 1,
           end_line: node.endPosition.row + 1,
           body_hash: normalizedHash(node),
-          exported: exportedName(left.text),
+          exported: exportedName(name),
         });
+      if (left?.type === 'identifier') inner = data(left.text);
+      else if (left) {
+        // Each name a module-level target list binds, `a, b = …` or `(a, [b, *c]) = …`, is file-level
+        // data (trustmybot/tmb#322), and its lines are the whole statement, shared by every name it
+        // binds. No one of those names owns the calls of the value: the module does.
+        const names: string[] = [];
+        targetNames(left, names);
+        for (const name of new Set(names)) data(name);
       }
     } else if (t === 'call') {
       const fn = node.childForFieldName('function');

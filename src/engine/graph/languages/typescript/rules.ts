@@ -592,6 +592,10 @@ function importType(call: Node): boolean {
 /** The grammar's nodes that hold a type: each names one, such as `type_annotation`, `generic_type` or `type_query`. */
 const TYPE_HOLDER = /type/;
 
+/** How much of a file-level declaration's text its signature reads, and the longest a signature is kept. */
+const DATA_SIGNATURE_TEXT = 140;
+const SIGNATURE_MAX = 200;
+
 /** The longest a call's text is kept as its name when its callee is no name. */
 const CALLEE_TEXT_MAX = 80;
 
@@ -641,6 +645,9 @@ export function extractTs(file: SourceFile, out: Collector): void {
     referenced.add(key);
     out.edge(scope, kind, dst, at.startPosition.row + 1, hint, bound);
   };
+  // A file-level declaration's signature: its text up to a function value's body, else its first characters.
+  const dataSignature = (decl: Node, bodyStart?: number): string =>
+    clip(oneLine(src.slice(decl.startIndex, bodyStart ?? Math.min(decl.endIndex, decl.startIndex + DATA_SIGNATURE_TEXT))), SIGNATURE_MAX);
   const boundValue = (node: Node, name: string): boolean => bindings.names.has(name) && localBinding(node, name) === null;
   const definition = (node: Node, kind: SymbolKind, qualifiedName: string, parent: number, key?: string): number =>
     out.symbol(
@@ -685,7 +692,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
           {
             kind: fn.kind,
             qualified_name: fn.name,
-            signature: clip(oneLine(src.slice(anchor.startIndex, body ? body.startIndex : Math.min(node.endIndex, anchor.startIndex + 160))), 200),
+            signature: clip(oneLine(src.slice(anchor.startIndex, body ? body.startIndex : Math.min(node.endIndex, anchor.startIndex + 160))), SIGNATURE_MAX),
             doc: fn.unnamed ? '' : docOf(anchor),
             start_line: symbolStart(node),
             end_line: node.endPosition.row + 1,
@@ -734,7 +741,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         const symbol: ExtractedSymbol = {
           kind: isFn ? 'function' : 'const',
           qualified_name: n.text,
-          signature: clip(oneLine(src.slice(decl.startIndex, bodyStart ?? Math.min(decl.endIndex, decl.startIndex + 140))), 200),
+          signature: dataSignature(decl, bodyStart),
           doc: docOf(decl),
           start_line: (isFn ? value! : decl).startPosition.row + 1,
           end_line: (isFn ? value! : decl).endPosition.row + 1,
@@ -746,6 +753,25 @@ export function extractTs(file: SourceFile, out: Collector): void {
         inner = isFn ? out.symbol(symbol, fnKey(value!)) : out.symbol(symbol);
         innerOwner = inner;
         if (isFn) made.set(value!.id, inner);
+      } else if (decl && (holder === 'program' || holder === 'export_statement') && n) {
+        // Each name a file-level destructuring binds is file-level data (trustmybot/tmb#322), and its
+        // lines are the whole declaration, shared by every name it binds. No one of those names owns
+        // the calls of the value: the file does.
+        const bound = new Set<string>();
+        patternNames(n, bound);
+        for (const each of bound) {
+          out.symbol({
+            kind: 'const',
+            qualified_name: each,
+            signature: dataSignature(decl),
+            doc: docOf(decl),
+            start_line: decl.startPosition.row + 1,
+            end_line: decl.endPosition.row + 1,
+            body_hash: normalizedHash(node),
+            exported: holder === 'export_statement' ? 1 : 0,
+            parent: moduleSymbol,
+          });
+        }
       }
     } else if ((t === 'call_expression' || t === 'new_expression') && !importType(node)) {
       const fn = calleeOf(node);
