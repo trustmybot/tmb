@@ -6,10 +6,10 @@
 // function is a local and no node.
 //
 // Calls to such a name link only on proof ("Two ways to make links"): way B links a call when the
-// compiler's declaration is a node of the graph, which such a binding now is. Way A links a call
-// only to a function of the repo ("Links on proof"), so a call to data stays unlinked there; its
-// import still links to the node it imports. The fixtures use names of their own; each expectation
-// is read off the page, not off the graph's output.
+// compiler's declaration is a node of the graph, which such a binding now is. Way A links a call to
+// such a name too when the file's own scope or an import proves it (trustmybot/tmb#332), and links
+// its import to the node it imports. The fixtures use names of their own; each expectation is read
+// off the page, not off the graph's output.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
@@ -145,7 +145,7 @@ describe("TypeScript and JavaScript", () => {
   async function bothWays() {
     const sha = commit(TS_FILES);
     const db = openGraphDb(project, null);
-    await buildLayer(db, project, sha, "a", { force: true });
+    await buildLayer(db, project, sha, "a", { force: true, links: "built-in" });
     await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
     return db;
   }
@@ -203,21 +203,21 @@ describe("TypeScript and JavaScript", () => {
     db.close();
   });
 
-  test("way A links a call only to a function, so a call of data is not known, never linked elsewhere", async () => {
+  test("way A links a call of a destructured name the file or an import proves, as way B does; a local binding stays not known", async () => {
     const db = await bothWays();
     const a = edgesOf(db, "a");
-    for (const [src, name] of [
-      ["src/forge.ts:smith", "ignite"],
-      ["src/forge.ts:smith", "douse"],
-      ["src/forge.ts:smith", "lefty"],
-      ["src/forge.ts:smith", "spark"],
-      ["src/forge.ts:smith", "ownIgnite"],
-      ["src/anvil.ts:strike", "ignite"],
-      ["src/anvil.ts:strike", "douse"],
-      ["src/anvil.ts:strike", "lefty"],
+    for (const [src, name, dst] of [
+      ["src/forge.ts:smith", "ignite", "src/forge.ts:ignite"],
+      ["src/forge.ts:smith", "douse", "src/forge.ts:douse"],
+      ["src/forge.ts:smith", "lefty", "src/forge.ts:lefty"],
+      ["src/forge.ts:smith", "spark", "src/forge.ts:spark"],
+      ["src/anvil.ts:strike", "ignite", "src/forge.ts:ignite"],
+      ["src/anvil.ts:strike", "douse", "src/forge.ts:douse"],
+      ["src/anvil.ts:strike", "lefty", "src/forge.ts:lefty"],
     ] as const) {
-      expect(call(a, src, name)).toMatchObject({ dst: null, call_state: "not_known" });
+      expect(call(a, src, name)).toMatchObject({ dst, call_state: "linked" });
     }
+    expect(call(a, "src/forge.ts:smith", "ownIgnite")).toMatchObject({ dst: null, call_state: "not_known" });
     db.close();
   });
 });
@@ -226,7 +226,7 @@ describe("Python", () => {
   async function built() {
     const sha = commit(PY_FILES);
     const db = openGraphDb(project, null);
-    await buildLayer(db, project, sha, "a", { force: true });
+    await buildLayer(db, project, sha, "a", { force: true, links: "built-in" });
     return db;
   }
 
@@ -256,7 +256,7 @@ describe("Python", () => {
     db.close();
   });
 
-  test("an import of a destructured name links to its node; a call of data is not linked", async () => {
+  test("an import of a destructured name links to its node", async () => {
     const db = await built();
     const a = edgesOf(db, "a");
     expect(imported(a, "kiln/pot.py", "amber").dst).toBe("kiln/glaze.py:amber");
