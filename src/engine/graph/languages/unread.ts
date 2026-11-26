@@ -142,7 +142,6 @@ export const UNREAD_LANGUAGES: Readonly<Record<string, string>> = {
   "ipp": "C++",
   "ixx": "C++",
   "jav": "Java",
-  "java": "Java",
   "jbuilder": "Ruby",
   "jl": "Julia",
   "jsh": "Java",
