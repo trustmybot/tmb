@@ -5,6 +5,7 @@ import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '..
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, spliced, syntaxTree } from '../kit.ts';
 import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { BUILTINS } from './builtins.ts';
+import { pyright } from './tool.ts';
 
 // The character a Python escape sequence stands for (The Python Language Reference, "Escape
 // sequences"); an unknown one stays as written.
@@ -613,4 +614,5 @@ export const python: LanguageModule = {
   grammar: pythonWasm,
   comment: 'hash',
   extract: (file, out) => extractPython(syntaxTree(file), file.src, out, file.module),
+  tool: pyright,
 };

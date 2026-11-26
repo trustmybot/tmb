@@ -164,22 +164,25 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 857,
+            "of": 1488
           },
           "linksRight": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 1134,
+            "of": 2852
           },
           "linksFoundByReference": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "callsAccountedFor": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 3472,
+            "of": 3961
           },
           "missesByCause": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           }
         }
       }
@@ -215,22 +218,25 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 3253,
+            "of": 3949
           },
           "linksRight": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 6710,
+            "of": 17865
           },
           "linksFoundByReference": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "callsAccountedFor": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 22576,
+            "of": 24078
           },
           "missesByCause": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           }
         }
       }

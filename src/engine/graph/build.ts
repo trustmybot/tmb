@@ -211,7 +211,7 @@ const ownName = (qualifiedName: string): string => qualifiedName.slice(qualified
  * language with no tool, and one whose tool cannot run in this repo, keeps the built-in rules'
  * links, and the note says so. Read before the layer is written, so no write waits on the tool.
  */
-function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>): ToolLinks {
+async function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>): Promise<ToolLinks> {
   const present = new Set(plans.filter((p) => p.extraction !== null && p.lang !== null).map((p) => p.lang as SourceLanguage));
   const tools = new Map<LanguageTool, SourceLanguage[]>();
   for (const language of LANGUAGES) if (language.tool) tools.set(language.tool, [...(tools.get(language.tool) ?? []), language.name]);
@@ -221,7 +221,7 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
   const answers = new Map<number, ToolAnswer>();
   for (const [tool, langs] of tools) {
     if (!langs.some((lang) => present.has(lang))) continue;
-    const opened = tool.open(repoDir);
+    const opened = await tool.open(repoDir);
     if ("unavailable" in opened) {
       notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable}), so the built-in rules`);
       continue;
@@ -231,12 +231,20 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
     // installed packages are not the repo's and are left to the tool.
     const tree = listTree(repoDir, commit);
     const read = commitReader(repoDir, tree);
-    const entries = tree.filter((e) => e.size <= MAX_PARSE_BYTES && leftOutRule(e.path) !== NODE_MODULES_RULE && mine.has(languageOf(e.path, () => "") ?? ""));
-    const blobs = readBlobs(repoDir, entries.map((e) => e.blob));
+    const parsed = tree.filter((e) => e.size <= MAX_PARSE_BYTES && leftOutRule(e.path) !== NODE_MODULES_RULE);
+    const entries = parsed.filter((e) => mine.has(languageOf(e.path, () => "") ?? ""));
+    // The other files the tool reads, such as its settings files, beside the project's.
+    const extra = parsed.filter((e) => tool.reads?.(e.path) === true && !configs.has(e.path));
+    const blobs = readBlobs(repoDir, [...entries, ...extra].map((e) => e.blob));
     const files = new Map<string, string>();
     for (const e of entries) {
       const text = blobs.get(e.blob);
       if (text !== undefined) files.set(e.path, text);
+    }
+    const toolConfigs = new Map(configs);
+    for (const e of extra) {
+      const text = blobs.get(e.blob);
+      if (text !== undefined) toolConfigs.set(e.path, text);
     }
     const nodes: ToolNode[] = [];
     const nodeRows: number[] = [];
@@ -258,7 +266,7 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
     }
     let answered: ToolAnswer[];
     try {
-      answered = opened.answer({ files, configs, read, nodes, calls });
+      answered = opened.answer({ files, configs: toolConfigs, read, nodes, calls });
     } catch (error) {
       notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)}), so the built-in rules`);
       continue;
@@ -482,7 +490,7 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
   const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
   // Built-in, not DEFAULT_LINK_WAY: a caller that names no way gets the built-in rules, so the links-right check judges way A on its own; the callers that read settings apply graph_links.
   const links = options.links ?? BUILT_IN;
-  const byTool = links === LANGUAGE_TOOL ? toolLinks(repoDir, commit, plans, configs) : NO_TOOL_LINKS;
+  const byTool = links === LANGUAGE_TOOL ? await toolLinks(repoDir, commit, plans, configs) : NO_TOOL_LINKS;
   const stats = db
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.
