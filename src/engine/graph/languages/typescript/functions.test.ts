@@ -269,8 +269,9 @@ function symbols(relPath: string, text: string): ExtractedSymbol[] {
   return extractFile(parsers, relPath, lang, text).symbols;
 }
 
-// A trigger in a string is SQL the store runs ("Data sources"): a function node of the graph, and
-// no function of TypeScript, so the compiler's list and the graph's TypeScript functions still match.
+// A trigger in a string is SQL the store runs ("Data sources"): a function node of the graph whose
+// language is SQL, not its file's. The compiler does not read it, so coverage leaves it out
+// ("Benchmark", Functions found), and the compiler's list and the graph's still match.
 const TRIGGERS = `declare const db: { exec(s: string): void };
 export const SCHEMA = \`CREATE TABLE bins (id INTEGER);
 CREATE TRIGGER bin_emptied AFTER DELETE ON bins BEGIN DELETE FROM bin_labels WHERE bin = old.id; END;\`;
@@ -311,13 +312,24 @@ describe("every function is a node", () => {
     });
   }
 
-  test("a trigger in a string is a function node, held by what holds the string", () => {
+  test("a trigger in a string is an SQL function node, held by what holds the string", () => {
     const all = symbols("src/bins.ts", TRIGGERS);
     const triggers = all.filter((s) => s.qualified_name === "bin_emptied" || s.qualified_name === "bin_filled");
-    expect(triggers.map((s) => ({ name: s.qualified_name, kind: s.kind, in: all[s.parent!]?.qualified_name }))).toEqual([
-      { name: "bin_emptied", kind: "function", in: "SCHEMA" },
-      { name: "bin_filled", kind: "function", in: "install" },
+    expect(triggers.map((s) => ({ name: s.qualified_name, kind: s.kind, lang: s.lang, in: all[s.parent!]?.qualified_name }))).toEqual([
+      { name: "bin_emptied", kind: "function", lang: "sql", in: "SCHEMA" },
+      { name: "bin_filled", kind: "function", lang: "sql", in: "install" },
     ]);
+    // Every other node is in its file's language, and names none of its own.
+    expect(all.filter((s) => !triggers.includes(s)).filter((s) => s.lang !== undefined)).toEqual([]);
+  });
+
+  test("coverage counts the nodes of the file's language: the triggers' SQL is left out", () => {
+    const all = symbols("src/bins.ts", TRIGGERS);
+    const sqlLines = all.filter((s) => s.lang === "sql").map((s) => `${s.start_line}-${s.end_line}`);
+    expect(sqlLines).toHaveLength(2);
+    const counted = graphFunctions(parsers, "src/bins.ts", TRIGGERS);
+    const own = all.filter((s) => (s.kind === "function" || s.kind === "method") && s.lang === undefined).map((s) => `${s.start_line}-${s.end_line}`);
+    expect(counted).toEqual(own.sort());
   });
 
   test("each kind of function has its node and its name", () => {

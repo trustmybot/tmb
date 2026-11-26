@@ -382,17 +382,23 @@ describe("the graph's store", () => {
       ["", "data_source", "baskets"],
     ];
     for (const [file, kind, name] of old) insert.run(file, kind, name, name);
+    const file = db.prepare("INSERT INTO files (layer, path, dir, lang, blob, size, lane) VALUES ('old', ?, ?, ?, 'b', 1, 'product')");
+    file.run("db/shop.sql", "db", "sql");
+    file.run("src/install.ts", "src", "typescript");
     db.run("PRAGMA user_version = 11");
+    // A graph of schema 11 has no node language: the column is added by the upgrade.
+    db.run("ALTER TABLE symbols DROP COLUMN lang");
     db.close();
     const upgraded = openGraphDb(project, null);
     expect(upgraded.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });
-    const rows = upgraded.query("SELECT qualified_name, kind FROM symbols WHERE layer = 'old' ORDER BY id").all() as { qualified_name: string; kind: string }[];
+    const rows = upgraded.query("SELECT qualified_name, kind, lang FROM symbols WHERE layer = 'old' ORDER BY id").all() as { qualified_name: string; kind: string; lang: string }[];
+    // A trigger in a string gets SQL, its own language; one in an .sql file is in its file's.
     expect(rows).toEqual([
-      { qualified_name: "db/shop.sql", kind: FILE },
-      { qualified_name: "basket_added", kind: FUNCTION },
-      { qualified_name: "install", kind: FUNCTION },
-      { qualified_name: "shelf_added", kind: FUNCTION },
-      { qualified_name: "baskets", kind: DATA_SOURCE },
+      { qualified_name: "db/shop.sql", kind: FILE, lang: "" },
+      { qualified_name: "basket_added", kind: FUNCTION, lang: "" },
+      { qualified_name: "install", kind: FUNCTION, lang: "" },
+      { qualified_name: "shelf_added", kind: FUNCTION, lang: "sql" },
+      { qualified_name: "baskets", kind: DATA_SOURCE, lang: "" },
     ]);
     upgraded.close();
   });

@@ -100,6 +100,7 @@ let stats: BuildStats;
 let links: string[];
 let nodes: string[];
 let triggers: string[];
+let triggerLangs: Record<string, string>;
 
 function git(cwd: string, ...args: string[]): void {
   const result = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd, encoding: "utf8" });
@@ -142,12 +143,13 @@ beforeAll(async () => {
     // The nodes the fixtures' triggers make, by their names, whatever their kind.
     const written = view.db
       .query(
-        `SELECT s.kind, s.qualified_name AS name, s.path, p.qualified_name AS parent
+        `SELECT s.kind, s.lang, s.qualified_name AS name, s.path, p.qualified_name AS parent
            FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id
           WHERE s.layer = ? AND s.qualified_name IN ('crate_moved', 'shelf_added', 'line_posted')`,
       )
-      .all(view.layer) as { kind: string; name: string; path: string; parent: string | null }[];
+      .all(view.layer) as { kind: string; lang: string; name: string; path: string; parent: string | null }[];
     triggers = written.map((s) => `${s.kind}:${s.name} @${s.path} in ${s.parent ?? "-"}`).sort();
+    triggerLangs = Object.fromEntries(written.map((s) => [s.name, s.lang]));
   } finally {
     view.db.close();
   }
@@ -229,6 +231,10 @@ describe("a statement's tables, from the parser", () => {
       "function:shelf_added @src/install.ts in installShelfTrigger",
     ]);
     expect(nodes.filter((n) => !n.startsWith("data_source:"))).toEqual([]);
+  });
+
+  test("a trigger in a string names its own language, SQL; one in an .sql file names none", () => {
+    expect(triggerLangs).toEqual({ crate_moved: "", shelf_added: "sql", line_posted: "sql" });
   });
 
   test("a call of a trigger's name in code is no call of the trigger", async () => {

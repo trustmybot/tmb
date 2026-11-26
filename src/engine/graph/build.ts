@@ -498,7 +498,7 @@ function applyLayer(
   }
 
   const insertSymbol = db.prepare(
-    "INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, start_line, end_line, exported, parent_id, unnamed, named_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, start_line, end_line, exported, parent_id, unnamed, named_id, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const insertSymbolFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, ?)");
   // A symbol's container and owner come before it in its file's list, so their ids are known.
@@ -522,6 +522,7 @@ function applyLayer(
         parentId,
         s.unnamed === 1 ? 1 : 0,
         namedId,
+        s.lang ?? "",
       ).lastInsertRowid,
     );
     // Unnamed functions stay out of search by name and by meaning.

@@ -34,6 +34,9 @@ const STATEMENT_STARTS: ReadonlySet<string> = new Set([
   'COPY',
 ]);
 
+/** SQL's name as a language, which a node names as its own when SQL is written inside another language's string. */
+const SQL_LANGUAGE = 'sql';
+
 /** What a trigger's node is keyed by in its file, apart from any function of the code around its string. */
 const TRIGGER_KEY = 'trigger';
 
@@ -52,8 +55,11 @@ function link(out: Collector, src: number, ref: SqlRef, line: number): void {
   else out.dataLink(src, kind, SQL_DATA.store, '', line);
 }
 
-/** One read statement's links, from `owner`; `lineOf` turns its lines into the file's. */
-function addStatement(out: Collector, owner: number, statement: SqlStatement, lineOf: (line: number) => number): void {
+/**
+ * One read statement's links, from `owner`; `lineOf` turns its lines into the file's. `lang` is the
+ * language its nodes name as their own: SQL in another language's string, none in an .sql file.
+ */
+function addStatement(out: Collector, owner: number, statement: SqlStatement, lineOf: (line: number) => number, lang?: string): void {
   const line = lineOf(statement.line);
   const end = lineOf(statement.end);
   for (const ref of statement.refs ?? []) link(out, owner, ref, line);
@@ -72,6 +78,7 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
         exported: 0,
         parent: owner,
         reach: 'none',
+        ...(lang === undefined ? {} : { lang }),
       },
       `${TRIGGER_KEY}\u0000${trigger.name}\u0000${line}`,
     );
@@ -90,11 +97,11 @@ function addStatement(out: Collector, owner: number, statement: SqlStatement, li
 export function sqlInCode(text: string, owner: number, first: number, last: number, out: Collector): void {
   if (!startsLikeStatement(text)) return;
   const lineOf = (line: number) => Math.min(last, first + line - 1);
-  for (const statement of readSql(text, SQL_HOLE)) if (statement.read) addStatement(out, owner, statement, lineOf);
+  for (const statement of readSql(text, SQL_HOLE)) if (statement.read) addStatement(out, owner, statement, lineOf, SQL_LANGUAGE);
 }
 
 export const sql: LanguageModule = {
-  name: 'sql',
+  name: SQL_LANGUAGE,
   linguist: ['SQL'],
   endings: ['.sql'],
   // Linguist's names for the dialects of Postgres, SQL Server, Oracle and DB2, which its rules tell apart in an `.sql` file.
