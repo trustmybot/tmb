@@ -208,7 +208,19 @@ function bindsName(pattern: Node | null, name: string): boolean {
 type LocalBinding = { bound: 'function'; line: number } | { bound: 'value' };
 
 const VALUE: LocalBinding = { bound: 'value' };
-const lineOf = (node: Node): number => node.startPosition.row + 1;
+/**
+ * The line a symbol starts on: its first decorator's, or its own when it has none ("Kinds of
+ * symbol" in CODE_GRAPH.md). The TypeScript grammar writes a member's decorators, and a class's
+ * before `export`, just before the declaration among its siblings, with comments between them.
+ */
+const symbolStart = (node: Node): number => {
+  let first = node;
+  for (let s = node.previousNamedSibling; s !== null && (s.type === 'decorator' || s.type === 'comment'); s = s.previousNamedSibling) {
+    if (s.type === 'decorator') first = s;
+  }
+  return first.startPosition.row + 1;
+};
+const lineOf = symbolStart;
 
 // How a statement of a block binds `name`, or null when it does not: a function or class
 // declared there, or a `const f = () => …`, is a function; any other variable is a value.
@@ -624,7 +636,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         qualified_name: qualifiedName,
         signature: signatureOf(node, src),
         doc: docOf(node),
-        start_line: node.startPosition.row + 1,
+        start_line: symbolStart(node),
         end_line: node.endPosition.row + 1,
         body_hash: normalizedHash(node),
         exported: node.parent?.type === 'export_statement' ? 1 : 0,
@@ -638,6 +650,8 @@ export function extractTs(file: SourceFile, out: Collector): void {
   const made = new Map<number, number>();
   const fnKey = (fn: Node): string => `fn\u0000${fn.startIndex}`;
 
+  // What encloses each function the walk has entered: a decorator on one of its parameters is called there.
+  const around = new Map<number, { scope: number; cls: string | null; container: number; owner: number }>();
   const visit = (node: Node, scope: number, cls: string | null, container: number, owner: number): void => {
     let inner = scope;
     let innerCls = cls;
@@ -660,7 +674,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
             qualified_name: fn.name,
             signature: clip(oneLine(src.slice(anchor.startIndex, body ? body.startIndex : Math.min(node.endIndex, anchor.startIndex + 160))), 200),
             doc: fn.unnamed ? '' : docOf(anchor),
-            start_line: node.startPosition.row + 1,
+            start_line: symbolStart(node),
             end_line: node.endPosition.row + 1,
             body_hash: normalizedHash(node),
             exported: anchor.parent?.type === 'export_statement' || node.parent?.type === 'export_statement' ? 1 : 0,
@@ -792,11 +806,16 @@ export function extractTs(file: SourceFile, out: Collector): void {
       for (const [kind, table] of sqlRefs(text)) out.edge(scope, kind, table, line);
       if (/CREATE\s+(VIRTUAL\s+)?TABLE/i.test(text)) extractSqlDdl(text, out, null, node.startPosition.row);
     }
+    if (FUNCTION_NODES.has(t)) around.set(node.id, { scope, cls, container, owner });
     // A decorator runs when the thing it decorates is defined, so its call belongs to what
-    // encloses that thing: the type for a method, the file for a top-level type.
+    // encloses that thing: the type for a member or a member's parameter, the file for a
+    // top-level type. A parameter is defined with its function, so its decorator's call
+    // belongs to what encloses the function.
+    const decorated = node.parent?.type === 'formal_parameters' ? around.get(node.parent.parent?.id ?? -1) : undefined;
     for (const c of named(node)) {
-      if (c.type === 'decorator') visit(c, scope, cls, container, owner);
-      else visit(c, inner, innerCls, innerContainer, innerOwner);
+      if (c.type !== 'decorator') visit(c, inner, innerCls, innerContainer, innerOwner);
+      else if (decorated !== undefined) visit(c, decorated.scope, decorated.cls, decorated.container, decorated.owner);
+      else visit(c, scope, cls, container, owner);
     }
   };
   visit(root, moduleSymbol, null, moduleSymbol, moduleSymbol);
