@@ -296,13 +296,16 @@ const isCall = (node: ts.Node): node is ts.CallExpression | ts.NewExpression | t
 export function compilerCalls(relPath: string, text: string): Map<string, number> {
   const file = ts.createSourceFile(relPath, text, ts.ScriptTarget.Latest, true, scriptKind(relPath));
   const out = new Map<string, number>();
-  const visit = (node: ts.Node, fn: string): void => {
-    const here = ts.isFunctionLike(node) && "body" in node && node.body !== undefined ? `${lineOf(file, node.getStart(file))}-${lineOf(file, node.getEnd())}` : ts.isClassLike(node) ? "" : fn;
+  // `around` is what encloses the nearest function: a parameter is defined with its function.
+  const visit = (node: ts.Node, fn: string, around: string): void => {
+    const isFn = ts.isFunctionLike(node);
+    const here = isFn && "body" in node && node.body !== undefined ? `${lineOf(file, node.getStart(file))}-${lineOf(file, node.getEnd())}` : ts.isClassLike(node) ? "" : fn;
     if (isCall(node)) out.set(here, (out.get(here) ?? 0) + 1);
     // A decorator runs when the thing it decorates is defined, so its call belongs to what encloses that thing.
-    ts.forEachChild(node, (c) => visit(c, ts.isDecorator(c) ? fn : here));
+    const decoratorOwner = ts.isParameter(node) ? around : fn;
+    ts.forEachChild(node, (c) => visit(c, ts.isDecorator(c) ? decoratorOwner : here, isFn ? fn : around));
   };
-  visit(file, "");
+  visit(file, "", "");
   return out;
 }
 

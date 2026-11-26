@@ -36,6 +36,20 @@ const PYTHON = [
   "",
 ].join("\n");
 
+const METHOD = [
+  "def deco():", // 1
+  "    return lambda f: f", // 2
+  "", // 3
+  "def make():", // 4
+  "    return 1", // 5
+  "", // 6
+  "class Box:", // 7
+  "    @deco()", // 8: runs where `build` is defined, in the class body
+  "    def build(self, x=make()):", // 9: the default too
+  "        return make()", // 10: the method's own
+  "",
+].join("\n");
+
 const hasPython = spawnSync("python3", ["-I", "-c", "pass"]).status === 0;
 
 describe("Python's own parser as the reference", () => {
@@ -61,6 +75,15 @@ describe("Python's own parser as the reference", () => {
       "cart.py:15-16": 1,
       "cart.py:14-17": 1,
     });
+  });
+
+  // Python has no decorator on a parameter; what runs where a method is defined is its decorators
+  // and its parameters' defaults, and they belong to the class body around it (trustmybot/tmb#317).
+  test("a method's decorator and its parameter's default belong to the class around it, its body's calls to the method", () => {
+    const { functions, calls } = referenceCounts(pythonReference(new Map([["box.py", METHOD]])));
+    expect(functions.get("box.py")).toEqual(["1-2", "2-2", "4-5", "8-10"]);
+    // The reference counts a class body's calls for the file.
+    expect(Object.fromEntries(calls)).toEqual({ "box.py:": 2, "box.py:8-10": 1 });
   });
 
   test("a file Python cannot parse is named, not scored", () => {
