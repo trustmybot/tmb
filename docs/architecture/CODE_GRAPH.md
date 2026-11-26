@@ -403,7 +403,7 @@ flowchart LR
 - **A pipeline's own graph is not rebuilt.** A tool that runs steps as a graph draws it itself. The functions its steps run are ordinary code nodes.
   - **Example.** A scheduled pipeline has five steps. The graph holds the five functions and what each reads and writes, not the order the pipeline runs them in.
 
-- **The list of store packages is generated, never written by hand.** It joins two sources from the OpenTelemetry project at pinned commits: its list of store systems, and its instrumentations, which say which package reaches which system.
+- **The list of store packages is generated, never written by hand.** It joins two sources from the OpenTelemetry project at pinned commits: its list of store systems, and its instrumentations, which say which package reaches which system. Planned (trustmybot/tmb#378): the list is generated, and no call is linked to a store through it yet.
   - **Example 1.** A call into `pg` is a link to a relational database. A call into `kafkajs` is a link to a queue.
   - **Example 2.** A store package the sources do not cover gives no data source node. Its SQL strings still give table nodes.
   - **Edge case.** A package serves several stores, such as a cloud provider's SDK. The package alone does not say the kind, so the call gives no data source node.
@@ -412,6 +412,7 @@ flowchart LR
 
 Open, for the Human:
 
+- Whether a call into a store package is a read or a write. `pool.query(sql)` does not say, and the graph never guesses. Until this is answered such a call gives no link.
 - How the kind is known for a package that serves several stores.
 - Stores in a language's standard library, such as Python's `sqlite3`. The sources list packages only, so these give no store node.
 - Object storage. The sources name no object store, so no call gives that kind today.
@@ -908,6 +909,7 @@ All are FTS5 virtual tables.
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
+| A call into a store package links to the store | trustmybot/tmb#378 |
 | Rust, C and C++, each with its tool | trustmybot/tmb#354, #355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
