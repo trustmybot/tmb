@@ -71,14 +71,17 @@ describe("functions found", () => {
 });
 
 describe("links found against the reference", () => {
-  const call = (line: number, name: string, dst: string, start: number, end: number, cause: string): ReferenceCall => ({
+  /** A call's position, when a test does not say: its line's, the same for the call and its link. */
+  const POS_PER_LINE = 100;
+  const call = (line: number, name: string, dst: string, start: number, end: number, cause: string, pos = line * POS_PER_LINE): ReferenceCall => ({
     file: "use.ts",
-    lines: [line],
+    line,
+    pos,
     names: [name],
     decls: [{ file: dst, spans: [{ start, end }] }],
     cause,
   });
-  const link = (line: number, name: string, dst: string, start: number, end: number): GraphCall => ({ file: "use.ts", line, name, dst, start, end });
+  const link = (line: number, name: string, dst: string, start: number, end: number, pos = line * POS_PER_LINE): GraphCall => ({ file: "use.ts", line, pos, name, dst, start, end });
 
   test("a reference link counts as found when the graph links that call to a declaration the reference gives", () => {
     const reference = [call(3, "total", "cart.ts", 1, 4, "a name called directly"), call(4, "tax", "cart.ts", 6, 8, "a receiver whose type is not written")];
@@ -98,9 +101,20 @@ describe("links found against the reference", () => {
     expect({ n: r.n, of: r.of }).toEqual({ n: 1, of: 2 });
   });
 
-  test("a call recorded on the callee's line or by the name an import declares it as is found", () => {
-    const spread: ReferenceCall = { file: "use.ts", lines: [3, 5], names: ["sum", "total"], decls: [{ file: "cart.ts", spans: [{ start: 1, end: 4 }] }], cause: "x" };
-    expect(linksFoundByReference([spread], [link(5, "total", "cart.ts", 2, 2)]).n).toBe(1);
+  test("a call recorded by the name an import declares it as is found", () => {
+    const renamed: ReferenceCall = { file: "use.ts", line: 3, pos: 3 * POS_PER_LINE, names: ["sum", "total"], decls: [{ file: "cart.ts", spans: [{ start: 1, end: 4 }] }], cause: "x" };
+    expect(linksFoundByReference([renamed], [link(3, "total", "cart.ts", 2, 2)]).n).toBe(1);
+  });
+
+  test("a call is identified by its position: a link on its line at another position is no find", () => {
+    const r = linksFoundByReference([call(3, "total", "cart.ts", 1, 4, "x", 304)], [link(3, "total", "cart.ts", 1, 4, 320)]);
+    expect(r.n).toBe(0);
+  });
+
+  test("two calls of one name on one line are each found only by the link at their own position", () => {
+    const two = [call(3, "open", "kettle.ts", 1, 4, "x", 309), call(3, "open", "lamp.ts", 1, 4, "x", 323)];
+    expect(linksFoundByReference(two, [link(3, "open", "kettle.ts", 1, 4, 309), link(3, "open", "lamp.ts", 1, 4, 323)]).n).toBe(2);
+    expect(linksFoundByReference(two, [link(3, "open", "lamp.ts", 1, 4, 309), link(3, "open", "kettle.ts", 1, 4, 323)]).n).toBe(0);
   });
 });
 

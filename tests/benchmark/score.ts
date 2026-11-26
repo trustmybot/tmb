@@ -84,19 +84,22 @@ export function functionsFound(reference: ReadonlyMap<string, readonly string[]>
 type Span = { start: number; end: number };
 
 /** A call the reference declares in the repo: where it is, the names the graph may record it by, its declarations, and the kind of code it is. */
-export type ReferenceCall = { file: string; lines: number[]; names: string[]; decls: { file: string; spans: Span[] }[]; cause: string };
-/** A call the graph links: where it is written, the name it records, and the declaration it links. */
-export type GraphCall = { file: string; line: number; name: string; dst: string; start: number; end: number };
+export type ReferenceCall = { file: string; line: number; pos: number; names: string[]; decls: { file: string; spans: Span[] }[]; cause: string };
+/** A call the graph links: its line and its position (where the name it calls is written), the name it records, and the declaration it links. */
+export type GraphCall = { file: string; line: number; pos: number; name: string; dst: string; start: number; end: number };
 
 /**
  * Links found against the reference: of the calls the reference declares in the repo, the share
- * the graph links to one of those declarations. Each link of the graph finds one call at most. The
+ * the graph links to one of those declarations. A call is identified by its position in the file
+ * (CODE_GRAPH.md, "Two ways to make links"): a link finds the reference's call at its file and
+ * position, by one of the names the call may be recorded by, and finds one call at most. The
  * calls not found are counted by cause.
  */
 export function linksFoundByReference(reference: readonly ReferenceCall[], graph: readonly GraphCall[]): Ratio & { misses: Causes; missed: ReferenceCall[] } {
+  const place = (file: string, pos: number, name: string) => `${file}:${pos}:${name}`;
   const byPlace = new Map<string, GraphCall[]>();
   for (const g of graph) {
-    const key = `${g.file}:${g.line}:${g.name}`;
+    const key = place(g.file, g.pos, g.name);
     byPlace.set(key, [...(byPlace.get(key) ?? []), g]);
   }
   const used = new Set<GraphCall>();
@@ -106,11 +109,8 @@ export function linksFoundByReference(reference: readonly ReferenceCall[], graph
   for (const call of reference) {
     const overlaps = (g: GraphCall) => call.decls.some((d) => d.file === g.dst && d.spans.some((s) => s.start <= g.end && s.end >= g.start));
     let hit: GraphCall | undefined;
-    for (const line of call.lines) {
-      for (const name of call.names) {
-        hit = (byPlace.get(`${call.file}:${line}:${name}`) ?? []).find((g) => !used.has(g) && overlaps(g));
-        if (hit !== undefined) break;
-      }
+    for (const name of call.names) {
+      hit = (byPlace.get(place(call.file, call.pos, name)) ?? []).find((g) => !used.has(g) && overlaps(g));
       if (hit !== undefined) break;
     }
     if (hit !== undefined) {

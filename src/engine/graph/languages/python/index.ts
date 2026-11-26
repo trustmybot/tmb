@@ -1,7 +1,7 @@
 // Python, read through tree-sitter: classes, functions and methods, imports and calls.
 import pythonWasm from 'tree-sitter-python/tree-sitter-python.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
-import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
+import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
 import { BUILTINS } from './builtins.ts';
 
@@ -441,7 +441,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     return builtin !== undefined && (member === undefined || builtin.has(member)) ? { outside: { kind: 'builtin', name } } : {};
   };
   // A module-level name: one a `from m import A as B` binds is looked up in m by A (trustmybot/tmb#287).
-  const moduleReference = (scope: number, kind: 'calls' | 'instantiates', name: string, line: number, call?: CallMark): void => {
+  const moduleReference = (scope: number, kind: 'calls' | 'instantiates', name: string, line: number, call?: CallAt): void => {
     const module = sources.get(name);
     if (module === undefined) out.edge(scope, kind, target(name), line, null, undefined, undefined, call);
     else out.edge(scope, kind, target(name), line, module, 'import', undefined, call);
@@ -513,21 +513,24 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     } else if (t === 'call') {
       const fn = node.childForFieldName('function');
       const line = node.startPosition.row + 1;
+      // Its position: where the name it calls is written, else where the call starts.
+      const at = (n: Node) => ({ pos: n.startIndex });
       let written = false;
       if (fn?.type === 'identifier') {
         const b = localBinding(fn, fn.text);
-        if (b === undefined) moduleReference(scope, isClass(fn.text) ? 'instantiates' : 'calls', fn.text, line, outside(fn, fn.text));
-        else if (b.kind === 'import') out.edge(scope, /^[A-Z]/.test(b.name) ? 'instantiates' : 'calls', b.name, line, b.module, 'import', undefined, importMark(b.module));
-        else out.edge(scope, 'calls', fn.text, line, b.kind === 'function' ? String(b.line) : null, b.kind, undefined, {});
+        if (b === undefined) moduleReference(scope, isClass(fn.text) ? 'instantiates' : 'calls', fn.text, line, { ...outside(fn, fn.text), ...at(fn) });
+        else if (b.kind === 'import') out.edge(scope, /^[A-Z]/.test(b.name) ? 'instantiates' : 'calls', b.name, line, b.module, 'import', undefined, { ...importMark(b.module), ...at(fn) });
+        else out.edge(scope, 'calls', fn.text, line, b.kind === 'function' ? String(b.line) : null, b.kind, undefined, at(fn));
         written = true;
       } else if (fn?.type === 'attribute') {
-        const callee = fn.childForFieldName('attribute')?.text;
+        const attribute = fn.childForFieldName('attribute');
         const object = fn.childForFieldName('object');
-        if (callee && object) {
+        if (attribute?.text && object) {
+          const callee = attribute.text;
           const ofClass = object.type === 'identifier' && PY_RECEIVERS_OF_CLASS.has(object.text) && cls;
           // A receiver bound in the function around the call is no class or module the file names.
           const local = !ofClass && object.type === 'identifier' && localBinding(object, object.text) !== undefined;
-          const mark = !ofClass && !local && object.type === 'identifier' ? outside(object, object.text, callee) : {};
+          const mark = { ...(!ofClass && !local && object.type === 'identifier' ? outside(object, object.text, callee) : {}), ...at(attribute) };
           if (ofClass) out.edge(scope, 'calls', callee, line, cls, 'self', undefined, mark);
           // The receiver by the name the module binds it: the resolver follows an import under a new name to its file.
           else out.edge(scope, 'calls', callee, line, memberHint(object.text), local ? 'value' : undefined, undefined, mark);
@@ -536,7 +539,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
       }
       // A call whose callee is no name, such as `f()()` or `handlers[k]()`, is a call all the same:
       // it is named by its callee's text and is not known.
-      if (!written) out.edge(scope, 'calls', clip(oneLine((fn ?? node).text), CALLEE_TEXT_MAX), line, null, undefined, undefined, {});
+      if (!written) out.edge(scope, 'calls', clip(oneLine((fn ?? node).text), CALLEE_TEXT_MAX), line, null, undefined, undefined, at(node));
     }
     for (const c of named(node)) visit(c, inner, innerCls, innerPlace);
   };

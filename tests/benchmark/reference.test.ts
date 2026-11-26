@@ -155,8 +155,8 @@ describe("the TypeScript compiler as the reference for links found", () => {
     // The calls made in use(), with the line and the callee's name as the compiler sees them.
     const got = program
       .calls("use.ts")
-      .filter((c) => c.lines[0]! >= 5)
-      .map((c) => [c.lines[0], c.callee?.text ?? "", declaresANode(c, program.checker) ? causeOf(c, program.checker) : null]);
+      .filter((c) => c.line >= 5)
+      .map((c) => [c.line, c.callee?.text ?? "", declaresANode(c, program.checker) ? causeOf(c, program.checker) : null]);
     const want = USE.flatMap(([, callee, cause], i) => (callee === "" ? [] : [[i + 1, callee, cause]]));
     // `new Cart().total()` holds two calls on one line: the construction too, inside the outer call.
     want.splice(want.findIndex(([, , cause]) => cause === CAUSES.chain) + 1, 0, [14, "Cart", CAUSES.construct]);

@@ -49,7 +49,7 @@
           },
           "linksFoundByState": {
             "n": 10445,
-            "of": 11475
+            "of": 11474
           },
           "linksFoundByReference": {
             "n": 10445,
@@ -113,16 +113,16 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 9122,
-            "of": 9122,
+            "n": 9151,
+            "of": 9151,
             "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "n": 10664,
-            "of": 37728
+            "n": 10694,
+            "of": 37720
           },
           "linksFoundByReference": {
-            "n": 10664,
+            "n": 10694,
             "of": 10714
           },
           "callsAccountedFor": {
@@ -130,11 +130,8 @@
             "of": 45912
           },
           "missesByCause": {
-            "a method on a name whose type is not written": 22,
             "a name bound by destructuring (`const { f } = …`), called": 19,
-            "a method on an expression (a chain, a call's result, an index)": 7,
-            "a construction by a class's name": 1,
-            "a function's name called directly": 1
+            "a construction by a class's name": 1
           }
         }
       }

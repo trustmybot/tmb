@@ -164,6 +164,115 @@ describe("way B, the TypeScript compiler", () => {
     db.close();
   });
 
+  // A call is identified by its position in the file (CODE_GRAPH.md, "Two ways to make links"),
+  // so two calls of one name on one line each get the compiler's own answer.
+  const APPLIANCES = {
+    "src/appliances.ts": [
+      "export class Kettle {",
+      "  switchOn(): number {",
+      "    return 1;",
+      "  }",
+      "}",
+      "export class Lamp {",
+      "  switchOn(): number {",
+      "    return 2;",
+      "  }",
+      "}",
+      "export class Door {",
+      "  open(): Hall {",
+      "    return new Hall();",
+      "  }",
+      "}",
+      "export class Hall {",
+      "  open(): number {",
+      "    return 3;",
+      "  }",
+      "}",
+      "export function kettle(): Kettle {",
+      "  return new Kettle();",
+      "}",
+      "export function lamp(): Lamp {",
+      "  return new Lamp();",
+      "}",
+      "export function door(): Door {",
+      "  return new Door();",
+      "}",
+      "export async function pour<T>(): Promise<number> {",
+      "  return 4;",
+      "}",
+      "",
+    ].join("\n"),
+    "src/morning.ts": [
+      'import { door, type Kettle, kettle, lamp, pour } from "./appliances";',
+      "export function wake(): number {",
+      "  const k = kettle();",
+      "  const l = lamp();",
+      "  return k.switchOn() + l.switchOn();",
+      "}",
+      "export function enter(): number {",
+      "  return door().open().open();",
+      "}",
+      "export async function brew(ready: boolean, k?: Kettle): Promise<number> {",
+      "  return (ready && k!.switchOn() ? 1 : 0) + (await pour<number>());",
+      "}",
+      "",
+    ].join("\n"),
+  };
+  const byDst = (x: { dst: string | null }, y: { dst: string | null }) => String(x.dst).localeCompare(String(y.dst));
+
+  test("two calls of one name on one line, on values of two classes, each link to their own class's method", async () => {
+    const { db, b } = await bothWays(APPLIANCES);
+    const calls = b.filter((r) => r.src === "src/morning.ts:wake" && r.dst_name === "switchOn");
+    expect(calls.map((r) => ({ dst: r.dst, call_state: r.call_state, way: r.way })).sort(byDst)).toEqual([
+      { dst: "src/appliances.ts:Kettle.switchOn", call_state: "linked", way: "language-tool" },
+      { dst: "src/appliances.ts:Lamp.switchOn", call_state: "linked", way: "language-tool" },
+    ]);
+    db.close();
+  });
+
+  test("two calls of one name that start at one place, a call on a call's result, each link to their own declaration", async () => {
+    const { db, b } = await bothWays(APPLIANCES);
+    const calls = b.filter((r) => r.src === "src/morning.ts:enter" && r.dst_name === "open");
+    expect(calls.map((r) => ({ dst: r.dst, call_state: r.call_state })).sort(byDst)).toEqual([
+      { dst: "src/appliances.ts:Door.open", call_state: "linked" },
+      { dst: "src/appliances.ts:Hall.open", call_state: "linked" },
+    ]);
+    db.close();
+  });
+
+  test("a call whose operators the parsers group otherwise is still found by where its name is written", async () => {
+    // `await f<T>()` and `a && b!.f()`: the language binds the call tighter than the operator around
+    // it, and the built-in parser does not, so the two parsers start the call at other places.
+    const { db, b } = await bothWays(APPLIANCES);
+    const calls = b.filter((r) => r.src === "src/morning.ts:brew").map((r) => ({ name: r.dst_name, dst: r.dst, call_state: r.call_state }));
+    expect(calls.sort((x, y) => x.name.localeCompare(y.name))).toEqual([
+      { name: "pour", dst: "src/appliances.ts:pour", call_state: "linked" },
+      { name: "switchOn", dst: "src/appliances.ts:Kettle.switchOn", call_state: "linked" },
+    ]);
+    db.close();
+  });
+
+  test("each call records its position, the offset where the name it calls is written; a reference that is no call records none", async () => {
+    const { db } = await bothWays(APPLIANCES);
+    const text = APPLIANCES["src/morning.ts"];
+    const wake = text.indexOf("function wake");
+    const first = text.indexOf("switchOn", wake);
+    const second = text.indexOf("switchOn", first + 1);
+    const line = text.slice(0, first).split("\n").length;
+    for (const layer of ["a", "b"]) {
+      const rows = db
+        .query("SELECT e.line AS line, e.pos AS pos FROM edges e JOIN symbols s ON s.id = e.src_id WHERE e.layer = ? AND s.path = 'src/morning.ts' AND s.qualified_name = 'wake' AND e.dst_name = 'switchOn' ORDER BY e.pos")
+        .all(layer);
+      expect(rows).toEqual([
+        { line, pos: first },
+        { line, pos: second },
+      ]);
+      const notCalls = db.query("SELECT count(*) AS n FROM edges WHERE layer = ? AND call_state IS NULL AND pos IS NOT NULL").get(layer);
+      expect(notCalls).toEqual({ n: 0 });
+    }
+    db.close();
+  });
+
   test("both ways make the same nodes", async () => {
     const { db } = await bothWays(CART, PADDER);
     expect(nodes(db, "b")).toEqual(nodes(db, "a"));
@@ -283,6 +392,22 @@ describe("the compiler tmb uses", () => {
 });
 
 describe("the graph's store", () => {
+  test("a schema-7 graph gains the position of each call", () => {
+    const file = graphDbPath(project, null);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const old = new Database(file, { create: true });
+    old.run("CREATE TABLE layers (layer TEXT PRIMARY KEY, commit_sha TEXT NOT NULL, extractor INTEGER NOT NULL, built_at TEXT NOT NULL, files INTEGER NOT NULL DEFAULT 0, symbols INTEGER NOT NULL DEFAULT 0, edges INTEGER NOT NULL DEFAULT 0, unresolved INTEGER NOT NULL DEFAULT 0, unresolved_imports INTEGER NOT NULL DEFAULT 0, functions INTEGER NOT NULL DEFAULT 0, not_parsed INTEGER NOT NULL DEFAULT 0, not_read TEXT NOT NULL DEFAULT '{}', links TEXT NOT NULL DEFAULT 'built-in', links_note TEXT)");
+    old.run("CREATE TABLE edges (layer TEXT NOT NULL, src_id INTEGER NOT NULL, dst_id INTEGER, dst_name TEXT NOT NULL, kind TEXT NOT NULL, resolution TEXT NOT NULL, line INTEGER, hint TEXT, call_state TEXT, way TEXT)");
+    old.run("INSERT INTO layers (layer, commit_sha, extractor, built_at) VALUES ('base', 'abc', 15, 'then')");
+    old.run("INSERT INTO edges (layer, src_id, dst_name, kind, resolution, line, call_state, way) VALUES ('base', 1, 'f', 'calls', 'unresolved', 3, 'not_known', 'built-in')");
+    old.run("PRAGMA user_version = 7");
+    old.close();
+    const db = openGraphDb(project, null);
+    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });
+    expect(db.query("SELECT line, pos FROM edges").all()).toEqual([{ line: 3, pos: null }]);
+    db.close();
+  });
+
   test("a schema-6 graph gains the way of each link and of each layer", () => {
     const file = graphDbPath(project, null);
     mkdirSync(path.dirname(file), { recursive: true });
