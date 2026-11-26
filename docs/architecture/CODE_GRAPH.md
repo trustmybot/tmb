@@ -347,7 +347,12 @@ flowchart LR
 - **A pipeline's own graph is not rebuilt.** A tool that runs steps as a graph draws it itself. The functions its steps run are ordinary code nodes.
   - **Example.** A scheduled pipeline has five steps. The graph holds the five functions and what each reads and writes, not the order the pipeline runs them in.
 
-Open, for the Human: where the list of packages that are data stores comes from, and how the kind is known for a package that serves several stores.
+- **The list of store packages is generated, never written by hand.** It joins two sources from the OpenTelemetry project at pinned commits: its list of store systems, and its instrumentations, which say which package reaches which system.
+  - **Example 1.** A call into `pg` is a link to a relational database. A call into `kafkajs` is a link to a queue.
+  - **Example 2.** A store package the sources do not cover gives no data source node. Its SQL strings still give table nodes.
+  - **Edge case.** A package serves several stores, such as a cloud provider's SDK. The package alone does not say the kind, so the call gives no data source node.
+
+Open, for the Human: how the kind is known for a package that serves several stores.
 
 ## Concepts
 
