@@ -286,7 +286,7 @@ flowchart LR
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
 - **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Other languages read a SCIP index, the open format language indexers write (trustmybot/tmb#156).
-- **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it. Planned (trustmybot/tmb#328): today the compiler is read from the repo's installed packages.
+- **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
   - **Example 2.** A Python repo with no virtual environment. Way B cannot run. The graph is built by way A, and the answer's freshness says so.
@@ -779,7 +779,6 @@ All are FTS5 virtual tables.
 |---|---|
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
-| tmb carries the TypeScript compiler for way B | trustmybot/tmb#328 |
 | Way A links a call to a file-level name that holds a callable, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
