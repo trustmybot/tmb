@@ -1,10 +1,10 @@
 // The benchmark's set (trustmybot/tmb#244), as CODE_GRAPH.md's Benchmark section names it: tmb's
 // own repo and public repos at fixed commits, one language each. A language with no module is not
-// scored, so Go joins when its module does (trustmybot/tmb#141). The repos are named here and in
+// scored; Go joined with its module (trustmybot/tmb#352). The repos are named here and in
 // tests/lib/pinned-repo.ts only, never in the graph's code.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { PINNED_DATASETTE, PINNED_FLASK, PINNED_HONO, type PinnedRepo, pinnedRepo } from "../lib/pinned-repo.ts";
+import { PINNED_DATASETTE, PINNED_FLASK, PINNED_GIN, PINNED_HONO, type PinnedRepo, pinnedRepo } from "../lib/pinned-repo.ts";
 import type { Language } from "./score.ts";
 
 /** tmb's own repo, whose history holds its pinned commit. */
@@ -25,6 +25,7 @@ export const BENCH_REPOS: readonly BenchRepo[] = [
   { repo: PINNED_HONO.name, language: "typescript", pinned: PINNED_HONO, fetched: PINNED_HONO },
   { repo: PINNED_FLASK.name, language: "python", pinned: PINNED_FLASK, fetched: PINNED_FLASK },
   { repo: PINNED_DATASETTE.name, language: "python", pinned: PINNED_DATASETTE, fetched: PINNED_DATASETTE },
+  { repo: PINNED_GIN.name, language: "go", pinned: PINNED_GIN, fetched: PINNED_GIN },
 ];
 
 /** Whether a git repo holds a commit. */

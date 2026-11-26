@@ -19,9 +19,10 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
+import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION, WAY_B_NOT_BUILT as GO_WAY_B_NOT_BUILT } from "./go.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
-import { type Entry, entry, falls, format, isNotScored, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
+import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE, REFERENCE_VERSION as TS_REFERENCE_VERSION } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
@@ -45,6 +46,7 @@ const INSTALLED: Record<string, Record<Way, string>> = {
     A: "nothing: tmb's own parser",
     B: "nothing for pyright: tmb carries it; the repo's own virtual environment, for its calls of packages to be outside",
   },
+  go: { A: "nothing: tmb's own parser", B: GO_WAY_B_NOT_BUILT },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -76,15 +78,22 @@ async function measureAll(): Promise<Run> {
       seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
       detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
     } else {
-      const a = await measurePython(where.folder, sha, "A");
-      const b = await measurePython(where.folder, sha, "B");
-      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
-      seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
-      detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
+      if (r.language === "python") {
+        const a = await measurePython(where.folder, sha, "A");
+        const b = await measurePython(where.folder, sha, "B");
+        entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
+        seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
+        detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
+      } else {
+        const m = await measureGo(where.folder, sha);
+        entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, { A: m.scores, B: notBuilt(GO_WAY_B_NOT_BUILT) }));
+        seconds[r.repo] = { A: secs(m.ms) };
+        detail[r.repo] = m.detail.map((d) => `way A, ${d}`);
+      }
     }
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);
-  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION }, entries }, seconds, detail };
+  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION, go: GO_REFERENCE_VERSION }, entries }, seconds, detail };
 }
 
 /** The scores as Markdown tables, for the terminal and for a pull request. */

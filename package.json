@@ -45,6 +45,7 @@
     "remark-gfm": "4.0.1",
     "tailwindcss": "4.3.3",
     "tree-sitter-bash": "0.25.1",
+    "tree-sitter-go": "0.25.0",
     "tree-sitter-javascript": "0.25.0",
     "tree-sitter-python": "0.25.0",
     "tree-sitter-typescript": "^0.23.2",

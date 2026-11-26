@@ -2,7 +2,8 @@
   "command": "bun tests/benchmark/run.ts --write",
   "referenceVersions": {
     "typescript": 2,
-    "python": 1
+    "python": 1,
+    "go": 1
   },
   "entries": [
     {
@@ -236,6 +237,57 @@
           },
           "missesByCause": {
             "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+          }
+        }
+      }
+    },
+    {
+      "repo": "gin",
+      "language": "go",
+      "commit": "73726dc606796a025971fe451f0aa6f1b9b847f6",
+      "reference": "go1.27.4 go/parser",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 1859,
+            "of": 1859
+          },
+          "linksRight": {
+            "notScored": "not judged: Go's links have no reference yet (go/types, trustmybot/tmb#352)"
+          },
+          "linksFoundByState": {
+            "n": 767,
+            "of": 8548
+          },
+          "linksFoundByReference": {
+            "notScored": "not judged: Go's links have no reference yet (go/types, trustmybot/tmb#352)"
+          },
+          "callsAccountedFor": {
+            "n": 9085,
+            "of": 9085
+          },
+          "missesByCause": {
+            "notScored": "not judged: Go's links have no reference yet (go/types, trustmybot/tmb#352)"
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (go/types, trustmybot/tmb#352)"
+          },
+          "linksRight": {
+            "notScored": "not built (go/types, trustmybot/tmb#352)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (go/types, trustmybot/tmb#352)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (go/types, trustmybot/tmb#352)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (go/types, trustmybot/tmb#352)"
+          },
+          "missesByCause": {
+            "notScored": "not built (go/types, trustmybot/tmb#352)"
           }
         }
       }
