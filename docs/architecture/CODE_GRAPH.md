@@ -223,8 +223,8 @@ Every call is in exactly one state (trustmybot/tmb#252), and a function's answer
 | Outside | Proven to reach code outside the repo: an installed package or the language's built-ins | `import pkg` then `pkg.f()`; `JSON.parse()` |
 | Not known | Neither is proven. The agent searches by text for these | `c.total()` where the type of `c` is not written |
 
-- **What a call is.** A place where the code runs a callable: a call, a construction with `new` or by a class's name, a tagged template, a dynamic import, a call to the parent's constructor, and a decorator.
-  - **Not a call.** Naming a parent class, and a JSX element. They are uses, and belong with what depends on a symbol beyond calls (trustmybot/tmb#148).
+- **What a call is.** A place where the code runs a callable: a call, a construction with `new` or by a class's name, a tagged template, a dynamic import, a call to the parent's constructor, and a decorator written as a call, `@cache()`.
+  - **Not a call.** Naming a parent class, a JSX element, and a decorator written as a bare name, `@cache`. They are uses, and belong with what depends on a symbol beyond calls (trustmybot/tmb#148).
 - **Who owns a call.** The nearest callable around it. A call in a field's initial value belongs to the type. A call in an unnamed function is answered under the nearest named one.
 - **A built-in is outside only when nothing nearer declares the name.** The scope and the repo are looked up first, so a repo function named `parse` is never taken for the built-in.
 - **The lists of built-ins are generated, never written by hand.** Each language module's list comes from the language's own tool, and a test fails when it is stale.
@@ -374,6 +374,8 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
 
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
+- **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
+- **Links found is scored against the reference**: of the in-repo links the reference gives, the share the graph has. Calls not known are not the measure, because some of them reach outside the repo.
 - **A language with no module is not scored.** It joins the benchmark when its module does (trustmybot/tmb#141).
 - **The repos are named only in the benchmark.** No code of the graph names one ([Two ways to make links](#two-ways-to-make-links)).
 
