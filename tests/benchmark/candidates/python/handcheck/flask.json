@@ -1,0 +1,469 @@
+{
+ "repo": "flask",
+ "env": "flask-deps",
+ "sampled": "bun sample.ts <scratch> flask flask-deps 40 20 pyright basedpyright pyrefly ty zuban jedi scip-python mypy rope",
+ "calls": [
+  {
+   "tag": "D1",
+   "call": 155,
+   "right": "src/flask/app.py:108",
+   "alt": [
+    "src/flask/app.py:308"
+   ],
+   "why": "Flask(...) builds a Flask; the class is the node a construction links (the TypeScript convention). The line is after `raise`, so it never runs, but the name still means the class."
+  },
+  {
+   "tag": "D2",
+   "call": 2411,
+   "right": "src/flask/cli.py:241",
+   "alt": [
+    "src/flask/cli.py:229"
+   ],
+   "why": "locate_app has two @overload stubs (229, 235) and the body at 241; the body is what runs, a stub is the signature the checker chose."
+  },
+  {
+   "tag": "D3",
+   "call": 3612,
+   "right": "src/flask/helpers.py:63",
+   "alt": [
+    "src/flask/helpers.py:51"
+   ],
+   "why": "stream_with_context: two @overload stubs (51, 57), body at 63."
+  },
+  {
+   "tag": "D4",
+   "call": 2412,
+   "right": "src/flask/cli.py:241",
+   "alt": [
+    "src/flask/cli.py:229",
+    "src/flask/cli.py:235"
+   ],
+   "why": "locate_app overloads, as D2; raise_if_not_found=False picks the second stub (235)."
+  },
+  {
+   "tag": "D5",
+   "call": 3613,
+   "right": "src/flask/helpers.py:63",
+   "alt": [
+    "src/flask/helpers.py:51"
+   ],
+   "why": "stream_with_context overloads, as D3."
+  },
+  {
+   "tag": "D6",
+   "call": 3616,
+   "right": "src/flask/helpers.py:63",
+   "alt": [
+    "src/flask/helpers.py:51"
+   ],
+   "why": "stream_with_context overloads, as D3."
+  },
+  {
+   "tag": "D7",
+   "call": 3614,
+   "right": "src/flask/helpers.py:63",
+   "alt": [
+    "src/flask/helpers.py:51"
+   ],
+   "why": "stream_with_context overloads, as D3."
+  },
+  {
+   "tag": "D8",
+   "call": 808,
+   "right": "src/flask/sansio/blueprints.py:449",
+   "alt": [
+    "src/flask/sansio/blueprints.py:443",
+    "src/flask/sansio/blueprints.py:445"
+   ],
+   "why": "Blueprint.app_template_filter: @overload stubs at 443 and 445, body at 449."
+  },
+  {
+   "tag": "D9",
+   "call": 809,
+   "right": "src/flask/sansio/blueprints.py:449",
+   "alt": [
+    "src/flask/sansio/blueprints.py:443",
+    "src/flask/sansio/blueprints.py:445"
+   ],
+   "why": "As D8."
+  },
+  {
+   "tag": "D10",
+   "call": 804,
+   "right": "src/flask/sansio/blueprints.py:449",
+   "alt": [
+    "src/flask/sansio/blueprints.py:443",
+    "src/flask/sansio/blueprints.py:445"
+   ],
+   "why": "As D8."
+  },
+  {
+   "tag": "D11",
+   "call": 251,
+   "right": "src/flask/cli.py:531",
+   "alt": [
+    "src/flask/cli.py:563"
+   ],
+   "why": "FlaskGroup(...) construction: class 531; its own __init__ 563."
+  },
+  {
+   "tag": "D12",
+   "call": 161,
+   "right": "src/flask/app.py:108",
+   "alt": [
+    "src/flask/app.py:308"
+   ],
+   "why": "Flask(...) construction."
+  },
+  {
+   "tag": "D13",
+   "call": 171,
+   "right": "src/flask/app.py:108",
+   "alt": [
+    "src/flask/app.py:308"
+   ],
+   "why": "flask.Flask(...) construction."
+  },
+  {
+   "tag": "D14",
+   "call": 74,
+   "right": "src/flask/blueprints.py:18",
+   "alt": [
+    "src/flask/blueprints.py:19"
+   ],
+   "why": "flask.Blueprint(...) construction."
+  },
+  {
+   "tag": "D15",
+   "call": 361,
+   "right": "src/flask/wrappers.py:222",
+   "alt": [],
+   "why": "flask.Response(...): Response is a repo class (wrappers.py:222) whose __init__ is werkzeug's; the call is to the repo class, so outside is wrong."
+  },
+  {
+   "tag": "D16",
+   "call": 1022,
+   "right": "src/flask/cli.py:413",
+   "alt": [],
+   "why": "`cli` is made by @click.group(cls=FlaskGroup, ...); click's typing returns FlaskGroup, and at run time it is a FlaskGroup, so .command is AppGroup.command (413)."
+  },
+  {
+   "tag": "D17",
+   "call": 360,
+   "right": "src/flask/wrappers.py:222",
+   "alt": [],
+   "why": "As D15."
+  },
+  {
+   "tag": "D18",
+   "call": 96,
+   "right": "tests/test_async.py:18",
+   "alt": [],
+   "why": "raise BlueprintError(): the test file's own class (18), whose __init__ is Exception's; outside is wrong."
+  },
+  {
+   "tag": "D19",
+   "call": 364,
+   "right": "src/flask/wrappers.py:222",
+   "alt": [],
+   "why": "Response() construction, as D15."
+  },
+  {
+   "tag": "D20",
+   "call": 1026,
+   "right": "src/flask/cli.py:413",
+   "alt": [
+    "outside"
+   ],
+   "why": "Scaffold declares `cli: Group` (click), but Blueprint.__init__ assigns AppGroup(); at run time .command is AppGroup.command (413). A checker that reads the declared type answers click's Group.command, outside: right by the declaration, wrong at run time."
+  },
+  {
+   "tag": "D21",
+   "call": 354,
+   "right": "src/flask/wrappers.py:222",
+   "alt": [],
+   "why": "flask.Response() construction, as D15."
+  },
+  {
+   "tag": "D22",
+   "call": 1025,
+   "right": "src/flask/cli.py:413",
+   "alt": [
+    "outside"
+   ],
+   "why": "As D20."
+  },
+  {
+   "tag": "D23",
+   "call": 2,
+   "right": "src/flask/cli.py:405",
+   "alt": [],
+   "why": "cli.AppGroup() construction: AppGroup is a repo class (405) with no __init__ of its own (click's); outside is wrong."
+  },
+  {
+   "tag": "D24",
+   "call": 317,
+   "right": "src/flask/cli.py:37",
+   "alt": [],
+   "why": "raise NoAppException(...): repo class (37), __init__ from click; outside is wrong."
+  },
+  {
+   "tag": "D25",
+   "call": 684,
+   "right": "src/flask/sansio/blueprints.py:87",
+   "alt": [],
+   "why": "lambda s: s.add_url_rule(...): record() takes DeferredSetupFunction = Callable[[BlueprintSetupState], ...], so s is BlueprintSetupState and its add_url_rule is at 87."
+  },
+  {
+   "tag": "D26",
+   "call": 774,
+   "right": "src/flask/app.py:1542",
+   "alt": [],
+   "why": "app = create_app(...) where flaskr.create_app has no return annotation but returns Flask(...); app.app_context is Flask.app_context (1542). Needs return-type inference."
+  },
+  {
+   "tag": "D27",
+   "call": 799,
+   "right": "src/flask/app.py:1542",
+   "alt": [],
+   "why": "test_request.py: app = Flask(...) earlier in the test; app.app_context is Flask.app_context."
+  },
+  {
+   "tag": "D28",
+   "call": 1074,
+   "right": "examples/celery/src/task_app/__init__.py:7",
+   "alt": [],
+   "why": "`from task_app import create_app`; task_app is examples/celery/src/task_app (the example's own src layout); create_app is at 7. Only a tool that searches that folder finds it."
+  },
+  {
+   "tag": "D29",
+   "call": 1900,
+   "right": "src/flask/helpers.py:360",
+   "alt": [],
+   "why": "flask.get_flashed_messages(): flask/__init__.py re-exports helpers.get_flashed_messages (360)."
+  },
+  {
+   "tag": "D30",
+   "call": 3675,
+   "right": "src/flask/sansio/app.py:827",
+   "alt": [],
+   "why": "init_app(app) has an unannotated parameter; its only caller passes the Flask app, so at run time this is App.teardown_appcontext (827). Known only by inferring the parameter from callers."
+  },
+  {
+   "tag": "D31",
+   "call": 1009,
+   "right": "src/flask/testing.py:265",
+   "alt": [],
+   "why": "cls = self.test_cli_runner_class; if None, `from .testing import FlaskCliRunner as cls`. The default class is FlaskCliRunner (265); a subclass set by the user is also possible. Counted right as the declared default."
+  },
+  {
+   "tag": "D32",
+   "call": 3674,
+   "right": "not_known",
+   "alt": [
+    "src/flask/json/tag.py:69"
+   ],
+   "why": "tag_class is a parameter typed type[JSONTag]: the class is the caller's, so no one node is right; JSONTag.__init__ (69) is the declared type's constructor."
+  },
+  {
+   "tag": "D33",
+   "call": 2018,
+   "right": "src/flask/sansio/app.py:961",
+   "alt": [],
+   "why": "self.inject_url_defaults in Flask: inherited from App (sansio/app.py:961)."
+  },
+  {
+   "tag": "D34",
+   "call": 586,
+   "right": "src/flask/helpers.py:644",
+   "alt": [],
+   "why": "_split_blueprint_path calls itself (it is @cache-decorated); 644."
+  },
+  {
+   "tag": "D35",
+   "call": 3748,
+   "right": "src/flask/app.py:1578",
+   "alt": [],
+   "why": "app = self.application, declared `application: Flask`; Flask.test_request_context (1578)."
+  },
+  {
+   "tag": "D36",
+   "call": 3764,
+   "right": "src/flask/app.py:1578",
+   "alt": [],
+   "why": "`from blueprintapp import app` (tests/test_apps/blueprintapp, put on sys.path by the test_apps fixture) is a Flask; Flask.test_request_context."
+  },
+  {
+   "tag": "D37",
+   "call": 3395,
+   "right": "src/flask/sessions.py:57",
+   "alt": [
+    "src/flask/sessions.py:73"
+   ],
+   "why": "self.session_class() where session_class = SecureCookieSession (class attribute): the class (57) by the construction convention, or its __init__ (73)."
+  },
+  {
+   "tag": "D38",
+   "call": 120,
+   "right": "not_known",
+   "alt": [
+    "src/flask/app.py:308"
+   ],
+   "why": "CustomFlask is a class inside the test function, which is no node (#141); it has no __init__, so Flask.__init__ (308) runs."
+  },
+  {
+   "tag": "D39",
+   "call": 1888,
+   "right": "examples/tutorial/flaskr/db.py:9",
+   "alt": [],
+   "why": "`from flaskr.db import get_db`; get_db at 9."
+  },
+  {
+   "tag": "D40",
+   "call": 511,
+   "right": "src/flask/sansio/blueprints.py:174",
+   "alt": [],
+   "why": "super().__init__ in flask.Blueprint: the sansio Blueprint.__init__ (174)."
+  },
+  {
+   "tag": "S1",
+   "call": 1252,
+   "right": "src/flask/sansio/scaffold.py:605",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S2",
+   "call": 1917,
+   "right": "src/flask/helpers.py:36",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S3",
+   "call": 670,
+   "right": "src/flask/sansio/app.py:810",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S4",
+   "call": 3171,
+   "right": "src/flask/sansio/scaffold.py:343",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S5",
+   "call": 2480,
+   "right": "src/flask/helpers.py:151",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S6",
+   "call": 565,
+   "right": "src/flask/templating.py:88",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S7",
+   "call": 1916,
+   "right": "src/flask/helpers.py:36",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S8",
+   "call": 1036,
+   "right": "tests/test_config.py:14",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S9",
+   "call": 3746,
+   "right": "src/flask/app.py:766",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S10",
+   "call": 3871,
+   "right": "src/flask/helpers.py:200",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S11",
+   "call": 2264,
+   "right": "src/flask/json/__init__.py:138",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S12",
+   "call": 1387,
+   "right": "src/flask/helpers.py:326",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S13",
+   "call": 585,
+   "right": "src/flask/testing.py:193",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S14",
+   "call": 3717,
+   "right": "src/flask/app.py:766",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S15",
+   "call": 3820,
+   "right": "src/flask/json/tag.py:297",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S16",
+   "call": 2455,
+   "right": "src/flask/cli.py:1121",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S17",
+   "call": 2835,
+   "right": "src/flask/sansio/blueprints.py:232",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S18",
+   "call": 3038,
+   "right": "src/flask/sansio/scaffold.py:343",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S19",
+   "call": 1865,
+   "right": "src/flask/sessions.py:215",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  },
+  {
+   "tag": "S20",
+   "call": 3720,
+   "right": "src/flask/app.py:766",
+   "alt": [],
+   "why": "Read and right: every candidate's link."
+  }
+ ]
+}

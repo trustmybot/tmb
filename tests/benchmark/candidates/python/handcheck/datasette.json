@@ -1,0 +1,453 @@
+{
+ "repo": "datasette",
+ "env": "datasette-deps",
+ "sampled": "bun sample.ts <scratch> datasette datasette-deps 40 20 pyright basedpyright pyrefly ty zuban jedi scip-python mypy rope",
+ "calls": [
+  {
+   "tag": "D1",
+   "call": 10117,
+   "right": "datasette/database.py:1262",
+   "alt": [],
+   "why": "rows is what Database.execute returns (Results); datasette is typed Any here, but get_internal_database returns a Database, so rows.first() runs Results.first. basedpyright's query_row_to_stored_query is the enclosing call, not this one."
+  },
+  {
+   "tag": "D2",
+   "call": 11058,
+   "right": "datasette/utils/__init__.py:1247",
+   "alt": [],
+   "why": "request.args is a property returning MultiParams; .get is MultiParams.get. request is unannotated, so only inference reaches it. basedpyright's _redirect is the enclosing function's call."
+  },
+  {
+   "tag": "D3",
+   "call": 18105,
+   "right": "datasette/views/__init__.py:80",
+   "alt": [],
+   "why": "klass is a value of PAGES, all Context classes; page_title is the classmethod on the base, defined once in the repo. basedpyright answers the enclosing _section call."
+  },
+  {
+   "tag": "D4",
+   "call": 21043,
+   "right": "datasette/app.py:1062",
+   "alt": [],
+   "why": "DatasetteRouter.__init__ stores the Datasette as self.ds; setting is Datasette.setting. The parameter is unannotated. basedpyright's Request.__init__ is another call on the line."
+  },
+  {
+   "tag": "D5",
+   "call": 509,
+   "right": "datasette/utils/__init__.py:1095",
+   "alt": [
+    "datasette/utils/__init__.py:1098"
+   ],
+   "why": "Construction of CustomRow: the class (TS convention); pyrefly's __init__ is the other convention."
+  },
+  {
+   "tag": "D6",
+   "call": 1436,
+   "right": "datasette/utils/__init__.py:1201",
+   "alt": [
+    "datasette/utils/__init__.py:1211"
+   ],
+   "why": "Construction of MultiParams; __init__ is the other convention."
+  },
+  {
+   "tag": "D7",
+   "call": 1435,
+   "right": "datasette/utils/__init__.py:1201",
+   "alt": [
+    "datasette/utils/__init__.py:1211"
+   ],
+   "why": "Construction of MultiParams; __init__ is the other convention."
+  },
+  {
+   "tag": "D8",
+   "call": 1954,
+   "right": "datasette/telemetry_registry.py:42",
+   "alt": [
+    "datasette/telemetry_registry.py:50"
+   ],
+   "why": "Construction of SpanName (a str subclass with __new__); __new__ is the other convention."
+  },
+  {
+   "tag": "D9",
+   "call": 127,
+   "right": "datasette/telemetry_registry.py:12",
+   "alt": [
+    "datasette/telemetry_registry.py:25"
+   ],
+   "why": "Construction of Attribute (str subclass with __new__)."
+  },
+  {
+   "tag": "D10",
+   "call": 1952,
+   "right": "datasette/telemetry_registry.py:42",
+   "alt": [
+    "datasette/telemetry_registry.py:50"
+   ],
+   "why": "Construction of SpanName."
+  },
+  {
+   "tag": "D11",
+   "call": 1950,
+   "right": "datasette/telemetry_registry.py:42",
+   "alt": [
+    "datasette/telemetry_registry.py:50"
+   ],
+   "why": "Construction of SpanName in the same module."
+  },
+  {
+   "tag": "D12",
+   "call": 1946,
+   "right": "datasette/telemetry_registry.py:42",
+   "alt": [
+    "datasette/telemetry_registry.py:50"
+   ],
+   "why": "Construction of SpanName in the same module."
+  },
+  {
+   "tag": "D13",
+   "call": 723,
+   "right": "datasette/app.py:446",
+   "alt": [
+    "datasette/app.py:452"
+   ],
+   "why": "Construction of Datasette; __init__ is the other convention."
+  },
+  {
+   "tag": "D14",
+   "call": 690,
+   "right": "datasette/app.py:446",
+   "alt": [
+    "datasette/app.py:452"
+   ],
+   "why": "Construction of Datasette."
+  },
+  {
+   "tag": "D15",
+   "call": 2277,
+   "right": "datasette/utils/__init__.py:410",
+   "alt": [],
+   "why": "raise WriteJsonValueError(...) builds a repo class; its __init__ is inherited from ValueError, so pyrefly answers outside, which is wrong: the class is in the repo."
+  },
+  {
+   "tag": "D16",
+   "call": 13413,
+   "right": "datasette/hookspecs.py:4",
+   "alt": [],
+   "why": "hookimpl = HookimplMarker(\"datasette\") at hookspecs.py:4, imported via datasette; calling it calls that const. pyrefly follows to HookimplMarker.__call__ in pluggy (outside), which is where it runs but not the name the call uses; way A cannot follow the import."
+  },
+  {
+   "tag": "D17",
+   "call": 1126,
+   "right": "datasette/database.py:76",
+   "alt": [],
+   "why": "Repo exception class with inherited __init__; pyrefly outside is wrong."
+  },
+  {
+   "tag": "D18",
+   "call": 7814,
+   "right": "datasette/database.py:718",
+   "alt": [],
+   "why": "get_internal_database returns self._internal_database, a Database; execute is Database.execute. datasette is typed Any."
+  },
+  {
+   "tag": "D19",
+   "call": 23498,
+   "right": "outside",
+   "alt": [],
+   "why": "urllib.parse.urlencode is the standard library. basedpyright's app.py get is wrong (another call on the line)."
+  },
+  {
+   "tag": "D20",
+   "call": 10460,
+   "right": "datasette/column_types.py:11",
+   "alt": [],
+   "why": "SQLiteType.from_declared_type is a classmethod on an Enum in the repo; jedi's outside is wrong."
+  },
+  {
+   "tag": "D21",
+   "call": 1303,
+   "right": "datasette/utils/asgi.py:64",
+   "alt": [],
+   "why": "Repo exception class; pyrefly outside is wrong."
+  },
+  {
+   "tag": "D22",
+   "call": 1438,
+   "right": "datasette/utils/multipart.py:35",
+   "alt": [],
+   "why": "Repo exception class; pyrefly outside is wrong."
+  },
+  {
+   "tag": "D23",
+   "call": 1969,
+   "right": "datasette/utils/__init__.py:1471",
+   "alt": [],
+   "why": "Repo exception class; pyrefly outside is wrong."
+  },
+  {
+   "tag": "D24",
+   "call": 13399,
+   "right": "datasette/hookspecs.py:4",
+   "alt": [],
+   "why": "hookimpl const imported from hookspecs; pyrefly's pluggy __call__ is outside."
+  },
+  {
+   "tag": "D25",
+   "call": 2805,
+   "right": "datasette/_pytest_plugin.py:26",
+   "alt": [
+    "datasette/app.py:452"
+   ],
+   "why": "_original_init is a module global (const node, line 26) later set to Datasette.__init__; the call uses that name. The run-time target Datasette.__init__ is the other answer."
+  },
+  {
+   "tag": "D26",
+   "call": 3105,
+   "right": "datasette/app.py:3219",
+   "alt": [],
+   "why": "ds is a Datasette; _startup_sequence is its method. ty misses it."
+  },
+  {
+   "tag": "D27",
+   "call": 5988,
+   "right": "datasette/app.py:1032",
+   "alt": [],
+   "why": "ds comes from _datasette_with_sleeping_execute, which builds a Datasette (unannotated return); close is Datasette.close."
+  },
+  {
+   "tag": "D28",
+   "call": 10119,
+   "right": "datasette/database.py:1262",
+   "alt": [],
+   "why": "(await db.execute(...)).first(): db = datasette.get_internal_database(), a Database; first is Results.first."
+  },
+  {
+   "tag": "D29",
+   "call": 14977,
+   "right": "datasette/utils/asgi.py:656",
+   "alt": [],
+   "why": "cls in a Response classmethod; cls.json is Response.json. mypy and rope miss it."
+  },
+  {
+   "tag": "D30",
+   "call": 18108,
+   "right": "datasette/views/__init__.py:80",
+   "alt": [],
+   "why": "klass iterates PAGES values (Context classes); page_title is defined once, on the base."
+  },
+  {
+   "tag": "D31",
+   "call": 19223,
+   "right": "datasette/events.py:17",
+   "alt": [],
+   "why": "event is TrackEventPlugin.OneEvent, a dataclass subclass of Event that does not override properties; Event.properties runs."
+  },
+  {
+   "tag": "D32",
+   "call": 22376,
+   "right": "datasette/database.py:166",
+   "alt": [],
+   "why": "add_database(db) is given a Database; db is unannotated, so only inference finds Database.suggest_name."
+  },
+  {
+   "tag": "D33",
+   "call": 2181,
+   "right": "not_known",
+   "alt": [
+    "datasette/column_types.py:59"
+   ],
+   "why": "TestType is a class nested in a test function, which is no node; no node is right. pyrefly's ColumnType.__init__ is the inherited __init__ that runs, under the __init__ convention."
+  },
+  {
+   "tag": "D34",
+   "call": 6447,
+   "right": "datasette/utils/baseconv.py:28",
+   "alt": [],
+   "why": "self.convert: convert is defined at 28 and wrapped as staticmethod at 54; the def is the node."
+  },
+  {
+   "tag": "D35",
+   "call": 6929,
+   "right": "datasette/views/base.py:141",
+   "alt": [],
+   "why": "self = view.view_class(...) where view_class = cls, a View subclass; dispatch_request is defined only once in the repo (base.py:141), so that is what runs. Way A links it by the self.method rule; every tool says not known because self is rebound to a local."
+  },
+  {
+   "tag": "D36",
+   "call": 12899,
+   "right": "datasette/app.py:1524",
+   "alt": [],
+   "why": "ds is a Datasette; get_internal_database is its method. ty and mypy miss it."
+  },
+  {
+   "tag": "D37",
+   "call": 13141,
+   "right": "datasette/utils/multipart.py:115",
+   "alt": [],
+   "why": "form is the FormData that request.form() returns (__aenter__ returns self); getlist is FormData.getlist."
+  },
+  {
+   "tag": "D38",
+   "call": 23648,
+   "right": "not_known",
+   "alt": [
+    "datasette/tokens.py:124"
+   ],
+   "why": "token_handler comes from plugins: TokenHandler subclasses, two in the repo (124 base, 166 signed) and any number in plugins; no one node is right. zuban's TokenHandler.verify_token is the declared base method, the other convention."
+  },
+  {
+   "tag": "D39",
+   "call": 6949,
+   "right": "datasette/views/__init__.py:88",
+   "alt": [],
+   "why": "klass is a Context class; documented_fields is the classmethod on the base, defined once."
+  },
+  {
+   "tag": "D40",
+   "call": 2324,
+   "right": "datasette/permissions.py:70",
+   "alt": [],
+   "why": "DocumentResource(Resource): super().__init__ is Resource.__init__. mypy and rope miss it."
+  },
+  {
+   "tag": "S1",
+   "call": 6185,
+   "right": "tests/test_playwright.py:2941",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S2",
+   "call": 6805,
+   "right": "datasette/utils/__init__.py:888",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S3",
+   "call": 5059,
+   "right": "datasette/telemetry_testing.py:276",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S4",
+   "call": 20185,
+   "right": "datasette/cli.py:49",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S5",
+   "call": 2971,
+   "right": "datasette/views/row.py:733",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S6",
+   "call": 14160,
+   "right": "datasette/utils/__init__.py:1020",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S7",
+   "call": 1626,
+   "right": "datasette/permissions.py:194",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S8",
+   "call": 17917,
+   "right": "tests/test_playwright.py:617",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S9",
+   "call": 24022,
+   "right": "tests/test_api_write.py:45",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S10",
+   "call": 21317,
+   "right": "datasette/telemetry_registry.py:343",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S11",
+   "call": 3165,
+   "right": "tests/test_telemetry_registry.py:81",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S12",
+   "call": 9451,
+   "right": "datasette/utils/asgi.py:282",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S13",
+   "call": 2446,
+   "right": "datasette/views/special.py:761",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S14",
+   "call": 2647,
+   "right": "datasette/app.py:1366",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S15",
+   "call": 4323,
+   "right": "datasette/utils/sql_analysis.py:305",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S16",
+   "call": 3247,
+   "right": "datasette/default_permissions/helpers.py:30",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S17",
+   "call": 7288,
+   "right": "datasette/utils/asgi.py:687",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S18",
+   "call": 2497,
+   "right": "datasette/views/row.py:155",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S19",
+   "call": 10431,
+   "right": "datasette/views/special.py:1671",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  },
+  {
+   "tag": "S20",
+   "call": 21793,
+   "right": "datasette/stored_queries.py:56",
+   "alt": [],
+   "why": "Read the code: a plain name or module/class attribute bound to this def in the repo, with no override."
+  }
+ ]
+}
