@@ -439,6 +439,14 @@ flowchart LR
 | Rust | rust-analyzer | From rustup or on PATH; the Rust toolchain is needed | The pinned rust-analyzer |
 | C, C++ | clangd | On PATH; the compile database is needed | The pinned clangd |
 
+- **Go's helper is built once, from source tmb carries.** Planned (trustmybot/tmb#394). Today tmb compiles it again at every build of a graph.
+  - **When.** The first time a Go repo is indexed. It is a local compile and downloads nothing, so a setting that turns installs off does not stop it.
+  - **With the user's `go`,** the same one that then runs it. A helper built by an older `go` gives wrong answers, so it is rebuilt when the user's `go`, tmb's source or the machine's kind changes. The old one is removed.
+  - **The build takes none of the user's Go settings** and uses no network. The run takes them as before. The build uses the user's Go build cache.
+  - **A failed build** means the built-in rules for Go, with a note that names the error.
+  - **The layer records** the user's `go` and the helper: its source and the `go` that built it. `tmb tools` lists the helper with Go.
+  - **Edge case.** The user sets Go to build for another operating system. The helper is still built for this machine.
+  - **Edge case.** The helper cannot type-check the repo, such as a repo that needs a newer Go. That is an error and the built-in rules are used; it is never taken as "no call is known".
 - **Edge case.** The repo's own copy of the TypeScript compiler in `node_modules` is not the user's copy. It differs from repo to repo, and one machine gives one answer.
 
 ## Data sources
