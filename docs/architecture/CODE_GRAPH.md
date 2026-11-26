@@ -122,7 +122,7 @@ flowchart TD
 
 ### Kinds of symbol
 
-The graph uses one set of kinds for every language. Each language module maps its own syntax to them. The lowest node is a callable or a field. Nothing inside a function is a node.
+The graph uses one set of kinds for every language. Each language module maps its own syntax to them. Planned (trustmybot/tmb#314): the stored kinds are this set; until then some are a language's own words, such as class and const. The lowest node is a callable or a field. Nothing inside a function is a node.
 
 | Kind | Meaning, in any language | A node |
 |---|---|---|
@@ -361,6 +361,7 @@ The graph is measured against a second, independent parser, the TypeScript compi
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
 - **Example.** A file has 10 calls: 6 linked, 3 to an outside package, 1 not known. Links found is 6 of 7. Calls accounted for is 10 of 10.
 - **Way B needs a second judge.** In TypeScript the reference is the compiler, which is also way B's source. Way B's links right is judged on Python and on samples checked by hand.
+- **A link the compiler places outside the repo is wrong.** The graph links only the repo's own code, so a link to a repo symbol for a name the compiler declares only outside the repo fails the test.
 - **When a link is right.** It names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
 - **Why way A misses links.** It leaves a call unlinked when proving it needs the type of the thing it is called on ([Links on proof](#links-on-proof)).
 
@@ -709,6 +710,7 @@ All are FTS5 virtual tables.
 | Piece | Tracked in |
 |---|---|
 | Two ways to make links, built side by side and compared ([Two ways to make links](#two-ways-to-make-links)) | trustmybot/tmb#311 |
+| The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Every link records the proof it was made on, for a score per proof and for the dashboard; not added to an agent's answer | trustmybot/tmb#251 |
