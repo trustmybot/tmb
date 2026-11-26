@@ -317,7 +317,7 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
       const own = decls.filter((d) => inRepo(d.uri));
       if (own.length === 0) return OUTSIDE;
       const nodes = new Set(own.flatMap((d) => nodesOf(d.uri, d.range)));
-      return nodes.size === 1 ? { node: [...nodes][0]! } : NOT_KNOWN;
+      return nodes.size === 1 ? { nodes: [[...nodes][0]!] } : NOT_KNOWN;
     };
 
     /**
