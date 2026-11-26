@@ -121,7 +121,7 @@ export function answerCalls(input: ToolInput, out: HelperOutput): ToolAnswer[] {
     // is the innermost node that holds its line, when only one is.
     const size = Math.min(...nodes.map((n) => n.end - n.start));
     const innermost = nodes.filter((n) => n.end - n.start === size);
-    return innermost.length === 1 ? { node: innermost[0]!.index } : NOT_KNOWN;
+    return innermost.length === 1 ? { nodes: [innermost[0]!.index] } : NOT_KNOWN;
   };
   // A call is answered by the helper's call at its position, of its name; a call the helper has
   // none at, as in a file it does not load, is not known.

@@ -271,7 +271,13 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)}), so the built-in rules`);
       continue;
     }
-    answered.forEach((answer, i) => answers.set(callRows[i]!, "node" in answer ? { node: nodeRows[answer.node]! } : answer));
+    answered.forEach((answer, i) => {
+      if (!("nodes" in answer)) answers.set(callRows[i]!, answer);
+      else {
+        const [first, ...more] = answer.nodes;
+        answers.set(callRows[i]!, { nodes: [nodeRows[first]!, ...more.map((n) => nodeRows[n]!)] });
+      }
+    });
   }
   return { answers, note: notes.length === 0 ? null : notes.join("; ") };
 }
@@ -418,12 +424,19 @@ function applyLayer(
     }
     // A call its language's tool answered takes the tool's answer, and nothing else (trustmybot/tmb#311).
     const answer = byTool.answers.get(index);
-    const link: Link | null = answer === undefined ? resolver.resolve(file, edge) : "node" in answer ? { dst: answer.node, how: "exact" } : null;
+    const linked = answer !== undefined && "nodes" in answer ? answer.nodes : null;
+    const link: Link | null = answer === undefined ? resolver.resolve(file, edge) : linked !== null ? { dst: linked[0], how: "exact" } : null;
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
     // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
-    const state = answer !== undefined ? ("node" in answer ? "linked" : answer.state) : edge.call === 1 ? callState(resolver, file, edge, link) : null;
+    const state = answer !== undefined ? ("state" in answer ? answer.state : "linked") : edge.call === 1 ? callState(resolver, file, edge, link) : null;
     const way = answer === undefined ? BUILT_IN : LANGUAGE_TOOL;
     insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.pos ?? null, edge.hint, state, way);
+    // A call that can go to more than one node links to each (trustmybot/tmb#344): one row per
+    // further link, at the call's place. The call is one call in one state, so its state is on its
+    // first row alone, and every count of calls counts it once.
+    for (const dst of linked?.slice(1) ?? []) {
+      insertEdge.run(layer, ids[symbolIndex]!, ids[dst]!, edge.dst_name, edge.kind, "exact", edge.line, edge.pos ?? null, edge.hint, null, way);
+    }
   });
   const unresolvedImports = resolver.unresolvedImports;
   const unread = new Map<string, number>();
