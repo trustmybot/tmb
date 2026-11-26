@@ -291,7 +291,7 @@ flowchart LR
 - **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. The position is where the name it calls is written, else where the call starts.
   - **Example.** In `await get<string>(key)` and `a && b!.f()` the position is where `get` and `f` are written, which every parser agrees on.
 - **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
-- **Way B follows the project's own configs.** A file is resolved under the config that owns it. Planned (trustmybot/tmb#324): today only the root config is read.
+- **Way B follows the project's own configs.** A file is resolved under the config that owns it.
   - **Example.** A repo has a root config and one in `benchmarks/`. A file in `benchmarks/` is resolved by that folder's config, with whatever it extends.
   - **Edge case.** A file under no config gets the compiler's own defaults. tmb picks none of its own.
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
@@ -874,7 +874,6 @@ All are FTS5 virtual tables.
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
-| Way B follows the project's own configs | trustmybot/tmb#324 |
 | The benchmark judges same-file links | trustmybot/tmb#343 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
 | Way B for Python, with pyright | trustmybot/tmb#347 |
