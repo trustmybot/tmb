@@ -135,7 +135,7 @@ flowchart TD
 - **Example 1.** `Makefile` is Makefile by its name. `api.proto` is Protocol Buffer by its ending.
 - **Example 2.** `run` has no ending and starts with `#!/usr/bin/env python3`. It is Python.
 - **Example 3.** `legacy.pl` could be Perl or Prolog. It holds `use strict;`, which Linguist's rule reads as Perl.
-- **Edge case 1.** The rules settle nothing and the file's ending is one a language module names as its own. That module reads it: `mod.rs` is Rust. Each module names its endings, and an ending belongs to one module, so a file the graph reads is never dropped for want of an answer.
+- **Edge case 1.** The rules settle nothing and the file's ending is one a language module names as its own. That module reads it: `mod.rs` is Rust. Each module names its endings, and an ending belongs to one module, so a file the graph reads is never dropped for want of an answer. A `.h` file belongs to C, the language Linguist's own rule ends on: Linguist names a header with `class` or `namespace` C++, and one it leaves undecided is read as C.
 - **Edge case 2.** The rules settle nothing and no module names the ending as its own. The file's language is named as "one of" the candidates. It is never guessed: an `.inc` file could be C++, PHP or Pascal, and is not parsed as C++ because C++ is on the list.
 - **Edge case 3.** An empty file has no first line and nothing for a rule to match. Its name and ending decide: an empty `__init__.py` is Python.
 - **Edge case 4.** A rule names another language for a file tmb would read: a `.ts` file that holds `<TS` is XML to Linguist. Linguist's answer stands, as it does on GitHub.
