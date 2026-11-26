@@ -251,11 +251,13 @@ export interface ToolCall {
 }
 
 // What a repo gives its tool: the text of every file of the tool's languages at the commit, the
-// project's settings files at the commit (package.json, tsconfig.json, …), the graph's nodes in
-// those files and the graph's calls in them.
+// project's settings files at the commit (package.json, tsconfig.json, …), any other file of the
+// commit read when the tool asks for it by its path (a settings file another one names), the
+// graph's nodes in those files and the graph's calls in them.
 export interface ToolInput {
   files: ReadonlyMap<string, string>;
   configs: ReadonlyMap<string, string>;
+  read(path: string): string | undefined;
   nodes: readonly ToolNode[];
   calls: readonly ToolCall[];
 }

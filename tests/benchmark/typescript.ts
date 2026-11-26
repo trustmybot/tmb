@@ -17,6 +17,12 @@ const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["typescript", "tsx", "ja
 export const REFERENCE = `TypeScript compiler ${ts.version}`;
 
 /**
+ * The version of the TypeScript reference, raised when the reference changes what it counts.
+ * 2: each file is resolved under the program of the config that owns it, as way B resolves it.
+ */
+export const REFERENCE_VERSION = 2;
+
+/**
  * How each way builds the graph, as the program builds it: way B uses the compiler tmb carries,
  * the one the program uses, and nothing is passed in.
  */
@@ -225,8 +231,9 @@ export async function measureTypescript(repoDir: string, sha: string, way: Way):
     const refCalls: ReferenceCall[] = [];
     for (const file of read) {
       for (const call of program.calls(file)) {
-        if (call.answer.kind !== "declared" || !declaresANode(call, program.checker)) continue;
-        refCalls.push({ file, line: call.line, pos: call.pos, names: call.names, decls: call.answer.decls, cause: causeOf(call, program.checker) });
+        const checker = program.checkerOf(file);
+        if (call.answer.kind !== "declared" || !declaresANode(call, checker)) continue;
+        refCalls.push({ file, line: call.line, pos: call.pos, names: call.names, decls: call.answer.decls, cause: causeOf(call, checker) });
       }
     }
     const byReference = linksFoundByReference(refCalls, graphCalls(db, read));

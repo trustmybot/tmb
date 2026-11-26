@@ -1,7 +1,7 @@
 // The TypeScript compiler's program of a repo at one commit, with the compiler module given as an
 // input: no fixed compiler is loaded here. The repo's own files are read from the commit, as the
 // graph reads them, never from the working folder. The link check (links.ts) and way B
-// (tool.ts) both build their program here.
+// (tool.ts) both read the commit through the host here, in the programs of projects.ts.
 import path from "node:path";
 import type TS from "typescript5";
 
@@ -23,13 +23,18 @@ export function baseOptions(ts: TypeScriptModule): TS.CompilerOptions {
 }
 
 /** The folder a package manager installs a project's dependencies in. */
-const INSTALLED_DIR = "node_modules";
+export const INSTALLED_DIR = "node_modules";
 
 export type CommitFiles = {
   /** The repo's files at the commit, by path from its top. */
   texts: ReadonlyMap<string, string>;
   /** Whether the project's installed dependencies (a `node_modules` folder) are read from disk. */
   installed: boolean;
+  /**
+   * Any other file of the commit, by path from its top, read when asked for: a config that another
+   * config names by `extends` or `references`, whatever its name.
+   */
+  read?: (rel: string) => string | undefined;
   /**
    * The compiler's default library files by name, when the program carries them: then they are
    * read from here, never from the compiler's folder on disk. Without it they are read from disk.
@@ -98,33 +103,6 @@ export function commitHost(ts: TypeScriptModule, root: string, files: CommitFile
       return text === undefined ? undefined : ts.createSourceFile(file, text, version, true);
     },
   };
-}
-
-/** The settings files a project's compiler options come from, at the repo's top, the first present. */
-const PROJECT_CONFIGS = ["tsconfig.json", "jsconfig.json"] as const;
-
-/**
- * The compiler options of the project's own settings file at the repo's top (tsconfig.json, else
- * jsconfig.json), read at the commit with its `extends`; empty when it has none. Its own `files`
- * and `include` are not used: every file the graph reads is in the program.
- */
-export function projectOptions(ts: TypeScriptModule, root: string, files: CommitFiles): TS.CompilerOptions {
-  const name = PROJECT_CONFIGS.find((n) => files.texts.has(n));
-  if (name === undefined) return {};
-  const configPath = path.join(root, name);
-  const read = (file: string): string | undefined => {
-    const p = placeOf(root, file, files.installed);
-    return p.from === "disk" ? ts.sys.readFile(file) : files.texts.get(p.rel);
-  };
-  const parsed = ts.readConfigFile(configPath, read);
-  if (parsed.config === undefined) return {};
-  const host: TS.ParseConfigHost = {
-    useCaseSensitiveFileNames: true,
-    readDirectory: () => [],
-    fileExists: (file) => read(file) !== undefined,
-    readFile: read,
-  };
-  return ts.parseJsonConfigFileContent(parsed.config, host, root, undefined, configPath).options;
 }
 
 /** A program over the repo's files at the commit: `rootFiles` are its paths from the repo's top. */
