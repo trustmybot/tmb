@@ -465,6 +465,7 @@ flowchart LR
   - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a function node, with a link to its table.
   - **Edge case.** The store runs a trigger; no code calls it by name. So no call ever links to a trigger, even one that shares its name.
   - **Edge case.** A trigger written in a string inside a method is still a function, and the method is its parent. Its kind follows SQL, where it is declared outside any type.
+  - **A node names its own language when it differs from its file's.** A trigger in a TypeScript string is an SQL node in a TypeScript file. Every other node has its file's language.
 - **Whatever a statement names as a table is a table node.** The graph does not judge which tables matter.
   - **Example 1.** A view, a virtual table and a system table such as `sqlite_master` are each a table node.
   - **Example 2.** `CREATE TABLE orders` and `CREATE INDEX … ON orders` change `orders`, so each is a write to `orders`. The index itself is no node.
