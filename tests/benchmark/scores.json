@@ -474,29 +474,22 @@
         },
         "B": {
           "functionsFound": {
-            "n": 2119,
-            "of": 2146
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "linksRight": {
-            "n": 7775,
-            "of": 7799,
-            "note": "clang, the compiler clangd is built on, is the reference"
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "linksFoundByState": {
-            "n": 7802,
-            "of": 25196
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "linksFoundByReference": {
-            "n": 7775,
-            "of": 7951
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "callsAccountedFor": {
-            "n": 9690,
-            "of": 9761
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "missesByCause": {
-            "a function called by its name": 117,
-            "a member called on an object": 59
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           }
         }
       }
@@ -518,7 +511,7 @@
           },
           "linksFoundByState": {
             "n": 464,
-            "of": 9564
+            "of": 9566
           },
           "linksFoundByReference": {
             "n": 399,
@@ -537,30 +530,22 @@
         },
         "B": {
           "functionsFound": {
-            "n": 1607,
-            "of": 1811
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "linksRight": {
-            "n": 5718,
-            "of": 5719,
-            "note": "clang, the compiler clangd is built on, is the reference"
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "linksFoundByState": {
-            "n": 5759,
-            "of": 7143
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "linksFoundByReference": {
-            "n": 5718,
-            "of": 5760
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "callsAccountedFor": {
-            "n": 7049,
-            "of": 7284
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           },
           "missesByCause": {
-            "a construction": 21,
-            "a function called by its name": 16,
-            "a function called by a qualified name": 5
+            "notScored": "not built (clangd, trustmybot/tmb#355)"
           }
         }
       }
