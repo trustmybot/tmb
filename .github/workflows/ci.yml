@@ -80,3 +80,29 @@ jobs:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
       - run: bun test tests/integration/update.test.ts
+
+  # The code graph's benchmark (trustmybot/tmb#244): tmb and the public repos, each at its pinned
+  # commit, scored against its language's own tool. tmb's pin is read from its own history, so the
+  # checkout is full. Fails when a score stored in
+  # tests/benchmark/scores.json falls. A heavy job: version tags only. Links right for TypeScript
+  # runs on every pull request in the test job.
+  benchmark:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+      - run: |
+          bun tests/lib/pinned-repo.ts hono "$RUNNER_TEMP/pinned/hono"
+          bun tests/lib/pinned-repo.ts flask "$RUNNER_TEMP/pinned/flask"
+          bun tests/lib/pinned-repo.ts datasette "$RUNNER_TEMP/pinned/datasette"
+      - run: bun tests/benchmark/run.ts --check
+        env:
+          TMB_PINNED_HONO: ${{ runner.temp }}/pinned/hono
+          TMB_PINNED_FLASK: ${{ runner.temp }}/pinned/flask
+          TMB_PINNED_DATASETTE: ${{ runner.temp }}/pinned/datasette

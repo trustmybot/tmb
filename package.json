@@ -21,7 +21,8 @@
     "test:worker": "bun tests/agent-run/worker.ts",
     "test:scope": "bun tests/agent-run/scope.ts",
     "test:reviewer": "bun tests/agent-run/reviewer.ts",
-    "test:truest": "bun tests/agent-run/truest.ts"
+    "test:truest": "bun tests/agent-run/truest.ts",
+    "test:benchmark": "bun tests/benchmark/run.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
