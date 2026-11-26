@@ -10,56 +10,34 @@
 //   signature with no body), or more than one node.
 // No answer is ever replaced by a guess.
 //
-// tmb installs nothing (CODE_GRAPH.md, "Two ways to make links"): the compiler is the module the
-// caller gives, else the repo's own `node_modules/typescript` when it is version 5 or later with
-// the compiler's JavaScript program API. The repo's files are read from the commit; its installed
-// packages, which git does not hold, from its `node_modules` folder when there is one.
-import { existsSync, readFileSync } from "node:fs";
+// tmb carries the TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"): way B needs no
+// install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one
+// answer. The program holds the compiler's code and its default library (carried.ts), loaded only
+// when way B builds a graph; a repo's own `typescript` package is never loaded. The repo's files are read from the commit; its installed
+// packages, which git does not hold, from its `node_modules` folder when there is one, and without
+// them a call of a package is not known.
 import path from "node:path";
 import type TS from "typescript5";
+import { loadCarried } from "./carried.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
 import { baseOptions, calleeOf, type CommitFiles, commitProgram, isCallNode, originalNames, projectOptions, type TypeScriptModule } from "./compiler.ts";
-
-/** The oldest major version of the compiler whose program API way B uses. */
-const MIN_MAJOR = 5;
-/** Where a repo's own compiler is installed, from the repo's top. */
-const INSTALLED_COMPILER = ["node_modules", "typescript"] as const;
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
 
-/** Whether a value is a compiler module with the program API way B calls. */
-function hasProgramApi(mod: unknown): mod is TypeScriptModule {
-  const m = mod as Partial<TypeScriptModule> | null;
-  return m !== null && typeof m === "object" && typeof m.createProgram === "function" && typeof m.version === "string";
-}
+/** The compiler tmb carries, with its default library, loaded on first use: way B alone needs it. */
+type Carried = { ts: TypeScriptModule; library: ReadonlyMap<string, string> };
+let carried: Carried | undefined;
 
-/** The repo's own installed compiler, or why it cannot be used. Nothing is installed. */
-export function installedCompiler(repoDir: string): TypeScriptModule | { unavailable: string } {
-  const dir = path.join(repoDir, ...INSTALLED_COMPILER);
-  const where = INSTALLED_COMPILER.join("/");
-  const manifest = path.join(dir, "package.json");
-  if (!existsSync(manifest)) return { unavailable: `the repo has no ${where}, and tmb installs nothing` };
-  let version: string;
-  let main: string;
+/** The compiler tmb carries, or why it cannot be loaded. */
+function carriedCompiler(): Carried | { unavailable: string } {
+  if (carried !== undefined) return carried;
   try {
-    const pkg = JSON.parse(readFileSync(manifest, "utf8")) as { version?: unknown; main?: unknown };
-    version = String(pkg.version ?? "");
-    main = typeof pkg.main === "string" ? pkg.main : "index.js";
-  } catch {
-    return { unavailable: `the repo's ${where}/package.json cannot be read` };
-  }
-  const major = Number.parseInt(version, 10);
-  if (!(major >= MIN_MAJOR)) return { unavailable: `the repo's ${where} is version ${version || "unknown"}; way B needs ${MIN_MAJOR} or later` };
-  let mod: unknown;
-  try {
-    // The package's own entry file, by its full path: a compiled tmb cannot load a folder by name.
-    mod = require(path.resolve(dir, main));
+    carried = loadCarried();
+    return carried;
   } catch (error) {
-    return { unavailable: `the repo's ${where} ${version} has no JavaScript program API (${error instanceof Error ? error.message : String(error)})` };
+    return { unavailable: `the compiler tmb carries did not load (${error instanceof Error ? error.message : String(error)})` };
   }
-  if (!hasProgramApi(mod)) return { unavailable: `the repo's ${where} ${version} has no JavaScript program API` };
-  return mod;
 }
 
 /** A function or a class written as a value. */
@@ -102,11 +80,12 @@ const lineOf = (sf: TS.SourceFile, pos: number) => sf.getLineAndCharacterOfPosit
 const placeKey = (pos: number, name: string): string => `${pos}\u0000${name}`;
 
 /** The compiler's answers for the graph's calls, one per call, in order. */
-export function answerCalls(ts: TypeScriptModule, repoDir: string, input: ToolInput, installed = true): ToolAnswer[] {
+function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput): ToolAnswer[] {
   const root = path.resolve(repoDir);
-  // The program reads the source files and the settings files of the commit.
+  // The program reads the source files and the settings files of the commit, the default library
+  // tmb carries, and the installed packages of the working tree.
   const texts = new Map<string, string>([...input.configs, ...input.files]);
-  const files: CommitFiles = { texts, installed };
+  const files: CommitFiles = { texts, installed: true, library };
   const options: TS.CompilerOptions = { ...baseOptions(ts), ...projectOptions(ts, root, files), noEmit: true, allowJs: true, skipLibCheck: true };
   const program = commitProgram(ts, root, input.files.keys(), files, options);
   const checker = program.getTypeChecker();
@@ -193,11 +172,10 @@ export function answerCalls(ts: TypeScriptModule, repoDir: string, input: ToolIn
 
 /** The TypeScript compiler, way B's tool for TypeScript, TSX and JavaScript. */
 export const typescriptCompiler: LanguageTool = {
-  id: "typescript",
   name: "the TypeScript compiler",
-  open(repoDir: string, given?: unknown) {
-    const ts = given === undefined ? installedCompiler(repoDir) : hasProgramApi(given) ? given : { unavailable: "the compiler given has no JavaScript program API" };
-    if ("unavailable" in ts) return ts;
-    return { answer: (input: ToolInput) => answerCalls(ts, repoDir, input) };
+  open(repoDir: string) {
+    const compiler = carriedCompiler();
+    if ("unavailable" in compiler) return compiler;
+    return { answer: (input: ToolInput) => answerCalls(compiler, repoDir, input) };
   },
 };
