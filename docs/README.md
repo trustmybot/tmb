@@ -37,7 +37,7 @@ flowchart LR
 
 ## How a page is written
 
-Every page follows [TEMPLATE.md](TEMPLATE.md): high to low, one or two plain sentences per rule, then examples from the easy case to an edge case.
+Every page follows [TEMPLATE.md](TEMPLATE.md): sections in the order of the design's logic, one or two plain sentences per rule, then examples from the easy case to an edge case.
 
 ## Where to start
 

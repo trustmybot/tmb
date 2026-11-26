@@ -1,6 +1,6 @@
 # Doc template
 
-What every page in these docs looks like. A good page lets the Human understand a design in minutes: it goes from high to low, states each rule in one or two plain sentences, and shows it with examples.
+What every page in these docs looks like. A good page lets the Human understand a design in minutes: its sections follow the logic of the design, each section goes from high to low, and each rule is one or two plain sentences with examples.
 
 The model page is [PHILOSOPHY.md](architecture/PHILOSOPHY.md). When in doubt, copy its shape.
 
@@ -38,8 +38,8 @@ The rule in one or two sentences.
 
 | Rule | Good | Bad |
 |---|---|---|
-| **High to low.** Start with the whole, then the parts, then the edge cases. | Purpose, chart, items, edge cases | Opening with a corner case or the history |
-| **Logic chain.** Sections follow the order of the design itself: each one builds on those before it, and none needs a later one to make sense. | "Idea to goal" first, because the roles and checks that follow exist to serve it | "One owner per check" first, before the reader knows what is being checked |
+| **Logic chain.** The order of the sections is the order of the design itself: each one builds on those before it, and none needs a later one to make sense. | "Idea to goal" first, because the roles and checks that follow exist to serve it | "One owner per check" first, before the reader knows what is being checked |
+| **High to low.** Inside a section, start with the rule, then the common case, then the edge cases. | Rule, Example 1, Example 2, Edge case | Opening a section with a corner case or the history |
 | **One item, one rule.** Each section states one rule in one or two sentences. | "What code can check, code checks." | A paragraph that holds four rules |
 | **Show it.** Every rule has at least one concrete example. | "Human: 'Make it faster.' Planner: 'Which page, and how fast is fast enough?'" | "The planner clarifies ambiguous requests." |
 | **Easy first.** Order examples from the common case to the edge case. Two to four are enough; do not cover every edge case. | Example 1, Example 2, Edge case | Ten edge cases, or the edge case first |
