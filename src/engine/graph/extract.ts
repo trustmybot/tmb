@@ -49,13 +49,14 @@ export function inSymbolScope(relPath: string): boolean {
   return leftOutRule(relPath) === null;
 }
 
-// The language a path parses as: by extension, else by the shebang of an extensionless file;
-// null when no language module reads it.
-export function languageOf(relPath: string, head: () => string): SourceLanguage | null {
+// The language a path parses as: by extension, by the text of a file whose ending several languages
+// share, else by the shebang of an extensionless file; null when no language module reads it.
+// `text` is asked for only when the path alone does not decide.
+export function languageOf(relPath: string, text: () => string): SourceLanguage | null {
   const name = basename(relPath);
   const dot = name.lastIndexOf('.');
-  if (dot > 0) return languageOfExtension(name.slice(dot + 1).toLowerCase())?.name ?? null;
-  return languageOfShebang(head().slice(0, 120))?.name ?? null;
+  if (dot > 0) return languageOfExtension(name.slice(dot + 1).toLowerCase(), text)?.name ?? null;
+  return languageOfShebang(text().slice(0, 120))?.name ?? null;
 }
 
 // Whether a language is read through a tree-sitter grammar, not by patterns.

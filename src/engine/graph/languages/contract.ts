@@ -238,6 +238,9 @@ export interface LanguageModule {
   extensions: readonly string[];
   // An extensionless file whose first line matches is in this language.
   shebang?: RegExp;
+  // Of the languages that share a file ending, as C and C++ share `.h`, one claims the files whose
+  // text its rule matches; the one with no such rule reads the rest.
+  claims?(text: string): boolean;
   // The path of its embedded tree-sitter grammar; absent for a language read by patterns.
   grammar?: string;
   // Its comment marker, for the file's leading comment: `#` or `--`, or `//` and `/* */`.

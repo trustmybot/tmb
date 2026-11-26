@@ -23,6 +23,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
+import { compileDatabase, measureC, REFERENCE_VERSION as C_REFERENCE_VERSION, WAY_B_NOT_BUILT as C_WAY_B_NOT_BUILT } from "./c.ts";
 import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION, WAY_B_NOT_BUILT as JAVA_WAY_B_NOT_BUILT } from "./java.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
@@ -53,6 +54,8 @@ const INSTALLED: Record<string, Record<Way, string>> = {
   },
   go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
   java: { A: "nothing: tmb's own parser", B: JAVA_WAY_B_NOT_BUILT },
+  c: { A: "nothing: tmb's own parser", B: C_WAY_B_NOT_BUILT },
+  cpp: { A: "nothing: tmb's own parser", B: C_WAY_B_NOT_BUILT },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -75,6 +78,12 @@ async function measureAll(): Promise<Run> {
       errors.push(`${r.repo}: ${where.folder} has no commit ${where.ref}`);
       continue;
     }
+    // C and C++ are measured against the compiler, which reads the repo by its compile database.
+    const database = r.language === "c" || r.language === "cpp" ? compileDatabase(where.folder, r.fetched?.env ?? "") : null;
+    if (database !== null && "error" in database) {
+      errors.push(`${r.repo}: ${database.error}`);
+      continue;
+    }
     console.error(`measuring ${r.repo} (${r.language}) at ${sha.slice(0, 7)}…`);
     const secs = (ms: { graph: number; reference: number }): Seconds => ({ graph: ms.graph / 1000, reference: ms.reference / 1000 });
     const measure = async (way: Way) =>
@@ -84,9 +93,13 @@ async function measureAll(): Promise<Run> {
           ? await measurePython(where.folder, sha, way)
           : r.language === "go"
             ? await measureGo(where.folder, sha, way)
-            : way === "A"
-              ? await measureJava(where.folder, sha)
-              : { scores: notBuilt(JAVA_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" };
+            : database !== null
+              ? way === "A"
+                ? await measureC(where.folder, sha, database.file)
+                : { scores: notBuilt(C_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" }
+              : way === "A"
+                ? await measureJava(where.folder, sha)
+                : { scores: notBuilt(JAVA_WAY_B_NOT_BUILT), ms: { graph: 0, reference: 0 }, detail: [], reference: "" };
     const a = await measure("A");
     const b = await measure("B");
     entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
@@ -94,7 +107,7 @@ async function measureAll(): Promise<Run> {
     detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);
-  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION, go: GO_REFERENCE_VERSION, java: JAVA_REFERENCE_VERSION }, entries }, seconds, detail };
+  return { stored: { command: COMMAND, referenceVersions: { typescript: TS_REFERENCE_VERSION, python: PY_REFERENCE_VERSION, go: GO_REFERENCE_VERSION, java: JAVA_REFERENCE_VERSION, c: C_REFERENCE_VERSION, cpp: C_REFERENCE_VERSION }, entries }, seconds, detail };
 }
 
 /** The scores as Markdown tables, for the terminal and for a pull request. */

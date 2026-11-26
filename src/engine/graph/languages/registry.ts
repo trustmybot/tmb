@@ -2,6 +2,8 @@
 // languages/ and one line here. Each is built into the compiled tmb; none is downloaded.
 import type { LanguageModule } from './contract.ts';
 import { bash } from './bash/index.ts';
+import { c } from './c/index.ts';
+import { cpp } from './cpp/index.ts';
 import { go } from './go/index.ts';
 import { java } from './java/index.ts';
 import { perl } from './perl/index.ts';
@@ -19,6 +21,8 @@ export const LANGUAGES: LanguageModule[] = [
   sql,
   go,
   java,
+  c,
+  cpp,
 ];
 
 /** The language module named `name`, or null. */
@@ -26,9 +30,15 @@ export function languageNamed(name: string): LanguageModule | null {
   return LANGUAGES.find((l) => l.name === name) ?? null;
 }
 
-/** The language of an extension (lowercase, no dot), or null. */
-export function languageOfExtension(ext: string): LanguageModule | null {
-  return LANGUAGES.find((l) => l.extensions.includes(ext)) ?? null;
+/**
+ * The language of an extension (lowercase, no dot), or null. An ending several languages share is
+ * decided by the file's text: the language that claims it, else the one that claims nothing.
+ */
+export function languageOfExtension(ext: string, text: () => string): LanguageModule | null {
+  const all = LANGUAGES.filter((l) => l.extensions.includes(ext));
+  if (all.length <= 1) return all[0] ?? null;
+  const body = text();
+  return all.find((l) => l.claims?.(body) === true) ?? all.find((l) => l.claims === undefined) ?? null;
 }
 
 /** The language an extensionless file's first line names by its shebang, or null. */
