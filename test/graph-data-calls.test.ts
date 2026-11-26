@@ -128,7 +128,7 @@ describe("TypeScript and JavaScript", () => {
   async function bothWays() {
     const sha = commit(TS_FILES);
     const db = openGraphDb(project, null);
-    await buildLayer(db, project, sha, "a", { force: true });
+    await buildLayer(db, project, sha, "a", { force: true, links: "built-in" });
     await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
     return db;
   }
@@ -257,7 +257,7 @@ describe("Python", () => {
   async function built() {
     const sha = commit(PY_FILES);
     const db = openGraphDb(project, null);
-    await buildLayer(db, project, sha, "a", { force: true });
+    await buildLayer(db, project, sha, "a", { force: true, links: "built-in" });
     return db;
   }
 
