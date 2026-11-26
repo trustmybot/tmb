@@ -107,7 +107,6 @@ export const UNREAD_LANGUAGES: Readonly<Record<string, string>> = {
   "glsl": "GLSL",
   "glslf": "GLSL",
   "glslv": "GLSL",
-  "go": "Go",
   "god": "Ruby",
   "groovy": "Groovy",
   "grt": "Groovy",

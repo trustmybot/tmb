@@ -305,11 +305,11 @@ describe("way B, the TypeScript compiler", () => {
   });
 
   test("a language with no tool is built by the built-in rules, and the layer says so", async () => {
-    const { db, a, b, stats } = await bothWays({ ...CART, "tools/run.py": "def go():\n    return len([])\n" });
-    const py = (rows: EdgeRow[]) => rows.filter((r) => r.src.startsWith("tools/"));
-    expect(py(b)).toEqual(py(a));
+    const { db, a, b, stats } = await bothWays({ ...CART, "tools/run.sh": "go() {\n  wc -l\n}\nstart() {\n  go\n}\n" });
+    const sh = (rows: EdgeRow[]) => rows.filter((r) => r.src.startsWith("tools/"));
+    expect(sh(b)).toEqual(sh(a));
     expect(stats.links).toBe("language-tool");
-    expect(stats.linksNote).toContain("python: no language tool");
+    expect(stats.linksNote).toContain("bash: no language tool");
     expect(layerRow(db, "b")?.links_note).toBe(stats.linksNote);
     db.close();
   });

@@ -2,7 +2,8 @@
   "command": "bun tests/benchmark/run.ts --write",
   "referenceVersions": {
     "typescript": 2,
-    "python": 1
+    "python": 1,
+    "go": 2
   },
   "entries": [
     {
@@ -163,22 +164,25 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 857,
+            "of": 1488
           },
           "linksRight": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 1134,
+            "of": 2852
           },
           "linksFoundByReference": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "callsAccountedFor": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 3472,
+            "of": 3961
           },
           "missesByCause": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           }
         }
       }
@@ -214,23 +218,88 @@
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 3253,
+            "of": 3949
           },
           "linksRight": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 6710,
+            "of": 17865
           },
           "linksFoundByReference": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "callsAccountedFor": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "n": 22576,
+            "of": 24078
           },
           "missesByCause": {
-            "notScored": "not built (SCIP, trustmybot/tmb#156)"
+            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           }
+        }
+      }
+    },
+    {
+      "repo": "gin",
+      "language": "go",
+      "commit": "73726dc606796a025971fe451f0aa6f1b9b847f6",
+      "reference": "go1.27.4 go/parser and go/types",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 1859,
+            "of": 1859
+          },
+          "linksRight": {
+            "n": 767,
+            "of": 767
+          },
+          "linksFoundByState": {
+            "n": 767,
+            "of": 8548
+          },
+          "linksFoundByReference": {
+            "n": 767,
+            "of": 3316
+          },
+          "callsAccountedFor": {
+            "n": 9085,
+            "of": 9085
+          },
+          "missesByCause": {
+            "a method, called on a value": 1420,
+            "a function of the package, called by its name": 847,
+            "a method of an interface, called on a value": 216,
+            "a conversion to a type": 23,
+            "a function of another package, called through its import": 22,
+            "a package-level variable, called": 21
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 1859,
+            "of": 1859
+          },
+          "linksRight": {
+            "n": 3316,
+            "of": 3316,
+            "note": "same tool as the reference"
+          },
+          "linksFoundByState": {
+            "n": 3316,
+            "of": 6183
+          },
+          "linksFoundByReference": {
+            "n": 3316,
+            "of": 3316
+          },
+          "callsAccountedFor": {
+            "n": 9085,
+            "of": 9085
+          },
+          "missesByCause": {}
         }
       }
     }
