@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinnedHono } from "../../../../../tests/lib/pinned-repo.ts";
 import { buildLayer } from "../../build.ts";
+import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "../../ways.ts";
 import { openGraphDb } from "../../db.ts";
 import { resolveCommit } from "../../git-source.ts";
 import { type CallReport, checkLinks, checkRepo, compilerCalls, compilerLookup, type GraphLink, graphLinks, judge, type LinkReport } from "./links.ts";
@@ -39,28 +40,38 @@ const FIXTURE: Record<string, string> = {
   ].join("\n"),
 };
 
+/** A git repo in a scratch folder holding `files` in one commit, and that commit. */
+function makeRepo(files: Record<string, string>): { dir: string; commit: string } {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-graph-links-")));
+  for (const [file, text] of Object.entries(files)) {
+    mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    writeFileSync(path.join(dir, file), text);
+  }
+  for (const args of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "first"]]) {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd: dir, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+  }
+  return { dir, commit: resolveCommit(dir, "HEAD")! };
+}
+
+/** The cross-file links of the repo's graph, built the way asked. */
+async function linksOf(dir: string, commit: string, way: LinkWay): Promise<GraphLink[]> {
+  const db = openGraphDb(path.join(dir, "scratch"));
+  try {
+    await buildLayer(db, dir, commit, "base", { force: true, links: way });
+    return graphLinks(db);
+  } finally {
+    db.close();
+  }
+}
+
 let fixture: string;
 let commit: string;
 let links: GraphLink[];
 
 beforeAll(async () => {
-  fixture = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-graph-links-")));
-  for (const [file, text] of Object.entries(FIXTURE)) {
-    mkdirSync(path.dirname(path.join(fixture, file)), { recursive: true });
-    writeFileSync(path.join(fixture, file), text);
-  }
-  for (const args of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "first"]]) {
-    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd: fixture, encoding: "utf8" });
-    if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
-  }
-  commit = resolveCommit(fixture, "HEAD")!;
-  const db = openGraphDb(path.join(fixture, "scratch"));
-  try {
-    await buildLayer(db, fixture, commit, "base", { force: true });
-    links = graphLinks(db);
-  } finally {
-    db.close();
-  }
+  ({ dir: fixture, commit } = makeRepo(FIXTURE));
+  links = await linksOf(fixture, commit, BUILT_IN);
 });
 
 afterAll(() => {
@@ -107,20 +118,69 @@ describe("the graph's links agree with the compiler on a fixture", () => {
 
   test("a link to another file or another declaration than the compiler's is wrong", () => {
     const lookup = compilerLookup(fixture, commit);
-    const call = (dst: string, start: number, end: number): GraphLink => ({ src: "use.ts", line: 5, name: "render", dst, start, end, kind: "calls" });
+    const use = FIXTURE["use.ts"]!;
+    const call = (dst: string, start: number, end: number): GraphLink => ({ src: "use.ts", line: 5, pos: use.indexOf("renderA();"), name: "render", dst, start, end, kind: "calls" });
     expect(judge(call("a.ts", 1, 3), lookup).verdict).toBe("right");
     expect(judge(call("b.ts", 1, 3), lookup).verdict).toBe("wrong");
-    const method: GraphLink = { src: "use.ts", line: 7, name: "make", dst: "factory.ts", start: 2, end: 2, kind: "calls" };
+    const method: GraphLink = { src: "use.ts", line: 7, pos: use.indexOf("make();"), name: "make", dst: "factory.ts", start: 2, end: 2, kind: "calls" };
     expect(judge(method, lookup)).toMatchObject({ verdict: "wrong", reexport: true });
     expect(judge({ ...method, start: 4, end: 4 }, lookup)).toMatchObject({ verdict: "right", reexport: true });
     // A name the line does not hold is not judged.
     expect(judge({ ...method, name: "nothing" }, lookup).verdict).toBe("no reference");
+    // A use that is no call, `renderA` passed as a value, has no position: it is judged on its line.
+    const value: GraphLink = { src: "use.ts", line: 8, pos: null, name: "render", dst: "a.ts", start: 1, end: 3, kind: "calls" };
+    expect(judge(value, lookup).verdict).toBe("right");
   });
 
   test("a link into the repo where the compiler names only a declaration outside the repo is wrong", () => {
     const lookup = compilerLookup(fixture, commit);
-    const outside: GraphLink = { src: "outside.ts", line: 1, name: "parseInt", dst: "a.ts", start: 1, end: 3, kind: "calls" };
+    const outside: GraphLink = { src: "outside.ts", line: 1, pos: FIXTURE["outside.ts"]!.indexOf("parseInt"), name: "parseInt", dst: "a.ts", start: 1, end: 3, kind: "calls" };
     expect(judge(outside, lookup).verdict).toBe("wrong");
+  });
+});
+
+// "Two ways to make links": a call is identified by its position in the file, where the name it
+// calls is written, so two calls of one name on one line each get their own answer. Links right
+// judges a call's link by the compiler's answer for that call alone.
+describe("links right judges a call by its position", () => {
+  const SAME_LINE: Record<string, string> = {
+    "store.ts": "export class Store {\n  get() {\n    return 1;\n  }\n}\n",
+    "cache.ts": "export class Cache {\n  get() {\n    return 2;\n  }\n}\n",
+    "use.ts": ["import { Store } from './store';", "import { Cache } from './cache';", "export function use(a: Store, b: Cache) {", "  a.get(); b.get();", "}", ""].join("\n"),
+  };
+  const USE_LINE = 4;
+  const text = SAME_LINE["use.ts"]!;
+  // Where each `get` is written: after `a.` and after `b.`.
+  const posA = text.indexOf("a.get") + "a.".length;
+  const posB = text.indexOf("b.get") + "b.".length;
+  // Store.get and Cache.get, each at lines 2 to 4 of its file.
+  const toStore = (pos: number): GraphLink => ({ src: "use.ts", line: USE_LINE, pos, name: "get", dst: "store.ts", start: 2, end: 4, kind: "calls" });
+  const toCache = (pos: number): GraphLink => ({ ...toStore(pos), dst: "cache.ts" });
+
+  let repo: { dir: string; commit: string };
+  beforeAll(() => {
+    repo = makeRepo(SAME_LINE);
+  });
+  afterAll(() => {
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("each call of a name on a line is judged by its own declaration", () => {
+    const lookup = compilerLookup(repo.dir, repo.commit);
+    expect(judge(toStore(posA), lookup).verdict).toBe("right");
+    expect(judge(toCache(posB), lookup).verdict).toBe("right");
+    // The other call's declaration, on the same line, does not make a link right.
+    expect(judge(toCache(posA), lookup).verdict).toBe("wrong");
+    expect(judge(toStore(posB), lookup).verdict).toBe("wrong");
+  });
+
+  test("the graph records each call where its name is written, and each link is judged right", async () => {
+    const made = (await linksOf(repo.dir, repo.commit, LANGUAGE_TOOL)).filter((l) => l.src === "use.ts" && l.name === "get");
+    expect(made.map((l) => `${l.pos} ${l.dst}`).sort()).toEqual([`${posA} store.ts`, `${posB} cache.ts`].sort());
+    const lookup = compilerLookup(repo.dir, repo.commit);
+    for (const l of made) expect(judge(l, lookup).verdict).toBe("right");
+    // Swapped, each is wrong.
+    for (const l of made) expect(judge({ ...l, dst: l.dst === "store.ts" ? "cache.ts" : "store.ts" }, lookup).verdict).toBe("wrong");
   });
 });
 

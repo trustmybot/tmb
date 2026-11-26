@@ -134,11 +134,47 @@ const USE: [string, string, string | null][] = [
   ["}", "", null],
 ];
 
+// "Kinds of symbol": only a name the whole file can see is file-level data. A name bound by a
+// loop, a block or a catch at the top of a file is a local, which is no node; a function written
+// as a value is a node wherever it is bound. Each callee, and whether the compiler's declaration
+// of it is a node of the graph.
+const TOP = [
+  "function pick() { return () => 1; }",
+  "const pairs = [[1, pick()]] as const;",
+  "const table = { a: pick() };",
+  "const data = pick();",
+  "export const { spread } = { spread: pick() };",
+  "data(); spread();",
+  "for (const [, fn] of pairs) fn();",
+  "for (let i = 0, step = pick(); i < 1; i++) step();",
+  "for (const key in table) key();",
+  "for (var hoisted of [pick()]) hoisted();",
+  "{ const inBlock = pick(); inBlock(); }",
+  "{ const arrowInBlock = () => 2; arrowInBlock(); }",
+  "try { pick(); } catch (failed) { failed(); }",
+  "try { pick(); } catch ({ handle }) { handle(); }",
+  "",
+];
+/** The callee each call of top.ts names, and whether the compiler declares it as a node. */
+const TOP_WANT: Record<string, boolean> = {
+  data: true,
+  spread: true,
+  fn: false,
+  step: false,
+  key: false,
+  hoisted: false,
+  inBlock: false,
+  failed: false,
+  handle: false,
+  arrowInBlock: true,
+};
+
 let repo: string;
 beforeAll(() => {
   repo = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-benchmark-ref-")));
   writeFileSync(path.join(repo, "cart.ts"), CART);
   writeFileSync(path.join(repo, "use.ts"), `${USE.map(([line]) => line).join("\n")}\n`);
+  writeFileSync(path.join(repo, "top.ts"), TOP.join("\n"));
   for (const args of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "first"]]) {
     const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd: repo, encoding: "utf8" });
     if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
@@ -161,5 +197,17 @@ describe("the TypeScript compiler as the reference for links found", () => {
     // `new Cart().total()` holds two calls on one line: the construction too, inside the outer call.
     want.splice(want.findIndex(([, , cause]) => cause === CAUSES.chain) + 1, 0, [14, "Cart", CAUSES.construct]);
     expect(got).toEqual(want);
+  });
+});
+
+describe("the reference's nodes follow the Local row of Kinds of symbol", () => {
+  test("a name bound by a loop, a block or a catch at the top of a file is a local, and no node", () => {
+    const program = compilerProgram(repo, resolveCommit(repo, "HEAD")!);
+    const got: Record<string, boolean> = {};
+    for (const c of program.calls("top.ts")) {
+      const name = c.callee?.text;
+      if (name !== undefined && name in TOP_WANT) got[name] = declaresANode(c, program.checker);
+    }
+    expect(got).toEqual(TOP_WANT);
   });
 });

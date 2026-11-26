@@ -221,6 +221,21 @@ describe("way B, the TypeScript compiler", () => {
   };
   const byDst = (x: { dst: string | null }, y: { dst: string | null }) => String(x.dst).localeCompare(String(y.dst));
 
+  // "Kinds of symbol": a name bound by a loop, a block or a catch at the top of a file is a local,
+  // which is no node, though a function of that name is written on its lines.
+  test("a call of a name a loop, a block or a catch binds at the top of a file is not known: the declaration is a local", async () => {
+    const { db, b } = await bothWays({
+      "src/top.ts": [
+        "for (const run of [function run() { return 1; }]) run();",
+        "{ const go = [function go() { return 2; }][0]!; go(); }",
+        "try { JSON.parse(''); } catch ({ fail = function fail() { return 3; } }) { fail(); }",
+        "",
+      ].join("\n"),
+    });
+    for (const name of ["run", "go", "fail"]) expect(call(b, "src/top.ts:src/top.ts", name)).toMatchObject({ dst: null, call_state: "not_known", way: "language-tool" });
+    db.close();
+  });
+
   test("two calls of one name on one line, on values of two classes, each link to their own class's method", async () => {
     const { db, b } = await bothWays(APPLIANCES);
     const calls = b.filter((r) => r.src === "src/morning.ts:wake" && r.dst_name === "switchOn");
