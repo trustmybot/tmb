@@ -7,6 +7,7 @@ import type { Node } from 'web-tree-sitter';
 import type { Bound, CallAt, Collector, ExtractedSymbol, LanguageModule, SymbolKind } from '../contract.ts';
 import { clip, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
 import { BUILTINS } from './builtins.ts';
+import { goTypeChecker } from './tool.ts';
 
 /** The longest a call's text is kept as its name when its callee is no name. */
 const CALLEE_TEXT_MAX = 80;
@@ -289,4 +290,5 @@ export const go: LanguageModule = {
   grammar: goWasm,
   comment: 'slash',
   extract: (file, out) => extractGo(syntaxTree(file), file.src, out, file.module),
+  tool: goTypeChecker,
 };
