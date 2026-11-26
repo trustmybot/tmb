@@ -19,7 +19,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, DEFAULT_LINK_WAY, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 16;
+export const EXTRACTOR_VERSION = 17;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -246,8 +246,8 @@ function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], 
         nodeRows.push(symbolOffset + i);
       });
       extraction.edges.forEach((edge, i) => {
-        if (edge.call !== 1) return;
-        calls.push({ path: file, line: edge.line, name: edge.dst_name });
+        if (edge.call !== 1 || edge.pos === undefined) return;
+        calls.push({ path: file, pos: edge.pos, name: edge.dst_name });
         callRows.push(edgeOffset + i);
       });
     }
@@ -369,7 +369,7 @@ function applyLayer(
 
   const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
   const insertEdge = db.prepare(
-    "INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint, call_state, way) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, pos, hint, call_state, way) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   let unresolved = 0;
   pending.forEach(({ file, symbolIndex, edge }, index) => {
@@ -380,7 +380,7 @@ function applyLayer(
     // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
     const state = answer !== undefined ? ("node" in answer ? "linked" : answer.state) : edge.call === 1 ? callState(resolver, file, edge, link) : null;
     const way = answer === undefined ? BUILT_IN : LANGUAGE_TOOL;
-    insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint, state, way);
+    insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.pos ?? null, edge.hint, state, way);
   });
   const unresolvedImports = resolver.unresolvedImports;
   const unread = new Map<string, number>();

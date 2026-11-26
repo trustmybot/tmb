@@ -805,7 +805,9 @@ export function extractTs(file: SourceFile, out: Collector): void {
         } else receiver = object !== undefined ? (types.get(object) ?? object) : undefined;
       }
       // A call whose callee is no name, such as `f()()` or `handlers[k]()`, is a call all the same:
-      // it is named by its callee's text and is not known.
+      // it is named by its callee's text and is not known. Its position is where its name is
+      // written, else where it starts.
+      const nameNode = fn?.type === 'identifier' ? fn : fn?.type === 'member_expression' ? fn.childForFieldName('property') : null;
       out.edge(
         scope,
         t === 'call_expression' ? 'calls' : 'instantiates',
@@ -814,7 +816,7 @@ export function extractTs(file: SourceFile, out: Collector): void {
         spec ?? (callee === undefined || receiver === undefined ? null : memberHint(receiver)),
         callee === undefined ? undefined : bound,
         undefined,
-        mark,
+        { ...mark, pos: (nameNode ?? node).startIndex },
       );
     } else if (t === 'export_statement' && node.parent?.type === 'program') {
       reexports(node, imported, out);

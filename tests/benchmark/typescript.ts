@@ -136,11 +136,11 @@ export function declaresANode(call: CompilerCall, checker: ts.TypeChecker): bool
 function graphCalls(db: Database, files: ReadonlySet<string>): GraphCall[] {
   const rows = db
     .query(
-      `SELECT s.path AS file, e.line AS line, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end
+      `SELECT s.path AS file, e.line AS line, e.pos AS pos, e.dst_name AS name, d.path AS dst, d.start_line AS start, d.end_line AS end
          FROM edges e JOIN symbols s ON s.id = e.src_id JOIN symbols d ON d.id = e.dst_id
         WHERE e.layer = ? AND e.call_state = 'linked'`,
     )
-    .all(BASE_LAYER) as { file: string; line: number; name: string; dst: string; start: number | null; end: number | null }[];
+    .all(BASE_LAYER) as { file: string; line: number; pos: number; name: string; dst: string; start: number | null; end: number | null }[];
   return rows.filter((r) => files.has(r.file)).map((r) => ({ ...r, start: r.start ?? 0, end: r.end ?? r.start ?? 0 }));
 }
 
@@ -152,7 +152,7 @@ function examples(missed: readonly ReferenceCall[]): string[] {
   const shown = new Map<string, string[]>();
   for (const m of missed) {
     const here = shown.get(m.cause) ?? [];
-    if (here.length < EXAMPLES_PER_CAUSE) here.push(`${m.file}:${m.lines[0]} \`${m.names[0] ?? ""}\``);
+    if (here.length < EXAMPLES_PER_CAUSE) here.push(`${m.file}:${m.line} \`${m.names[0] ?? ""}\``);
     shown.set(m.cause, here);
   }
   return [...shown].map(([cause, list]) => `missed, ${cause}: ${list.join(", ")}`);
@@ -178,7 +178,7 @@ export async function measureTypescript(repoDir: string, sha: string, way: Way):
     for (const file of read) {
       for (const call of program.calls(file)) {
         if (call.answer.kind !== "declared" || !declaresANode(call, program.checker)) continue;
-        refCalls.push({ file, lines: call.lines, names: call.names, decls: call.answer.decls, cause: causeOf(call, program.checker) });
+        refCalls.push({ file, line: call.line, pos: call.pos, names: call.names, decls: call.answer.decls, cause: causeOf(call, program.checker) });
       }
     }
     const byReference = linksFoundByReference(refCalls, graphCalls(db, read));

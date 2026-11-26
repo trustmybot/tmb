@@ -98,6 +98,9 @@ function declaredName(ts: TypeScriptModule, d: TS.Declaration): string | null {
 
 const lineOf = (sf: TS.SourceFile, pos: number) => sf.getLineAndCharacterOfPosition(pos).line + 1;
 
+/** A call's place in its file: its position (ToolCall) and the name it calls. */
+const placeKey = (pos: number, name: string): string => `${pos}\u0000${name}`;
+
 /** The compiler's answers for the graph's calls, one per call, in order. */
 export function answerCalls(ts: TypeScriptModule, repoDir: string, input: ToolInput, installed = true): ToolAnswer[] {
   const root = path.resolve(repoDir);
@@ -156,13 +159,14 @@ export function answerCalls(ts: TypeScriptModule, repoDir: string, input: ToolIn
     return nodes.size === 1 ? { node: [...nodes][0]! } : NOT_KNOWN;
   };
 
-  // Each file's calls, by the line and the name the graph may record each by: the call's first
-  // line or its callee's, and the callee's name or the name an import under a new name declares.
-  const byFile = new Map<string, Map<string, ToolAnswer[]>>();
-  const callsOf = (file: string): Map<string, ToolAnswer[]> => {
+  // Each file's calls, by their position, where the name each calls is written, and that name: the
+  // callee's, or the name an import under a new name declares. A name is one token, so no two
+  // calls share a position.
+  const byFile = new Map<string, Map<string, ToolAnswer>>();
+  const callsOf = (file: string): Map<string, ToolAnswer> => {
     const known = byFile.get(file);
     if (known !== undefined) return known;
-    const out = new Map<string, ToolAnswer[]>();
+    const out = new Map<string, ToolAnswer>();
     byFile.set(file, out);
     const sf = program.getSourceFile(path.join(root, file));
     if (sf === undefined) return out;
@@ -172,14 +176,8 @@ export function answerCalls(ts: TypeScriptModule, repoDir: string, input: ToolIn
         const callee = calleeOf(ts, node);
         if (callee !== null) {
           const answer = answerOf(callee);
-          const lines = new Set([lineOf(sf, node.getStart(sf)), lineOf(sf, callee.getStart(sf))]);
-          const names = new Set([callee.text, original.get(callee.text) ?? callee.text]);
-          for (const line of lines) {
-            for (const name of names) {
-              const key = `${line}\u0000${name}`;
-              out.set(key, [...(out.get(key) ?? []), answer]);
-            }
-          }
+          const pos = callee.getStart(sf);
+          for (const name of new Set([callee.text, original.get(callee.text) ?? callee.text])) out.set(placeKey(pos, name), answer);
         }
       }
       ts.forEachChild(node, visit);
@@ -188,14 +186,9 @@ export function answerCalls(ts: TypeScriptModule, repoDir: string, input: ToolIn
     return out;
   };
 
-  const same = (a: ToolAnswer, b: ToolAnswer) => ("node" in a ? "node" in b && a.node === b.node : "state" in b && a.state === b.state);
-  // A line with several calls of one name is answered only when the compiler answers them all alike:
-  // the line does not say which of them the graph's call is.
-  return input.calls.map((call: ToolCall) => {
-    const answers = callsOf(call.path).get(`${call.line}\u0000${call.name}`) ?? [];
-    const first = answers[0];
-    return first !== undefined && answers.every((a) => same(a, first)) ? first : NOT_KNOWN;
-  });
+  // A call is answered by the compiler's call at its position, of its name; a call the compiler
+  // has none at is not known.
+  return input.calls.map((call: ToolCall) => callsOf(call.path).get(placeKey(call.pos, call.name)) ?? NOT_KNOWN);
 }
 
 /** The TypeScript compiler, way B's tool for TypeScript, TSX and JavaScript. */
