@@ -69,6 +69,8 @@ beforeEach(() => {
   if (!opened.ok) throw opened.error;
   store = opened.store;
   writeSetting(store, HUMAN, "base_branch", "main");
+  // These test the built-in rules, so the repo names them; the default is the language's tool (trustmybot/tmb#337).
+  writeSetting(store, HUMAN, "graph_links", "built-in");
 });
 
 afterEach(() => {

@@ -1,6 +1,7 @@
-// Two ways to make links (trustmybot/tmb#311). The built-in rules (way A) are the default; a repo
-// whose `graph_links` setting is `language-tool` has its TypeScript and JavaScript calls linked by
-// the TypeScript compiler (way B), which is asked and never imitated:
+// Two ways to make links (trustmybot/tmb#311). The language's tool (way B) is the default
+// (trustmybot/tmb#337); a repo whose `graph_links` setting is `language-tool`, set or by default,
+// has its TypeScript and JavaScript calls linked by the TypeScript compiler, which is asked and
+// never imitated:
 // - linked, when the callee's declaration is exactly one node of the graph;
 // - outside, when every declaration is outside the repo (the compiler's lib, an installed package);
 // - not known, when there is no answer or the declaration is no node, such as a parameter.
@@ -334,9 +335,9 @@ describe("the setting", () => {
     expect(() => validateSetting("repos", { web: { base_branch: "main", graph_links: "A" } })).toThrow("graph links must be");
   });
 
+  // The default itself, with nothing set, is in "the default way" below (trustmybot/tmb#337).
   test("a repo's own graph_links wins over the workspace's, which wins over the default", () => {
     const none = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null } as const;
-    expect(graphLinksOf(none, null)).toBe("built-in");
     expect(graphLinksOf({ ...none, graph_links: "language-tool" }, "web")).toBe("language-tool");
     expect(graphLinksOf({ ...none, graph_links: "language-tool", repos: { web: { base_branch: "main", graph_links: "built-in" } } }, "web")).toBe("built-in");
     expect(graphLinksOf({ ...none, repos: { web: { base_branch: "main", graph_links: "language-tool" } } }, "web")).toBe("language-tool");
@@ -448,7 +449,7 @@ describe("the compiler tmb uses", () => {
 
   test("changing the setting rebuilds the layer the new way", async () => {
     commit(CART, PADDER);
-    const first = await indexed(null);
+    const first = await indexed("built-in");
     expect(first.freshness.links).toEqual({ way: "built-in", note: null });
     first.db.close();
     writeSetting(store!, HUMAN, "graph_links", "language-tool");
@@ -456,6 +457,125 @@ describe("the compiler tmb uses", () => {
     expect(layerRow(second.db, BASE_LAYER)?.links).toBe("language-tool");
     expect(call(edges(second.db, second.layer), "src/use.ts:checkout", "total").way).toBe("language-tool");
     second.db.close();
+  });
+});
+
+// The language's tool is the default (CODE_GRAPH.md, "Two ways to make links"; CONFIG.md,
+// graph_links): with nothing set, a language that has a tool has its calls linked by it, and a
+// language with none is built by the built-in rules, which the layer's note says. A workspace or a
+// repo that sets built-in keeps it, and the repo's own setting wins. A layer built by the built-in
+// rules before this default is rebuilt by the tool, as any change of way is.
+describe("the default way", () => {
+  const NONE = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null } as const;
+
+  function opened(dir: string): Store {
+    const result = openProjectStore(dir, { create: true });
+    if (!result.ok) throw result.error;
+    store = result.store;
+    return result.store;
+  }
+
+  test("with nothing set, the way is the language's tool, for the project folder and for a repo", () => {
+    expect(graphLinksOf(NONE, null)).toBe("language-tool");
+    expect(graphLinksOf(NONE, "web")).toBe("language-tool");
+    expect(graphLinksOf({ ...NONE, repos: { web: { base_branch: "main" } } }, "web")).toBe("language-tool");
+  });
+
+  test("built-in set for the workspace or for one repo is kept, and the repo's own wins", () => {
+    expect(graphLinksOf({ ...NONE, graph_links: "built-in" }, null)).toBe("built-in");
+    expect(graphLinksOf({ ...NONE, graph_links: "built-in" }, "web")).toBe("built-in");
+    expect(graphLinksOf({ ...NONE, repos: { web: { base_branch: "main", graph_links: "built-in" } } }, "web")).toBe("built-in");
+    expect(graphLinksOf({ ...NONE, graph_links: "built-in", repos: { web: { base_branch: "main", graph_links: "language-tool" } } }, "web")).toBe("language-tool");
+    expect(graphLinksOf({ ...NONE, graph_links: "language-tool", repos: { web: { base_branch: "main", graph_links: "built-in" } } }, "web")).toBe("built-in");
+  });
+
+  test("a repo indexed with nothing set has its calls linked by the language's tool", async () => {
+    commit(CART, PADDER);
+    const s = opened(project);
+    writeSetting(s, HUMAN, "base_branch", "main");
+    await indexProject(project, s, { rebuild: false });
+    const view = await openView(project, s);
+    expect(view.freshness.links).toEqual({ way: "language-tool", note: null });
+    expect(layerRow(view.db, BASE_LAYER)?.links).toBe("language-tool");
+    expect(call(edges(view.db, view.layer), "src/use.ts:checkout", "total")).toMatchObject({ dst: "src/cart.ts:Cart.total", call_state: "linked", way: "language-tool" });
+    view.db.close();
+  });
+
+  test("a workspace that sets built-in is built by the built-in rules", async () => {
+    commit(CART, PADDER);
+    const s = opened(project);
+    writeSetting(s, HUMAN, "base_branch", "main");
+    writeSetting(s, HUMAN, "graph_links", "built-in");
+    const view = await openView(project, s);
+    expect(view.freshness.links).toEqual({ way: "built-in", note: null });
+    expect(new Set(edges(view.db, view.layer).map((r) => r.way))).toEqual(new Set(["built-in"]));
+    view.db.close();
+  });
+
+  test("a repo that sets built-in is built by the built-in rules, while the workspace names none", async () => {
+    // A workspace of one repo, web, whose own policy sets built-in.
+    const web = path.join(project, "web");
+    mkdirSync(web, { recursive: true });
+    git(web, "init", "-q", "-b", "main");
+    for (const [file, text] of Object.entries({ ".gitignore": "node_modules/\n", ...CART })) {
+      mkdirSync(path.dirname(path.join(web, file)), { recursive: true });
+      writeFileSync(path.join(web, file), text);
+    }
+    git(web, "add", "-A");
+    git(web, "commit", "-q", "-m", "first");
+    const s = opened(project);
+    writeSetting(s, HUMAN, "repos", { web: { base_branch: "main", graph_links: "built-in" } });
+    const view = await openView(project, s, { repo: "web" });
+    expect(view.freshness.links).toEqual({ way: "built-in", note: null });
+    expect(new Set(edges(view.db, view.layer).map((r) => r.way))).toEqual(new Set(["built-in"]));
+    view.db.close();
+  });
+
+  test("in one repo, TypeScript is linked by its tool and bash, which has none, by the built-in rules; the note says so", async () => {
+    commit({
+      ...CART,
+      "scripts/deploy.sh": ["#!/bin/bash", "greet() {", "  echo hi", "}", "deploy() {", "  greet", "}", 'deploy "$@"', ""].join("\n"),
+    });
+    const s = opened(project);
+    writeSetting(s, HUMAN, "base_branch", "main");
+    const view = await openView(project, s);
+    expect(view.freshness.links.way).toBe("language-tool");
+    expect(view.freshness.links.note).toContain("bash: no language tool");
+    expect(layerRow(view.db, BASE_LAYER)?.links_note).toBe(view.freshness.links.note);
+    const rows = edges(view.db, view.layer);
+    expect(call(rows, "src/use.ts:checkout", "total")).toMatchObject({ dst: "src/cart.ts:Cart.total", way: "language-tool" });
+    const bash = rows.filter((r) => r.src.startsWith("scripts/"));
+    expect(bash.find((r) => r.src === "scripts/deploy.sh:deploy" && r.dst_name === "greet")).toMatchObject({ dst: "scripts/deploy.sh:greet", way: "built-in" });
+    expect(bash.every((r) => r.way === "built-in")).toBe(true);
+    view.db.close();
+  });
+
+  test("a graph built by the built-in rules before this default is rebuilt by the language's tool", async () => {
+    const sha = commit(CART, PADDER);
+    // The layer as an older tmb left it: built by the built-in rules, the default then, at this very commit.
+    const db = openGraphDb(project, null);
+    await buildLayer(db, project, sha, BASE_LAYER, { force: true, links: "built-in" });
+    db.close();
+    const s = opened(project);
+    writeSetting(s, HUMAN, "base_branch", "main");
+    const view = await openView(project, s);
+    expect(layerRow(view.db, BASE_LAYER)?.links).toBe("language-tool");
+    expect(call(edges(view.db, view.layer), "src/use.ts:checkout", "total")).toMatchObject({ dst: "src/cart.ts:Cart.total", way: "language-tool" });
+    view.db.close();
+  });
+
+  test("a graph that predates the way of each layer records it as built by the built-in rules, and is rebuilt", () => {
+    const file = graphDbPath(project, null);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const old = new Database(file, { create: true });
+    old.run("CREATE TABLE layers (layer TEXT PRIMARY KEY, commit_sha TEXT NOT NULL, extractor INTEGER NOT NULL, built_at TEXT NOT NULL, files INTEGER NOT NULL DEFAULT 0, symbols INTEGER NOT NULL DEFAULT 0, edges INTEGER NOT NULL DEFAULT 0, unresolved INTEGER NOT NULL DEFAULT 0, unresolved_imports INTEGER NOT NULL DEFAULT 0, functions INTEGER NOT NULL DEFAULT 0, not_parsed INTEGER NOT NULL DEFAULT 0, not_read TEXT NOT NULL DEFAULT '{}')");
+    old.run("CREATE TABLE edges (layer TEXT NOT NULL, src_id INTEGER NOT NULL, dst_id INTEGER, dst_name TEXT NOT NULL, kind TEXT NOT NULL, resolution TEXT NOT NULL, line INTEGER, hint TEXT, call_state TEXT)");
+    old.run("INSERT INTO layers (layer, commit_sha, extractor, built_at) VALUES ('base', 'abc', 12, 'then')");
+    old.run("PRAGMA user_version = 6");
+    old.close();
+    const db = openGraphDb(project, null);
+    expect(layerRow(db, "base")?.links).toBe("built-in");
+    db.close();
   });
 });
 
