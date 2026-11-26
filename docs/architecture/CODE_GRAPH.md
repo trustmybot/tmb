@@ -328,11 +328,26 @@ flowchart LR
   - **Example 1.** A task changes the table `orders`. The graph answers which functions read or write `orders`, so the worker reads those and not the whole repo.
   - **Example 2.** A function sends a file to a bucket named in a setting. The name is not in the code, so the link goes to the store alone: object storage.
   - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a node as code, with a link to its table.
+- **Whatever a statement names as a table is a table node.** The graph does not judge which tables matter.
+  - **Example 1.** A view, a virtual table and a system table such as `sqlite_master` are each a table node.
+  - **Example 2.** `CREATE INDEX … ON orders` changes `orders`, so it is a write to `orders`. The index itself is no node.
+  - **Example 3.** A trigger's body reads and writes tables. Those links start at the trigger.
+  - **Edge case.** A foreign key is a link between two tables, so it is no link in the graph.
+- **A table's name is its last part.** `main.orders` and `orders` are one node. The graph does not know which database a statement runs on, so two databases that each hold an `orders` share one node.
+- **A name the code does not state gives the kind alone.** This holds for a table as for a bucket.
+  - **Example 1.** A statement built around a table name held in a variable links to the store, not to a table.
+  - **Example 2.** `COPY orders FROM 's3://reports/…'` states both names: a write to the table `orders` and a read of the bucket `reports`.
 - **The names come from a tool.** A table name in an SQL statement, in a file or in a string in code, comes from an SQL parser chosen as every tool is ([Two ways to make links](#two-ways-to-make-links)). A call that reaches a store is known from the call's own answer: it goes outside the repo, to a package.
+  - **The parser.** tmb carries sqlparser-rs, built from its source at a pinned version and loaded only when a repo has SQL.
+  - **Edge case.** The parser cannot read a statement. The statement gives no link and is counted in the layer's note. tmb keeps no pattern of its own beside the parser.
+- **SQL in a string is found by parsing it.** Any string that starts like a statement is given to the parser, in any letter case. An interpolated value becomes a placeholder. A table counts only when the statement parses cleanly.
+  - **Example 1.** `"select * from orders where id = " + id` parses, so it is a read of `orders`.
+  - **Example 2.** The label `"Insert row"` starts like a statement and does not parse, so it gives nothing.
+  - **Edge case.** The string does not say which dialect it is. The parser tries its general dialect, then the others. The tables count when every dialect that parses the string names the same ones.
 - **A pipeline's own graph is not rebuilt.** A tool that runs steps as a graph draws it itself. The functions its steps run are ordinary code nodes.
   - **Example.** A scheduled pipeline has five steps. The graph holds the five functions and what each reads and writes, not the order the pipeline runs them in.
 
-Open, for the Human: where the list of packages that are data stores comes from.
+Open, for the Human: where the list of packages that are data stores comes from, and how the kind is known for a package that serves several stores.
 
 ## Concepts
 
