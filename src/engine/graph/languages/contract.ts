@@ -218,4 +218,50 @@ export interface LanguageModule {
   // from, which keeps every line and column of the file's own text.
   parse?(parser: Parser, src: string): { tree: Tree; src: string } | null;
   extract(file: SourceFile, out: Collector): void;
+  // The language's own tool, which makes the links of its calls when a repo asks for it (way B,
+  // trustmybot/tmb#311); absent for a language with no tool, whose links are always the built-in
+  // rules'. Languages that share one tool name the same object, so one program reads them all.
+  tool?: LanguageTool;
+}
+
+// A node of the graph a tool may link a call to: its file, its own name and its lines. Its index
+// in ToolInput.nodes is how an answer names it.
+export interface ToolNode {
+  path: string;
+  name: string;
+  start: number;
+  end: number;
+}
+
+// A call the graph holds, as the built-in parser found it: its file, the line it starts on and
+// the name it calls.
+export interface ToolCall {
+  path: string;
+  line: number;
+  name: string;
+}
+
+// What a repo gives its tool: the text of every file of the tool's languages at the commit, the
+// project's settings files at the commit (package.json, tsconfig.json, …), the graph's nodes in
+// those files and the graph's calls in them.
+export interface ToolInput {
+  files: ReadonlyMap<string, string>;
+  configs: ReadonlyMap<string, string>;
+  nodes: readonly ToolNode[];
+  calls: readonly ToolCall[];
+}
+
+// The tool's answer for one call (CODE_GRAPH.md, "Two ways to make links"): linked to one node,
+// by its index in ToolInput.nodes; else outside the repo, or not known.
+export type ToolAnswer = { node: number } | { state: 'outside' | 'not_known' };
+
+// A language's own tool, opened for one repo. tmb installs nothing: `given` is a tool module the
+// caller passes (a test or the benchmark), else the tool is the repo's own installed one, and
+// without a usable one it says why it cannot run.
+export interface LanguageTool {
+  // Its key, for a caller that passes the tool's module.
+  id: string;
+  // What it is, for a reader.
+  name: string;
+  open(repoDir: string, given?: unknown): { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };
 }

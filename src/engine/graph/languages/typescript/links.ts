@@ -13,6 +13,7 @@ import ts from "typescript5";
 import { buildLayer, FUNCTION_KINDS } from "../../build.ts";
 import { BASE_LAYER, openGraphDb } from "../../db.ts";
 import { listTree, readBlobs, resolveCommit } from "../../git-source.ts";
+import { baseOptions, calleeOf as calleeIn, commitProgram, isCallNode, originalNames as originalIn } from "./compiler.ts";
 import { coveredLanguage, scriptKind } from "./coverage.ts";
 
 /** Files larger than this the graph does not parse, so the compiler does not read them either. */
@@ -85,44 +86,8 @@ export function commitTexts(repoDir: string, commit: string): Map<string, string
   return texts;
 }
 
-/** A compiler host that reads the repo's files from the commit, and the compiler's own lib files from disk. */
-function commitHost(root: string, texts: ReadonlyMap<string, string>, options: ts.CompilerOptions): ts.CompilerHost {
-  const host = ts.createCompilerHost(options, true);
-  const prefix = root + path.sep;
-  const own = (file: string) => file === root || file.startsWith(prefix);
-  const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
-  const dirs = new Set<string>();
-  for (const file of texts.keys()) for (let d = path.posix.dirname(file); d !== "."; d = path.posix.dirname(d)) dirs.add(d);
-  const { getSourceFile } = host;
-  return {
-    ...host,
-    getCurrentDirectory: () => root,
-    fileExists: (file) => (own(file) ? texts.has(rel(file)) : ts.sys.fileExists(file)),
-    readFile: (file) => (own(file) ? texts.get(rel(file)) : ts.sys.readFile(file)),
-    directoryExists: (dir) => (own(dir) ? dir === root || dirs.has(rel(dir)) : ts.sys.directoryExists(dir)),
-    getDirectories: (dir) => (own(dir) ? [] : ts.sys.getDirectories(dir)),
-    realpath: (file) => file,
-    getSourceFile: (file, version, onError) => {
-      if (!own(file)) return getSourceFile.call(host, file, version, onError);
-      const text = texts.get(rel(file));
-      return text === undefined ? undefined : ts.createSourceFile(file, text, version, true);
-    },
-  };
-}
-
 /** The name a call, a construction, a JSX element or a tagged template calls, when it is one. */
-function calleeOf(node: ts.Node): ts.Identifier | ts.PrivateIdentifier | null {
-  const name = (expr: ts.Node): ts.Identifier | ts.PrivateIdentifier | null => {
-    if (ts.isIdentifier(expr)) return expr;
-    if (ts.isPropertyAccessExpression(expr)) return expr.name;
-    if (ts.isParenthesizedExpression(expr)) return name(expr.expression);
-    return null;
-  };
-  if (ts.isCallExpression(node) || ts.isNewExpression(node)) return name(node.expression);
-  if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) return name(node.tagName);
-  if (ts.isTaggedTemplateExpression(node)) return name(node.tag);
-  return null;
-}
+const calleeOf = (node: ts.Node) => calleeIn(ts, node);
 
 /** One name on a line: a callee, or any other reference, which the graph also links (a function passed as a value). */
 type Ref = { name: string; node: ts.Identifier | ts.PrivateIdentifier };
@@ -139,22 +104,9 @@ export function compilerLookup(repoDir: string, commit: string, texts = commitTe
 /** The compiler's program of the repo at `commit`, read from git as the graph reads it. */
 export function compilerProgram(repoDir: string, commit: string, texts = commitTexts(repoDir, commit)): CompilerProgram {
   const root = path.resolve(repoDir);
-  const options: ts.CompilerOptions = {
-    allowJs: true,
-    jsx: ts.JsxEmit.Preserve,
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    allowImportingTsExtensions: true,
-    noEmit: true,
-    skipLibCheck: true,
-    types: [],
-  };
-  const program = ts.createProgram(
-    [...texts.keys()].map((f) => path.join(root, f)),
-    options,
-    commitHost(root, texts, options),
-  );
+  // No project settings and no installed package is read: the reference is the same for every repo.
+  const options: ts.CompilerOptions = { ...baseOptions(ts), types: [] };
+  const program = commitProgram(ts, root, texts.keys(), { texts, installed: false }, options);
   const checker = program.getTypeChecker();
   const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
   const inRepo = (sf: ts.SourceFile) => texts.has(rel(sf.fileName));
@@ -270,14 +222,7 @@ export function compilerProgram(repoDir: string, commit: string, texts = commitT
 }
 
 /** `import { a as b }`: the graph names a reference to `b` by the name `a` it is declared as. */
-function originalNames(sf: ts.SourceFile): Map<string, string> {
-  const original = new Map<string, string>();
-  for (const stmt of sf.statements) {
-    const bindings = ts.isImportDeclaration(stmt) ? stmt.importClause?.namedBindings : undefined;
-    if (bindings !== undefined && ts.isNamedImports(bindings)) for (const el of bindings.elements) if (el.propertyName !== undefined) original.set(el.name.text, el.propertyName.text);
-  }
-  return original;
-}
+const originalNames = (sf: ts.SourceFile) => originalIn(ts, sf);
 
 /** Every cross-file `calls` and `instantiates` link of a layer resolved `exact`, between TypeScript or JavaScript files. */
 export function graphLinks(db: Database, layer = BASE_LAYER): GraphLink[] {
@@ -341,7 +286,7 @@ export type CallReport = {
 };
 
 /** A call or a construction, as the compiler writes it: what the graph counts as a call. */
-const isCall = (node: ts.Node): node is ts.CallExpression | ts.NewExpression | ts.TaggedTemplateExpression => ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node);
+const isCall = (node: ts.Node): node is ts.CallExpression | ts.NewExpression | ts.TaggedTemplateExpression => isCallNode(ts, node);
 
 /**
  * How many calls the compiler finds in each function with a body, `start-end`, or else for the

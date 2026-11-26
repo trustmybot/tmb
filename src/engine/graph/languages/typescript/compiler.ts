@@ -1,0 +1,148 @@
+// The TypeScript compiler's program of a repo at one commit, with the compiler module given as an
+// input: no fixed compiler is loaded here. The repo's own files are read from the commit, as the
+// graph reads them, never from the working folder. The link check (links.ts) and way B
+// (tool.ts) both build their program here.
+import path from "node:path";
+import type TS from "typescript5";
+
+/** A TypeScript compiler module: the 5.9 development dependency, or a repo's own installed one. */
+export type TypeScriptModule = typeof TS;
+
+/** The options of a program that reads every TypeScript and JavaScript file and emits nothing. */
+export function baseOptions(ts: TypeScriptModule): TS.CompilerOptions {
+  return {
+    allowJs: true,
+    jsx: ts.JsxEmit.Preserve,
+    target: ts.ScriptTarget.ESNext,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    allowImportingTsExtensions: true,
+    noEmit: true,
+    skipLibCheck: true,
+  };
+}
+
+/** The folder a package manager installs a project's dependencies in. */
+const INSTALLED_DIR = "node_modules";
+
+export type CommitFiles = {
+  /** The repo's files at the commit, by path from its top. */
+  texts: ReadonlyMap<string, string>;
+  /** Whether the project's installed dependencies (a `node_modules` folder) are read from disk. */
+  installed: boolean;
+};
+
+/** Where a file the compiler asks for is read: the commit, the disk, or nowhere. */
+type Place = { from: "commit"; rel: string } | { from: "disk" };
+
+function placeOf(root: string, file: string, installed: boolean): Place {
+  const prefix = root + path.sep;
+  if (file !== root && !file.startsWith(prefix)) return { from: "disk" };
+  const rel = path.relative(root, file).split(path.sep).join("/");
+  // A project's installed packages are not in git; they are read where the project installed them.
+  if (installed && rel.split("/").includes(INSTALLED_DIR)) return { from: "disk" };
+  return { from: "commit", rel };
+}
+
+/**
+ * A compiler host that reads the repo's files from the commit, and from disk only what is outside
+ * the repo (the compiler's own lib files) or, with `installed`, the project's installed packages.
+ */
+export function commitHost(ts: TypeScriptModule, root: string, files: CommitFiles, options: TS.CompilerOptions): TS.CompilerHost {
+  const host = ts.createCompilerHost(options, true);
+  const dirs = new Set<string>();
+  for (const file of files.texts.keys()) for (let d = path.posix.dirname(file); d !== "."; d = path.posix.dirname(d)) dirs.add(d);
+  const at = (file: string) => placeOf(root, file, files.installed);
+  const { getSourceFile } = host;
+  return {
+    ...host,
+    getCurrentDirectory: () => root,
+    fileExists: (file) => {
+      const p = at(file);
+      return p.from === "disk" ? ts.sys.fileExists(file) : files.texts.has(p.rel);
+    },
+    readFile: (file) => {
+      const p = at(file);
+      return p.from === "disk" ? ts.sys.readFile(file) : files.texts.get(p.rel);
+    },
+    directoryExists: (dir) => {
+      const p = at(dir);
+      if (p.from === "disk") return ts.sys.directoryExists(dir);
+      if (dir === root || dirs.has(p.rel)) return true;
+      // The installed packages' folder, which git does not hold.
+      return files.installed && path.basename(dir) === INSTALLED_DIR && ts.sys.directoryExists(dir);
+    },
+    getDirectories: (dir) => (at(dir).from === "disk" ? ts.sys.getDirectories(dir) : []),
+    realpath: (file) => (at(file).from === "disk" && ts.sys.realpath !== undefined ? ts.sys.realpath(file) : file),
+    getSourceFile: (file, version, onError) => {
+      const p = at(file);
+      if (p.from === "disk") return getSourceFile.call(host, file, version, onError);
+      const text = files.texts.get(p.rel);
+      return text === undefined ? undefined : ts.createSourceFile(file, text, version, true);
+    },
+  };
+}
+
+/** The settings files a project's compiler options come from, at the repo's top, the first present. */
+const PROJECT_CONFIGS = ["tsconfig.json", "jsconfig.json"] as const;
+
+/**
+ * The compiler options of the project's own settings file at the repo's top (tsconfig.json, else
+ * jsconfig.json), read at the commit with its `extends`; empty when it has none. Its own `files`
+ * and `include` are not used: every file the graph reads is in the program.
+ */
+export function projectOptions(ts: TypeScriptModule, root: string, files: CommitFiles): TS.CompilerOptions {
+  const name = PROJECT_CONFIGS.find((n) => files.texts.has(n));
+  if (name === undefined) return {};
+  const configPath = path.join(root, name);
+  const read = (file: string): string | undefined => {
+    const p = placeOf(root, file, files.installed);
+    return p.from === "disk" ? ts.sys.readFile(file) : files.texts.get(p.rel);
+  };
+  const parsed = ts.readConfigFile(configPath, read);
+  if (parsed.config === undefined) return {};
+  const host: TS.ParseConfigHost = {
+    useCaseSensitiveFileNames: true,
+    readDirectory: () => [],
+    fileExists: (file) => read(file) !== undefined,
+    readFile: read,
+  };
+  return ts.parseJsonConfigFileContent(parsed.config, host, root, undefined, configPath).options;
+}
+
+/** A program over the repo's files at the commit: `rootFiles` are its paths from the repo's top. */
+export function commitProgram(ts: TypeScriptModule, root: string, rootFiles: Iterable<string>, files: CommitFiles, options: TS.CompilerOptions): TS.Program {
+  return ts.createProgram(
+    [...rootFiles].map((f) => path.join(root, f)),
+    options,
+    commitHost(ts, root, files, options),
+  );
+}
+
+/** A call or a construction, as the compiler writes it: what the graph counts as a call. */
+export const isCallNode = (ts: TypeScriptModule, node: TS.Node): node is TS.CallExpression | TS.NewExpression | TS.TaggedTemplateExpression =>
+  ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node);
+
+/** The name a call, a construction, a JSX element or a tagged template calls, when it is one. */
+export function calleeOf(ts: TypeScriptModule, node: TS.Node): TS.Identifier | TS.PrivateIdentifier | null {
+  const name = (expr: TS.Node): TS.Identifier | TS.PrivateIdentifier | null => {
+    if (ts.isIdentifier(expr)) return expr;
+    if (ts.isPropertyAccessExpression(expr)) return expr.name;
+    if (ts.isParenthesizedExpression(expr)) return name(expr.expression);
+    return null;
+  };
+  if (ts.isCallExpression(node) || ts.isNewExpression(node)) return name(node.expression);
+  if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) return name(node.tagName);
+  if (ts.isTaggedTemplateExpression(node)) return name(node.tag);
+  return null;
+}
+
+/** `import { a as b }`: the graph names a reference to `b` by the name `a` it is declared as. */
+export function originalNames(ts: TypeScriptModule, sf: TS.SourceFile): Map<string, string> {
+  const original = new Map<string, string>();
+  for (const stmt of sf.statements) {
+    const bindings = ts.isImportDeclaration(stmt) ? stmt.importClause?.namedBindings : undefined;
+    if (bindings !== undefined && ts.isNamedImports(bindings)) for (const el of bindings.elements) if (el.propertyName !== undefined) original.set(el.name.text, el.propertyName.text);
+  }
+  return original;
+}

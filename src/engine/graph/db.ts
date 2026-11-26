@@ -8,9 +8,10 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
+import { DEFAULT_LINK_WAY, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 6;
+export const GRAPH_SCHEMA_VERSION = 7;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -21,6 +22,9 @@ const TESTS_PURPOSE = "Test code: every file the test rule matches, by the commo
 export const taskLayer = (taskId: string): string => `task:${taskId}`;
 /** One layer per feature branch that is neither merged nor closed, at the branch's tip (trustmybot/tmb#182). */
 export const featureLayer = (featureId: string): string => `feature:${featureId}`;
+
+/** The ways to make links, as SQL values. */
+const WAYS_SQL = LINK_WAYS.map((w) => `'${w}'`).join(", ");
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS layers (
@@ -35,7 +39,9 @@ CREATE TABLE IF NOT EXISTS layers (
   unresolved_imports INTEGER NOT NULL DEFAULT 0,
   functions  INTEGER NOT NULL DEFAULT 0,
   not_parsed INTEGER NOT NULL DEFAULT 0,
-  not_read   TEXT NOT NULL DEFAULT '{}'
+  not_read   TEXT NOT NULL DEFAULT '{}',
+  links      TEXT NOT NULL DEFAULT '${DEFAULT_LINK_WAY}',
+  links_note TEXT
 );
 CREATE TABLE IF NOT EXISTS dirs (
   layer          TEXT NOT NULL,
@@ -91,7 +97,8 @@ CREATE TABLE IF NOT EXISTS edges (
   resolution TEXT NOT NULL CHECK (resolution IN ('exact', 'name', 'unresolved')),
   line       INTEGER,
   hint       TEXT,
-  call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known'))
+  call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known')),
+  way        TEXT CHECK (way IN (${WAYS_SQL}))
 );
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src_id);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst_id);
@@ -158,6 +165,17 @@ CREATE TABLE IF NOT EXISTS misses (
 `;
 
 /**
+ * Schema 7 records the way that made each link or gave each call its state, and the way each layer
+ * was asked to be built by, with why a language was built by the built-in rules instead
+ * (trustmybot/tmb#311). Layers built before it are rebuilt by the newer extractor.
+ */
+const SCHEMA_6_TO_7 = [
+  `ALTER TABLE edges ADD COLUMN way TEXT CHECK (way IN (${WAYS_SQL}))`,
+  `ALTER TABLE layers ADD COLUMN links TEXT NOT NULL DEFAULT '${DEFAULT_LINK_WAY}'`,
+  "ALTER TABLE layers ADD COLUMN links_note TEXT",
+];
+
+/**
  * Schema 6 records the state of each call written in a function: linked, to code outside the repo,
  * or not known; null on any other reference (trustmybot/tmb#252). Layers built before it are
  * rebuilt by the newer extractor.
@@ -210,6 +228,8 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         if (version >= 1 && version <= 4 && !hasNotRead) for (const statement of SCHEMA_4_TO_5) db.run(statement);
         const hasCallState = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'call_state'").get() ?? null) !== null;
         if (version >= 1 && version <= 5 && !hasCallState) for (const statement of SCHEMA_5_TO_6) db.run(statement);
+        const hasWay = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'way'").get() ?? null) !== null;
+        if (version >= 1 && version <= 6 && !hasWay) for (const statement of SCHEMA_6_TO_7) db.run(statement);
         db.run(SCHEMA);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
@@ -257,6 +277,10 @@ export type LayerRow = {
   functions: number;
   not_parsed: number;
   not_read: string;
+  /** The way the layer was asked to make its links by. */
+  links: string;
+  /** Why a language of the layer was built by the built-in rules although the language's tool was asked for; null when none was. */
+  links_note: string | null;
 };
 
 export function layerRow(db: Database, layer: string): LayerRow | null {

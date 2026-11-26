@@ -7,10 +7,12 @@ import { detectBaseBranch } from "../base-branch.ts";
 import { CLOSED, MERGED, OPEN } from "../handlers/common.ts";
 import { HandlerError } from "../handlers/errors.ts";
 import { inGitWorkTree, type Repo, repoOfRow, resolveRepo, scanRepos } from "../repos.ts";
+import { graphLinksOf, readSettings } from "../settings.ts";
 import type { Feature, Store } from "../store/index.ts";
 import { buildLayer, type BuildStats, EXTRACTOR_VERSION } from "./build.ts";
 import { BASE_LAYER, dropLayer, featureLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
 import { baseCommit, resolveCommit } from "./git-source.ts";
+import type { LinkWay } from "./ways.ts";
 
 /** What a read was answered from, and whether it had to bring the graph forward first. */
 export type Freshness = {
@@ -25,6 +27,11 @@ export type Freshness = {
   task: { id: string; commit: string } | null;
   /** Set when the read is for a feature branch: its name and the tip the read answered from. */
   feature: { name: string; commit: string } | null;
+  /**
+   * The way the repo's setting asks to make links, and why a language was built by the built-in
+   * rules instead: it has no tool, or its tool cannot run in the repo; null when none was (trustmybot/tmb#311).
+   */
+  links: { way: LinkWay; note: string | null };
 };
 
 export type GraphView = { db: Database; layer: string; freshness: Freshness };
@@ -63,9 +70,9 @@ function currentBaseCommit(projectDir: string, baseBranch: string): string {
   return commit;
 }
 
-function isCurrent(db: Database, layer: string, commit: string): boolean {
+function isCurrent(db: Database, layer: string, commit: string, links: LinkWay): boolean {
   const row = layerRow(db, layer);
-  return row !== null && row.commit_sha === commit && row.extractor === EXTRACTOR_VERSION;
+  return row !== null && row.commit_sha === commit && row.extractor === EXTRACTOR_VERSION && row.links === links;
 }
 
 /** Brings one layer to `commit` unless it is there already; returns the commit it held before, or null when current. */
@@ -74,10 +81,11 @@ async function bringForward(
   projectDir: string,
   layer: string,
   commit: string,
+  links: LinkWay,
 ): Promise<{ from: string | null; readerChanged: boolean; stats: BuildStats | null }> {
-  if (isCurrent(db, layer, commit)) return { from: null, readerChanged: false, stats: null };
+  if (isCurrent(db, layer, commit, links)) return { from: null, readerChanged: false, stats: null };
   const held = layerRow(db, layer);
-  const stats = await buildLayer(db, projectDir, commit, layer);
+  const stats = await buildLayer(db, projectDir, commit, layer, { links });
   // A graph at this commit already, built by an older reader, was rebuilt, not brought forward.
   if (held !== null && held.commit_sha === commit) return { from: null, readerChanged: true, stats };
   return { from: held?.commit_sha ?? "none", readerChanged: held !== null && held.extractor !== EXTRACTOR_VERSION, stats };
@@ -164,11 +172,20 @@ export async function openView(projectDir: string, store: Store, options: ViewTa
   const repo = viewRepo(store, projectDir, options);
   const baseBranch = baseBranchOf(repo);
   const commit = currentBaseCommit(repo.dir, baseBranch);
+  const links = graphLinksOf(readSettings(store), repo.name);
   const db = openGraphDb(projectDir, repo.name);
   try {
-    const { from, readerChanged } = await bringForward(db, repo.dir, BASE_LAYER, commit);
+    const { from, readerChanged } = await bringForward(db, repo.dir, BASE_LAYER, commit, links);
     dropEndedLayers(db, store);
-    const freshness: Freshness = { baseBranch, commit, broughtForwardFrom: from, readerChanged, task: null, feature: null };
+    const freshness: Freshness = {
+      baseBranch,
+      commit,
+      broughtForwardFrom: from,
+      readerChanged,
+      task: null,
+      feature: null,
+      links: { way: links, note: layerRow(db, BASE_LAYER)?.links_note ?? null },
+    };
     const feature =
       options.feature !== undefined
         ? namedFeature(store, options.feature)
@@ -180,13 +197,13 @@ export async function openView(projectDir: string, store: Store, options: ViewTa
     if (feature !== null) {
       const tip = featureTipCommit(repo, feature);
       const layer = featureLayer(feature.id);
-      await bringForward(db, repo.dir, layer, tip);
+      await bringForward(db, repo.dir, layer, tip, links);
       return { db, layer, freshness: { ...freshness, feature: { name: feature.name, commit: tip } } };
     }
     if (options.taskId === undefined) return { db, layer: BASE_LAYER, freshness };
     const onTop = taskCommit(store, options.taskId);
     const layer = taskLayer(options.taskId);
-    await bringForward(db, repo.dir, layer, onTop);
+    await bringForward(db, repo.dir, layer, onTop, links);
     return { db, layer, freshness: { ...freshness, task: { id: options.taskId, commit: onTop } } };
   } catch (error) {
     db.close();
@@ -227,7 +244,7 @@ export async function indexProject(
   const db = openGraphDb(projectDir, repo.name);
   try {
     if (options.rebuild) db.run("DELETE FROM parsed");
-    const stats = await buildLayer(db, repo.dir, commit, BASE_LAYER, { force: true });
+    const stats = await buildLayer(db, repo.dir, commit, BASE_LAYER, { force: true, links: graphLinksOf(readSettings(store), repo.name) });
     dropEndedLayers(db, store);
     return { ...stats, baseBranch, repo: repo.name };
   } finally {
