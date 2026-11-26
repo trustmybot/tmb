@@ -319,6 +319,46 @@ export class Resolver {
     return found.size > 1 ? null : [...found][0];
   }
 
+  /**
+   * Whether a file of the repo declares `name` at its top level. In a language whose files can
+   * share one global scope, such as a TypeScript script with no import or export, that
+   * declaration is the global itself, so a built-in of that name is not proven (trustmybot/tmb#252).
+   */
+  declaresAtTop(name: string): boolean {
+    for (const names of this.topLevel.values()) if (names.has(name)) return true;
+    return false;
+  }
+
+  private readonly packages = new Map<string, boolean>();
+
+  /**
+   * Whether the module an import of `from` names is a package outside the repo (trustmybot/tmb#252).
+   * With `searched`, the paths at which the language finds it in any folder it searches, it is
+   * outside when no file of the repo is at one of them. Without, it is outside when the repo's
+   * import settings resolve it to no file and to none of the repo's own code, the same answer
+   * that makes such an import no miss.
+   */
+  isPackage(from: string, spec: string, searched?: readonly string[]): boolean {
+    const key = searched === undefined ? `${posix.dirname(from)}\u0000${spec}` : `\u0000${searched.join("\u0000")}`;
+    const known = this.packages.get(key);
+    if (known !== undefined) return known;
+    let outside: boolean;
+    if (searched !== undefined) {
+      const at = searched.map((s) => `/${s}`);
+      outside = !this.anyFile((f) => at.some((s) => (s.endsWith("/") ? `/${f}`.includes(s) : `/${f}`.endsWith(s))));
+    } else {
+      const target = this.config.resolve(from, spec, this.fileSet);
+      outside = target.file === null && !target.local;
+    }
+    this.packages.set(key, outside);
+    return outside;
+  }
+
+  private anyFile(test: (file: string) => boolean): boolean {
+    for (const file of this.fileSet) if (test(file)) return true;
+    return false;
+  }
+
   resolve(from: string, edge: ExtractedEdge): Link | null {
     if (NAME_ONLY_EDGES.has(edge.kind)) return null;
     if (edge.kind === "imports") {
@@ -383,6 +423,26 @@ export class Resolver {
     const viaSource = (this.sourced.get(from) ?? []).map((p) => declared.find((c) => c.path === p)).find(Boolean);
     return link(viaSource?.id, "exact");
   }
+}
+
+/**
+ * The state of a call written in a function (trustmybot/tmb#252): linked to a definition of the
+ * repo, to code outside the repo, or not known.
+ */
+export type CallState = "linked" | "outside" | "not_known";
+
+/**
+ * Where a call goes when it is not linked, on the same proof a link needs (trustmybot/tmb#252):
+ * outside the repo when the language's lookup ends at one of its built-ins that no file of the
+ * repo declares at its top level, or at an import of a module that names no file of the repo
+ * and none of its own code; else not known.
+ */
+export function callState(resolver: Resolver, from: string, edge: ExtractedEdge, link: Link | null): CallState {
+  if (link !== null) return "linked";
+  const outside = edge.outside;
+  if (outside === undefined) return "not_known";
+  if (outside.kind === "builtin") return resolver.declaresAtTop(outside.name) ? "not_known" : "outside";
+  return resolver.isPackage(from, outside.module, outside.searched) ? "outside" : "not_known";
 }
 
 function link(dst: number | undefined, how: Link["how"]): Link | null {

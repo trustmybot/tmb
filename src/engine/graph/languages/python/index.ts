@@ -1,8 +1,9 @@
 // Python, read through tree-sitter: classes, functions and methods, imports and calls.
 import pythonWasm from 'tree-sitter-python/tree-sitter-python.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
-import type { Collector, LanguageModule, SymbolKind } from '../contract.ts';
+import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
+import { BUILTINS } from './builtins.ts';
 
 // The string a body opens with, Python's docstring; '' when it opens with
 // anything else.
@@ -18,6 +19,8 @@ function pyDocstring(body: Node | null): string {
 }
 
 const PY_RECEIVERS_OF_CLASS = new Set(['self', 'cls']);
+/** The longest a call's text is kept as its name when its callee is no name. */
+const CALLEE_TEXT_MAX = 80;
 
 type PyPlace = 'module' | 'class' | 'nested';
 
@@ -240,6 +243,93 @@ function pyBases(superclasses: Node | null): string[] {
   return bases;
 }
 
+// A call through an import of `module` (trustmybot/tmb#252). A relative import names the repo's
+// own code. An absolute one is found as `a/b.py` or the package folder `a/b/` in any folder on
+// Python's search path, so the resolver calls it outside only when the repo has neither.
+function importMark(module: string): CallMark {
+  if (module.startsWith('.')) return {};
+  const base = module.split('.').join('/');
+  return { outside: { kind: 'import', module, searched: [`${base}.py`, `${base}/`] } };
+}
+
+// The names a module's or a class's own body binds (trustmybot/tmb#252), which Python looks in
+// before its builtins: each assignment, loop, `with … as`, `except … as`, `:=`, import, and
+// function or class defined there, under `if`, `try`, `for`, `while` and `with` too. Functions,
+// lambdas, classes and comprehensions inside it are not entered; their own names are bound.
+// `imports` holds each name bound only once, and by an import: its module as the file writes
+// it, the first part of `import a.b`. `star` is set by `from m import *`, which may bind any name.
+type BodyNames = { bound: Set<string>; imports: Map<string, string>; star: boolean };
+
+function bodyNames(body: Node): BodyNames {
+  const bound = new Set<string>();
+  const once = new Map<string, string | null>();
+  const bind = (name: string, module: string | null): void => {
+    bound.add(name);
+    once.set(name, once.has(name) ? null : module);
+  };
+  let star = false;
+  const walk = (node: Node): void => {
+    for (const c of named(node)) {
+      switch (c.type) {
+        case 'function_definition':
+        case 'class_definition': {
+          const n = c.childForFieldName('name')?.text;
+          if (n) bind(n, null);
+          continue;
+        }
+        case 'lambda':
+        case 'list_comprehension':
+        case 'set_comprehension':
+        case 'dictionary_comprehension':
+        case 'generator_expression':
+          continue;
+        case 'assignment':
+        case 'augmented_assignment':
+        case 'for_statement':
+        case 'as_pattern_target':
+        case 'named_expression': {
+          const names: string[] = [];
+          targetNames(c.type === 'named_expression' ? c.childForFieldName('name') : c.type === 'as_pattern_target' ? c : c.childForFieldName('left'), names);
+          for (const n of names) bind(n, null);
+          break;
+        }
+        case 'import_statement':
+          for (const n of c.childrenForFieldName('name')) {
+            if (!n) continue;
+            const module = (n.type === 'aliased_import' ? n.childForFieldName('name') : n)?.text;
+            const alias = n.type === 'aliased_import' ? n.childForFieldName('alias')?.text : undefined;
+            const first = module?.split('.')[0];
+            if (alias && module) bind(alias, module);
+            else if (first) bind(first, first);
+          }
+          continue;
+        case 'import_from_statement': {
+          const module = c.childForFieldName('module_name')?.text ?? null;
+          if (named(c).some((n) => n.type === 'wildcard_import')) star = true;
+          for (const n of c.childrenForFieldName('name')) {
+            if (!n) continue;
+            const name = n.type === 'aliased_import' ? n.childForFieldName('alias')?.text : n.text;
+            if (name) bind(name, module);
+          }
+          continue;
+        }
+      }
+      walk(c);
+    }
+  };
+  walk(body);
+  const imports = new Map<string, string>();
+  for (const [name, module] of once) if (module !== null) imports.set(name, module);
+  return { bound, imports, star };
+}
+
+// The names `global` statements anywhere in a module make the module's own.
+function globalNames(root: Node): Set<string> {
+  const names = new Set<string>();
+  for (const g of root.descendantsOfType('global_statement')) for (const n of g ? named(g) : []) if (n.type === 'identifier') names.add(n.text);
+  return names;
+}
+
 // The attributes a target assigns: one, or each of a tuple or list of targets.
 function attributeTargets(node: Node | null, into: Node[] = []): Node[] {
   if (!node) return into;
@@ -330,11 +420,31 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     }
     return undefined;
   };
+  // Where a call's lookup ends past the functions around it (trustmybot/tmb#252): the class body
+  // the call is written in directly, then the module, then Python's builtins. `member` is the
+  // name called on the object, which the builtin must have as a callable attribute.
+  const moduleNames = bodyNames(root);
+  const globals = globalNames(root);
+  const classNames = new Map<number, BodyNames>();
+  const outside = (at: Node, name: string, member?: string): CallMark => {
+    for (let a = at.parent; a && !PY_SCOPES.has(a.type); a = a.parent) {
+      if (a.type !== 'class_definition') continue;
+      const body = a.childForFieldName('body');
+      let names = classNames.get(a.id);
+      if (!names && body) classNames.set(a.id, (names = bodyNames(body)));
+      if (names?.bound.has(name) || names?.star) return {};
+    }
+    const module = moduleNames.imports.get(name);
+    if (module !== undefined && !globals.has(name)) return importMark(module);
+    if (moduleNames.bound.has(name) || moduleNames.star || globals.has(name)) return {};
+    const builtin = BUILTINS.get(name);
+    return builtin !== undefined && (member === undefined || builtin.has(member)) ? { outside: { kind: 'builtin', name } } : {};
+  };
   // A module-level name: one a `from m import A as B` binds is looked up in m by A (trustmybot/tmb#287).
-  const moduleReference = (scope: number, kind: 'calls' | 'instantiates', name: string, line: number): void => {
+  const moduleReference = (scope: number, kind: 'calls' | 'instantiates', name: string, line: number, call?: CallMark): void => {
     const module = sources.get(name);
-    if (module === undefined) out.edge(scope, kind, target(name), line);
-    else out.edge(scope, kind, target(name), line, module, 'import');
+    if (module === undefined) out.edge(scope, kind, target(name), line, null, undefined, undefined, call);
+    else out.edge(scope, kind, target(name), line, module, 'import', undefined, call);
   };
   const exportedName = (name: string): number => (name.startsWith('_') ? 0 : 1);
   const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number, parent: number): number => {
@@ -403,11 +513,13 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     } else if (t === 'call') {
       const fn = node.childForFieldName('function');
       const line = node.startPosition.row + 1;
+      let written = false;
       if (fn?.type === 'identifier') {
         const b = localBinding(fn, fn.text);
-        if (b === undefined) moduleReference(scope, isClass(fn.text) ? 'instantiates' : 'calls', fn.text, line);
-        else if (b.kind === 'import') out.edge(scope, /^[A-Z]/.test(b.name) ? 'instantiates' : 'calls', b.name, line, b.module, 'import');
-        else out.edge(scope, 'calls', fn.text, line, b.kind === 'function' ? String(b.line) : null, b.kind);
+        if (b === undefined) moduleReference(scope, isClass(fn.text) ? 'instantiates' : 'calls', fn.text, line, outside(fn, fn.text));
+        else if (b.kind === 'import') out.edge(scope, /^[A-Z]/.test(b.name) ? 'instantiates' : 'calls', b.name, line, b.module, 'import', undefined, importMark(b.module));
+        else out.edge(scope, 'calls', fn.text, line, b.kind === 'function' ? String(b.line) : null, b.kind, undefined, {});
+        written = true;
       } else if (fn?.type === 'attribute') {
         const callee = fn.childForFieldName('attribute')?.text;
         const object = fn.childForFieldName('object');
@@ -415,11 +527,16 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
           const ofClass = object.type === 'identifier' && PY_RECEIVERS_OF_CLASS.has(object.text) && cls;
           // A receiver bound in the function around the call is no class or module the file names.
           const local = !ofClass && object.type === 'identifier' && localBinding(object, object.text) !== undefined;
-          if (ofClass) out.edge(scope, 'calls', callee, line, cls, 'self');
+          const mark = !ofClass && !local && object.type === 'identifier' ? outside(object, object.text, callee) : {};
+          if (ofClass) out.edge(scope, 'calls', callee, line, cls, 'self', undefined, mark);
           // The receiver by the name the module binds it: the resolver follows an import under a new name to its file.
-          else out.edge(scope, 'calls', callee, line, memberHint(object.text), local ? 'value' : undefined);
+          else out.edge(scope, 'calls', callee, line, memberHint(object.text), local ? 'value' : undefined, undefined, mark);
+          written = true;
         }
       }
+      // A call whose callee is no name, such as `f()()` or `handlers[k]()`, is a call all the same:
+      // it is named by its callee's text and is not known.
+      if (!written) out.edge(scope, 'calls', clip(oneLine((fn ?? node).text), CALLEE_TEXT_MAX), line, null, undefined, undefined, {});
     }
     for (const c of named(node)) visit(c, inner, innerCls, innerPlace);
   };

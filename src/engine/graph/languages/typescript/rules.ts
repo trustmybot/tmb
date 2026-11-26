@@ -2,9 +2,10 @@
 // container of each, and the calls, imports and value references each makes, in one walk of
 // the tree. What counts as a function here is in README.md beside this file.
 import type { Node } from 'web-tree-sitter';
-import { type Bound, type Collector, type EdgeKind, type ExtractedSymbol, type FunctionParams, type ParamInfo, type SourceFile, type SymbolKind } from '../contract.ts';
+import { type Bound, type CallMark, type Collector, type EdgeKind, type ExtractedSymbol, type FunctionParams, type ParamInfo, type SourceFile, type SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf } from '../kit.ts';
 import { extractSqlDdl, sqlRefs } from '../sql/index.ts';
+import { GLOBALS } from './globals.ts';
 
 const STRING_PARTS = new Set(['string_fragment', 'escape_sequence']);
 
@@ -488,6 +489,87 @@ function reexports(stmt: Node, imported: Map<string, { name: string; source: str
   }
 }
 
+// What a file binds that a call's lookup reaches after the functions and blocks around it
+// (trustmybot/tmb#252): each name an import of the file binds, with its module, and every name
+// any declaration of the file binds, wherever it is. A `var` or a function declared in a block
+// belongs to the function or file around it, so a name declared anywhere in the file is never
+// proven to be a global.
+type FileNames = { imports: Map<string, string>; declared: Set<string> };
+
+const DECLARATIONS = new Set([
+  'function_declaration',
+  'generator_function_declaration',
+  'function_signature',
+  'class_declaration',
+  'abstract_class_declaration',
+  'enum_declaration',
+  'internal_module',
+  'module',
+  'import_alias',
+]);
+
+// Every name a pattern binds: a plain name, or each name inside a destructuring, a default or a rest.
+function patternNames(pattern: Node | null, into: Set<string>): void {
+  if (pattern === null) return;
+  if (pattern.type === 'identifier' || pattern.type === 'shorthand_property_identifier_pattern') into.add(pattern.text);
+  else if (pattern.type === 'assignment_pattern' || pattern.type === 'object_assignment_pattern') patternNames(pattern.childForFieldName('left'), into);
+  else if (pattern.type === 'pair_pattern') patternNames(pattern.childForFieldName('value'), into);
+  else if (pattern.type === 'rest_pattern' || pattern.type === 'object_pattern' || pattern.type === 'array_pattern') for (const c of named(pattern)) patternNames(c, into);
+}
+
+function fileNames(root: Node): FileNames {
+  const imports = new Map<string, string>();
+  const declared = new Set<string>();
+  for (const stmt of root.descendantsOfType('import_statement')) {
+    const source = stmt?.childForFieldName('source');
+    const spec = source ? literalText(source) : null;
+    const clause = stmt ? named(stmt).find((c) => c.type === 'import_clause') : undefined;
+    for (const c of clause ? named(clause) : []) {
+      const local =
+        c.type === 'identifier'
+          ? [c.text]
+          : c.type === 'namespace_import'
+            ? named(c).filter((n) => n.type === 'identifier').map((n) => n.text)
+            : c.type === 'named_imports'
+              ? named(c).flatMap((s) => {
+                  const n = s.childForFieldName('alias') ?? s.childForFieldName('name');
+                  return n ? [n.text] : [];
+                })
+              : [];
+      for (const name of local) {
+        declared.add(name);
+        if (spec !== null) imports.set(name, spec);
+      }
+    }
+    for (const n of stmt ? named(stmt).filter((c) => c.type === 'import_require_clause') : []) {
+      const name = named(n).find((c) => c.type === 'identifier');
+      if (name) declared.add(name.text);
+    }
+  }
+  for (const d of root.descendantsOfType('variable_declarator')) patternNames(d?.childForFieldName('name') ?? null, declared);
+  for (const d of root.descendantsOfType([...DECLARATIONS])) {
+    const n = d?.childForFieldName('name');
+    if (n) declared.add(n.text);
+  }
+  return { imports, declared };
+}
+
+// `import("m")` written in a type, as in `let d: import("m").T`, names the types of a module and
+// runs nothing: the TypeScript handbook's import types. The grammar writes it as a call, so it
+// is told apart by where it stands: past the member accesses on it, a type holds it.
+function importType(call: Node): boolean {
+  if (call.childForFieldName('function')?.type !== 'import') return false;
+  let up = call.parent;
+  while (up?.type === 'member_expression') up = up.parent;
+  return up !== null && up.type !== 'type_assertion' && TYPE_HOLDER.test(up.type);
+}
+
+/** The grammar's nodes that hold a type: each names one, such as `type_annotation`, `generic_type` or `type_query`. */
+const TYPE_HOLDER = /type/;
+
+/** The longest a call's text is kept as its name when its callee is no name. */
+const CALLEE_TEXT_MAX = 80;
+
 // TS/JS, in one walk. `scope` is the symbol a reference made here starts at:
 // the innermost function, unnamed ones included, or a class or module-level
 // const. `container` is what contains a symbol defined here (a function, a
@@ -499,6 +581,17 @@ export function extractTs(file: SourceFile, out: Collector): void {
   if (!root) throw new Error(`no syntax tree for ${file.relPath}`);
   const types = receiverTypes(root);
   const bindings = moduleBindings(root);
+  const names = fileNames(root);
+  // Where a call's lookup ends past the functions, blocks and declarations of the file
+  // (trustmybot/tmb#252): an import, with its module, or a global of the compiler's library.
+  // `member` is the name called on the object, which the global must declare as callable.
+  const outside = (name: string, member?: string): CallMark => {
+    const module = names.imports.get(name);
+    if (module !== undefined) return module.startsWith('.') ? {} : { outside: { kind: 'import', module } };
+    if (names.declared.has(name)) return {};
+    const global = GLOBALS.get(name);
+    return global !== undefined && (member === undefined || global.has(member)) ? { outside: { kind: 'builtin', name } } : {};
+  };
   const imported = new Map<string, { name: string; source: string }>();
   for (const s of root.descendantsOfType('import_specifier')) {
     const n = s?.childForFieldName('name');
@@ -627,18 +720,20 @@ export function extractTs(file: SourceFile, out: Collector): void {
         innerOwner = inner;
         if (isFn) made.set(value!.id, inner);
       }
-    } else if (t === 'call_expression' || t === 'new_expression') {
+    } else if ((t === 'call_expression' || t === 'new_expression') && !importType(node)) {
       const fn = node.childForFieldName(t === 'call_expression' ? 'function' : 'constructor');
       let callee: string | undefined;
       let receiver: string | undefined;
       let bound: Bound | undefined;
       let spec: string | undefined;
+      let mark: CallMark = {};
       if (fn?.type === 'identifier') {
         const local = localBinding(fn, fn.text);
         spec = local === null ? aliasSource(fn.text) : undefined;
         bound = spec !== undefined ? 'import' : local?.bound;
         callee = local === null ? target(fn.text) : fn.text;
         if (local?.bound === 'function') receiver = String(local.line);
+        if (local === null) mark = outside(fn.text);
       } else if (fn?.type === 'member_expression') {
         callee = fn.childForFieldName('property')?.text;
         const objectNode = fn.childForFieldName('object');
@@ -653,18 +748,21 @@ export function extractTs(file: SourceFile, out: Collector): void {
           // The name as the file binds it: the resolver follows an import under a new name to its file.
           receiver = types.get(object) ?? object;
           if (/^[A-Z]/.test(object) && boundValue(objectNode, object)) reference(scope, 'calls', object, objectNode);
+          if (callee !== undefined && localBinding(objectNode, object) === null) mark = outside(object, callee);
         } else receiver = object !== undefined ? (types.get(object) ?? object) : undefined;
       }
-      if (callee) {
-        out.edge(
-          scope,
-          t === 'call_expression' ? 'calls' : 'instantiates',
-          callee,
-          node.startPosition.row + 1,
-          spec ?? (receiver === undefined ? null : memberHint(receiver)),
-          bound,
-        );
-      }
+      // A call whose callee is no name, such as `f()()` or `handlers[k]()`, is a call all the same:
+      // it is named by its callee's text and is not known.
+      out.edge(
+        scope,
+        t === 'call_expression' ? 'calls' : 'instantiates',
+        callee ?? clip(oneLine(fn?.text ?? node.text), CALLEE_TEXT_MAX),
+        node.startPosition.row + 1,
+        spec ?? (callee === undefined || receiver === undefined ? null : memberHint(receiver)),
+        callee === undefined ? undefined : bound,
+        undefined,
+        mark,
+      );
     } else if (t === 'export_statement' && node.parent?.type === 'program') {
       reexports(node, imported, out);
     } else if (t === 'import_statement') {

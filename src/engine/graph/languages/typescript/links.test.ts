@@ -10,7 +10,7 @@ import { pinnedHono } from "../../../../../tests/lib/pinned-repo.ts";
 import { buildLayer } from "../../build.ts";
 import { openGraphDb } from "../../db.ts";
 import { resolveCommit } from "../../git-source.ts";
-import { checkLinks, compilerLookup, type GraphLink, graphLinks, judge, type LinkReport } from "./links.ts";
+import { type CallReport, checkLinks, checkRepo, compilerCalls, compilerLookup, type GraphLink, graphLinks, judge, type LinkReport } from "./links.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -80,6 +80,23 @@ describe("the graph's links agree with the compiler on a fixture", () => {
     expect(at(7, "make")).toEqual(["factory.ts:4"]);
   });
 
+  test("every call is accounted for, in the function it is written in", async () => {
+    const { calls } = await checkRepo(fixture);
+    expectCallsAccounted(calls);
+    // use(): renderA, renderB, make and `.map` written in it, and `render()` in its arrow; and
+    // `parseInt` at the top of outside.ts, a global, outside the repo.
+    expect(calls.accounted).toBe(6);
+    expect(calls.outside).toBe(1);
+  });
+
+  test("a call written in a type is no call, and one in a class body outside its methods counts for the file", () => {
+    const text = ['let d: import("m").T;', "class C {", "  n = f();", "  m() {", "    return g(new C());", "  }", "}", ""].join("\n");
+    expect([...compilerCalls("x.ts", text)]).toEqual([
+      ["", 1],
+      ["4-6", 2],
+    ]);
+  });
+
   test("every link is right, and one through `export *` counts as a re-export", async () => {
     const report = await checkLinks(fixture);
     expect(report.wrong).toEqual([]);
@@ -107,19 +124,36 @@ describe("the graph's links agree with the compiler on a fixture", () => {
   });
 });
 
-function report(repo: string, r: LinkReport): void {
+function report(repo: string, r: LinkReport, c?: CallReport): void {
   console.log(
     `links vs compiler, ${repo}: ${r.links} links, ${r.right} right, ${r.wrong.length} wrong, not judged ${JSON.stringify(r.notJudged)}; ` +
       `through a re-export ${r.reexports.right} right, ${r.reexports.wrong} wrong; graph ${r.ms.graph}ms, compiler ${r.ms.compiler}ms`,
   );
+  if (c !== undefined) {
+    console.log(
+      `calls vs compiler, ${repo}: ${c.accounted} of ${c.compiler} accounted for, ${c.linked} linked, ${c.outside} outside, ${c.notKnown} not known; ` +
+        `links found ${(c.linksFound * 100).toFixed(1)}%; ${c.differ.length} functions counted otherwise, ${c.outsideWrong.length} outside calls the compiler finds in the repo`,
+    );
+  }
+}
+
+// The call states of trustmybot/tmb#252: each function's linked, outside and not known calls add
+// up to the calls the compiler finds written in it, and no call put outside the repo is one the
+// compiler finds declared in it.
+function expectCallsAccounted(c: CallReport): void {
+  expect(c.differ).toEqual([]);
+  expect(c.outsideWrong).toEqual([]);
+  expect(c.accounted).toBe(c.compiler);
+  expect(c.linked + c.outside + c.notKnown).toBe(c.accounted);
 }
 
 describe("the link check on tmb's own repo", () => {
   test(
     "every cross-file call and construction link the graph makes in TypeScript and JavaScript is the compiler's",
     async () => {
-      const r = await checkLinks(REPO);
-      report("tmb", r);
+      const { links: r, calls } = await checkRepo(REPO);
+      report("tmb", r, calls);
+      expectCallsAccounted(calls);
       expect(r.wrong).toEqual([]);
       expect(r.right).toBeGreaterThan(3000);
       expect(r.reexports.right).toBeGreaterThan(100);
@@ -142,8 +176,9 @@ describe("the link check on hono, pinned", () => {
       name,
       async () => {
         if ("error" in pinned) throw new Error(pinned.error);
-        const r = await checkLinks(pinned.folder);
-        report("hono 75ff8e3", r);
+        const { links: r, calls } = await checkRepo(pinned.folder);
+        report("hono 75ff8e3", r, calls);
+        expectCallsAccounted(calls);
         expect(r.wrong).toEqual([]);
         expect(r.right).toBeGreaterThan(5000);
         expect(r.reexports.right).toBeGreaterThan(500);

@@ -10,14 +10,14 @@ import { languageNamed } from "./languages/registry.ts";
 import { unreadLanguageOf } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
-import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
+import { type Candidate, callState, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
 import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
 import { laneOf } from "./test-paths.ts";
 import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 10;
+export const EXTRACTOR_VERSION = 11;
 const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
 export const MINIFIED = "minified; not parsed";
@@ -277,12 +277,14 @@ function applyLayer(
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
   const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
-  const insertEdge = db.prepare("INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  const insertEdge = db.prepare("INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint, call_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
   let unresolved = 0;
   for (const { file, symbolIndex, edge } of pending) {
     const link = resolver.resolve(file, edge);
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
-    insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint);
+    // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
+    const state = edge.call === 1 ? callState(resolver, file, edge, link) : null;
+    insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint, state);
   }
   const unresolvedImports = resolver.unresolvedImports;
   const unread = new Map<string, number>();

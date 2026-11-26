@@ -6,6 +6,7 @@ import { STOPWORDS, splitWords } from "./extract.ts";
 import type { Actor } from "../store/index.ts";
 import { areasOf } from "./areas.ts";
 import { type Concept, conceptsOn } from "./concepts.ts";
+import type { CallState } from "./resolve.ts";
 
 export const MAP_MAX_NODES = 500;
 export const FIND_MAX = 50;
@@ -45,6 +46,9 @@ export type CalleeRow = {
   moreLines: number;
 };
 
+/** The calls written in a symbol, by state (trustmybot/tmb#252); the three add up to every call written there. */
+export type CallCounts = { linked: number; outside: number; notKnown: number };
+
 export type SymbolCard = {
   symbol: { kind: string; qualifiedName: string; path: string; startLine: number | null; endLine: number | null; signature: string; doc: string; exported: boolean };
   /** Proven references that call, construct, run or source it, one row per caller. */
@@ -55,6 +59,13 @@ export type SymbolCard = {
   callees: CalleeRow[];
   /** How many distinct callers, importers and callees were left out past the cap. */
   more: { callers: number; importers: number; callees: number };
+  /**
+   * The calls written in it and in the unnamed functions inside it, by state: linked to the repo's
+   * code, to code outside the repo (built-ins and packages), and not known (trustmybot/tmb#252).
+   */
+  calls: CallCounts;
+  /** One line when some of its calls are not known, so the reader searches its body for the rest. */
+  callsNote?: string;
   /** Test files that reach it through a proven reference, directly or through one caller. */
   tests: string[];
   /** References that name it but could not be proven to mean it: possible callers, not facts. */
@@ -309,6 +320,7 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
     target: e.target_name === null ? null : { qualifiedName: e.target_name, path: e.target_path! },
     ...cutLines(lines),
   }));
+  const calls = callCounts(db, row.id);
   const callerRows = refRows(callers);
   const importerRows = refRows(importers);
 
@@ -346,6 +358,8 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
       importers: Math.max(0, importerRows.length - CARD_LIST_MAX),
       callees: Math.max(0, callees.length - CARD_LIST_MAX),
     },
+    calls,
+    ...(calls.notKnown > 0 ? { callsNote: callsNote(calls) } : {}),
     tests: [...tests].sort(),
     unresolved: {
       count: unresolvedRows.length,
@@ -354,6 +368,32 @@ export function symbolCard(db: Database, layer: string, row: SymbolRow): SymbolC
     concepts: concepts.map((c: Concept) => ({ name: c.name, status: c.status })),
     areas: areasOf(db, [row.path]).get(row.path) ?? [],
   };
+}
+
+/**
+ * The calls written in a symbol and in the unnamed functions it owns, by state (trustmybot/tmb#252):
+ * a call in an unnamed function is that function's own, and its owner's answer sums them.
+ */
+export function callCounts(db: Database, id: number): CallCounts {
+  const rows = db
+    .query(
+      `SELECT call_state AS state, count(*) AS n FROM edges
+        WHERE (src_id = ? OR src_id IN (SELECT id FROM symbols WHERE named_id = ?)) AND call_state IS NOT NULL GROUP BY call_state`,
+    )
+    .all(id, id) as { state: CallState; n: number }[];
+  return countsOf(rows);
+}
+
+/** Call counts from rows of a call state and how many calls are in it. */
+export function countsOf(rows: { state: CallState; n: number }[]): CallCounts {
+  const n = (state: CallState) => rows.find((r) => r.state === state)?.n ?? 0;
+  return { linked: n("linked"), outside: n("outside"), notKnown: n("not_known") };
+}
+
+/** "Calls not known: 3 of 10. …", for a symbol with calls not known. */
+export function callsNote(calls: CallCounts): string {
+  const total = calls.linked + calls.outside + calls.notKnown;
+  return `Calls not known: ${calls.notKnown} of ${total}. The graph could not prove where they go; search its body by text for them.`;
 }
 
 /** Cards for every symbol named `name` (or the file at that path), at most ten. */

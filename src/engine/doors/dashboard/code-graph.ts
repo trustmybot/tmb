@@ -5,7 +5,8 @@
 import type { Database } from "bun:sqlite";
 import { FUNCTION_KINDS } from "../../graph/build.ts";
 import { areasOf, listAreas } from "../../graph/areas.ts";
-import { type SymbolCard, symbolCard } from "../../graph/lookups.ts";
+import { type CallCounts, countsOf, type SymbolCard, symbolCard } from "../../graph/lookups.ts";
+import type { CallState } from "../../graph/resolve.ts";
 
 const KIND_LIST = [...FUNCTION_KINDS];
 const FUNCTION_IN = KIND_LIST.map(() => "?").join(", ");
@@ -44,6 +45,8 @@ export type FileSymbol = {
   unresolved: number;
   /** Proven calls made inside it to definitions in other files. */
   callsOut: number;
+  /** The calls written in it, not in the unnamed functions inside it, by state (trustmybot/tmb#252). */
+  calls: CallCounts;
 };
 
 export type FileResult = {
@@ -223,6 +226,13 @@ export function file(db: Database, layer: string, filePath: string): FileResult 
     )
     .all(...CALL_KINDS, path, layer, path) as { id: number; unresolved: number; calls_out: number }[];
   for (const t of tallies) counts.set(t.id, { unresolved: t.unresolved ?? 0, callsOut: t.calls_out ?? 0 });
+  const states = db
+    .query(
+      `SELECT e.src_id AS id, e.call_state AS state, count(*) AS n FROM edges e JOIN symbols s ON s.id = e.src_id
+        WHERE s.layer = ? AND s.path = ? AND e.call_state IS NOT NULL GROUP BY e.src_id, e.call_state`,
+    )
+    .all(layer, path) as { id: number; state: CallState; n: number }[];
+  const callsOf = (id: number): CallCounts => countsOf(states.filter((r) => r.id === id));
   const symbols = rows.map(
     (r): FileSymbol => ({
       id: r.id,
@@ -236,6 +246,7 @@ export function file(db: Database, layer: string, filePath: string): FileResult 
       signature: r.signature,
       unresolved: counts.get(r.id)?.unresolved ?? 0,
       callsOut: counts.get(r.id)?.callsOut ?? 0,
+      calls: callsOf(r.id),
     }),
   );
   const internal = db

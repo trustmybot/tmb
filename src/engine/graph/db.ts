@@ -10,7 +10,7 @@ import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 5;
+export const GRAPH_SCHEMA_VERSION = 6;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS edges (
   kind       TEXT NOT NULL,
   resolution TEXT NOT NULL CHECK (resolution IN ('exact', 'name', 'unresolved')),
   line       INTEGER,
-  hint       TEXT
+  hint       TEXT,
+  call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known'))
 );
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src_id);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst_id);
@@ -156,6 +157,13 @@ CREATE TABLE IF NOT EXISTS misses (
 );
 `;
 
+/**
+ * Schema 6 records the state of each call written in a function: linked, to code outside the repo,
+ * or not known; null on any other reference (trustmybot/tmb#252). Layers built before it are
+ * rebuilt by the newer extractor.
+ */
+const SCHEMA_5_TO_6 = ["ALTER TABLE edges ADD COLUMN call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known'))"];
+
 /** Schema 5 counts what the graph does not read: unread languages and files left out by rule (trustmybot/tmb#234). */
 const SCHEMA_4_TO_5 = ["ALTER TABLE layers ADD COLUMN not_read TEXT NOT NULL DEFAULT '{}'"];
 
@@ -200,6 +208,8 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         if (version >= 1 && version <= 2) for (const statement of SCHEMA_2_TO_3) db.run(statement);
         const hasNotRead = (db.query("SELECT 1 FROM pragma_table_info('layers') WHERE name = 'not_read'").get() ?? null) !== null;
         if (version >= 1 && version <= 4 && !hasNotRead) for (const statement of SCHEMA_4_TO_5) db.run(statement);
+        const hasCallState = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'call_state'").get() ?? null) !== null;
+        if (version >= 1 && version <= 5 && !hasCallState) for (const statement of SCHEMA_5_TO_6) db.run(statement);
         db.run(SCHEMA);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);

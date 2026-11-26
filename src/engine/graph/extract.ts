@@ -9,6 +9,8 @@ import type { Parsers } from './loader.ts';
 
 export type {
   Bound,
+  CallMark,
+  Outside,
   EdgeKind,
   ExtractedEdge,
   ExtractedExport,

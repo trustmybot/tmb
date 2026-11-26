@@ -187,7 +187,7 @@ export const OPERATIONS = {
   },
   graph_symbol: {
     description:
-      "Look up a symbol, or a file by its path, in the code graph: where it is defined, what calls or imports it, what it calls, and which tests cover it. References are linked only on proof; the rest are listed as unresolved. Use it before changing something, to see what the change may break.",
+      "Look up a symbol, or a file by its path, in the code graph: where it is defined, what calls or imports it, what it calls, and which tests cover it. References are linked only on proof; the rest are listed as unresolved. Its calls are counted by state: linked to the repo's code, outside the repo (built-ins and packages), and not known. Use it before changing something, to see what the change may break.",
     inputSchema: graph.graphSymbolSchema,
     run: graph.graphSymbol,
   },
