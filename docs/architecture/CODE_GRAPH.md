@@ -333,7 +333,7 @@ flowchart LR
 - **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
 - **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. A call that the tool resolves to a function's `@overload` stubs links to the function itself. Planned (trustmybot/tmb#368): today each Python stub is a node, so way A leaves such a call unlinked.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known.
-  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so.
+  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. Planned (trustmybot/tmb#365): today the single folder is tried first, and several environments are not reported.
 - **Way B for Go reads the packages already on the machine.** Go's module cache is its installed packages. The helper runs the user's `go` with downloads off and with the user's own Go settings.
   - **Example.** A call into a module in the cache is outside. A call into a module that is not there is not known.
   - **Edge case 1.** A file that needs a C compiler to be read (cgo) is left out of the tool's run. Its functions are nodes, and its calls are not known.
@@ -891,6 +891,7 @@ All are FTS5 virtual tables.
 | A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
+| The project's config names the Python environment first | trustmybot/tmb#365 |
 | A TypeScript method with no body is a node | trustmybot/tmb#367 |
 | Python overload stubs are no nodes | trustmybot/tmb#368 |
 | Go, Java, Rust, C and C++, each with its tool | trustmybot/tmb#352, #353, #354, #355 |
