@@ -504,3 +504,40 @@ describe("a new pointer", () => {
     }
   });
 });
+
+// A lambda bound to a file-level name is the function of that name, as in every language: the
+// variable `Steep` holds the closure and nothing else, so its lines are the function's. A lambda
+// elsewhere stays an unnamed function.
+const KETTLE = lines(
+  "int Pour(int n) { return n; }", //                           1
+  "auto Steep = [](int n) {", //                               2
+  "  return Pour(n);", //                                      3
+  "};", //                                                     4
+  "static auto Boil = [] { return Pour(1); };", //             5
+  "int Brew() {", //                                           6
+  "  auto cup = [] { return 2; };", //                         7
+  "  return Steep(2) + Boil() + cup();", //                    8
+  "}", //                                                      9
+);
+
+describe("a lambda bound to a file-level name", () => {
+  test("`auto f = [] {…}` at file level is the function `f`, its calls are `f`'s; a lambda in a function stays unnamed", async () => {
+    const db = await built({ "tea/kettle.cc": KETTLE });
+    try {
+      const rows = symbols(db, "a").filter((r) => r.path === "tea/kettle.cc");
+      expect(rows.map(({ kind, qualified_name, start_line, end_line, unnamed, exported }) => ({ kind, qualified_name, start_line, end_line, unnamed, exported }))).toEqual(
+        expect.arrayContaining([
+          { kind: "function", qualified_name: "Steep", start_line: 2, end_line: 4, unnamed: 0, exported: 1 },
+          { kind: "function", qualified_name: "Boil", start_line: 5, end_line: 5, unnamed: 0, exported: 0 },
+          { kind: "function", qualified_name: "function at line 7", start_line: 7, end_line: 7, unnamed: 1, exported: 0 },
+        ]),
+      );
+      expect(rows).toHaveLength(5);
+      const all = calls(db, "a");
+      expect(callAt(all, "tea/kettle.cc", at(KETTLE, "Pour(n)")).src).toBe("tea/kettle.cc:Steep");
+      expect(callAt(all, "tea/kettle.cc", at(KETTLE, "Pour(1)")).src).toBe("tea/kettle.cc:Boil");
+    } finally {
+      db.close();
+    }
+  });
+});
