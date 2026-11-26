@@ -118,6 +118,6 @@ One setting belongs to the person, not the project. It is kept in each channel's
 Planned (trustmybot/tmb#305). The project settings move out of the record into one text file in the workspace, with a table per purpose.
 
 - **Why.** A text file needs no reader and can be read when the database cannot. The record is then for trajectory only.
-- **Writes still go through tmb,** which records each change in the audit trail.
+- **Writes still go through tmb,** which records each change as a setting change in the record (trustmybot/tmb#408).
 - **A Human-only key stays fenced.** tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal.
 - **Open, for the Human:** whether the file is committed to git, so a team shares it.

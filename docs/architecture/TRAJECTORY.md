@@ -30,7 +30,7 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 | Check run | The checks run on a commit, each command and its result: start and end |
 | Review | A reviewer's verdict on a commit or a feature branch, its findings, and the run that wrote it |
 | Guard decision | Each allow and deny the gate gave at a checkpoint, and why |
-| Audit entry | Every change to configuration and every Human waiver |
+| Audit entry | Every change to configuration and every Human waiver. **Planned** (trustmybot/tmb#408): the catch-all goes, and a waiver, a review mark and a setting change are each their own record |
 | Doc | **Planned** (trustmybot/tmb#302). One design document: where it lives, in a repo or outside it such as a wiki, what it is for, and its repo |
 | Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
 | Pull request | **Planned** (trustmybot/tmb#405). One pull request, what it carries and its state on the remote |
@@ -570,12 +570,17 @@ erDiagram
     features |o--o{ pull_requests : "carried by"
     tasks |o--o{ pull_requests : "carried by"
     tasks |o--o{ reviews : "judged"
+    reviews |o--o{ reviews : "carried from"
+    tasks |o--o{ waivers : "waived"
+    features |o--o{ waivers : "waived"
+    features ||--o{ review_marks : "marked"
     docs |o--o{ tasks : "implemented by"
 ```
 
 | Change | Tables | Why | Issue |
 |---|---|---|---|
-| Settings leave the record | `audit` keeps the trail; the values go to a config file | The record is for trajectory only, and a text file is readable when the database is not | trustmybot/tmb#305 |
+| Settings leave the record | new `setting_changes` keeps the trail; the values go to a config file | The record is for trajectory only, and a text file is readable when the database is not | trustmybot/tmb#305 |
+| `audit` goes | new `waivers`, `review_marks`, `setting_changes`, `feedback_reports`, `imports`; `reviews`, `features` | A gate reads a waiver as a row with columns, not as text in a catch-all | trustmybot/tmb#408 |
 | Value lists move to the engine | `events` | A list checked in the schema cannot change without copying the table | trustmybot/tmb#404 |
 | tmb is an actor | `events` | The syncer and a migration write what no person or agent did | trustmybot/tmb#404 |
 | A session is a record | new `sessions`; `events`, `runs`, `tasks`, `guard_decisions` name it | Parallel sessions and a session's own cost | trustmybot/tmb#63, trustmybot/tmb#254 |
@@ -590,7 +595,7 @@ erDiagram
 
 | Column | Change |
 |---|---|
-| `record_kind` | The list is checked by the engine, not by a CHECK. It gains `session`, `pull_request`, `issue_link` and `doc` |
+| `record_kind` | The list is checked by the engine, not by a CHECK. It gains `session`, `pull_request`, `issue_link`, `doc`, `waiver`, `review_mark`, `setting_change`, `feedback_report` and `import`, and loses `audit` |
 | `actor_kind` | Gains `tmb`, for a write no person or agent made. A `tmb` actor names its source, such as the syncer |
 | `actor_role` | The list is checked by the engine, so a role a project creates is a new value |
 | `actor_session` | New, nullable. The session that acted; NULL for the Human at a terminal and for tmb |
@@ -660,7 +665,7 @@ What a GitHub issue has, and what the record takes:
 | On GitHub | In the record | Why |
 |---|---|---|
 | Priority, a built-in field | `issues.priority`, the same four values | The planner orders work by it. On the remote it is the field, not a label (trustmybot/tmb#403) |
-| Type | `issues.type` | One fact per issue, so a column and not a label |
+| Type | `issues.type` | One fact per issue, so a column. On the remote it is GitHub's issue type, not a `type/` label (trustmybot/tmb#403) |
 | Labels | `issues.labels` | Free words a project chooses |
 | Milestone | `issues.milestone`, as built | A feature branch is the work of a milestone |
 | Relationships: parent, blocked by, duplicate | `issue_links` | The order of work depends on them |
@@ -669,8 +674,7 @@ What a GitHub issue has, and what the record takes:
 | Status, effort, start and target dates | Left out | State comes from tasks, effort belongs to a run, and the record holds no schedule |
 | "Relates to" | Left out | It changes no order of work |
 
-- **Open, for the Human:** whether `type/` labels on the remote move to GitHub's issue types, as priority moves to the field.
-- **Open, for the Human:** whether a milestone needs its own table, for its state and description, or stays a name.
+- **Open, for the Human:** whether a milestone stays a name or gets its own table. As a name, a milestone is one text column on the issue: it has no state, description or remote address, and a misspelt name is a second milestone. As a table, it is one row that is open or closed, that the syncer matches to the remote milestone, and that an issue and a feature branch name by id.
 
 #### Planned: `pull_requests`
 
@@ -695,11 +699,38 @@ One row per pull request. A projection: record kind `pull_request`.
 | Table | Change |
 |---|---|
 | `tasks` | Gains `session_id` (FK → `sessions.id`), the session that started it, and `doc_id` (FK → `docs.id`), the design it implements. Loses `pr_url` |
-| `reviews` | `target_kind` and `target` go. Gains `task_id` (FK → `tasks.id`) for a review of one task. Exactly one of `task_id` and `feature_id` is set, and `commit_sha` is NOT NULL |
+| `reviews` | `target_kind` and `target` go. Gains `task_id` (FK → `tasks.id`) for a review of one task, and `carried_from` (FK → `reviews.id`, nullable). Exactly one of `task_id` and `feature_id` is set, and `commit_sha` is NOT NULL |
 | `guard_decisions` | Gains `session_id` (FK → `sessions.id`) and `run_id` (FK → `runs.id`), both nullable |
 
 - **Example.** "Why did this worker never start?" is one lookup: the guard decisions of its session.
 - **Edge case.** A push typed by hand has no session and no run. Its guard decision names neither.
+
+#### Planned: `audit` goes
+
+Planned (trustmybot/tmb#408). **Each kind of entry is its own record, with its own columns.** No catch-all table stays.
+
+- **Example 1.** The Human waives a branch's review. The gate finds one `waivers` row for that branch and commit; it parses no text.
+- **Example 2.** A setting changes. The new value is in the config file, and one `setting_changes` row says who changed it and from what.
+- **Edge case.** A rebase leaves a task's patch unchanged. The pass is carried as a new `reviews` row for the rebased commit, naming the review it carries.
+- **Edge case.** An upgrade moves each old `audit` entry into its new record. No entry is lost.
+
+| Today, an `audit` entry for | Becomes |
+|---|---|
+| A Human waiver, of a task or a feature branch | A `waivers` row |
+| A review mark sent to the remote, and a mark sent late | A `review_marks` row |
+| A review carried over a rebase | A `reviews` row with `carried_from` |
+| A setting change, how a review mode was chosen, which tmb program the project is tied to, tmb moved or removed | A `setting_changes` row |
+| A base branch brought into a feature branch | An `updated` event on the feature branch, with the base commit |
+| A feedback report filed or its form opened | A `feedback_reports` row |
+| A migration from the plugin | An `imports` row |
+
+| Table | Columns, besides `id`, `created_by`, `created_at` |
+|---|---|
+| `waivers` | `task_id` or `feature_id` (exactly one), `commit_sha`, `reason`. Only the Human writes one |
+| `review_marks` | `feature_id`, `commit_sha`, `state`, `sent_at` (NULL until the remote has it) |
+| `setting_changes` | `key`, `repo` (nullable), `old_value`, `new_value`, `how` (asked, default or set) |
+| `feedback_reports` | `route`, `url`, `issue_id` (nullable) |
+| `imports` | `source`, `repo`, `detail` |
 
 **Proposed and left out.** Each is a table the plugin had or a split that was weighed.
 
@@ -708,7 +739,7 @@ One row per pull request. A projection: record kind `pull_request`.
 | A table per review finding | A finding has no state of its own; the next review judges the next commit |
 | A table for handoffs between sessions | The record is the handoff |
 | A table for agents a project creates | Creating one is an event, and its file is the host's ([ROLES.md](ROLES.md#agents-a-project-creates)) |
-| A milestone table | A name is enough until a milestone needs a state. Open, above |
+| A milestone table | A name is enough until the syncer mirrors milestones. Open, above |
 
 #### Planned: `docs`
 
@@ -786,7 +817,7 @@ There are no embedding tables: search is ranked word search plus the code graph.
 - Every discussion and task belongs to one issue. A task may also belong to a feature branch, and may name the dropped task it replaces.
 - A run links to what it worked on: a task, or a feature branch for a branch review. A review names the feature branch and commit it judged, and the run that wrote it.
 - A feature branch and a task record the repo they were cut in; NULL is the project folder itself.
-- Settings are not a table: each change to a setting is an `audit` row, and the newest row is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305): the values move to a config file, and the record keeps only the trail of changes.
+- Settings are not a table: each change to a setting is an `audit` row, and the newest row is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305, trustmybot/tmb#408): the values move to a config file, and the record keeps only the trail, in `setting_changes`.
 - A few references are soft: `reviews.target`, `tasks.branch` and every commit column hold a name or a SHA with no declared foreign key.
 
 ### Rules the data keeps

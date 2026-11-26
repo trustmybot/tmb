@@ -23,6 +23,8 @@ To add, rename or remove a label, change it on GitHub and change this page in th
 
 ### Type — exactly one
 
+Planned (trustmybot/tmb#403): type moves to GitHub's issue types, one type per label below, and these seven labels go.
+
 | Label | Means |
 |---|---|
 | `type/bug` | Something isn't working |
