@@ -1,13 +1,14 @@
 // The public repos the code graph's tests read, each pinned to one commit: hono for the coverage
 // test (trustmybot/tmb#247) and the link check (trustmybot/tmb#242), so a form of TypeScript tmb's
 // own code does not use is still caught, flask and datasette for the benchmark's Python
-// (trustmybot/tmb#244), gin for its Go (trustmybot/tmb#352), and jsoup for its Java (trustmybot/tmb#353).
+// (trustmybot/tmb#244), gin for its Go (trustmybot/tmb#352), jsoup for its Java (trustmybot/tmb#353), and ripgrep for its
+// Rust (trustmybot/tmb#354).
 //
 //   bun tests/lib/pinned-repo.ts [folder]          fetch hono at the pinned commit (one shallow fetch)
 //   bun tests/lib/pinned-repo.ts <name> [folder]   fetch the pinned repo of that name
 //
 // A test reads a repo from its variable (TMB_PINNED_HONO, TMB_PINNED_FLASK, TMB_PINNED_DATASETTE, TMB_PINNED_GIN,
-// TMB_PINNED_JSOUP) when set, else from the cache folder below, and is skipped, saying why, when the variable is
+// TMB_PINNED_JSOUP, TMB_PINNED_RIPGREP) when set, else from the cache folder below, and is skipped, saying why, when the variable is
 // unset and the cache folder missing. The tests never use the network: CI fetches the repo in a
 // step before the test runs (.github/workflows/ci.yml).
 import { spawnSync } from "node:child_process";
@@ -52,8 +53,15 @@ export const PINNED_JSOUP: PinnedRepo = {
   env: "TMB_PINNED_JSOUP",
 };
 
+export const PINNED_RIPGREP: PinnedRepo = {
+  name: "ripgrep",
+  url: "https://github.com/BurntSushi/ripgrep.git",
+  commit: "669cb4c755db20b26c3af3d923c042ae224c7496",
+  env: "TMB_PINNED_RIPGREP",
+};
+
 /** Every pinned repo, by name. */
-export const PINNED: Readonly<Record<string, PinnedRepo>> = Object.fromEntries([PINNED_HONO, PINNED_FLASK, PINNED_DATASETTE, PINNED_GIN, PINNED_JSOUP].map((r) => [r.name, r]));
+export const PINNED: Readonly<Record<string, PinnedRepo>> = Object.fromEntries([PINNED_HONO, PINNED_FLASK, PINNED_DATASETTE, PINNED_GIN, PINNED_JSOUP, PINNED_RIPGREP].map((r) => [r.name, r]));
 
 /** Where a test looks for the repo: its variable, else the cache folder. */
 export function pinnedFolder(repo: PinnedRepo): string {

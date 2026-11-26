@@ -4,7 +4,8 @@
     "typescript": 3,
     "python": 2,
     "go": 2,
-    "java": 2
+    "java": 2,
+    "rust": 1
   },
   "entries": [
     {
@@ -375,6 +376,57 @@
             "of": 36992
           },
           "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "ripgrep",
+      "language": "rust",
+      "commit": "669cb4c755db20b26c3af3d923c042ae224c7496",
+      "reference": "rust-analyzer 1.100.0 (0ef1bc386 2026-11-09) parser",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 3460,
+            "of": 3460
+          },
+          "linksRight": {
+            "notScored": "not judged: Rust's links have no reference yet (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "linksFoundByState": {
+            "n": 495,
+            "of": 14228
+          },
+          "linksFoundByReference": {
+            "notScored": "not judged: Rust's links have no reference yet (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "callsAccountedFor": {
+            "n": 14228,
+            "of": 14228
+          },
+          "missesByCause": {
+            "notScored": "not judged: Rust's links have no reference yet (rust-analyzer, trustmybot/tmb#354)"
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "linksRight": {
+            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "linksFoundByState": {
+            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "linksFoundByReference": {
+            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "callsAccountedFor": {
+            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+          },
+          "missesByCause": {
+            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+          }
         }
       }
     }
