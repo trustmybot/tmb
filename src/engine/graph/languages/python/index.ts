@@ -488,10 +488,11 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     return builtin !== undefined && (member === undefined || builtin.has(member)) ? { outside: { kind: 'builtin', name } } : {};
   };
   // A module-level name: one a `from m import A as B` binds is looked up in m by A (trustmybot/tmb#287).
-  const moduleReference = (scope: number, kind: 'calls' | 'instantiates', name: string, line: number, call?: CallAt): void => {
+  // A call passes its place in `call`; a use that is no call, where its name is written in `at`.
+  const moduleReference = (scope: number, kind: 'calls' | 'instantiates', name: string, line: number, call?: CallAt, at?: number): void => {
     const module = sources.get(name);
-    if (module === undefined) out.edge(scope, kind, target(name), line, null, undefined, undefined, call);
-    else out.edge(scope, kind, target(name), line, module, 'import', undefined, call);
+    if (module === undefined) out.edge(scope, kind, target(name), line, null, undefined, undefined, call, at);
+    else out.edge(scope, kind, target(name), line, module, 'import', undefined, call, at);
   };
   const exportedName = (name: string): number => (name.startsWith('_') ? 0 : 1);
   const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number, parent: number): number => {
@@ -529,7 +530,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
         innerPlace = 'class';
         const superclasses = node.childForFieldName('superclasses');
         for (const base of superclasses ? named(superclasses).filter((c) => c.type === 'identifier') : []) {
-          moduleReference(inner, 'instantiates', base.text, base.startPosition.row + 1);
+          moduleReference(inner, 'instantiates', base.text, base.startPosition.row + 1, undefined, base.startIndex);
         }
         const bases = pyBases(superclasses);
         if (bases.length > 0) out.symbols[inner]!.bases = bases;
