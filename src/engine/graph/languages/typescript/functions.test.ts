@@ -157,6 +157,55 @@ export class Factory<E> {
 export const createFactory = <E,>(init?: E): Factory<E> => new Factory<E>(init)
 `;
 
+// Decorated classes and members (trustmybot/tmb#317). A symbol's lines start at its first
+// decorator and end at its last line ("Kinds of symbol" in CODE_GRAPH.md), as the compiler's do.
+const DECORATED = `function cache(): any { return () => {}; }
+function inject(): any { return () => {}; }
+@cache()
+export class Store {
+  @cache()
+  // a comment between two decorators
+  @cache()
+  load(): number {
+    return 1;
+  }
+  @cache()
+  get size(): number { return 0; }
+  @cache()
+  static make(): Store { return new Store(1); }
+  @cache() async fetch(): Promise<number> { return 1; }
+  @cache()
+  label = "";
+  constructor(@inject() n: number) {}
+}
+@cache()
+class Plain {
+  @cache()
+  run() {}
+}
+export { Plain };
+`;
+
+// The same shapes in JavaScript, which has no types and no parameter decorators.
+const DECORATED_JS = `function cache() { return () => {}; }
+@cache()
+export class Store {
+  @cache()
+  // a comment between two decorators
+  @cache()
+  load() {
+    return 1;
+  }
+  @cache()
+  get size() { return 0; }
+  @cache()
+  static make() { return new Store(); }
+  @cache() async fetch() { return 1; }
+  @cache()
+  label = "";
+}
+`;
+
 function symbols(relPath: string, text: string): ExtractedSymbol[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(relPath);
@@ -175,6 +224,9 @@ describe("every function is a node", () => {
     ["src/list.tsx", JSX],
     ["web/server.js", JS],
     ["src/factory.ts", CALL_SIGNATURES],
+    ["src/decorated.ts", DECORATED],
+    ["src/decorated.tsx", DECORATED],
+    ["web/decorated.js", DECORATED_JS],
   ] as const) {
     test(`${file} matches the TypeScript compiler one to one`, () => {
       const want = compilerFunctions(file, text);
@@ -224,6 +276,31 @@ describe("every function is a node", () => {
     expect(fn(all, "callback of `filter`").unnamed).toBe(1);
     const iface = all.find((s) => s.kind === "interface" && s.qualified_name === "CreateHandlers");
     expect([iface?.start_line, iface?.end_line]).toEqual([1, 9]);
+  });
+
+  test("a decorated symbol's lines start at its first decorator and end at its last line", () => {
+    for (const [file, text] of [
+      ["src/decorated.ts", DECORATED],
+      ["web/decorated.js", DECORATED_JS],
+    ] as const) {
+      const all = symbols(file, text);
+      const at = (kind: string, name: string) => {
+        const s = all.find((x) => x.kind === kind && x.qualified_name === name);
+        return [s?.start_line, s?.end_line];
+      };
+      const o = file.endsWith(".js") ? -1 : 0; // the JavaScript fixture has one helper fewer above
+      expect(at("class", "Store")).toEqual([3 + o, file.endsWith(".js") ? 17 : 19]);
+      expect(at("method", "Store.load")).toEqual([5 + o, 10 + o]);
+      expect(at("method", "Store.size")).toEqual([11 + o, 12 + o]);
+      expect(at("method", "Store.make")).toEqual([13 + o, 14 + o]);
+      expect(at("method", "Store.fetch")).toEqual([15 + o, 15 + o]);
+    }
+    const ts = symbols("src/decorated.ts", DECORATED);
+    const lines = (kind: string, name: string) => ts.filter((x) => x.kind === kind && x.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    // A parameter's decorator is inside its constructor: the constructor starts at its own line.
+    expect(lines("method", "Store.constructor")).toEqual([[18, 18]]);
+    expect(lines("class", "Plain")).toEqual([[20, 24]]);
+    expect(lines("method", "Plain.run")).toEqual([[22, 23]]);
   });
 
   test("the repair keeps every line and column, and touches a file it cannot improve not at all", () => {
