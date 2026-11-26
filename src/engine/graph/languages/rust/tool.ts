@@ -18,11 +18,11 @@
 // rust-analyzer cannot know without them is not known. Without rust-analyzer on PATH, way B for Rust
 // cannot run, and the built-in rules make the links.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Node, Parser } from "web-tree-sitter";
-import type { LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
+import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
 import { ENCODING, isLocal, KIND_ENUM_MEMBER, ownerOfType, packageOf, readScip, ROLE_DEFINITION, type ScipDocument } from "./scip.ts";
 
 /** The program way B for Rust runs: the user's own rust-analyzer, on PATH. */
@@ -72,12 +72,52 @@ export type RustAnalyzerOutput = {
   failed: string[];
 };
 
-/** Whether rust-analyzer runs, or why not. */
-function rustAnalyzerOnPath(): true | { unavailable: string } {
+/** rust-analyzer's version, as `rust-analyzer --version` reports it, or why it does not run. */
+function rustAnalyzerVersion(): { version: string } | { unavailable: string } {
   const run = spawnSync(RUST_ANALYZER, ["--version"], { encoding: "utf8", env: { ...process.env, ...TOOL_ENV } });
   if (run.error !== undefined) return { unavailable: "no `rust-analyzer` on PATH" };
   if (run.status !== 0) return { unavailable: `\`rust-analyzer --version\` failed: ${run.stderr.trim()}` };
-  return true;
+  return { version: run.stdout.trim() };
+}
+
+/** Cargo's home, where it keeps the crates it fetched: `$CARGO_HOME`, else `~/.cargo` (The Cargo Book, "Cargo Home"). */
+function cargoHome(): string {
+  const set = process.env.CARGO_HOME?.trim();
+  return set ? path.resolve(set) : path.join(homedir(), ".cargo");
+}
+
+/** Where Cargo unpacks a registry's crates, one folder per registry: `<CARGO_HOME>/registry/src/<registry>/<name>-<version>`. */
+const REGISTRY_SOURCES = ["registry", "src"] as const;
+
+/**
+ * The crates the repo's Cargo.lock files resolve from a registry, as Cargo names their unpacked
+ * folders: `<name>-<version>`. A package of the repo itself, or one from a path, has no `source`;
+ * one from git is not in the registry (The Cargo Book, "Cargo.toml vs Cargo.lock").
+ */
+export function registryCrates(locks: Iterable<string>): string[] {
+  const out = new Set<string>();
+  for (const text of locks) {
+    for (const block of text.split(/^\[\[package\]\]\s*$/m).slice(1)) {
+      const field = (key: string) => new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m").exec(block)?.[1];
+      const name = field("name");
+      const version = field("version");
+      const source = field("source");
+      if (name === undefined || version === undefined || source === undefined) continue;
+      if (source.startsWith("registry+") || source.startsWith("sparse+")) out.add(`${name}-${version}`);
+    }
+  }
+  return [...out].sort();
+}
+
+/** The text of each Cargo.lock in a folder that holds Rust code or is above one. */
+function locksOf(input: Pick<ToolInput, "files" | "configs" | "read">): string[] {
+  const out: string[] = [];
+  for (const dir of foldersOf(input.files.keys())) {
+    const rel = inFolder(dir, "Cargo.lock");
+    const text = input.configs.get(rel) ?? input.read(rel);
+    if (text !== undefined) out.push(text);
+  }
+  return out;
 }
 
 /** The repo's path of a folder's file, "." being the root. */
@@ -360,19 +400,36 @@ export const rustAnalyzer: LanguageTool = {
   name: "rust-analyzer",
   reads: (file) => (MANIFESTS as readonly string[]).includes(path.posix.basename(file)),
   async open() {
-    const ra = rustAnalyzerOnPath();
-    if (ra !== true) return ra;
+    const ra = rustAnalyzerVersion();
+    if ("unavailable" in ra) return ra;
     // The parser that finds a call's extent; loaded here, as the graph's loader names this module.
     const { loadParsers } = await import("../../loader.ts");
     const parser = (await loadParsers(["rust"])).get("rust");
     if (parser === undefined) return { unavailable: "the Rust grammar did not load" };
     return {
-      answer(input, note) {
+      answer(input, note, readFrom) {
+        readFrom(registryCrates(locksOf(input)));
         const out = runRustAnalyzer(input);
         for (const failed of out.failed) note(failed);
         if (out.workspaces.length === 0 && out.failed.length === 0) note("no Cargo.toml: rust-analyzer loads no file");
         return answerCalls(input, out, parser);
       },
     };
+  },
+  // The tool is the user's rust-analyzer, as it reports its version. The installed packages are
+  // Cargo's registry on disk: of each crate Cargo.lock resolves from a registry, whether Cargo has
+  // unpacked it, in any registry's folder.
+  builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
+    const ra = rustAnalyzerVersion();
+    if ("unavailable" in ra) return { tool: `cannot run: ${ra.unavailable}`, packages: "" };
+    const sources = path.join(cargoHome(), ...REGISTRY_SOURCES);
+    let registries: string[] = [];
+    try {
+      registries = readdirSync(sources).sort();
+    } catch {
+      // No registry on disk: no crate is held.
+    }
+    const held = places.map((place) => `${place}: ${registries.some((r) => existsSync(path.join(sources, r, place))) ? "held" : "not held"}`);
+    return { tool: ra.version, packages: [`registry: ${sources}`, ...held].join("\n") };
   },
 };

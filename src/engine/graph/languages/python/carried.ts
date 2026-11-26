@@ -14,7 +14,11 @@ import path from "node:path";
 import entryFile from "pyright/dist/pyright.js" with { type: "file" };
 import internalFile from "pyright/dist/pyright-internal.js" with { type: "file" };
 import vendorFile from "pyright/dist/vendor.js" with { type: "file" };
+import carriedPackage from "pyright/package.json" with { type: "json" };
 import { packedStdlib } from "./stdlib.ts" with { type: "macro" };
+
+/** The version of the pyright tmb carries, as its package names it. */
+export const CARRIED_VERSION: string = carriedPackage.version;
 
 /** The standard library's stubs, packed when tmb is built. */
 const PACKED_STDLIB: string = packedStdlib();
