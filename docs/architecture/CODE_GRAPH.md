@@ -194,6 +194,7 @@ Each language is a module of its own (trustmybot/tmb#157). Every module answers 
 | Python | Planned (trustmybot/tmb#141) | Yes |
 | Go | Yes | Yes |
 | Java | Yes | Yes |
+| Rust | Yes | Yes |
 | bash, SQL, Perl | Planned (trustmybot/tmb#141) | No |
 
 ## Links on proof
@@ -312,7 +313,7 @@ flowchart LR
   - **The benchmark's reference reads the same configs**, so the reference is the compiler as the project sets it up.
 - **When the tool cannot run, way A builds the graph.** A carried tool cannot run when it fails to load or stops with an error; a tool tmb does not carry cannot run when the repo is not set up for it. Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
-- **Way B per language.** Each tool was chosen by its own A/B test. Rust (trustmybot/tmb#354), and C and C++ (trustmybot/tmb#355) are Planned.
+- **Way B per language.** Each tool was chosen by its own A/B test. C and C++ are Planned (trustmybot/tmb#355).
 
 | Language | Tool | Whose copy | Needs from the user |
 |---|---|---|---|
@@ -339,7 +340,7 @@ flowchart LR
   - **Edge case 1.** A named type that lists its methods holds them, whatever keyword declares it: `type Store = { get(): string }` gives `Store.get` too.
   - **Edge case 2.** A class and an interface of one name both list `get`. The class's `get` is the definition, so it is the one node.
   - **Edge case 3.** A function with only a declaration, `declare function f()`, is no node. The code that runs is elsewhere, and nothing in the file proves where.
-- **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
+- **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped. Planned (trustmybot/tmb#383): today neither way finds a call inside a macro's input, and calls accounted for does not count them.
 - **Overload stubs are one function.** The stubs are no nodes; the one definition that runs is the node, in either way. Stubs with no definition after them, as in a Python `Protocol`, are one node together: a method with only a declaration. A call that the tool resolves to a function's `@overload` stubs links to the function itself.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known: tmb carries the tool's stubs for the standard library only.
   - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so. The config's choice is read the way the tool reads it, also when it names a folder outside the repo; a folder that is not there counts as no environment, and freshness says so.
@@ -351,6 +352,8 @@ flowchart LR
   - **Example.** A test calls `assertEquals(a, cart.total())`. JUnit is not on the class path, so javac reports an error at the call and it is not known. A call between the repo's own classes links.
   - **Edge case 1.** A repo with several modules is read as one set of sources.
   - **Edge case 2.** A method reference, `Cart::total`, is a use and no call. A constructor is named as Java names it, `Cart.Cart`.
+- **Way B for Rust reads the Cargo workspaces the repo declares.** A file in no workspace is not loaded, and its calls are not known. No build script and no macro program is run.
+  - **Edge case.** `Self(x)` in a tuple struct's own code. The tool gives no answer for it, so it is not known.
 - **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
@@ -525,6 +528,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#244): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
 | Go | gin | Go's own parser | Go's type checker |
 | Java | jsoup | javac | javac |
+| Rust | ripgrep | rust-analyzer | rust-analyzer |
 
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
 - **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
@@ -910,7 +914,8 @@ All are FTS5 virtual tables.
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
-| Rust, C and C++, each with its tool | trustmybot/tmb#354, #355 |
+| Calls inside a macro's input | trustmybot/tmb#383 |
+| C and C++, with clangd | trustmybot/tmb#355 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
