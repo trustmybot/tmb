@@ -268,7 +268,7 @@ flowchart LR
 | | Way A: built-in rules | Way B: the language's own tool |
 |---|---|---|
 | Makes links with | The syntax tree and tmb's lookup rules ([Links on proof](#links-on-proof)) | The language's compiler or indexer, which knows types |
-| Needs | Nothing installed | The tool, and the project set up for it |
+| Needs | Nothing installed | The tool, and the project set up for it. tmb carries the TypeScript compiler |
 | Strong at | Any repo, any commit, offline | A method call on an object, an inherited method, a worked-out type |
 | Weak at | Calls that need a type | A repo that is not set up, a language with no tool, a commit the tool did not index |
 
@@ -282,10 +282,10 @@ flowchart LR
 - **A call is identified by its position in the file**, so two calls of one name on one line each get their own answer. Planned (trustmybot/tmb#323): today they are matched by line and name, and when their answers differ both are not known.
 - **Way B reads the working tree.** The installed packages on disk are how it knows a call goes outside the repo. Without them a package call is not known. It is never guessed to be outside.
 - **Way B follows the project's own configs.** A file is resolved under the config that owns it. Planned (trustmybot/tmb#324): today only the root config is read.
-- **Any version of the tool is accepted** when it offers the interface way B uses. A version that does not is treated as a tool that cannot run.
 - **When the tool cannot run, way A builds the graph.** Every link records the built-in rules. The repo's graph records that the language's tool was asked for and why it did not run, and the answer's freshness says so.
 - **A way B graph is stale when the tool or the installed packages change.** Planned (trustmybot/tmb#325).
 - **Way B per language.** TypeScript and JavaScript use the TypeScript compiler. Other languages read a SCIP index, the open format language indexers write (trustmybot/tmb#156).
+- **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. Planned (trustmybot/tmb#328): today the compiler is read from the repo's installed packages.
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
   - **Example 2.** A Python repo with no virtual environment. Way B cannot run. The graph is built by way A, and the answer's freshness says so.
@@ -293,7 +293,7 @@ flowchart LR
 - **Way A keeps growing.** Its next proofs are the stated types (trustmybot/tmb#249), the four bindings (trustmybot/tmb#287) and the other languages (trustmybot/tmb#141).
 - **No rule is written for one repo.** A rule in either way is the language's rule. Neither way names a benchmark repo, a file or a symbol of one, and a failing benchmark case is fixed by the rule or left unlinked.
 
-Open, for the Human: which way is the default, after the first report. Whether tmb's program carries the TypeScript compiler inside it, so way B needs no install for TypeScript.
+Open, for the Human: which way is the default.
 
 ## Concepts
 
@@ -769,6 +769,7 @@ All are FTS5 virtual tables.
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Each name a file-level destructuring binds is a node | trustmybot/tmb#322 |
+| tmb carries the TypeScript compiler for way B | trustmybot/tmb#328 |
 | Way B identifies a call by its position | trustmybot/tmb#323 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
