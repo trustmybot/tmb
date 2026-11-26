@@ -4,6 +4,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   callsAccountedFor,
+  ENFORCED,
   entry,
   falls,
   format,
@@ -116,8 +117,24 @@ const stored = (a: WayScores): Stored => ({ command: "test", entries: [entry({ r
 describe("a fall fails", () => {
   test("a score lower than the stored one is a fall, named by repo, way and score", () => {
     const f = falls(stored(scored(6, 7)), stored(scored(5, 7)));
-    expect(f).toHaveLength(2);
-    expect(f.join("\n")).toContain("r typescript way A linksFoundByState");
+    expect(f).toEqual([expect.stringContaining("r typescript way A linksFoundByReference")]);
+  });
+
+  // "Links found is scored against the reference": links found from the call states is shown, never enforced.
+  test("links found from the call states may fall; links found against the reference may not", () => {
+    const byState = scored(6, 7);
+    byState.linksFoundByState = { n: 1, of: 7 };
+    expect(falls(stored(scored(6, 7)), stored(byState))).toEqual([]);
+    byState.linksFoundByState = { notScored: "not judged" };
+    expect(falls(stored(scored(6, 7)), stored(byState))).toEqual([]);
+    expect(ENFORCED).toEqual(["functionsFound", "linksRight", "linksFoundByReference", "callsAccountedFor"]);
+  });
+
+  test("every enforced score that falls is named", () => {
+    const low: WayScores = { functionsFound: { n: 1, of: 2 }, linksRight: { n: 1, of: 2 }, linksFoundByState: { n: 1, of: 2 }, linksFoundByReference: { n: 1, of: 2 }, callsAccountedFor: { n: 1, of: 2 }, missesByCause: {} };
+    const f = falls(stored(scored(2, 2)), stored(low)).join("\n");
+    for (const name of ENFORCED) expect(f).toContain(`way A ${name}:`);
+    expect(f).not.toContain("linksFoundByState");
   });
 
   test("the same share over other counts is no fall; a higher one is a rise", () => {
