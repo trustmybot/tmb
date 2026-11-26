@@ -495,10 +495,13 @@ test("without rust-analyzer on PATH, way B for Rust does not run: the built-in r
     symlinkSync(gitPath, path.join(empty, "git"));
     const sha = commit({ "Cargo.toml": CARGO_TOML, "src/crates.rs": CRATES });
     setEnv("PATH", empty);
+    // Cargo's home holds no rustup copy either.
+    setEnv("CARGO_HOME", empty);
     const db = openGraphDb(project, null);
     try {
       const stats = await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
-      expect(stats.linksNote).toContain("rust: rust-analyzer cannot run (no `rust-analyzer` on PATH), so the built-in rules");
+      expect(stats.linksNote).toContain("rust: rust-analyzer cannot run (rust-analyzer is missing: no `rust-analyzer` on PATH or in ");
+      expect(stats.linksNote).toContain(" or in tmb's tools folder), so the built-in rules");
       expect(layerRow(db, "b")?.links_note).toBe(stats.linksNote);
       expect(call(calls(db, "b"), "src/crates.rs:stack", "slat")).toMatchObject({ dst: "src/crates.rs:slat", call_state: "linked" });
     } finally {

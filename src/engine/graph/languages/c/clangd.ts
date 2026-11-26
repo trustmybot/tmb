@@ -1,4 +1,4 @@
-// Way B for C and C++ (trustmybot/tmb#355): clangd, the user's own, makes the links of the graph's
+// Way B for C and C++ (trustmybot/tmb#355): clangd makes the links of the graph's
 // calls. It asks the compiler; it does not imitate it. C and C++ share it: one run reads both, and a
 // file's language is what the compile database's command for it says, not its ending.
 //
@@ -28,13 +28,15 @@
 //   error clangd reports at the call ("An answer given on an error is no answer").
 //
 // clangd runs with no background index, so it writes nothing into the repo, and with no
-// `--query-driver`, so it runs no compiler of the repo's. Without `clangd` on PATH, way B for C and
-// C++ cannot run, and the built-in rules make the links.
+// `--query-driver`, so it runs no compiler of the repo's. The copy of clangd is the one the find
+// order finds (tool-copy.ts); with none, way B for C and C++ cannot run, and the built-in rules make
+// the links.
 import { createHash } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { atLeast, versionNumbers } from "../../tool-copy.ts";
 import type { BuiltWith, LanguageTool, OpenedTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
@@ -145,12 +147,23 @@ export function findDatabase(repoDir: string): Database | { unavailable: string 
   return { folder: path.dirname(file), files };
 }
 
-/** The `clangd` on PATH, as the first line of `clangd --version` names it, or why it does not run. */
-function clangdVersion(): { version: string } | { unavailable: string } {
-  const run = spawnSync("clangd", ["--version"], { encoding: "utf8" });
-  if (run.error !== undefined) return { unavailable: "no `clangd` on PATH" };
-  if (run.status !== 0) return { unavailable: `\`clangd --version\` failed: ${run.stderr.trim()}` };
-  return { version: run.stdout.trim().split("\n")[0]!.trim() };
+/** The program way B for C and C++ runs, as the find order names it. */
+export const CLANGD = "clangd";
+
+/**
+ * The lowest clangd tmb supports: the first whose `textDocument/symbolInfo` gives a symbol's
+ * declaration and definition ranges, which answerOf reads (LLVM 16, clangd's Protocol.cpp). Its
+ * flags (CLANGD_FLAGS) are all in clangd 9.
+ */
+export const LOWEST_CLANGD = "16";
+
+/** `clangd --version`'s first line: `[<vendor> ]clangd version <version>[ …]`. */
+const VERSION_LINE = /\bclangd version (\d+(?:\.\d+)*)/;
+
+/** Whether a report is at or above the lowest clangd tmb supports. */
+export function supportedClangd(report: string): boolean {
+  const match = VERSION_LINE.exec(report);
+  return match !== null && atLeast(versionNumbers(match[1]!), versionNumbers(LOWEST_CLANGD));
 }
 
 /** The compile database clangd would read in the repo, as its place and the hash of its text, or "none". */
@@ -181,8 +194,8 @@ class Connection {
   private failed: Error | null = null;
   private readonly child;
 
-  constructor(folder: string, cwd: string) {
-    this.child = spawn("clangd", [`--compile-commands-dir=${folder}`, ...CLANGD_FLAGS], { cwd, stdio: ["pipe", "pipe", "ignore"] });
+  constructor(program: string, folder: string, cwd: string) {
+    this.child = spawn(program, [`--compile-commands-dir=${folder}`, ...CLANGD_FLAGS], { cwd, stdio: ["pipe", "pipe", "ignore"] });
     this.child.stdout.on("data", (data: Buffer) => this.read(data));
     const fail = (error: Error) => {
       this.failed = error;
@@ -375,6 +388,7 @@ export async function answerCalls(
   input: ToolInput,
   note: (text: string) => void,
   readFrom: (places: readonly string[]) => void = () => {},
+  program: string = CLANGD,
 ): Promise<ToolAnswer[]> {
   const root = realpathSync(repoDir);
   const nodes = new Map<string, Place[]>();
@@ -385,7 +399,7 @@ export async function answerCalls(
   });
   const answers: ToolAnswer[] = input.calls.map(() => NOT_KNOWN);
   const outside = new Set<string>();
-  const conn = new Connection(database.folder, root);
+  const conn = new Connection(program, database.folder, root);
   try {
     await conn.request("initialize", { processId: process.pid, rootUri: pathToFileURL(root).href, capabilities: { textDocument: { publishDiagnostics: {} } } });
     conn.notify("initialized", {});
@@ -424,20 +438,25 @@ export async function answerCalls(
 /** clangd, way B's tool for C and C++. */
 export const clangdTool: LanguageTool = {
   name: "clangd",
-  open(repoDir: string): OpenedTool {
-    const clangd = clangdVersion();
-    if ("unavailable" in clangd) return clangd;
+  copy: {
+    program: CLANGD,
+    what: "clangd",
+    versionArgs: ["--version"],
+    report: ({ stdout }) => stdout.trim().split("\n")[0]!.trim(),
+    lowest: `clangd ${LOWEST_CLANGD}`,
+    supported: supportedClangd,
+    tmbInstalls: true,
+  },
+  open(repoDir: string, found): OpenedTool {
     const database = findDatabase(repoDir);
     if ("unavailable" in database) return database;
-    return { answer: (input, note, readFrom) => answerCalls(repoDir, database, input, note, readFrom) };
+    return { answer: (input, note, readFrom) => answerCalls(repoDir, database, input, note, readFrom, found.path ?? CLANGD) };
   },
-  // The tool is the user's clangd, as it reports its version. What it reads beyond the commit is the
-  // project's compile database, which a build makes and git does not hold, and the headers outside
-  // the repo that its answers name (the places): whether each is still on disk.
+  // What it reads beyond the commit is the project's compile database, which a build makes and git
+  // does not hold, and the headers outside the repo that its answers name (the places): whether
+  // each is still on disk.
   builtWith(repoDir: string, places: readonly string[]): BuiltWith {
-    const clangd = clangdVersion();
-    if ("unavailable" in clangd) return { tool: `cannot run: ${clangd.unavailable}`, packages: "" };
     const held = places.map((place) => `${place}: ${existsSync(place) ? "held" : "not held"}`);
-    return { tool: clangd.version, packages: [`compile database: ${databaseState(repoDir)}`, ...held].join("\n") };
+    return { packages: [`compile database: ${databaseState(repoDir)}`, ...held].join("\n") };
   },
 };

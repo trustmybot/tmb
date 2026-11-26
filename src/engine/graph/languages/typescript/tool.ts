@@ -246,14 +246,16 @@ function installedIn(folder: string): string {
 /** The TypeScript compiler, way B's tool for TypeScript, TSX and JavaScript. */
 export const typescriptCompiler: LanguageTool = {
   name: "the TypeScript compiler",
+  // tmb carries it in its own program: tmb's copy, at the version it carries.
+  copy: { carried: CARRIED_VERSION },
   open(repoDir: string) {
     const compiler = carriedCompiler();
     if ("unavailable" in compiler) return compiler;
     return { answer: (input: ToolInput, _note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(compiler, repoDir, input, readFrom) };
   },
-  // The compiler is the one tmb carries, so its version is tmb's own; the installed packages are
+  // The compiler is the one tmb carries, so the find order gives its version; the installed packages are
   // those of each installed packages' folder the compiler looked in.
   builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
-    return { tool: CARRIED_VERSION, packages: places.map(installedIn).join("\n") };
+    return { packages: places.map(installedIn).join("\n") };
   },
 };

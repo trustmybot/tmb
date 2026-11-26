@@ -9,7 +9,7 @@ import { HEURISTICS_CONSIDER } from "../linguist/index.ts";
 import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, moduleOfLanguages, NODE_MODULES_RULE, type SourceLanguage, splitWords, SYMBOL_KINDS, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
 import { commitReader, listTree, readBlobs, type TreeEntry } from "./git-source.ts";
-import type { LanguageTool, ToolAnswer, ToolCall, ToolNode } from "./languages/contract.ts";
+import type { LanguageTool, ToolAnswer, ToolCall, ToolNode, Whose } from "./languages/contract.ts";
 import { LANGUAGES, languageNamed } from "./languages/registry.ts";
 import { unreadLanguage } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
@@ -20,6 +20,7 @@ import { laneOf } from "./test-paths.ts";
 import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
+import { type CopySearch, findCopy, machinePlaces } from "./tool-copy.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
 export const EXTRACTOR_VERSION = 35;
@@ -245,17 +246,20 @@ const NO_TOOL_LINKS: ToolLinks = { answers: new Map(), note: null, builtWith: nu
 
 /**
  * What a way B layer was built with (CODE_GRAPH.md: "A way B graph is stale when the tool or the
- * installed packages change", trustmybot/tmb#325): for each tool asked for a language of the layer,
- * by its name, the tool as it reported itself, a digest of the installed packages it read, and the
- * places it read them from, which a later read reads again.
+ * installed packages change", trustmybot/tmb#325; "Where a language's tool comes from",
+ * trustmybot/tmb#392): for each tool asked for a language of the layer, by its name, whose copy it
+ * was (or that none was found) and where it is, the tool as it reported itself (or why it is
+ * missing), a digest of the installed packages it read, and the places it read them from, which a
+ * later read reads again.
  */
-export type BuiltWithRecord = Record<string, { tool: string; packages: string; places: string[] }>;
+export type BuiltWithRecord = Record<string, { whose: Whose | "missing"; path: string | null; tool: string; packages: string; places: string[] }>;
 
-/** One tool's entry of a BuiltWithRecord, made now. */
-function builtWithEntry(tool: LanguageTool, repoDir: string, places: readonly string[]): BuiltWithRecord[string] {
+/** One tool's entry of a BuiltWithRecord, made now, with the copy the find order found. */
+function builtWithEntry(tool: LanguageTool, repoDir: string, places: readonly string[], found: CopySearch): BuiltWithRecord[string] {
   const sorted = [...new Set(places)].sort();
-  const now = tool.builtWith(repoDir, sorted);
-  return { tool: now.tool, packages: createHash("sha256").update(now.packages).digest("hex"), places: sorted };
+  const copy = "missing" in found ? { whose: "missing" as const, path: null, tool: `missing: ${found.missing}` } : { whose: found.whose, path: found.path, tool: found.version };
+  const packages = "missing" in found ? "" : tool.builtWith(repoDir, sorted, found).packages;
+  return { ...copy, packages: createHash("sha256").update(packages).digest("hex"), places: sorted };
 }
 
 /** The record as stored: its tools in the order of their names, so one record is one text. */
@@ -263,7 +267,8 @@ const recordText = (record: BuiltWithRecord): string => JSON.stringify(Object.fr
 
 /**
  * Whether what a way B layer was built with is what it would be built with now: each tool it
- * records reports the same version and finds the same installed packages at the same places. A
+ * records is the same copy, found by the same order, reporting the same version, and finds the
+ * same installed packages at the same places. A
  * layer that records nothing, as one built before it was recorded, is not; nor is one that names a
  * tool tmb no longer has.
  */
@@ -279,8 +284,8 @@ export function stillBuiltWith(repoDir: string, recorded: string | null): boolea
   for (const [name, entry] of Object.entries(record)) {
     const tool = tools.get(name);
     if (tool === undefined) return false;
-    const now = builtWithEntry(tool, repoDir, entry.places);
-    if (now.tool !== entry.tool || now.packages !== entry.packages) return false;
+    const now = builtWithEntry(tool, repoDir, entry.places, findCopy(tool.copy, machinePlaces()));
+    if (now.whose !== entry.whose || now.path !== entry.path || now.tool !== entry.tool || now.packages !== entry.packages) return false;
   }
   return true;
 }
@@ -316,11 +321,20 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
   const builtWith: BuiltWithRecord = {};
   for (const [tool, langs] of tools) {
     if (!langs.some((lang) => present.has(lang))) continue;
-    const opened = await tool.open(repoDir);
+    // The copy of the tool, in the one find order; the layer records whose it was.
+    const found = findCopy(tool.copy, machinePlaces());
+    if ("missing" in found) {
+      notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${found.missing})${BUILT_IN_RULES}`);
+      // A tool that is missing is recorded too: once a copy is found, the layer is stale.
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, [], found);
+      continue;
+    }
+    if (found.note !== undefined) notes.push(`${langs.join(", ")}: ${tool.name}: ${found.note}`);
+    const opened = await tool.open(repoDir, found);
     if ("unavailable" in opened) {
       notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable})${BUILT_IN_RULES}`);
       // A tool that could not run is recorded too: once it can, the layer is stale.
-      builtWith[tool.name] = builtWithEntry(tool, repoDir, []);
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, [], found);
       continue;
     }
     const mine = new Set(langs);
@@ -375,7 +389,7 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
       notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)})${BUILT_IN_RULES}`);
       continue;
     } finally {
-      builtWith[tool.name] = builtWithEntry(tool, repoDir, places);
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, places, found);
     }
     answered.forEach((answer, i) => {
       if (!("nodes" in answer)) answers.set(callRows[i]!, answer);

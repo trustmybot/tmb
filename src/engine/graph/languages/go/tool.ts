@@ -12,13 +12,15 @@
 //
 // It runs no code of the repo and downloads nothing. The repo's files are read from the commit;
 // the modules it needs from the module cache on disk (GOPROXY=off), and without them a call into
-// them is not known. Without `go` on PATH, way B for Go cannot run, and the built-in rules make
-// the links.
+// them is not known. The `go` is the user's, as the find order finds it (tool-copy.ts): tmb installs
+// a tool, never a language. Without it, way B for Go cannot run, and the built-in rules make the
+// links.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import GOTYPES from "./gotypes.go" with { type: "text" };
+import { atLeast, versionNumbers } from "../../tool-copy.ts";
 import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 /** The settings files of a Go module or workspace that the go command reads beside the code ("Modules", "Workspaces", "Vendoring"). */
@@ -55,12 +57,22 @@ export type HelperCall = {
 
 export type HelperOutput = { go: string; modules: string[]; errors: number; firstErrors: string[]; loaded: string[]; calls: HelperCall[] };
 
-/** The `go` on PATH, as `go version` reports it, or why it does not run. */
-function goVersion(): { version: string } | { unavailable: string } {
-  const run = spawnSync("go", ["version"], { encoding: "utf8", env: { ...process.env, ...HELPER_ENV } });
-  if (run.error !== undefined) return { unavailable: "no `go` on PATH" };
-  if (run.status !== 0) return { unavailable: `\`go version\` failed: ${run.stderr.trim()}` };
-  return { version: run.stdout.trim() };
+/** The program way B for Go runs: the user's own `go`. */
+export const GO = "go";
+
+/**
+ * The lowest Go tmb supports: the helper calls go/ast's Unparen, which Go 1.22 added (Go's API
+ * list, api/go1.22.txt).
+ */
+export const LOWEST_GO = "1.22";
+
+/** `go version`: `go version go<version>[-…] <os>/<arch>`, or a development build's `devel go<version>-…`. */
+const VERSION_LINE = /\bgo(\d+(?:\.\d+)*)/;
+
+/** Whether a report is at or above the lowest Go tmb supports. */
+export function supportedGo(report: string): boolean {
+  const match = VERSION_LINE.exec(report.replace(/^go version /, ""));
+  return match !== null && atLeast(versionNumbers(match[1]!), versionNumbers(LOWEST_GO));
 }
 
 /** The files that list the module versions a module or a workspace needs, with their checksums ("go.sum files"). */
@@ -101,7 +113,7 @@ function foldersOf(files: Iterable<string>): Set<string> {
  * Runs the helper on the repo's files at the commit, written to a scratch folder with the module
  * settings files of every folder that holds Go code, and returns its answer.
  */
-export function runHelper(input: Pick<ToolInput, "files" | "read">): HelperOutput {
+export function runHelper(input: Pick<ToolInput, "files" | "read">, program: string = GO): HelperOutput {
   const scratch = mkdtempSync(path.join(tmpdir(), "tmb-gotypes-"));
   try {
     const repo = path.join(scratch, "repo");
@@ -121,7 +133,7 @@ export function runHelper(input: Pick<ToolInput, "files" | "read">): HelperOutpu
     const helper = path.join(scratch, "helper");
     mkdirSync(helper);
     writeFileSync(path.join(helper, "gotypes.go"), GOTYPES);
-    const run = spawnSync("go", ["run", "gotypes.go", repo], { cwd: helper, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env: { ...process.env, ...HELPER_ENV } });
+    const run = spawnSync(program, ["run", "gotypes.go", repo], { cwd: helper, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env: { ...process.env, ...HELPER_ENV } });
     if (run.error !== undefined || run.status !== 0) throw new Error(`the Go helper failed: ${run.error?.message ?? run.stderr.trim()}`);
     return JSON.parse(run.stdout) as HelperOutput;
   } finally {
@@ -171,31 +183,38 @@ function sumsOf(input: Pick<ToolInput, "files" | "read">): string[] {
 }
 
 /** Where the go command keeps the module cache, as `go env` reports it with the user's own settings; null when it does not say. */
-function moduleCache(): string | null {
-  const run = spawnSync("go", ["env", "GOMODCACHE"], { encoding: "utf8", env: { ...process.env, ...HELPER_ENV } });
+function moduleCache(program: string): string | null {
+  const run = spawnSync(program, ["env", "GOMODCACHE"], { encoding: "utf8", env: { ...process.env, ...HELPER_ENV } });
   return run.error === undefined && run.status === 0 && run.stdout.trim() !== "" ? run.stdout.trim() : null;
 }
 
 /** Go's type checker, way B's tool for Go. */
 export const goTypeChecker: LanguageTool = {
   name: "Go's type checker (go/types)",
-  open() {
-    const go = goVersion();
-    if ("unavailable" in go) return go;
+  copy: {
+    program: GO,
+    what: "the `go` command",
+    versionArgs: ["version"],
+    env: HELPER_ENV,
+    report: ({ stdout }) => stdout.trim(),
+    lowest: `Go ${LOWEST_GO}`,
+    supported: supportedGo,
+    tmbInstalls: false,
+  },
+  open(_repoDir, found) {
+    const program = found.path ?? GO;
     return {
       answer: (input: ToolInput, _note: (text: string) => void, readFrom: (places: readonly string[]) => void) => {
         readFrom(cacheFolders(sumsOf(input)));
-        return answerCalls(input, runHelper(input));
+        return answerCalls(input, runHelper(input, program));
       },
     };
   },
-  // The tool is the user's `go`, as it reports its version. The installed packages are the module
-  // cache: of each module version go.sum lists, whether the cache holds it.
-  builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
-    const go = goVersion();
-    if ("unavailable" in go) return { tool: `cannot run: ${go.unavailable}`, packages: "" };
-    const cache = moduleCache();
+  // The installed packages are the module cache: of each module version go.sum lists, whether the
+  // cache holds it.
+  builtWith(_repoDir: string, places: readonly string[], found): BuiltWith {
+    const cache = moduleCache(found.path ?? GO);
     const held = places.map((place) => `${place}: ${cache !== null && existsSync(path.join(cache, ...place.split("/"))) ? "held" : "not held"}`);
-    return { tool: go.version, packages: [`module cache: ${cache ?? "none"}`, ...held].join("\n") };
+    return { packages: [`module cache: ${cache ?? "none"}`, ...held].join("\n") };
   },
 };

@@ -345,7 +345,7 @@ describe("the graph's store", () => {
       ["", "data_source", "orders"],
     ];
     for (const [file, kind, name] of old) insert.run(file, kind, name, name);
-    db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION - 1}`);
+    db.run("PRAGMA user_version = 9");
     db.close();
     const upgraded = openGraphDb(project, null);
     expect(upgraded.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });

@@ -27,7 +27,10 @@ import {
 } from "../handlers/index.ts";
 import type { Area } from "../graph/areas.ts";
 import type { Concept } from "../graph/concepts.ts";
+import { existsSync } from "node:fs";
+import { graphDbPath, openGraphDb } from "../graph/db.ts";
 import { indexProject } from "../graph/fresh.ts";
+import { baseLanguages, toolLine, type ToolRow, toolRows } from "../graph/tool-report.ts";
 import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
 import type { CallCounts, Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
@@ -818,6 +821,66 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
   } finally {
     opened.store.close();
   }
+}
+
+export const TOOLS_USAGE = `  tmb tools [--json]        List each language of the indexed code with its tool and whose
+                            copy the code graph would use now: a copy the setting names, the
+                            user's own, tmb's, or that it is missing; in a workspace, each
+                            repo's. Installs nothing`;
+
+/** The languages of one graph's indexed base branch; null when the graph is not indexed yet. */
+function indexedLanguages(projectDir: string, repo: string | null): string[] | null {
+  if (!existsSync(graphDbPath(projectDir, repo))) return null;
+  const db = openGraphDb(projectDir, repo);
+  try {
+    const languages = baseLanguages(db);
+    return languages.length === 0 && db.query("SELECT 1 FROM layers WHERE layer = 'base'").get() === null ? null : languages;
+  } finally {
+    db.close();
+  }
+}
+
+/** Lists each language's tool and whose copy it is, as `tmb tools` does; resolves to the exit code. */
+export async function runToolsCommand(args: string[], projectDir: string, output: Output): Promise<number> {
+  let json: boolean;
+  try {
+    const { values, positionals } = parse(args, {});
+    if (positionals.length > 0) throw new UsageError(`tools takes no arguments, got ${positionals.join(" ")}`);
+    json = values.json === true;
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    writeUsageError("tools", error, output);
+    return 2;
+  }
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) {
+    output.err(
+      opened.error.failure === "missing" ? `tmb: no tmb record in ${projectDir}; run \`${runningName()} init\` there first.` : `tmb: cannot use the record: ${opened.error.message}`,
+    );
+    return 1;
+  }
+  let graphs: (string | null)[];
+  try {
+    const repos = workspaceRepos(opened.store);
+    graphs = repos === null ? [null] : workingRepos(repos);
+  } finally {
+    opened.store.close();
+  }
+  const all: { repo: string | null; tools: ToolRow[] | null }[] = graphs.map((repo) => {
+    const languages = indexedLanguages(projectDir, repo);
+    return { repo, tools: languages === null ? null : toolRows(languages) };
+  });
+  if (json) {
+    output.out(JSON.stringify(graphs.length === 1 && graphs[0] === null ? all[0]!.tools : all, null, 2));
+    return 0;
+  }
+  for (const { repo, tools } of all) {
+    const head = repo === null ? "" : `${repo}: `;
+    if (tools === null) output.out(`${head}not indexed yet; \`${runningName()} index\` indexes it`);
+    else if (tools.length === 0) output.out(`${head}no language tmb reads`);
+    else for (const row of tools) output.out(`${head}${toolLine(row)}`);
+  }
+  return 0;
 }
 
 export const INDEX_USAGE = `  tmb index [--rebuild]     Index the base branch into the code graph now, or in a workspace
