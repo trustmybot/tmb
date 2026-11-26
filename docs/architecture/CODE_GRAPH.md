@@ -316,7 +316,7 @@ flowchart LR
 - **A way B graph is stale when the tool or the installed packages change.** The layer records the tool's version, as the tool reports it, and the installed packages it read. A read that finds either changed rebuilds the layer, and the answer's freshness says so. A layer built by the built-in rules rests on neither.
   - **Example.** `npm install` moves a package to a new version. The next read rebuilds the TypeScript layer.
   - **Edge case.** The tool could not run when the layer was built. That is recorded too, so the layer is rebuilt once the tool can run.
-- **Way B per language.** Each tool was chosen by its own A/B test. C and C++ are Planned (trustmybot/tmb#355).
+- **Way B per language.** Each tool was chosen by its own A/B test.
 
 | Language | Tool | Whose copy | Needs from the user |
 |---|---|---|---|
@@ -329,7 +329,7 @@ flowchart LR
 
 - **A tool tmb cannot carry is the user's own copy.** A tool that is a large program per platform, or needs a runtime, is used from the user's machine. tmb installs nothing. Without it, way A builds the graph and the answer says so.
   - **Example.** A Rust repo on a machine with no rust-analyzer. The graph is built by the built-in rules, and the freshness line names the missing tool.
-  - **Edge case 1.** C and C++ without the project's compile database. The tool guesses and gives wrong links, so way B does not run. The database is found where clangd looks for it.
+  - **Edge case 1.** C and C++ without the project's compile database. The tool guesses and gives wrong links, so way B does not run. The database is found where clangd looks for it. A database that cannot be read, or that names a file not on disk, counts as none.
   - **Edge case 2.** The database names some files and not others, such as the files for another platform. The tool answers for the files it names and for the headers they include. A call in any other file is not known.
 - **Way B runs no code of the repo and downloads nothing.** It runs the language's tool and nothing the repo ships: no build script, macro program, annotation processor or build tool. What the tool cannot know without them is not known.
   - **Example.** A Go repo whose modules are not on disk. The calls inside the repo are linked; a call into a missing module is not known.
@@ -533,6 +533,7 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 | Go | gin | Go's own parser | Go's type checker |
 | Java | jsoup | javac | javac |
 | Rust | ripgrep | rust-analyzer | rust-analyzer |
+| C, C++ | libuv, leveldb | libclang | libclang |
 
 - **The scores are kept in a file in the repo**, one set per way, per language and per repo. A test fails when a score falls. It runs with the heavy tests, not on every pull request; links right for TypeScript runs on every pull request.
 - **Every repo is at a fixed commit, tmb's own included.** New code in tmb would otherwise move the scores with no change to the graph. A pin moves only in a pull request that runs the benchmark again.
@@ -921,7 +922,6 @@ All are FTS5 virtual tables.
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
 | Calls inside a macro's input | trustmybot/tmb#383 |
-| C and C++, with clangd | trustmybot/tmb#355 |
 | Every C and C++ function a node | trustmybot/tmb#387 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
