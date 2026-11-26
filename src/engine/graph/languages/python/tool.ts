@@ -10,8 +10,9 @@
 //   one asked, such as a callee that is no name.
 // No answer is ever replaced by a guess, and none is corrected (CODE_GRAPH.md, "The tool's answer
 // stands"). Two rules of the page read the tool's own answer: a function's `@overload` stubs are
-// one function, the one definition that runs, so a declaration that pyright says is an overload
-// stub is none of the call's; and a construction links to the class, which is what pyright names.
+// one function, the one definition that runs, so a stub matches no node by place, unless no
+// definition follows the stubs and they are one node together; and a construction links to the
+// class, which is what pyright names.
 //
 // tmb carries pyright (carried.ts), loaded only when way B builds a Python graph, and never runs
 // the user's Python. pyright reads the repo's files from the commit, the standard library's stubs
@@ -229,7 +230,6 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
   const { convertOffsetToPosition, convertPositionToOffset } = part("convertOffsetToPosition");
   const { CacheManager } = part("CacheManager");
   const { findNodeByOffset } = part("findNodeByOffset");
-  const { FunctionType } = part("FunctionType");
 
   const console = new NullConsole();
   const tempFile = new RealTempFile();
@@ -283,7 +283,6 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
     // Each file is opened, as an editor opens it: pyright keeps an open file's tokens, which each
     // question reads, where it would read a closed file anew for each.
     for (const [file, text] of input.files) program.setFileOpened(uriOf(file), 1, text);
-    const evaluator = program.evaluator;
 
     const rel = (uri: Uri): string => path.relative(root, uri.getFilePath()).split(path.sep).join("/");
     const envPrefix = envRel === null ? null : `${envRel}/`;
@@ -314,8 +313,9 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
     /**
      * The node a declaration in the repo is, by "Kinds of symbol": a class or a function at the top
      * of its file, a method of such a class, or file-level data. A function or a class inside
-     * another has no node yet (trustmybot/tmb#141), and an `@overload` stub is not the function
-     * that runs. Matched by place: of its name, in its file, its lines overlapping the node's; of
+     * another has no node yet (trustmybot/tmb#141). Matched by place, so an `@overload` stub
+     * matches the node of its stubs when no definition follows them, and else none, since the
+     * definition that runs is the node: of its name, in its file, its lines overlapping the node's; of
      * several, the one that starts where the declaration or its name does, when only one does.
      */
     const nodesOf = (uri: Uri, range: Range): number[] => {
@@ -337,10 +337,6 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
         const top = scope === undefined;
         const methodOfTopClass = scope !== undefined && owner.nodeType === NODE.Function && scope.nodeType === NODE.Class && fileLevel(scope);
         if (!top && !methodOfTopClass) return [];
-        if (owner.nodeType === NODE.Function) {
-          const type = evaluator.getTypeOfFunction(owner)?.functionType;
-          if (type !== undefined && FunctionType.isOverloaded(type)) return [];
-        }
         declared = owner;
       } else if (fileLevel(name)) {
         declared = name;

@@ -74,6 +74,12 @@ const STUBS = [
   "", // 18
   "@overload", // 19: glaze's, not typing's
   "def coil(x): ...", // 20
+  "class Gear:", // 21
+  "    @alt", // 22: stubs no definition follows are one function together
+  "    def mesh(self, x: int) -> int: ...", // 23
+  "    @alt", // 24
+  "    def mesh(self, x: str) -> str:", // 25
+  "        return grind(x)", // 26: that function's call
   "",
 ].join("\n");
 
@@ -113,10 +119,10 @@ describe("Python's own parser as the reference", () => {
     expect(Object.fromEntries(calls)).toEqual({ "box.py:": 2, "box.py:8-10": 1 });
   });
 
-  test("an @overload stub is no function, and its body's calls belong to the code around it", () => {
+  test("an @overload stub is no function, and its body's calls belong to the code around it; stubs no definition follows are one function", () => {
     const { functions, calls } = referenceCounts(pythonReference(new Map([["wheel.py", STUBS]])));
-    expect(functions.get("wheel.py")).toEqual(["10-11", "16-17", "19-20"]);
-    expect(Object.fromEntries(calls)).toEqual({ "wheel.py:": 1 });
+    expect(functions.get("wheel.py")).toEqual(["10-11", "16-17", "19-20", "22-26"]);
+    expect(Object.fromEntries(calls)).toEqual({ "wheel.py:": 1, "wheel.py:22-26": 1 });
   });
 
   test("a file Python cannot parse is named, not scored", () => {

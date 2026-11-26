@@ -11,7 +11,9 @@ TypeScript function's start at its decorators, and end where `ast` ends it. An `
 no function: the one definition that runs is. A stub is a `def` one of whose decorators is
 `typing.overload` or `typing_extensions.overload`, looked up as Python looks up the decorator where
 the `def` is written: a name an import of `overload` from either binds, or `overload` of a name
-bound to either module. A call in a stub's body belongs to the code around the stub.
+bound to either module. A call in a stub's body belongs to the code around the stub. Stubs that no
+`def` of their name follows in their scope are one function together, a function with only a
+declaration: from the first one's first decorator to the last one's end, holding their calls.
 
 A call is an `ast.Call`. It belongs to the function whose body runs it, by Python's own rule: a
 function's decorators, default values and annotations are evaluated where the function is defined,
@@ -117,6 +119,30 @@ def is_stub(node, chain):
     return False
 
 
+def unfollowed(scope, chain):
+    """The stubs of a scope that no `def` of their name follows there: by id, all such stubs of
+    their name, in order. `chain` holds the scopes around the scope's statements, itself last."""
+    by_name = {}
+
+    def walk(nodes):
+        for node in nodes:
+            if isinstance(node, FUNCTIONS):
+                by_name.setdefault(node.name, []).append(node)
+            elif not isinstance(node, SCOPES):
+                walk(ast.iter_child_nodes(node))
+
+    walk(scope.body)
+    groups = {}
+    for defs in by_name.values():
+        runs = len(defs) - 1
+        while runs >= 0 and is_stub(defs[runs], chain):
+            runs -= 1
+        group = defs[runs + 1:]
+        for d in group:
+            groups[id(d)] = group
+    return groups
+
+
 def span(node, start):
     return "%d-%d" % (start, node.end_lineno)
 
@@ -125,14 +151,29 @@ def measure(tree):
     functions = []
     calls = {}
 
+    groups = {}
+
+    def group_of(node, chain):
+        scope = chain[-1][0]
+        if id(scope) not in groups:
+            groups[id(scope)] = unfollowed(scope, chain)
+        return groups[id(scope)].get(id(node))
+
+    def first_line(node):
+        return min([d.lineno for d in node.decorator_list] + [node.lineno])
+
     def visit(node, owner, chain):
         if isinstance(node, FUNCTIONS):
             inner = chain + [(node, bindings(node))]
-            if is_stub(node, chain):
+            group = group_of(node, chain) if is_stub(node, chain) else None
+            if group is not None:
+                key = "%d-%d" % (first_line(group[0]), group[-1].end_lineno)
+                if node is group[0]:
+                    functions.append(key)
+            elif is_stub(node, chain):
                 key = owner
             else:
-                start = min([d.lineno for d in node.decorator_list] + [node.lineno])
-                key = span(node, start)
+                key = span(node, first_line(node))
                 functions.append(key)
             for child in node.decorator_list:
                 visit(child, owner, chain)

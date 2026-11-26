@@ -2,7 +2,7 @@
 import pythonWasm from 'tree-sitter-python/tree-sitter-python.wasm' with { type: 'file' };
 import type { Node } from 'web-tree-sitter';
 import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
-import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, spliced, syntaxTree } from '../kit.ts';
+import { clip, DOC_MAX, docOf, md5, memberHint, named, normalizedHash, oneLine, signatureOf, spliced, syntaxTree } from '../kit.ts';
 import { SQL_HOLE, sqlInCode } from '../sql/index.ts';
 import { BUILTINS } from './builtins.ts';
 import { pyright } from './tool.ts';
@@ -114,9 +114,9 @@ function pyImports(root: Node, out: Collector, moduleSymbol: number): { aliases:
 /**
  * How a scope binds a name: an import of `name` from `module`, a module itself (`import a.b as m`
  * binds `m` to `a.b`; `import a.b` binds `a` to `a`), a function defined there, an `@overload`
- * stub, or any other value.
+ * stub, or any other value. A function's and a stub's line is where its first decorator is.
  */
-type PyBinding = { kind: 'import'; name: string; module: string } | { kind: 'module'; module: string } | { kind: 'function'; line: number } | { kind: 'stub' } | { kind: 'value' };
+type PyBinding = { kind: 'import'; name: string; module: string } | { kind: 'module'; module: string } | { kind: 'function'; line: number } | { kind: 'stub'; line: number } | { kind: 'value' };
 
 // The decorator that marks a definition as an overload stub (The Python Standard Library,
 // `typing.overload`): `overload` of `typing`, or of `typing_extensions`, which re-exports it.
@@ -166,7 +166,8 @@ function pyScopeBindings(scope: Node, isStub: (definition: Node) => boolean = ()
         case 'function_definition':
         case 'class_definition': {
           const n = c.childForFieldName('name')?.text;
-          if (n) add(n, c.type !== 'function_definition' ? { kind: 'value' } : isStub(c) ? { kind: 'stub' } : { kind: 'function', line: (c.parent?.type === 'decorated_definition' ? c.parent : c).startPosition.row + 1 });
+          const line = (c.parent?.type === 'decorated_definition' ? c.parent : c).startPosition.row + 1;
+          if (n) add(n, c.type !== 'function_definition' ? { kind: 'value' } : { kind: isStub(c) ? 'stub' : 'function', line });
           continue;
         }
         case 'lambda':
@@ -236,8 +237,10 @@ function pyScopeBindings(scope: Node, isStub: (definition: Node) => boolean = ()
   for (const [name, all] of found) {
     if (notOwn.has(name)) continue;
     // An `@overload` stub binds its name to a stand-in that the definition after it replaces: the
-    // stubs are one function with it. Stubs with no other binding are a value.
-    const list = all.some((b) => b.kind !== 'stub') ? all.filter((b) => b.kind !== 'stub') : [{ kind: 'value' } as const];
+    // stubs are one function with it. Stubs with no other binding are one function together, the
+    // first stub's.
+    const stub = all[0]!.kind === 'stub' && all.every((b) => b.kind === 'stub');
+    const list: PyBinding[] = stub ? [{ kind: 'function', line: (all[0] as { line: number }).line }] : all.filter((b) => b.kind !== 'stub');
     const first = list[0]!;
     const sameImport = (b: PyBinding): boolean =>
       (b.kind === 'import' && first.kind === 'import' && b.name === first.name && b.module === first.module) || (b.kind === 'module' && first.kind === 'module' && b.module === first.module);
@@ -492,6 +495,35 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     return false;
   };
   const bindingsOf = cached(isStub);
+  // The `@overload` stubs of a scope, the module's or a class body's, that no definition of their
+  // name follows there: by stub, all such stubs of its name, in order. Together they are one
+  // function with only a declaration (CODE_GRAPH.md, "Overload stubs are one function").
+  const stubGroups = new Map<number, Map<number, Node[]>>();
+  const unfollowed = (definition: Node, scope: Node): Node[] | undefined => {
+    let groups = stubGroups.get(scope.id);
+    if (!groups) {
+      groups = new Map();
+      const byName = new Map<string, Node[]>();
+      const walk = (n: Node): void => {
+        for (const c of named(n)) {
+          const name = c.type === 'function_definition' ? c.childForFieldName('name')?.text : undefined;
+          if (name) byName.set(name, [...(byName.get(name) ?? []), c]);
+          else if (c.type !== 'function_definition' && c.type !== 'class_definition' && !PY_SCOPES.has(c.type)) walk(c);
+        }
+      };
+      const body = scope.type === 'class_definition' ? scope.childForFieldName('body') : scope;
+      if (body) walk(body);
+      for (const list of byName.values()) {
+        let runs = list.length - 1;
+        while (runs >= 0 && isStub(list[runs]!)) runs--;
+        const open = list.slice(runs + 1);
+        for (const d of open) groups.set(d.id, open);
+      }
+      stubGroups.set(scope.id, groups);
+    }
+    return groups.get(definition.id);
+  };
+  const stubNodes = new Map<number, number>();
   // How the scopes around a node bind a name, the innermost first (trustmybot/tmb#246); undefined
   // when none does, so the module's own names and imports answer for it. A class body's names
   // hold for the statements directly in it, and not inside the functions, lambdas and
@@ -540,8 +572,10 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     else out.edge(scope, kind, target(name), line, module, 'import', undefined, call, at);
   };
   const exportedName = (name: string): number => (name.startsWith('_') ? 0 : 1);
-  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number, parent: number): number => {
+  // A definition's node; `last`, for stubs that are one node together, is where the node ends.
+  const definition = (node: Node, kind: SymbolKind, qualifiedName: string, exported: number, parent: number, last: Node = node): number => {
     const anchor = node.parent?.type === 'decorated_definition' ? node.parent : node;
+    const anchorOf = (n: Node): Node => (n.parent?.type === 'decorated_definition' ? n.parent : n);
     // Each definition is its own symbol, so two of one name in a module stay two (trustmybot/tmb#287).
     return out.symbol(
       {
@@ -550,8 +584,8 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
         signature: signatureOf(node, src),
         doc: pyDocstring(node.childForFieldName('body')) || docOf(anchor),
         start_line: anchor.startPosition.row + 1,
-        end_line: node.endPosition.row + 1,
-        body_hash: normalizedHash(anchor),
+        end_line: last.endPosition.row + 1,
+        body_hash: last === node ? normalizedHash(anchor) : md5(src.slice(anchor.startIndex, anchorOf(last).endIndex)),
         exported,
         parent,
       },
@@ -585,9 +619,19 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
     } else if (t === 'function_definition') {
       const n = node.childForFieldName('name')?.text;
       innerPlace = 'nested';
-      // An `@overload` stub is no node: the one definition that runs is (CODE_GRAPH.md, "Overload stubs are one function").
-      if (n && place === 'module' && !isStub(node)) inner = definition(node, 'function', n, exportedName(n), scope);
-      else if (n && place === 'class' && cls && !isStub(node)) inner = definition(node, 'method', `${cls}.${n}`, 0, scope);
+      // An `@overload` stub is no node: the one definition that runs is. Stubs that no definition
+      // follows are one node together (CODE_GRAPH.md, "Overload stubs are one function").
+      const runs = (kind: SymbolKind, qualifiedName: string, exported: number, around: Node): number => {
+        if (!isStub(node)) return definition(node, kind, qualifiedName, exported, scope);
+        const group = unfollowed(node, around);
+        if (group === undefined) return scope;
+        let id = stubNodes.get(group[0]!.id);
+        if (id === undefined) stubNodes.set(group[0]!.id, (id = definition(group[0]!, kind, qualifiedName, exported, scope, group[group.length - 1])));
+        return id;
+      };
+      const around = place === 'class' ? nearestClass(node) : null;
+      if (n && place === 'module') inner = runs('function', n, exportedName(n), root);
+      else if (n && place === 'class' && cls && around) inner = runs('method', `${cls}.${n}`, 0, around);
     } else if (t === 'expression_statement' && node.parent?.type === 'module') {
       const assignment = node.namedChildren[0];
       const hasValue = assignment?.type === 'assignment' && assignment.childForFieldName('right') !== null;
