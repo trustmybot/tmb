@@ -195,6 +195,7 @@ Each language is a module of its own (trustmybot/tmb#157). Every module answers 
 | Go | Yes | Yes |
 | Java | Yes | Yes |
 | Rust | Yes | Yes |
+| C, C++ | Planned (trustmybot/tmb#387): a function made by a macro is missed, and an `#if` inside a construct can hide one | Yes |
 | bash, SQL, Perl | Planned (trustmybot/tmb#141) | No |
 
 ## Links on proof
@@ -921,6 +922,7 @@ All are FTS5 virtual tables.
 | A call into a store package links to the store | trustmybot/tmb#378 |
 | Calls inside a macro's input | trustmybot/tmb#383 |
 | C and C++, with clangd | trustmybot/tmb#355 |
+| Every C and C++ function a node | trustmybot/tmb#387 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A file's language comes from Linguist's list | trustmybot/tmb#154 |
