@@ -274,7 +274,12 @@ flowchart LR
 
 - **The promise is the same for both.** A link is made only on proof. In way B the proof is the compiler's own answer for that name.
 - **The nodes are the same for both.** The built-in parser decides which symbols exist. A way adds links and never adds or removes a node, so the two are compared link by link.
-- **A setting picks the way**, per repo ([CONFIG.md](CONFIG.md)). The default is the built-in rules. Every link records the way that made it.
+- **The language's tool is the default.** Where a language has a tool, way B makes its links. The built-in rules serve a language with no tool and are the fallback. tmb does not try to beat a language's own compiler, and a user trusts the compiler's answer more than tmb's. Planned (trustmybot/tmb#337): today the default is the built-in rules.
+- **Which tool: the official compiler first, then a reputable open source tool.** The choice is made by an A/B test on the benchmark, not by the word "official". Planned (trustmybot/tmb#338).
+  - **Example 1.** TypeScript and JavaScript have an official compiler that knows types. It is the first candidate, and it is tested against the open source tools.
+  - **Example 2.** Python's own compiler knows no types. Its candidates are the reputable type checkers, tested against each other.
+  - **Edge case.** The official tool scores worse than an open source one. The open source one is used.
+- **A setting picks the way**, per repo ([CONFIG.md](CONFIG.md)). Every link records the way that made it.
 - **Way B also gives the call states.** A call is linked only when the tool's declaration is a node of the graph, outside when the declaration is outside the repo, and not known otherwise.
 - **Way B makes the call links.** Another use of a name, such as a value passed on or a parent class, keeps its built-in link and records the built-in rules. Way B's answer for those comes with what depends on a symbol beyond calls (trustmybot/tmb#148).
 - **The tool's declaration is matched to a node by place.** Same file, same name, overlapping lines. When two nodes fit, the one that starts on the same line wins. A declaration that fits no node leaves the call not known.
@@ -293,8 +298,6 @@ flowchart LR
   - **Edge case.** A call decided only at run time, such as a method picked by a string. Neither way links it. It is counted as not known.
 - **Way A keeps growing.** Its next proofs are the stated types (trustmybot/tmb#249), the four bindings (trustmybot/tmb#287) and the other languages (trustmybot/tmb#141).
 - **No rule is written for one repo.** A rule in either way is the language's rule. Neither way names a benchmark repo, a file or a symbol of one, and a failing benchmark case is fixed by the rule or left unlinked.
-
-Open, for the Human: which way is the default.
 
 ## Concepts
 
@@ -780,6 +783,8 @@ All are FTS5 virtual tables.
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Way A links a call to a file-level name that holds a callable, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
+| The language's tool is the default way | trustmybot/tmb#337 |
+| The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
 | A way B graph is stale when the tool or the installed packages change | trustmybot/tmb#325 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
