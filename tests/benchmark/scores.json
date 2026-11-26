@@ -18,23 +18,30 @@
             "of": 5463
           },
           "linksRight": {
-            "n": 10759,
-            "of": 10759
+            "n": 10517,
+            "of": 10517
           },
           "linksFoundByState": {
-            "n": 10463,
+            "n": 10221,
             "of": 20446
           },
           "linksFoundByReference": {
-            "n": 10463,
-            "of": 10912
+            "n": 10221,
+            "of": 10912,
+            "fallAccepted": {
+              "issue": 364,
+              "was": {
+                "n": 10463,
+                "of": 10912
+              }
+            }
           },
           "callsAccountedFor": {
             "n": 30077,
             "of": 30077
           },
           "missesByCause": {
-            "a method on a name whose type is not written": 281,
+            "a method on a name whose type is not written": 523,
             "a method on an expression (a chain, a call's result, an index)": 135,
             "a method on a module's or class's name": 19,
             "a method on a name whose type is written": 14
@@ -78,26 +85,33 @@
             "of": 10267
           },
           "linksRight": {
-            "n": 8623,
-            "of": 8623
+            "n": 7897,
+            "of": 7897
           },
           "linksFoundByState": {
-            "n": 7763,
+            "n": 7043,
             "of": 41520
           },
           "linksFoundByReference": {
-            "n": 7754,
-            "of": 10701
+            "n": 7028,
+            "of": 10701,
+            "fallAccepted": {
+              "issue": 364,
+              "was": {
+                "n": 7754,
+                "of": 10701
+              }
+            }
           },
           "callsAccountedFor": {
             "n": 45912,
             "of": 45912
           },
           "missesByCause": {
-            "a method on a name whose type is not written": 1186,
-            "a method on a name made by `new`, its type not written": 1077,
-            "a method on an expression (a chain, a call's result, an index)": 376,
-            "a method on a name whose type is written": 160,
+            "a method on a name whose type is not written": 1916,
+            "a method on a name made by `new`, its type not written": 1076,
+            "a method on an expression (a chain, a call's result, an index)": 374,
+            "a method on a name whose type is written": 159,
             "a method on a module's or class's name": 132,
             "a function's name called directly": 11,
             "a call on the parent (`super`)": 2,

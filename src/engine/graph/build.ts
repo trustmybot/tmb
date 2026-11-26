@@ -19,7 +19,7 @@ import { recheckConcepts } from "./concepts.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 23;
+export const EXTRACTOR_VERSION = 24;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
@@ -45,7 +45,7 @@ export type BuildStats = {
   notRead: NotRead;
   /** The way the layer was asked to make its links by (trustmybot/tmb#311). */
   links: LinkWay;
-  /** Why a language was built by the built-in rules although its tool was asked for; null when none was. */
+  /** Why a language was built by the built-in rules although its tool was asked for, and what a tool's answers rest on that the reader should know; null when neither. */
   linksNote: string | null;
 };
 
@@ -186,6 +186,12 @@ async function planCommit(
   return { plans, readmes, configs, parsed, reused, leftOut };
 }
 
+/**
+ * How a part of the links note ends when its languages' links are the built-in rules' because
+ * their tool gave none; a part that does not end so is something the tool's answers rest on.
+ */
+export const BUILT_IN_RULES = ", so the built-in rules";
+
 /** The tools' answers for the calls of a commit, by the call's place in the layer's list of edges; and why a language had none. */
 type ToolLinks = { answers: Map<number, ToolAnswer>; note: string | null };
 
@@ -217,13 +223,13 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
   for (const language of LANGUAGES) if (language.tool) tools.set(language.tool, [...(tools.get(language.tool) ?? []), language.name]);
   const notes: string[] = [];
   const toolless = [...present].filter((lang) => languageNamed(lang)?.tool === undefined).sort();
-  if (toolless.length > 0) notes.push(`${toolless.join(", ")}: no language tool, so the built-in rules`);
+  if (toolless.length > 0) notes.push(`${toolless.join(", ")}: no language tool${BUILT_IN_RULES}`);
   const answers = new Map<number, ToolAnswer>();
   for (const [tool, langs] of tools) {
     if (!langs.some((lang) => present.has(lang))) continue;
     const opened = await tool.open(repoDir);
     if ("unavailable" in opened) {
-      notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable}), so the built-in rules`);
+      notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable})${BUILT_IN_RULES}`);
       continue;
     }
     const mine = new Set(langs);
@@ -266,9 +272,9 @@ async function toolLinks(repoDir: string, commit: string, plans: readonly FilePl
     }
     let answered: ToolAnswer[];
     try {
-      answered = opened.answer({ files, configs: toolConfigs, read, nodes, calls });
+      answered = opened.answer({ files, configs: toolConfigs, read, nodes, calls }, (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`));
     } catch (error) {
-      notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)}), so the built-in rules`);
+      notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)})${BUILT_IN_RULES}`);
       continue;
     }
     answered.forEach((answer, i) => {

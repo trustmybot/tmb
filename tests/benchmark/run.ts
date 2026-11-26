@@ -5,6 +5,10 @@
 //   bun tests/benchmark/run.ts           measure, print the scores, and say which stored ones fell or rose
 //   bun tests/benchmark/run.ts --check   the same, and fail when an enforced stored score fell (the heavy test)
 //   bun tests/benchmark/run.ts --write   measure and store the scores in scores.json, refused when one fell
+//   bun tests/benchmark/run.ts --write --accept-fall <issue>
+//                                        the same, but a fall in links found is stored with the issue
+//                                        that caused it, refused unless links right is 100% for that
+//                                        repo and way; `--check` then passes on the recorded score
 //
 // Each language's reference has a version, stored with the scores. A change to the reference raises
 // it; the run against the new reference is then that language's new baseline when no enforced score
@@ -23,7 +27,7 @@ import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION, WAY_B_NOT_BUILT as JAVA_WAY_B_NOT_BUILT } from "./java.ts";
 import { measurePython, REFERENCE_VERSION as PY_REFERENCE_VERSION } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
-import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
+import { acceptFallIssue, acceptFalls, carryAccepted, type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE, REFERENCE_VERSION as TS_REFERENCE_VERSION } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
@@ -128,6 +132,11 @@ function readStored(): Stored | null {
 async function main(args: string[]): Promise<number> {
   const write = args.includes("--write");
   const check = args.includes("--check");
+  const issue = acceptFallIssue(args);
+  if (issue !== null && typeof issue === "object") {
+    console.error(issue.error);
+    return 2;
+  }
   const run = await measureAll();
   console.log(report(run));
   for (const [repo, lines] of Object.entries(run.detail)) for (const line of lines) console.log(`${repo}: ${line}`);
@@ -137,12 +146,22 @@ async function main(args: string[]): Promise<number> {
   if (stored === null) console.log(`\nno stored scores yet in ${SCORES_FILE}`);
   for (const r of rose) console.log(`rose: ${r}`);
   for (const f of fell) console.log(`FELL: ${f}`);
-  if (fell.length > 0 && (check || write)) {
+  let toWrite = stored === null ? run.stored : carryAccepted(stored, run.stored);
+  if (fell.length > 0 && write && issue !== null && stored !== null) {
+    const accepted = acceptFalls(stored, run.stored, issue);
+    if ("refused" in accepted) {
+      for (const r of accepted.refused) console.error(`REFUSED: ${r}`);
+      console.error("\nthe falls are not accepted, and the scores are not written.");
+      return 1;
+    }
+    for (const a of accepted.accepted) console.log(`accepted: ${a}`);
+    toWrite = accepted.stored;
+  } else if (fell.length > 0 && (check || write)) {
     console.error(`\n${fell.length} stored scores fell; the benchmark fails${write ? ", and the scores are not written" : ""}.`);
     return 1;
   }
   if (write) {
-    writeFileSync(SCORES_FILE, `${JSON.stringify(run.stored, null, 2)}\n`);
+    writeFileSync(SCORES_FILE, `${JSON.stringify(toWrite, null, 2)}\n`);
     console.log(`\nwrote ${SCORES_FILE}`);
   }
   return 0;

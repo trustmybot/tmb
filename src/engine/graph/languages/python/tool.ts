@@ -15,10 +15,13 @@
 //
 // tmb carries pyright (carried.ts), loaded only when way B builds a Python graph, and never runs
 // the user's Python. pyright reads the repo's files from the commit, the standard library's stubs
-// tmb carries from memory, and the repo's own virtual environment from the working tree, with the
-// project's config (CODE_GRAPH.md, "Way B for Python reads the environment in the working tree").
-// With no environment, a call into a package is not known.
-import { type Dirent, existsSync, readdirSync, type Stats } from "node:fs";
+// tmb carries from memory, and the repo's own virtual environment from disk, with the project's
+// config (CODE_GRAPH.md, "Way B for Python reads the environment in the working tree"). The
+// environment is the one the project's config names, pyright's own `venvPath` and `venv`, else the
+// one folder at the top of the working tree that is one; two or more with no config naming one
+// are none, and so is a folder the config names that is not there; the answer's freshness says so. With no environment, a call into a package is not
+// known.
+import { type Dirent, existsSync, readdirSync, type Stats, statSync } from "node:fs";
 import path from "node:path";
 import { type Exporting, loadCarried, PYRIGHT_DIR, TYPESHED_ROOT } from "./carried.ts";
 import type { LanguageTool, OpenedTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
@@ -67,22 +70,28 @@ async function carriedPyright(): Promise<Pyright | { unavailable: string }> {
   }
 }
 
-/** The repo's own virtual environment: the one folder at the top of its working tree that is one, else none. */
-export function environmentOf(root: string): string | null {
+/** The folders at the top of the repo's working tree that are virtual environments, by name. */
+function topEnvironments(root: string): string[] {
   let entries: Dirent[];
   try {
     entries = readdirSync(root, { withFileTypes: true });
   } catch {
-    return null;
+    return [];
   }
-  const found = entries.filter((e) => e.isDirectory() && existsSync(path.join(root, e.name, ENVIRONMENT_MARK))).map((e) => e.name);
-  return found.length === 1 ? found[0]! : null;
+  return entries
+    .filter((e) => e.isDirectory() && existsSync(path.join(root, e.name, ENVIRONMENT_MARK)))
+    .map((e) => e.name)
+    .sort();
 }
 
-/** A file or a folder of a place served from memory: the commit, or the stubs tmb carries. */
-type Served = { files: ReadonlyMap<string, string>; dirs: ReadonlyMap<string, Set<string>> };
+/**
+ * A file or a folder of a place served from memory: the commit, or the stubs tmb carries. `addDir`
+ * lists a folder served from elsewhere in the folders above it, so pyright, which looks for a
+ * folder in its parent's list, finds it.
+ */
+type Served = { files: ReadonlyMap<string, string>; dirs: ReadonlyMap<string, Set<string>>; addDir(rel: string): void };
 
-function served(files: ReadonlyMap<string, string>, extraDirs: readonly string[] = []): Served {
+function served(files: ReadonlyMap<string, string>): Served {
   const dirs = new Map<string, Set<string>>([["", new Set()]]);
   // Each folder holding a path, up to the top, with that path's name in it.
   const add = (rel: string): void => {
@@ -96,12 +105,27 @@ function served(files: ReadonlyMap<string, string>, extraDirs: readonly string[]
     names.add(path.posix.basename(rel));
   };
   for (const file of files.keys()) add(file);
-  for (const dir of extraDirs) {
-    if (!dirs.has(dir)) dirs.set(dir, new Set());
-    add(dir);
-  }
-  return { files, dirs };
+  const addDir = (rel: string): void => {
+    if (!dirs.has(rel)) dirs.set(rel, new Set());
+    add(rel);
+  };
+  return { files, dirs, addDir };
 }
+
+/** No place: a folder pyright believes it runs in, whose files it is never given. */
+const NOWHERE: Served = { files: new Map(), dirs: new Map(), addDir: () => {} };
+
+/** Whether a folder is on disk. */
+function isFolder(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a path is a folder or inside it. */
+const within = (dir: string, file: string): boolean => file === dir || file.startsWith(`${dir}${path.sep}`);
 
 const notFound = (file: string): Error => Object.assign(new Error(`ENOENT: no such file or directory, '${file}'`), { code: "ENOENT" });
 
@@ -125,16 +149,17 @@ const entryOf = (name: string, isFile: boolean): Dirent => ({ name, isFile: () =
 
 /**
  * pyright's file system for one commit: the repo's files from the commit, the stubs tmb carries
- * from memory, and everything else, the repo's environment included, from disk.
+ * from memory, and everything else, the environment pyright is set up with included, from disk.
+ * `environment()` is that environment's folder, an absolute path, or null for none.
  */
-function commitFileSystem(real: Record<string, any>, root: string, commit: Served, environment: string | null, stdlib: Served): Record<string, any> {
-  const envDir = environment === null ? null : path.join(root, environment);
+function commitFileSystem(real: Record<string, any>, root: string, commit: Served, environment: () => string | null, stdlib: Served): Record<string, any> {
   const placeOf = (uri: Uri): { place: Served; rel: string } | null => {
     const file = uri.getFilePath();
     if (file === TYPESHED_ROOT || file.startsWith(`${TYPESHED_ROOT}/`)) return { place: stdlib, rel: path.posix.relative(TYPESHED_ROOT, file) };
-    if (file === PYRIGHT_DIR || file.startsWith(`${PYRIGHT_DIR}/`)) return { place: { files: new Map(), dirs: new Map() }, rel: "" };
-    if (envDir !== null && (file === envDir || file.startsWith(`${envDir}${path.sep}`))) return null;
-    if (file === root || file.startsWith(`${root}${path.sep}`)) return { place: commit, rel: path.relative(root, file).split(path.sep).join("/") };
+    if (file === PYRIGHT_DIR || file.startsWith(`${PYRIGHT_DIR}/`)) return { place: NOWHERE, rel: "" };
+    const envDir = environment();
+    if (envDir !== null && within(envDir, file)) return null;
+    if (within(root, file)) return { place: commit, rel: path.relative(root, file).split(path.sep).join("/") };
     return null;
   };
   const text = (uri: Uri): string => {
@@ -184,9 +209,12 @@ function commitFileSystem(real: Record<string, any>, root: string, commit: Serve
 }
 
 /** pyright's answers for the graph's calls, one per call, in order. */
-function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, input: ToolInput): ToolAnswer[] {
+function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, input: ToolInput, note: (text: string) => void): ToolAnswer[] {
   const root = path.resolve(repoDir);
-  const environment = environmentOf(root);
+  // Which environment (CODE_GRAPH.md): the one the project's config names, else the one folder at
+  // the top of the repo that is one; two or more with no config naming one are none.
+  const tops = topEnvironments(root);
+  const onlyTop = tops.length === 1 ? tops[0]! : null;
   const { DefinitionProvider, DefinitionFilter } = part("DefinitionProvider");
   const { AnalyzerService } = part("AnalyzerService");
   const { CommandLineOptions } = part("CommandLineOptions");
@@ -206,17 +234,21 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
   const console = new NullConsole();
   const tempFile = new RealTempFile();
   // The repo's files and its settings, each from the commit.
-  const commit = served(new Map([...input.configs, ...input.files]), environment === null ? [] : [environment]);
-  const fs = new PyrightFileSystem(commitFileSystem(createFromRealFileSystem(tempFile, console), root, commit, environment, served(stdlibFiles)));
+  const commit = served(new Map([...input.configs, ...input.files]));
+  // The environment pyright is set up with, known once it has read the project's config.
+  let environment: string | null = null;
+  const fs = new PyrightFileSystem(commitFileSystem(createFromRealFileSystem(tempFile, console), root, commit, () => environment, served(stdlibFiles)));
   // pyright measures its memory to drop what it has read when the heap runs high; the measure is
   // slow under Bun, and one program over one commit is read once, so it is not taken.
   const cacheManager = new CacheManager();
   cacheManager.pauseTracking();
   const services = createServiceProvider(fs, console, tempFile, cacheManager);
   const rootUri = Uri.file(root, services);
-  // The environment, when the project's config names none: a folder of the repo, so its path is the repo's.
+  // The environment when the project's config names none: pyright takes the config's `venv` and
+  // `venvPath` first, and these only where the config gives none. It is a folder of the repo, so
+  // its path is the repo's.
   const configOptions = new ConfigOptions(rootUri);
-  if (environment !== null) configOptions.venv = environment;
+  if (onlyTop !== null) configOptions.venv = onlyTop;
   const service = new AnalyzerService("tmb", services, {
     console,
     // pyright asks its host to run Python for the interpreter's paths; this host never runs it.
@@ -229,8 +261,23 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
     const options = new CommandLineOptions(root, false);
     // Where the language server looks for a `src` layout, it looks here too.
     options.configSettings.autoSearchPaths = true;
-    if (environment !== null) options.languageServerSettings.venvPath = root;
+    if (onlyTop !== null) options.languageServerSettings.venvPath = root;
     service.setOptions(options);
+    // The environment pyright is now set up with is served from disk, before it reads any import.
+    // A folder that holds the repo itself is none: the repo's files are the commit's.
+    const settled = service.getConfigOptions() as { venvPath?: Uri & { resolvePaths(p: string): Uri }; venv?: string };
+    const set = settled.venvPath !== undefined && settled.venv !== undefined ? settled.venvPath.resolvePaths(settled.venv).getFilePath() : null;
+    // A folder the config names that is not there is no environment, and the freshness says so.
+    const missing = set !== null && !within(set, root) && !isFolder(set);
+    environment = set === null || within(set, root) || missing ? null : set;
+    if (missing) note(`the environment the project's config names (${within(root, set) ? path.relative(root, set).split(path.sep).join("/") : set}) is not there, so none is read: a call into a package is not known`);
+    else if (environment === null && tops.length > 1) note(`${tops.length} virtual environments at the top of the repo (${tops.join(", ")}) and no config naming one, so none is read: a call into a package is not known`);
+    // An environment inside the repo is listed in its folder, and its files are not the repo's.
+    const envRel = environment !== null && within(root, environment) ? path.relative(root, environment).split(path.sep).join("/") : null;
+    if (envRel !== null) commit.addDir(envRel);
+    // pyright looked for the environment as it read its settings, before it was served, and keeps
+    // what it saw; its settings read again, it finds the environment's packages.
+    if (environment !== null) service.setOptions(options);
     const program = service.backgroundAnalysisProgram.program;
     const uriOf = (file: string): Uri => Uri.file(path.join(root, file), services);
     // Each file is opened, as an editor opens it: pyright keeps an open file's tokens, which each
@@ -239,7 +286,7 @@ function answerCalls({ part, stdlib: stdlibFiles }: Pyright, repoDir: string, in
     const evaluator = program.evaluator;
 
     const rel = (uri: Uri): string => path.relative(root, uri.getFilePath()).split(path.sep).join("/");
-    const envPrefix = environment === null ? null : `${environment}/`;
+    const envPrefix = envRel === null ? null : `${envRel}/`;
     /** A declaration's file is the repo's when the commit holds it; the environment's are not. */
     const inRepo = (uri: Uri): boolean => {
       const file = rel(uri);
@@ -378,6 +425,6 @@ export const pyright: LanguageTool = {
   async open(repoDir: string): Promise<OpenedTool> {
     const loaded = await carriedPyright();
     if ("unavailable" in loaded) return loaded;
-    return { answer: (input: ToolInput) => answerCalls(loaded, repoDir, input) };
+    return { answer: (input: ToolInput, note: (text: string) => void) => answerCalls(loaded, repoDir, input, note) };
   },
 };

@@ -4,7 +4,9 @@
 import { surplus } from "../../src/engine/graph/languages/typescript/coverage.ts";
 
 /** A share: n of `of`. Kept as counts, so two shares compare exactly. `note` says what a reader must know to read it. */
-export type Ratio = { n: number; of: number; note?: string };
+export type Ratio = { n: number; of: number; note?: string; fallAccepted?: FallAccepted };
+/** A fall in links found accepted by `--write --accept-fall <issue>`: the issue that caused it and the score it fell from. */
+export type FallAccepted = { issue: number; was: { n: number; of: number } };
 /** A score that has no value, and why: never a zero. */
 export type NotScored = { notScored: string };
 export type Score = Ratio | NotScored;
@@ -150,7 +152,8 @@ export function sortCauses(causes: Causes): Causes {
 export function format(s: Score): string {
   if (!isRatio(s)) return s.notScored;
   if (s.of === 0) return "none";
-  return `${((s.n / s.of) * 100).toFixed(1)}% (${s.n}/${s.of})${s.note === undefined ? "" : `, ${s.note}`}`;
+  const accepted = s.fallAccepted === undefined ? "" : `, a fall from ${s.fallAccepted.was.n}/${s.fallAccepted.was.of} accepted in #${s.fallAccepted.issue}`;
+  return `${((s.n / s.of) * 100).toFixed(1)}% (${s.n}/${s.of})${s.note === undefined ? "" : `, ${s.note}`}${accepted}`;
 }
 
 /** -1, 0 or 1 as share a is below, equal to or above share b, compared exactly. */
@@ -163,13 +166,31 @@ function compare(a: Ratio, b: Ratio): number {
 const keyOf = (e: Entry) => `${e.repo} ${e.language}`;
 
 /** Each pair of stored and current scores, for the named scores, with whether the language's reference version changed. */
-function pairs(stored: Stored, now: Stored, names: readonly ScoreName[]): { where: string; before: Score; after: Score | undefined; newReference: boolean }[] {
+type Pair = { key: string; way: Way; name: ScoreName; where: string; before: Score; after: Score | undefined; newReference: boolean };
+function pairs(stored: Stored, now: Stored, names: readonly ScoreName[]): Pair[] {
   const current = new Map(now.entries.map((e) => [keyOf(e), e]));
-  const out: { where: string; before: Score; after: Score | undefined; newReference: boolean }[] = [];
+  const out: Pair[] = [];
   for (const e of stored.entries) {
     const c = current.get(keyOf(e));
     const newReference = versionOf(stored, e.language) !== versionOf(now, e.language);
-    for (const way of WAYS) for (const name of names) out.push({ where: `${keyOf(e)} way ${way} ${name}`, before: e.ways[way][name], after: c?.ways[way][name], newReference });
+    for (const way of WAYS) for (const name of names) out.push({ key: keyOf(e), way, name, where: `${keyOf(e)} way ${way} ${name}`, before: e.ways[way][name], after: c?.ways[way][name], newReference });
+  }
+  return out;
+}
+
+type Fall = { text: string; key?: string; way?: Way; name?: ScoreName; before?: Ratio };
+
+/** Each enforced stored score the current run is below, with where it is; see `falls`. */
+function fallsOf(stored: Stored, now: Stored): Fall[] {
+  const current = new Set(now.entries.map(keyOf));
+  const out: Fall[] = stored.entries.filter((e) => !current.has(keyOf(e))).map((e) => ({ text: `${keyOf(e)}: no longer measured` }));
+  for (const { key, way, name, where, before, after, newReference } of pairs(stored, now, ENFORCED)) {
+    if (!isRatio(before) || before.of === 0 || after === undefined) continue;
+    const at = { key, way, name, before };
+    if (!isRatio(after) || after.of === 0) out.push({ ...at, text: `${where}: was ${format(before)}, now ${format(after)}` });
+    else if (newReference) {
+      if (missesOf(after) > missesOf(before)) out.push({ ...at, text: `${where}: misses rose from ${missesOf(before)} to ${missesOf(after)} under a new reference (${format(before)} to ${format(after)})` });
+    } else if (compare(after, before) < 0) out.push({ ...at, text: `${where}: fell from ${format(before)} to ${format(after)}` });
   }
   return out;
 }
@@ -181,14 +202,69 @@ function pairs(stored: Stored, now: Stored, names: readonly ScoreName[]): { wher
  * score falls only when it misses more than it did; the run is then that language's new baseline.
  */
 export function falls(stored: Stored, now: Stored): string[] {
-  const current = new Set(now.entries.map(keyOf));
-  const out = stored.entries.filter((e) => !current.has(keyOf(e))).map((e) => `${keyOf(e)}: no longer measured`);
-  for (const { where, before, after, newReference } of pairs(stored, now, ENFORCED)) {
-    if (!isRatio(before) || before.of === 0 || after === undefined) continue;
-    if (!isRatio(after) || after.of === 0) out.push(`${where}: was ${format(before)}, now ${format(after)}`);
-    else if (newReference) {
-      if (missesOf(after) > missesOf(before)) out.push(`${where}: misses rose from ${missesOf(before)} to ${missesOf(after)} under a new reference (${format(before)} to ${format(after)})`);
-    } else if (compare(after, before) < 0) out.push(`${where}: fell from ${format(before)} to ${format(after)}`);
+  return fallsOf(stored, now).map((f) => f.text);
+}
+
+/** The scores whose fall can be accepted: links found, when a fix removed links that were wrong. */
+export const ACCEPTABLE_FALLS: readonly ScoreName[] = ["linksFoundByReference"];
+
+const clone = (s: Stored): Stored => JSON.parse(JSON.stringify(s)) as Stored;
+
+/**
+ * The current run with each fall accepted for an issue: "the new score is recorded with the issue
+ * that removed them, and links right must still be 100%." Refused when a fall is in a score that
+ * cannot be accepted, or when links right is below 100% for the fallen score's repo and way.
+ */
+export function acceptFalls(stored: Stored, now: Stored, issue: number): { stored: Stored; accepted: string[] } | { refused: string[] } {
+  const out = carryAccepted(stored, now);
+  const byKey = new Map(out.entries.map((e) => [keyOf(e), e]));
+  const refused: string[] = [];
+  const accepted: string[] = [];
+  for (const f of fallsOf(stored, now)) {
+    const e = f.key === undefined ? undefined : byKey.get(f.key);
+    if (e === undefined || f.way === undefined || f.name === undefined || f.before === undefined || !ACCEPTABLE_FALLS.includes(f.name)) {
+      refused.push(`${f.text}: only a fall in ${ACCEPTABLE_FALLS.join(", ")} can be accepted`);
+      continue;
+    }
+    const right = e.ways[f.way].linksRight;
+    if (!isRatio(right) || right.of === 0 || right.n !== right.of) {
+      refused.push(`${f.key} way ${f.way} linksRight is ${format(right)}, not 100%, so the fall in ${f.name} is not accepted`);
+      continue;
+    }
+    const after = e.ways[f.way][f.name];
+    if (!isRatio(after)) {
+      refused.push(`${f.text}: no score to record`);
+      continue;
+    }
+    e.ways[f.way][f.name] = { ...after, fallAccepted: { issue, was: { n: f.before.n, of: f.before.of } } };
+    accepted.push(`${f.text}, accepted in #${issue}`);
+  }
+  return refused.length > 0 ? { refused } : { stored: out, accepted };
+}
+
+/** The issue number after `--accept-fall`, null when the flag is absent, or an error. */
+export function acceptFallIssue(args: string[]): number | null | { error: string } {
+  const at = args.indexOf("--accept-fall");
+  if (at < 0) return null;
+  const issue = args[at + 1];
+  if (issue === undefined || !/^[1-9][0-9]*$/.test(issue)) return { error: "--accept-fall needs the issue number that caused the fall" };
+  if (!args.includes("--write")) return { error: "--accept-fall is given with --write" };
+  return Number(issue);
+}
+
+/** The current run, with each stored accepted fall kept on the score it was recorded on while that score is unchanged. */
+export function carryAccepted(stored: Stored, now: Stored): Stored {
+  const out = clone(now);
+  const before = new Map(stored.entries.map((e) => [keyOf(e), e]));
+  for (const e of out.entries) {
+    const b = before.get(keyOf(e));
+    if (b === undefined) continue;
+    for (const way of WAYS)
+      for (const name of SCORE_NAMES) {
+        const was = b.ways[way][name];
+        const is = e.ways[way][name];
+        if (isRatio(was) && isRatio(is) && was.fallAccepted !== undefined && was.n === is.n && was.of === is.of) e.ways[way][name] = { ...is, fallAccepted: was.fallAccepted };
+      }
   }
   return out;
 }
