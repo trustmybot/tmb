@@ -2,11 +2,11 @@
 // registry names for it (trustmybot/tmb#157). This file holds no language's rules: those are in
 // languages/, one folder per language.
 import { basename } from 'node:path';
-import { Collector, type Extraction, type SourceLanguage, type SymbolKind } from './languages/contract.ts';
+import { Collector, type Extraction, type LanguageModule, type SourceLanguage, type SymbolKind } from './languages/contract.ts';
 import { clip, DOC_MAX, md5, splitWords, STOPWORDS } from './languages/kit.ts';
 import { attributeFlag, type Attributes } from '../linguist/gitattributes.ts';
 import { linguist } from '../linguist/index.ts';
-import { languageNamed, moduleReading } from './languages/registry.ts';
+import { endingOwner, languageNamed, moduleReading } from './languages/registry.ts';
 import type { Parsers } from './loader.ts';
 
 export type {
@@ -75,15 +75,20 @@ export function fileLanguages(relPath: string, text: (() => string) | null, attr
 }
 
 // The language module that reads a file Linguist names `languages` (CODE_GRAPH.md, trustmybot/tmb#154):
-// the module of the language Linguist settles on; when its rules leave several, the module of the
-// first of them a module reads, so a file is never dropped for want of an answer. Null when no
-// module reads any of them, and for a file its module keeps with no symbols.
+// the module of the language Linguist settles on. When its rules leave several, the module that
+// names the file's ending as its own reads it, if it reads one of them, so a file the graph reads is
+// never dropped for want of an answer; with no such module the file is not parsed. Null too for a
+// file its module keeps with no symbols.
 export function moduleOfLanguages(relPath: string, languages: readonly string[]): SourceLanguage | null {
-  for (const name of languages) {
-    const module = moduleReading(relPath, name);
-    if (module !== null) return module.declarationsOnly?.(relPath) === true ? null : module.name;
-  }
-  return null;
+  const module = readingModule(relPath, languages);
+  return module === null || module.declarationsOnly?.(relPath) === true ? null : module.name;
+}
+
+// The module whose language a file is in, by moduleOfLanguages' rule, before declarationsOnly.
+export function readingModule(relPath: string, languages: readonly string[]): LanguageModule | null {
+  if (languages.length === 1) return moduleReading(relPath, languages[0]!);
+  const owner = endingOwner(relPath);
+  return owner !== null && languages.some((name) => moduleReading(relPath, name) === owner) ? owner : null;
 }
 
 // The language module that reads a path; see moduleOfLanguages.

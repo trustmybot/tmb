@@ -17,6 +17,7 @@ export function isMinifiedScript(text: string): boolean {
 export const typescript: LanguageModule = {
   name: 'typescript',
   linguist: ['TypeScript'],
+  endings: ['.ts', '.mts', '.cts'],
   grammar: typescriptWasm,
   comment: 'slash',
   minified: isMinifiedScript,
@@ -28,6 +29,7 @@ export const typescript: LanguageModule = {
 export const tsx: LanguageModule = {
   name: 'tsx',
   linguist: ['TSX'],
+  endings: ['.tsx'],
   grammar: tsxWasm,
   comment: 'slash',
   minified: isMinifiedScript,
@@ -39,6 +41,7 @@ export const tsx: LanguageModule = {
 export const javascript: LanguageModule = {
   name: 'javascript',
   linguist: ['JavaScript'],
+  endings: ['.js', '.mjs', '.cjs', '.jsx'],
   grammar: javascriptWasm,
   comment: 'slash',
   minified: isMinifiedScript,

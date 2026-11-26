@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileLanguages, languageOf } from "../src/engine/graph/extract.ts";
+import { fileLanguages, languageOf, moduleOfLanguages } from "../src/engine/graph/extract.ts";
+import { LANGUAGES } from "../src/engine/graph/languages/registry.ts";
 import { indexProject, openView } from "../src/engine/graph/fresh.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import { GitAttributes } from "../src/engine/linguist/gitattributes.ts";
@@ -99,11 +100,44 @@ describe("a file Linguist's rules settle nothing for", () => {
     expect(languageOf("legacy/sums.pl", () => "sub total {\n  return 0;\n}\n")).toBe("perl");
   });
 
+  test("whose ending no module names as its own is named as one of its languages and not parsed", () => {
+    for (const [file, text] of [
+      ["web/header.inc", "x\n"],
+      ["pkg/meter.spec", "x\n"],
+      ["t/basic.t", "x\n"],
+      ["cgi/form.cgi", "x\n"],
+    ] as const) {
+      const languages = fileLanguages(file, () => text);
+      expect(languages.length).toBeGreaterThan(1);
+      expect(languageOf(file, () => text)).toBeNull();
+      expect(unreadLanguage(languages, file)).toBe(`one of ${languages.join(", ")}`);
+    }
+  });
+
+  test("is read by the module that names its ending as its own, not by Linguist's first language", () => {
+    expect(moduleOfLanguages("native/gauge.h", ["C++", "C"])).toBe("c");
+    expect(moduleOfLanguages("native/gauge.hpp", ["C", "C++"])).toBe("cpp");
+    expect(moduleOfLanguages("cgi/form.cgi", ["Perl", "Python", "Shell"])).toBeNull();
+  });
+
+  test("each ending belongs to one module", () => {
+    const owners = new Map<string, string>();
+    for (const module of LANGUAGES) {
+      for (const ending of module.endings) {
+        expect(owners.get(ending)).toBeUndefined();
+        owners.set(ending, module.name);
+      }
+    }
+    expect(owners.get(".rs")).toBe("rust");
+    expect(owners.get(".ts")).toBe("typescript");
+    expect(owners.get(".py")).toBe("python");
+  });
+
   test("with no module among its languages, is named as one of them, never guessed", () => {
     const languages = fileLanguages("lib/facts.ecl", () => "x\n");
     expect(languages).toEqual(["ECL", "ECLiPSe"]);
     expect(languageOf("lib/facts.ecl", () => "x\n")).toBeNull();
-    expect(unreadLanguage(languages)).toBe("one of ECL, ECLiPSe");
+    expect(unreadLanguage(languages, "lib/facts.ecl")).toBe("one of ECL, ECLiPSe");
   });
 });
 

@@ -12,6 +12,7 @@ export const c: LanguageModule = {
   name: 'c',
   // A `.h` file is C, C++ or Objective-C by Linguist's heuristics for the ending (trustmybot/tmb#154).
   linguist: ['C'],
+  endings: ['.c', '.cats', '.h', '.idc'],
   grammar: cWasm,
   comment: 'slash',
   parse: parseFamily('c'),

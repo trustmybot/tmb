@@ -525,6 +525,7 @@ function extractRust(root: Node, src: string, out: Collector, moduleSymbol: numb
 export const rust: LanguageModule = {
   name: 'rust',
   linguist: ['Rust'],
+  endings: ['.rs'],
   grammar: rustWasm,
   comment: 'slash',
   tool: rustAnalyzer,

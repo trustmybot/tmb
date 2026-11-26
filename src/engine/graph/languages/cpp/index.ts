@@ -37,6 +37,7 @@ export const cpp: LanguageModule = {
   name: 'cpp',
   // A `.h` file is C++ when Linguist's heuristics for the ending find a construct only C++ has (trustmybot/tmb#154).
   linguist: ['C++'],
+  endings: ['.cpp', '.c++', '.cc', '.cp', '.cppm', '.cxx', '.h++', '.hh', '.hpp', '.hxx', '.inl', '.ino', '.ipp', '.ixx', '.re', '.tcc', '.tpp', '.txx'],
   grammar: cppWasm,
   comment: 'slash',
   parse: parseFamily('cpp', classHeadMacros),

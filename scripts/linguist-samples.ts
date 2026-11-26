@@ -7,10 +7,15 @@
 //   bun scripts/linguist-samples.ts <folder for the samples>
 //
 // It prints how many samples there are, and how many tmb names right, gives no answer for, and
-// names wrong; it exits 1 when any is wrong. A sample under `filenames/` is named by its file name.
+// names wrong. Of the samples with no answer, it counts those a module reads all the same because
+// it names the sample's ending as its own (CODE_GRAPH.md, edge case 1), and lists those it reads in
+// a language other than the sample's. It exits 1 when any is wrong. A sample under
+// `filenames/` is named by its file name.
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { moduleOfLanguages } from "../src/engine/graph/extract.ts";
+import { moduleReading } from "../src/engine/graph/languages/registry.ts";
 import { linguist, LINGUIST_RELEASE } from "../src/engine/linguist/index.ts";
 
 const [folder] = process.argv.slice(2);
@@ -54,7 +59,9 @@ function files(dir: string): string[] {
 
 let right = 0;
 let none = 0;
+let readUndecided = 0;
 const wrong: string[] = [];
+const misread: string[] = [];
 const samples = path.join(folder, "samples");
 for (const languageFolder of readdirSync(samples).sort()) {
   const language = byFolder.get(languageFolder);
@@ -65,11 +72,19 @@ for (const languageFolder of readdirSync(samples).sort()) {
     const name = rel.startsWith(`filenames${path.sep}`) ? path.basename(file) : rel;
     const text = readFileSync(file, "utf8");
     const found = list.detect(name, () => text).languages;
-    if (found.length !== 1) none++;
-    else if (found[0] === language) right++;
+    if (found.length !== 1) {
+      none++;
+      const module = found.length > 1 ? moduleOfLanguages(name, found) : null;
+      if (module !== null) {
+        readUndecided++;
+        if (moduleReading(name, language)?.name !== module) misread.push(`${path.relative(folder, file)}: read by ${module}, but it is ${language}`);
+      }
+    } else if (found[0] === language) right++;
     else wrong.push(`${path.relative(folder, file)}: ${found[0]}, not ${language}`);
   }
 }
 console.log(`Linguist ${LINGUIST_RELEASE.tag} samples: ${right + none + wrong.length}; right ${right}, no answer ${none}, wrong ${wrong.length}`);
+console.log(`undecided samples a module reads by its own ending: ${readUndecided}; in a language other than the sample's: ${misread.length}`);
 for (const line of wrong) console.log(`  wrong: ${line}`);
+for (const line of misread) console.log(`  misread: ${line}`);
 process.exit(wrong.length === 0 ? 0 : 1);

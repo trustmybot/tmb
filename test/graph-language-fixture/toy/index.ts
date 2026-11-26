@@ -7,6 +7,7 @@ import { md5 } from "../../../src/engine/graph/languages/kit.ts";
 export const toy: LanguageModule = {
   name: "toy",
   linguist: ["Janet"],
+  endings: [".janet"],
   comment: "hash",
   extract(file, out) {
     let current: number | null = null;

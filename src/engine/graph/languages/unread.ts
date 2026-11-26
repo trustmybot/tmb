@@ -1,11 +1,10 @@
 // The code tmb has no module for, named by GitHub Linguist's list (trustmybot/tmb#154): a file is
 // counted under its language when Linguist types that language as programming. Vue and Svelte count
 // although Linguist types them as markup, because they hold script. When Linguist's rules leave a
-// file several languages and no module reads any of them, it is counted as "one of" them, never
-// guessed (CODE_GRAPH.md).
+// file several languages and no module reads it, it is counted as "one of" them, never guessed
+// (CODE_GRAPH.md).
 import { linguist } from '../../linguist/index.ts';
-import { fileLanguages } from '../extract.ts';
-import { moduleReading } from './registry.ts';
+import { fileLanguages, readingModule } from '../extract.ts';
 
 /** Linguist's type of a language that is code. */
 const CODE_TYPE = 'programming';
@@ -24,11 +23,11 @@ function isCode(name: string): boolean {
 
 /**
  * The language tmb does not read that a file at `relPath` is in, from the languages Linguist's rules
- * leave it: null when a module reads one of them, and for prose, data, markup and files Linguist
- * does not know.
+ * leave it: null when a module reads the file (extract.ts, moduleOfLanguages), and for prose, data,
+ * markup and files Linguist does not know.
  */
-export function unreadLanguage(languages: readonly string[], relPath = ''): string | null {
-  if (languages.length === 0 || languages.some((name) => moduleReading(relPath, name) !== null)) return null;
+export function unreadLanguage(languages: readonly string[], relPath: string): string | null {
+  if (languages.length === 0 || readingModule(relPath, languages) !== null) return null;
   if (!languages.some(isCode)) return null;
   return languages.length === 1 ? languages[0]! : oneOf(languages);
 }

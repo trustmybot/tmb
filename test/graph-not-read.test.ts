@@ -63,21 +63,21 @@ afterEach(() => {
 });
 
 test("a file is counted under the language Linguist names for it when it is code no module reads (trustmybot/tmb#154)", () => {
-  const languages = (file: string, text = "") => fileLanguages(file, () => text);
-  expect(unreadLanguage(languages("cmd/Root.kt"))).toBe("Kotlin");
-  expect(unreadLanguage(languages("src/main.rb"))).toBe("Ruby");
-  expect(unreadLanguage(languages("lib/x.m", "@interface Gauge : NSObject\n@end\n"))).toBe("Objective-C");
+  const unread = (file: string, text = "") => unreadLanguage(fileLanguages(file, () => text), file);
+  expect(unread("cmd/Root.kt")).toBe("Kotlin");
+  expect(unread("src/main.rb")).toBe("Ruby");
+  expect(unread("lib/x.m", "@interface Gauge : NSObject\n@end\n")).toBe("Objective-C");
   // Vue is markup to Linguist, but holds script.
-  expect(unreadLanguage(languages("App.vue"))).toBe("Vue");
-  expect(unreadLanguage(languages("src/a.ts"))).toBeNull();
+  expect(unread("App.vue")).toBe("Vue");
+  expect(unread("src/a.ts")).toBeNull();
   // C and C++ are read (trustmybot/tmb#355).
-  expect(unreadLanguage(languages("include/x.h", "int x(void);\n"))).toBeNull();
-  expect(unreadLanguage(languages("src/x.cc"))).toBeNull();
-  expect(unreadLanguage(languages("README.md", "# demo\n"))).toBeNull();
+  expect(unread("include/x.h", "int x(void);\n")).toBeNull();
+  expect(unread("src/x.cc")).toBeNull();
+  expect(unread("README.md", "# demo\n")).toBeNull();
   // Linguist's rules leave a `.pl` file with neither Perl's nor Prolog's marks undecided: Perl's module reads it.
-  expect(unreadLanguage(languages("logic/facts.pl", "x.\n"))).toBeNull();
+  expect(unread("logic/facts.pl", "x.\n")).toBeNull();
   // Undecided between languages no module reads: one of them.
-  expect(unreadLanguage(languages("lib/facts.ecl", "x\n"))).toBe("one of ECL, ECLiPSe");
+  expect(unread("lib/facts.ecl", "x\n")).toBe("one of ECL, ECLiPSe");
 });
 
 test("by its name alone, a path is in the first of its languages that the layer counted", () => {

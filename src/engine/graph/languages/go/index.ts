@@ -287,6 +287,7 @@ function extractGo(root: Node, src: string, out: Collector, moduleSymbol: number
 export const go: LanguageModule = {
   name: 'go',
   linguist: ['Go'],
+  endings: ['.go'],
   grammar: goWasm,
   comment: 'slash',
   extract: (file, out) => extractGo(syntaxTree(file), file.src, out, file.module),

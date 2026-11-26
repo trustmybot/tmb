@@ -701,6 +701,7 @@ function extractPython(root: Node, src: string, out: Collector, moduleSymbol: nu
 export const python: LanguageModule = {
   name: 'python',
   linguist: ['Python'],
+  endings: ['.py'],
   grammar: pythonWasm,
   comment: 'hash',
   extract: (file, out) => extractPython(syntaxTree(file), file.src, out, file.module),
