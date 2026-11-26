@@ -83,7 +83,7 @@ describe("TypeScript: a decorator's call belongs to what encloses the decorated 
   });
 
   test("the graph: the class's decorator is the file's call, the method's is the class's, and a bare decorator is no call", async () => {
-    const got = await withGraph(repo, sha, (db) => owners(db).filter((o) => o.file === "deco.ts"));
+    const got = await withGraph(repo, sha, {}, (db) => owners(db).filter((o) => o.file === "deco.ts"));
     expect(got.map(({ kind, callee, line }) => ({ kind, callee, line }))).toEqual([
       { kind: "module", callee: "tag", line: 3 },
       { kind: "class", callee: "cache", line: 5 },
@@ -96,7 +96,7 @@ const hasPython = spawnSync("python3", ["-I", "-c", "pass"]).status === 0;
 
 describe("Python: a decorator's call belongs to what encloses the decorated thing", () => {
   test("the graph: the top-level function's decorator is the file's call, the method's is the class's", async () => {
-    const got = await withGraph(repo, sha, (db) => owners(db).filter((o) => o.file === "deco.py"));
+    const got = await withGraph(repo, sha, {}, (db) => owners(db).filter((o) => o.file === "deco.py"));
     expect(got.map(({ kind, callee, line }) => ({ kind, callee, line }))).toEqual([
       { kind: "module", callee: "cache", line: 4 },
       { kind: "class", callee: "cache", line: 9 },

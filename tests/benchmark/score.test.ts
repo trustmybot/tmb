@@ -12,7 +12,7 @@ import {
   type GraphCall,
   linksFoundByReference,
   linksFoundByState,
-  NOT_BUILT,
+  notBuilt,
   type ReferenceCall,
   rises,
   SCORE_NAMES,
@@ -112,7 +112,8 @@ const scored = (n: number, of: number): WayScores => ({
   callsAccountedFor: { n: of, of },
   missesByCause: {},
 });
-const stored = (a: WayScores): Stored => ({ command: "test", entries: [entry({ repo: "r", language: "typescript", commit: "c", reference: "ref" }, a)] });
+const NOT_BUILT = "not built (a reason)";
+const stored = (a: WayScores): Stored => ({ command: "test", entries: [entry({ repo: "r", language: "typescript", commit: "c", reference: "ref" }, { A: a, B: notBuilt(NOT_BUILT) })] });
 
 describe("a fall fails", () => {
   test("a score lower than the stored one is a fall, named by repo, way and score", () => {
@@ -154,7 +155,7 @@ describe("a fall fails", () => {
 
 describe("way B is not built, not zero", () => {
   test("every score of way B says it is not built, and none is a number", () => {
-    const e = entry({ repo: "r", language: "python", commit: "c", reference: "ref" }, scored(1, 2));
+    const e = entry({ repo: "r", language: "python", commit: "c", reference: "ref" }, { A: scored(1, 2), B: notBuilt(NOT_BUILT) });
     for (const name of SCORE_NAMES) {
       expect(e.ways.B[name]).toEqual({ notScored: NOT_BUILT });
       expect(format(e.ways.B[name])).toBe(NOT_BUILT);
@@ -173,5 +174,6 @@ describe("way B is not built, not zero", () => {
   test("a share of nothing reads as none, not as zero", () => {
     expect(format({ n: 0, of: 0 })).toBe("none");
     expect(format({ n: 6, of: 7 })).toBe("85.7% (6/7)");
+    expect(format({ n: 6, of: 7, note: "a note" })).toBe("85.7% (6/7), a note");
   });
 });

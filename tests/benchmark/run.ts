@@ -15,9 +15,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
-import { measurePython } from "./python.ts";
+import { measurePython, WAY_B_NOT_BUILT } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
-import { type Entry, entry, falls, format, isNotScored, rises, SCORE_NAMES, type ScoreName, type Stored, WAYS } from "./score.ts";
+import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
@@ -31,7 +31,17 @@ const TITLES: Record<ScoreName, string> = {
   callsAccountedFor: "Calls accounted for",
 };
 
-type Run = { stored: Stored; seconds: Record<string, { graph: number; reference: number }>; detail: Record<string, string[]> };
+/** What each way needs installed, by language, for the reader of the scores. */
+const INSTALLED: Record<string, Record<Way, string>> = {
+  typescript: {
+    A: "nothing: tmb's own parser",
+    B: "the TypeScript compiler, version 5 or later with its JavaScript program API, in the repo's node_modules (the benchmark passes the 5.9 development dependency); the repo's packages installed, for its calls of them to be outside",
+  },
+  python: { A: "nothing: tmb's own parser", B: WAY_B_NOT_BUILT },
+};
+
+type Seconds = { graph: number; reference: number };
+type Run = { stored: Stored; seconds: Record<string, Partial<Record<Way, Seconds>>>; detail: Record<string, string[]> };
 
 /** Measures every repo of the set; throws, naming each, when one cannot be measured. */
 async function measureAll(): Promise<Run> {
@@ -51,10 +61,19 @@ async function measureAll(): Promise<Run> {
       continue;
     }
     console.error(`measuring ${r.repo} (${r.language}) at ${sha.slice(0, 7)}…`);
-    const m = r.language === "typescript" ? { ...(await measureTypescript(where.folder, sha)), reference: TS_REFERENCE } : await measurePython(where.folder, sha);
-    entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, m.scores));
-    seconds[r.repo] = { graph: m.ms.graph / 1000, reference: m.ms.reference / 1000 };
-    detail[r.repo] = m.detail;
+    const secs = (ms: { graph: number; reference: number }): Seconds => ({ graph: ms.graph / 1000, reference: ms.reference / 1000 });
+    if (r.language === "typescript") {
+      const a = await measureTypescript(where.folder, sha, "A");
+      const b = await measureTypescript(where.folder, sha, "B");
+      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: TS_REFERENCE }, { A: a.scores, B: b.scores }));
+      seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
+      detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
+    } else {
+      const m = await measurePython(where.folder, sha);
+      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, { A: m.scores, B: notBuilt(WAY_B_NOT_BUILT) }));
+      seconds[r.repo] = { A: secs(m.ms) };
+      detail[r.repo] = m.detail.map((d) => `way A, ${d}`);
+    }
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);
   return { stored: { command: COMMAND, entries }, seconds, detail };
@@ -68,17 +87,23 @@ export function report(run: Run): string {
   for (const e of run.stored.entries) {
     for (const way of WAYS) out.push(`| ${e.repo} | ${e.language} | ${e.commit.slice(0, 7)} | ${way} | ${SCORE_NAMES.map((n) => format(e.ways[way][n])).join(" | ")} |`);
   }
-  out.push("", "Reference and time, in seconds:", "", "| Repo | Reference | Graph built | Reference and scoring |", "|---|---|---|---|");
+  out.push("", "Time, in seconds: the graph built (time to index) and the reference and scoring, per way.", "", "| Repo | Reference | Way | Graph built | Reference and scoring |", "|---|---|---|---|---|");
   for (const e of run.stored.entries) {
-    const s = run.seconds[e.repo];
-    out.push(`| ${e.repo} | ${e.reference} | ${s?.graph.toFixed(1) ?? ""} | ${s?.reference.toFixed(1) ?? ""} |`);
+    for (const way of WAYS) {
+      const s = run.seconds[e.repo]?.[way];
+      if (s !== undefined) out.push(`| ${e.repo} | ${e.reference} | ${way} | ${s.graph.toFixed(1)} | ${s.reference.toFixed(1)} |`);
+    }
   }
-  out.push("", "Misses by cause, way A: the reference's links the graph does not have, by the kind of code that hides them.");
-  for (const e of run.stored.entries) {
-    const causes = e.ways.A.missesByCause;
-    out.push("", `${e.repo} (${e.language}):${isNotScored(causes) ? ` ${causes.notScored}` : ""}`);
-    if (!isNotScored(causes)) for (const [cause, n] of Object.entries(causes)) out.push(`- ${n}: ${cause}`);
+  for (const way of WAYS) {
+    out.push("", `Misses by cause, way ${way}: the reference's links the graph does not have, by the kind of code that hides them.`);
+    for (const e of run.stored.entries) {
+      const causes = e.ways[way].missesByCause;
+      out.push("", `${e.repo} (${e.language}):${isNotScored(causes) ? ` ${causes.notScored}` : ""}`);
+      if (!isNotScored(causes)) for (const [cause, n] of Object.entries(causes)) out.push(`- ${n}: ${cause}`);
+    }
   }
+  out.push("", "What each way needs installed:", "", "| Language | Way | Installed |", "|---|---|---|");
+  for (const language of [...new Set(run.stored.entries.map((e) => e.language))]) for (const way of WAYS) out.push(`| ${language} | ${way} | ${INSTALLED[language]?.[way] ?? ""} |`);
   return out.join("\n");
 }
 

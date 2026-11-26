@@ -1,19 +1,35 @@
-// The benchmark's measure of a TypeScript and JavaScript repo (trustmybot/tmb#244): way A's graph
+// The benchmark's measure of a TypeScript and JavaScript repo (trustmybot/tmb#244): each way's graph
 // against the TypeScript compiler, which is the reference for functions and for links. The checks
 // are the graph's own: coverage.ts lists the compiler's functions, links.ts judges each link and
 // each call state; this file only counts.
 import type { Database } from "bun:sqlite";
 import ts from "typescript5";
+import type { BuildOptions } from "../../src/engine/graph/build.ts";
 import { BASE_LAYER } from "../../src/engine/graph/db.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { compilerFunctions, coveredLanguage } from "../../src/engine/graph/languages/typescript/coverage.ts";
 import { checkLayer, type CompilerCall, compilerProgram, commitTexts } from "../../src/engine/graph/languages/typescript/links.ts";
 import { graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
-import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type WayScores } from "./score.ts";
+import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type Way, type WayScores } from "./score.ts";
 
 const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["typescript", "tsx", "javascript"]);
 
 export const REFERENCE = `TypeScript compiler ${ts.version}`;
+
+/**
+ * How each way builds the graph. Way B's tool is the 5.9 development dependency, passed in: tmb
+ * installs nothing, and the benchmark measures the tool, not a repo's own install of it.
+ */
+const BUILD: Record<Way, BuildOptions> = {
+  A: { links: "built-in" },
+  B: { links: "language-tool", tools: new Map([["typescript", ts]]) },
+};
+
+/**
+ * Way B's links are made by the very tool that judges them: links right is shown, and it is no
+ * proof of way B.
+ */
+export const SAME_TOOL = "same tool as the reference";
 
 /**
  * The kind of code a call is, by its syntax, for the misses by cause: how its callee is written,
@@ -144,9 +160,9 @@ function examples(missed: readonly ReferenceCall[]): string[] {
 
 export type Measured = { scores: WayScores; ms: { graph: number; reference: number }; detail: string[] };
 
-/** Measures way A on the repo at `sha`. */
-export async function measureTypescript(repoDir: string, sha: string): Promise<Measured> {
-  return withGraph(repoDir, sha, (db, graphMs) => {
+/** Measures one way on the repo at `sha`. */
+export async function measureTypescript(repoDir: string, sha: string, way: Way): Promise<Measured> {
+  return withGraph(repoDir, sha, BUILD[way], (db, graphMs) => {
     const t = performance.now();
     const scope = languageTexts(repoDir, sha, LANGUAGES);
     const reference = new Map([...scope].map(([file, text]) => [file, compilerFunctions(file, text)]));
@@ -170,7 +186,7 @@ export async function measureTypescript(repoDir: string, sha: string): Promise<M
 
     const scores: WayScores = {
       functionsFound: functions,
-      linksRight: { n: links.right, of: links.right + links.wrong.length },
+      linksRight: { n: links.right, of: links.right + links.wrong.length, ...(way === "B" ? { note: SAME_TOOL } : {}) },
       linksFoundByState: linksFoundByState(calls),
       linksFoundByReference: { n: byReference.n, of: byReference.of },
       callsAccountedFor: callsAccountedFor(calls.byFunction.compiler, calls.byFunction.graph, calls.outsideWrong.length),
