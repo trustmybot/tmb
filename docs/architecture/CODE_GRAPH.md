@@ -914,6 +914,7 @@ Table constraints:
 | `parent_id` | INTEGER | nullable |  |  |
 | `unnamed` | INTEGER | NOT NULL | `0` |  |
 | `named_id` | INTEGER | nullable |  |  |
+| `lang` | TEXT | NOT NULL | `''` | The node's own language when it differs from its file's |
 
 #### `edges`
 
