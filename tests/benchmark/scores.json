@@ -84,7 +84,7 @@
           },
           "linksFoundByReference": {
             "n": 7637,
-            "of": 10714
+            "of": 10711
           },
           "callsAccountedFor": {
             "n": 45912,
@@ -98,7 +98,7 @@
             "a method on a module's or class's name": 132,
             "a name of data whose value is no function written there, called": 80,
             "a tagged template": 28,
-            "a name bound by destructuring (`const { f } = …`), called": 19,
+            "a name bound by destructuring (`const { f } = …`), called": 16,
             "a function's name called directly": 11,
             "a call on the parent (`super`)": 2,
             "a construction by a class's name": 2,
@@ -121,14 +121,13 @@
           },
           "linksFoundByReference": {
             "n": 10710,
-            "of": 10714
+            "of": 10711
           },
           "callsAccountedFor": {
             "n": 45912,
             "of": 45912
           },
           "missesByCause": {
-            "a name bound by destructuring (`const { f } = …`), called": 3,
             "a construction by a class's name": 1
           }
         }
