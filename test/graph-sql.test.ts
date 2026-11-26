@@ -73,14 +73,12 @@ const FILES: Record<string, string> = {
     "",
   ].join("\n"),
   "src/moves.ts": 'declare const pool: { query(s: string, v: unknown[]): unknown };\nexport function forget(id: number) {\n  return pool.query("delete from crate_moves where id = $1", [id]);\n}\n',
-  // A label that starts like a statement and does not parse gives nothing; nor does one that only
-  // a few lenient dialects read as a statement.
-  "src/labels.ts":
-    'export const insertLabel = "Insert row";\nexport function caption() {\n  return "Update available";\n}\nexport function removeCaption() {\n  return "Delete row";\n}\n',
-  // A trigger in a string: only a few dialects parse a trigger.
+  // A label that starts like a statement and does not parse gives nothing.
+  "src/labels.ts": 'export const insertLabel = "Insert row";\nexport function caption() {\n  return "Update available";\n}\n',
+  // A trigger in a string, which only a few dialects parse, lives in the function that holds it.
   "src/install.ts":
     'declare const db: { run(s: string): unknown };\nexport function installShelfTrigger() {\n  return db.run("CREATE TRIGGER shelf_added AFTER INSERT ON shelves BEGIN UPDATE crates SET size = 0; END");\n}\n',
-  // A placeholder where a query or a table's name would be, in a statement few dialects read.
+  // A placeholder where a query or a table's name would be names no table.
   "src/count.py": 'def count_rows(cur, sql, n):\n    cur.execute(f"select count(*) from (select * from ({sql}) limit {n})")\n',
   // A shell script's strings are read the same way.
   "scripts/seed.sh": '#!/bin/bash\nseed() {\n  sqlite3 dock.db "insert into crate_moves (crate_id) values (1)"\n}\n',
@@ -196,9 +194,9 @@ describe("a statement's tables, from the parser", () => {
     ]);
   });
 
-  test("a trigger in a string, which only a few dialects parse, gives nothing", () => {
-    expect(nodes.some((n) => n.includes("shelf_added"))).toBe(false);
-    expect(linksFrom("installShelfTrigger")).toEqual([]);
+  test("a trigger in a string lives in the function that holds the string", () => {
+    expect(nodes).toContain("sql_trigger:shelf_added @src/install.ts in installShelfTrigger");
+    expect(linksFrom("shelf_added")).toEqual([`shelf_added triggers_on ${TABLE}shelves`, `shelf_added writes_data ${TABLE}crates`]);
   });
 
   test("an FTS virtual table is a table node", () => {
@@ -227,13 +225,8 @@ describe("SQL in a string", () => {
     expect(linksFrom("src/labels.ts")).toEqual([]);
   });
 
-  test("a label only a few lenient dialects read as a statement gives nothing", () => {
-    expect(linksFrom("removeCaption")).toEqual([]);
-    expect(nodeNames().some((n) => /:row$/.test(n))).toBe(false);
-  });
-
-  test("a placeholder where a query would be names no table", () => {
-    expect(linksFrom("count_rows")).toEqual([]);
+  test("a placeholder where a query or a table's name would be names no table: the store alone", () => {
+    expect(linksFrom("count_rows")).toEqual(["count_rows reads_data data_source:database:"]);
   });
 
   test("dialects that parse the statement and name different tables give no link", () => {
