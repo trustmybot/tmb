@@ -22,6 +22,9 @@ const BUILD: Record<Way, BuildOptions> = {
   B: { links: "language-tool" },
 };
 
+/** The version of the Python reference, raised when the reference changes what it counts. */
+export const REFERENCE_VERSION = 1;
+
 const SCRIPT = path.join(import.meta.dir, "python_reference.py");
 
 /** The answer of python_reference.py for each file. */

@@ -20,7 +20,8 @@ import path from "node:path";
 import type TS from "typescript5";
 import { loadCarried } from "./carried.ts";
 import type { LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
-import { baseOptions, calleeOf, type CommitFiles, commitProgram, isCallNode, originalNames, projectOptions, type TypeScriptModule } from "./compiler.ts";
+import { calleeOf, type CommitFiles, isCallNode, originalNames, type TypeScriptModule } from "./compiler.ts";
+import { projectsOf } from "./projects.ts";
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
@@ -90,13 +91,12 @@ const placeKey = (pos: number, name: string): string => `${pos}\u0000${name}`;
 /** The compiler's answers for the graph's calls, one per call, in order. */
 function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput): ToolAnswer[] {
   const root = path.resolve(repoDir);
-  // The program reads the source files and the settings files of the commit, the default library
-  // tmb carries, and the installed packages of the working tree.
+  // The programs read the source files and the settings files of the commit, the default library
+  // tmb carries, and the installed packages of the working tree. Each file with calls is answered
+  // in the program of the project that owns it (projects.ts).
   const texts = new Map<string, string>([...input.configs, ...input.files]);
-  const files: CommitFiles = { texts, installed: true, library };
-  const options: TS.CompilerOptions = { ...baseOptions(ts), ...projectOptions(ts, root, files), noEmit: true, allowJs: true, skipLibCheck: true };
-  const program = commitProgram(ts, root, input.files.keys(), files, options);
-  const checker = program.getTypeChecker();
+  const files: CommitFiles = { texts, installed: true, library, read: input.read };
+  const projects = projectsOf(ts, root, files, new Set(input.calls.map((call) => call.path)));
   const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
   const inRepo = (sf: TS.SourceFile) => input.files.has(rel(sf.fileName));
 
@@ -128,7 +128,7 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
     return (starting.length === 1 ? starting : overlapping).map(({ index }) => index);
   };
 
-  const answerOf = (callee: TS.Identifier | TS.PrivateIdentifier): ToolAnswer => {
+  const answerOf = (checker: TS.TypeChecker, callee: TS.Identifier | TS.PrivateIdentifier): ToolAnswer => {
     let sym = checker.getSymbolAtLocation(callee);
     if (sym === undefined) return NOT_KNOWN;
     if (sym.flags & ts.SymbolFlags.Alias) {
@@ -155,6 +155,8 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
     if (known !== undefined) return known;
     const out = new Map<string, ToolAnswer>();
     byFile.set(file, out);
+    const program = projects.programOf(file);
+    const checker = program.getTypeChecker();
     const sf = program.getSourceFile(path.join(root, file));
     if (sf === undefined) return out;
     const original = originalNames(ts, sf);
@@ -162,7 +164,7 @@ function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput
       if (isCallNode(ts, node)) {
         const callee = calleeOf(ts, node);
         if (callee !== null) {
-          const answer = answerOf(callee);
+          const answer = answerOf(checker, callee);
           const pos = callee.getStart(sf);
           for (const name of new Set([callee.text, original.get(callee.text) ?? callee.text])) out.set(placeKey(pos, name), answer);
         }
