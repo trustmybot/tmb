@@ -325,13 +325,18 @@ flowchart LR
 - **An answer given on an error is no answer.** When the tool reports an error at a call, such as an argument whose type is missing, the call is not known, even if the tool names a target.
 - **The tool's answer stands.** tmb neither adds to it nor corrects it. A link the tool proves is made, whatever the proof rests on, and a call the tool does not answer is not known.
   - **Example 1.** `cli: Group` is later given a subclass of `Group`. The tool answers with the declared type, so `cli.add()` links to `Group.add`. A call through a base class links to the base's method the same way.
-  - **Example 2.** A call in unreachable code or under `if TYPE_CHECKING:`. It is a call like any other: the tool's answer, or not known.
+  - **Example 2.** A call under `if TYPE_CHECKING:` is a call like any other. A call in code the tool finds unreachable gets no answer from it, so it is not known.
   - **Edge case.** The tool answers for a different call than the one asked, such as the enclosing call when the called thing is a subscript or another call's result. That is no answer for this call, so it is not known.
 - **A construction links to the class.** `Cart()` and `new Cart()` link to `Cart`, not to its `__init__`, `__new__` or constructor. An enum variant or a conversion written like a call, such as Go's `Celsius(x)`, links to its type the same way.
 - **A function with a declaration and a definition is one node: the definition.** A call links to the definition, the code that runs. A method that has only a declaration, such as an interface's, a trait's or a pure virtual one, is a node, and a call through the interface links to it.
 - **Inside a macro, the tool says what is a call.** The parser cannot see into a macro's input. Way B asks the tool about each name there, and a name the tool does not answer as a call is dropped.
 - **Overload stubs are one function.** A call that the tool resolves to a function's `@overload` stubs links to the function itself, the one definition that runs.
 - **Way B for Python reads the environment in the working tree.** It uses the repo's own virtual environment and its project config, which names a `src` layout. It never runs the user's Python. With no environment, a package call is not known.
+  - **Which environment.** The one the project's config names, else the one folder at the top of the repo that holds `pyvenv.cfg`. Two or more with no config naming one count as none, and the answer's freshness says so.
+- **Way B for Go reads the packages already on the machine.** Go's module cache is its installed packages. The helper runs the user's `go` with downloads off and with the user's own Go settings.
+  - **Example.** A call into a module in the cache is outside. A call into a module that is not there is not known.
+  - **Edge case 1.** A file that needs a C compiler to be read (cgo) is left out of the tool's run. Its functions are nodes, and its calls are not known.
+  - **Edge case 2.** A module replaced by a folder outside the repo. Its calls are not known.
 - **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
 - **tmb installs nothing for way B.** It never installs a tool or a project's dependencies, and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
