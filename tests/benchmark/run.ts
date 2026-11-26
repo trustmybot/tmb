@@ -15,9 +15,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
-import { measurePython, WAY_B_NOT_BUILT } from "./python.ts";
+import { measurePython } from "./python.ts";
 import { BENCH_REPOS, locate } from "./repos.ts";
-import { type Entry, entry, falls, format, isNotScored, notBuilt, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
+import { type Entry, entry, falls, format, isNotScored, rises, SCORE_NAMES, type ScoreName, type Stored, type Way, WAYS } from "./score.ts";
 import { measureTypescript, REFERENCE as TS_REFERENCE } from "./typescript.ts";
 
 export const SCORES_FILE = path.join(import.meta.dir, "scores.json");
@@ -37,7 +37,10 @@ const INSTALLED: Record<string, Record<Way, string>> = {
     A: "nothing: tmb's own parser",
     B: "nothing for the compiler: tmb carries it; the repo's packages installed, for its calls of them to be outside",
   },
-  python: { A: "nothing: tmb's own parser", B: WAY_B_NOT_BUILT },
+  python: {
+    A: "nothing: tmb's own parser",
+    B: "nothing for pyright: tmb carries it; the repo's own virtual environment, for its calls of packages to be outside",
+  },
 };
 
 type Seconds = { graph: number; reference: number };
@@ -69,10 +72,11 @@ async function measureAll(): Promise<Run> {
       seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
       detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
     } else {
-      const m = await measurePython(where.folder, sha);
-      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: m.reference }, { A: m.scores, B: notBuilt(WAY_B_NOT_BUILT) }));
-      seconds[r.repo] = { A: secs(m.ms) };
-      detail[r.repo] = m.detail.map((d) => `way A, ${d}`);
+      const a = await measurePython(where.folder, sha, "A");
+      const b = await measurePython(where.folder, sha, "B");
+      entries.push(entry({ repo: r.repo, language: r.language, commit: sha, reference: a.reference }, { A: a.scores, B: b.scores }));
+      seconds[r.repo] = { A: secs(a.ms), B: secs(b.ms) };
+      detail[r.repo] = [...a.detail.map((d) => `way A, ${d}`), ...b.detail.map((d) => `way B, ${d}`)];
     }
   }
   if (errors.length > 0) throw new Error(`the benchmark cannot measure:\n${errors.join("\n")}`);

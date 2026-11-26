@@ -251,8 +251,8 @@ export interface ToolCall {
 }
 
 // What a repo gives its tool: the text of every file of the tool's languages at the commit, the
-// project's settings files at the commit (package.json, tsconfig.json, …), the graph's nodes in
-// those files and the graph's calls in them.
+// project's settings files at the commit (package.json, tsconfig.json, … and each file the tool
+// reads besides, LanguageTool.reads), the graph's nodes in those files and the graph's calls in them.
 export interface ToolInput {
   files: ReadonlyMap<string, string>;
   configs: ReadonlyMap<string, string>;
@@ -265,9 +265,15 @@ export interface ToolInput {
 export type ToolAnswer = { node: number } | { state: 'outside' | 'not_known' };
 
 // A language's own tool, opened for one repo. tmb installs nothing: a tool tmb carries is always
-// the one used; one that cannot run in the repo says why.
+// the one used; one that cannot run in the repo says why. Opening may wait (a tool that loads its
+// own parts first); answering does not.
 export interface LanguageTool {
   // What it is, for a reader.
   name: string;
-  open(repoDir: string): { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };
+  // The files of the commit the tool reads besides its languages' own, such as its settings files
+  // or the language's stubs; absent when it reads none.
+  reads?(path: string): boolean;
+  open(repoDir: string): OpenedTool | Promise<OpenedTool>;
 }
+
+export type OpenedTool = { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };

@@ -4,6 +4,7 @@ import type { Node } from 'web-tree-sitter';
 import type { CallAt, CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, docOf, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
 import { BUILTINS } from './builtins.ts';
+import { pyright } from './tool.ts';
 
 // The string a body opens with, Python's docstring; '' when it opens with
 // anything else.
@@ -564,4 +565,5 @@ export const python: LanguageModule = {
   grammar: pythonWasm,
   comment: 'hash',
   extract: (file, out) => extractPython(syntaxTree(file), file.src, out, file.module),
+  tool: pyright,
 };
