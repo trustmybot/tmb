@@ -362,7 +362,13 @@ flowchart LR
   - **Example 2.** A store package the sources do not cover gives no data source node. Its SQL strings still give table nodes.
   - **Edge case.** A package serves several stores, such as a cloud provider's SDK. The package alone does not say the kind, so the call gives no data source node.
 
-Open, for the Human: how the kind is known for a package that serves several stores.
+  - **Edge case.** Python code imports a module, and the list names the package it was installed from. The installed package's own metadata in the working tree says which package holds the module. With no environment, the call gives no data source node.
+
+Open, for the Human:
+
+- How the kind is known for a package that serves several stores.
+- Stores in a language's standard library, such as Python's `sqlite3`. The sources list packages only, so these give no store node.
+- Object storage. The sources name no object store, so no call gives that kind today.
 
 ## Concepts
 
