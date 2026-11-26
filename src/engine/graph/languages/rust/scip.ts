@@ -127,6 +127,15 @@ export function readScip(bytes: Uint8Array): ScipDocument[] {
 export const isLocal = (symbol: string): boolean => symbol.startsWith("local ");
 
 /**
+ * A SCIP method descriptor, `<name>(<disambiguator>).`, the descriptor of a function or a method
+ * (SCIP's symbol grammar, "method"): a symbol that ends with it names one.
+ */
+export const METHOD_DESCRIPTOR_END = ").";
+
+/** Whether a symbol names a function or a method: its last descriptor is a method descriptor. */
+export const isFunction = (symbol: string): boolean => !isLocal(symbol) && symbol.endsWith(METHOD_DESCRIPTOR_END);
+
+/**
  * The package a global symbol belongs to, `<manager> <name> <version>`: a symbol is
  * `<scheme> <manager> <name> <version> <descriptors>`, its first four parts each ending at a space.
  */

@@ -15,7 +15,13 @@
 // It runs no code of the repo and downloads nothing. The repo's `.rs` files and Cargo's manifests
 // are read from the commit into a scratch folder; Cargo runs offline, so a dependency that is not on
 // disk is not loaded, and a call into it is not known. No build script and no proc macro runs: what
-// rust-analyzer cannot know without them is not known. Without rust-analyzer on PATH, way B for Rust
+// rust-analyzer cannot know without them is not known.
+//
+// A name written as a call in a macro's input, the name then a group in parentheses, is no call
+// the parser can prove: the macro may make a call of it, or a pattern, or text. It is a call when
+// the symbol rust-analyzer gives at it is a function or a method (a SCIP method descriptor), and it
+// is then answered as above; any other name there is dropped. A tuple struct or a variant is
+// written the same way in a pattern as in a construction, so neither is answered as a call there. Without rust-analyzer on PATH, way B for Rust
 // cannot run, and the built-in rules make the links.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +29,8 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Node, Parser } from "web-tree-sitter";
 import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
-import { ENCODING, isLocal, KIND_ENUM_MEMBER, ownerOfType, packageOf, readScip, ROLE_DEFINITION, type ScipDocument } from "./scip.ts";
+import { isNameToken } from "./keywords.ts";
+import { ENCODING, isFunction, isLocal, KIND_ENUM_MEMBER, ownerOfType, packageOf, readScip, ROLE_DEFINITION, type ScipDocument } from "./scip.ts";
 
 /** The program way B for Rust runs: the user's own rust-analyzer, on PATH. */
 export const RUST_ANALYZER = "rust-analyzer";
@@ -267,12 +274,18 @@ export type Definition = { file: string; line: number; name: string };
 /** rust-analyzer's answer for the name at a place: the definition in the repo it names, outside the repo, or why there is none. */
 export type Answer = { repo: Definition } | { outside: string } | { notKnown: string };
 
-/** The call expression around the name at `pos`: the whole call, receiver and arguments included; else the name. */
+/**
+ * The call expression around the name at `pos`: the whole call, receiver and arguments included;
+ * in a macro's input, the name and the group in parentheses after it; else the name.
+ */
 function callExtent(root: Node, pos: number, length: number): { start: number; end: number } {
-  for (let n: Node | null = root.descendantForIndex(pos, pos + length); n !== null; n = n.parent) {
+  const name = root.descendantForIndex(pos, pos + length);
+  for (let n: Node | null = name; n !== null; n = n.parent) {
     const callee = n.type === "call_expression" ? n.childForFieldName("function") : null;
     if (callee !== null && callee.startIndex <= pos && callee.endIndex >= pos + length) return { start: n.startIndex, end: n.endIndex };
   }
+  const args = name !== null && isNameToken(name) && name.parent?.type === "token_tree" ? name.nextSibling : null;
+  if (args?.type === "token_tree" && args.firstChild?.type === "(") return { start: pos, end: args.endIndex };
   return { start: pos, end: pos + length };
 }
 
@@ -280,7 +293,11 @@ function callExtent(root: Node, pos: number, length: number): { start: number; e
  * rust-analyzer's answers, read from its output for the repo's files. `parser` reads the files it
  * reports errors in, for the extent of a call there. Call `close` when done.
  */
-export function readAnswers(files: ReadonlyMap<string, string>, out: RustAnalyzerOutput, parser: Parser): { at(file: string, pos: number, length: number): Answer; close(): void } {
+export function readAnswers(
+  files: ReadonlyMap<string, string>,
+  out: RustAnalyzerOutput,
+  parser: Parser,
+): { at(file: string, pos: number, length: number): Answer; asCall(file: string, pos: number, length: number): Answer | null; close(): void } {
   // Every document, by its path from the repo's root.
   const documents = new Map<string, ScipDocument>();
   for (const { root, documents: docs } of out.workspaces) for (const doc of docs) documents.set(root === "." ? doc.path : `${root}/${doc.path}`, doc);
@@ -343,14 +360,19 @@ export function readAnswers(files: ReadonlyMap<string, string>, out: RustAnalyze
     const extent = callExtent(root, pos, length);
     return here.some((e) => e.start < extent.end && e.end > extent.start);
   };
-  return {
-    at(file, pos, length) {
-      const doc = documents.get(file);
+  // The symbols rust-analyzer gives at the name at `pos`, or why it gives none.
+  const symbolsOf = (file: string, pos: number): Set<string> | Answer => {
+    const doc = documents.get(file);
+    const text = files.get(file);
+    if (doc === undefined || text === undefined) return { notKnown: "a file rust-analyzer does not load" };
+    const place = placeOf(text, startsOf(file, text), pos, doc.encoding);
+    return symbolsAt(doc, place.line, place.column) ?? { notKnown: "no symbol" };
+  };
+  const answers = {
+    at(file: string, pos: number, length: number): Answer {
       const text = files.get(file);
-      if (doc === undefined || text === undefined) return { notKnown: "a file rust-analyzer does not load" };
-      const place = placeOf(text, startsOf(file, text), pos, doc.encoding);
-      const symbols = symbolsAt(doc, place.line, place.column);
-      if (symbols === undefined) return { notKnown: "no symbol" };
+      const symbols = symbolsOf(file, pos);
+      if (!(symbols instanceof Set) || text === undefined) return symbols instanceof Set ? { notKnown: "a file rust-analyzer does not load" } : symbols;
       if (symbols.size !== 1) return { notKnown: "more than one symbol" };
       let symbol = [...symbols][0]!;
       if (isLocal(symbol)) return { notKnown: "a local" };
@@ -366,11 +388,19 @@ export function readAnswers(files: ReadonlyMap<string, string>, out: RustAnalyze
       if (definition !== undefined) return { repo: definition };
       return ownPackages.has(packageOf(symbol)) ? { notKnown: "a symbol of the repo with no definition in it" } : { outside: packageOf(symbol) };
     },
+    // A name written as a call in a macro's input: answered as a call when the one symbol at it is
+    // a function or a method; null, so dropped, otherwise.
+    asCall(file: string, pos: number, length: number): Answer | null {
+      const symbols = symbolsOf(file, pos);
+      if (!(symbols instanceof Set) || symbols.size !== 1 || !isFunction([...symbols][0]!)) return null;
+      return answers.at(file, pos, length);
+    },
     close() {
       for (const root of trees.values()) root.tree.delete();
       trees.clear();
     },
   };
+  return answers;
 }
 
 /** The answers for the graph's calls, one per call, in order. */
@@ -386,8 +416,9 @@ export function answerCalls(input: ToolInput, out: RustAnalyzerOutput, parser: P
   };
   const answers = readAnswers(input.files, out, parser);
   try {
-    return input.calls.map((call) => {
-      const a = answers.at(call.path, call.pos, call.name.length);
+    return input.calls.map((call): ToolAnswer => {
+      const a = call.inMacro ? answers.asCall(call.path, call.pos, call.name.length) : answers.at(call.path, call.pos, call.name.length);
+      if (a === null) return { call: false };
       return "repo" in a ? nodeOf(a.repo) : "outside" in a ? OUTSIDE : NOT_KNOWN;
     });
   } finally {

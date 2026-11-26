@@ -7,6 +7,7 @@ import rustWasm from 'tree-sitter-rust/tree-sitter-rust.wasm' with { type: 'file
 import type { Node } from 'web-tree-sitter';
 import type { CallMark, Collector, LanguageModule, SymbolKind } from '../contract.ts';
 import { clip, DOC_MAX, memberHint, named, normalizedHash, oneLine, signatureOf, syntaxTree } from '../kit.ts';
+import { isNameToken } from './keywords.ts';
 import { rustAnalyzer } from './tool.ts';
 
 /** The grammar's node types for a comment. */
@@ -41,6 +42,14 @@ const OUTER_ATTRIBUTE = 'attribute_item';
 
 /** A doc comment's marker that makes it an outer doc attribute (comments.html#doc-comments). */
 const OUTER_DOC_MARKER = 'outer_doc_comment_marker';
+
+/** A macro invocation (macros.html#macro-invocation): its input is a token tree, which the parser does not read as code. */
+const MACRO_INVOCATION = 'macro_invocation';
+
+/** A delimited token tree (macros.html#macro-invocation), and the delimiter that opens a call's arguments. */
+const TOKEN_TREE = 'token_tree';
+const CALL_OPEN = '(';
+
 
 /** The type `Self` names inside an implementation (paths.html#self-1). */
 const SELF_TYPE = 'Self';
@@ -153,6 +162,21 @@ function callee(call: Node): Callee {
     if (name && on) return { kind: 'method', name, on };
   }
   return { kind: 'none', at: fn };
+}
+
+/**
+ * The names written as a call in a macro's input, nested token trees included: a name, then a
+ * group in parentheses, as a call and a method call write it (expressions/call-expr.html,
+ * expressions/method-call-expr.html). The parser cannot tell whether the macro makes a call of it;
+ * the language's tool says (CODE_GRAPH.md, "Inside a macro, the tool says what is a call").
+ */
+function namesWrittenAsCalls(tree: Node, into: Node[]): void {
+  for (const c of tree.children) {
+    if (isNameToken(c)) {
+      const next = c.nextSibling;
+      if (next?.type === TOKEN_TREE && next.firstChild?.type === CALL_OPEN) into.push(c);
+    } else if (c.type === TOKEN_TREE) namesWrittenAsCalls(c, into);
+  }
 }
 
 /** The name of a closure: the call it is passed to, else its line. */
@@ -344,6 +368,8 @@ function extractRust(root: Node, src: string, out: Collector, moduleSymbol: numb
   // belong to.
   type Around = { scope: number; container: number; owner: number; prefix: string; inBlock: boolean; member: { name: string; symbol: number | null; exported: boolean } | null };
   const pending: { call: Node; scope: number }[] = [];
+  // The names written as calls in macros' inputs, each with the node a call there belongs to.
+  const inMacros: { name: Node; scope: number }[] = [];
 
   const visit = (node: Node, at: Around): void => {
     let inner: Around = at;
@@ -419,6 +445,11 @@ function extractRust(root: Node, src: string, out: Collector, moduleSymbol: numb
       inner = { ...at, scope: symbol, container: symbol };
     } else if (t === 'call_expression') {
       pending.push({ call: node, scope: at.scope });
+    } else if (t === MACRO_INVOCATION) {
+      const input = named(node).find((c) => c.type === TOKEN_TREE);
+      const names: Node[] = [];
+      if (input) namesWrittenAsCalls(input, names);
+      for (const name of names) inMacros.push({ name, scope: at.scope });
     }
     // An item is in scope in its whole module or block, before its declaration too
     // (names/scopes.html#item-scopes): the implementations come after the types they are for.
@@ -520,6 +551,8 @@ function extractRust(root: Node, src: string, out: Collector, moduleSymbol: numb
     // No call is linked by its name alone: what the language's rules prove is its target.
     out.edge(scope, 'calls', c.name, startLine(call), c.hint, 'value', undefined, { pos: c.pos, ...c.mark });
   }
+  // A name in a macro's input is no call the rules can prove: only the tool says it is one.
+  for (const { name, scope } of inMacros) out.edge(scope, 'calls', name.text, startLine(name), null, 'value', undefined, { pos: name.startIndex, inMacro: 1 });
 }
 
 export const rust: LanguageModule = {
