@@ -2,7 +2,7 @@
   "command": "bun tests/benchmark/run.ts --write",
   "referenceVersions": {
     "typescript": 2,
-    "python": 1,
+    "python": 2,
     "go": 2
   },
   "entries": [
@@ -155,14 +155,14 @@
       "ways": {
         "A": {
           "functionsFound": {
-            "n": 857,
-            "of": 1488
+            "n": 839,
+            "of": 1470
           },
           "linksRight": {
             "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
           },
           "linksFoundByState": {
-            "n": 376,
+            "n": 384,
             "of": 3102
           },
           "linksFoundByReference": {
@@ -178,8 +178,8 @@
         },
         "B": {
           "functionsFound": {
-            "n": 857,
-            "of": 1488
+            "n": 839,
+            "of": 1470
           },
           "linksRight": {
             "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
