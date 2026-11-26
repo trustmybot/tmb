@@ -19,6 +19,28 @@ The code graph's rules for `.rs` files. They are read through tree-sitter's Rust
   - A scope with a glob import or a macro invoked where an item goes may hold a name it does not write out: a name it does not declare is not known there.
   - A local variable of the name anywhere in the function around the call, a parameter included, hides the items: not known.
   - `E::V(…)`, where `E` is an enum the scope declares and `V` a variant of it with fields in parentheses, links to the enum (items/enumerations.html). `Self(…)` and `Self::V(…)` in an implementation do the same for the type the implementation is for, when the file declares it in the same scope.
-  - Every other call is not known: a method call, an associated function by its type's path, a path through another module, a name a `use` brings, a prelude function. Way B, rust-analyzer, gives these. Way A finds no call outside the repo.
+  - Every other call is not known: a method call, an associated function by its type's path, a path through another module, a name a `use` brings, a prelude function. [Way B](#way-b-rust-analyzer) gives these. Way A finds no call outside the repo.
+
+## Way B: rust-analyzer
+
+[tool.ts](tool.ts) runs the user's own `rust-analyzer`. Its `scip` command gives, for each name in the repo's code, the symbol the name refers to and where it is defined; [scip.ts](scip.ts) reads that index. Its `diagnostics` command gives the errors.
+- The repo's `.rs` files are taken from the commit and written to a scratch folder, with each `Cargo.toml` and `Cargo.lock`. Each Cargo workspace is indexed from its root: a folder with a `Cargo.toml` and none above it.
+- It runs no code of the repo and downloads nothing.
+  - Cargo runs offline (`CARGO_NET_OFFLINE`), and rustup installs no toolchain (`RUSTUP_AUTO_INSTALL=0`).
+  - No proc macro is expanded.
+  - No build script is compiled or run. `scip` asks Cargo for the build scripts' output even when they are turned off, so the command it runs for that output is replaced by `rust-analyzer --version`.
+  - A crate is read from Cargo's home on disk, if it is there. A call into a crate that is not there is not known.
+- A call is linked when the symbol at its name is defined in the repo, at one place, and that place is one node: in the same file, of the same name, its lines holding the definition; when two hold it, the one that starts on its line.
+  - A variant is its enum's, so `E::V(…)` links to the enum (items/enumerations.html).
+  - A tuple struct's name is its symbol, so `S(…)` links to the struct.
+- It is outside when the symbol belongs to no package of the repo: the standard library, or a crate on disk.
+- It is not known in every other case:
+  - a local, a closure included;
+  - an error rust-analyzer reports inside the call;
+  - a symbol defined at two places, such as one function written twice under `cfg`;
+  - a symbol of the repo with no definition, such as a derived method;
+  - a file rust-analyzer does not load: one `cfg` leaves out, or one in no Cargo workspace;
+  - `Self(…)`, which rust-analyzer answers with the implementation, not the type.
+- Without `rust-analyzer` on PATH, way B for Rust does not run. The built-in rules make the links, and the layer's note names what is missing.
 
 The coverage test compares the functions and calls with Rust's own parser, rust-analyzer's (`rust-analyzer parse`), through [rust.ts](../../../../../tests/benchmark/rust.ts).

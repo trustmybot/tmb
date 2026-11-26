@@ -5,7 +5,7 @@
     "python": 2,
     "go": 2,
     "java": 2,
-    "rust": 1,
+    "rust": 2,
     "c": 1,
     "cpp": 1
   },
@@ -385,7 +385,7 @@
       "repo": "ripgrep",
       "language": "rust",
       "commit": "669cb4c755db20b26c3af3d923c042ae224c7496",
-      "reference": "rust-analyzer 1.100.0 (0ef1bc386 2026-11-09) parser",
+      "reference": "rust-analyzer 1.100.0 (0ef1bc386 2026-11-09) parser and scip",
       "ways": {
         "A": {
           "functionsFound": {
@@ -393,42 +393,50 @@
             "of": 3460
           },
           "linksRight": {
-            "notScored": "not judged: Rust's links have no reference yet (rust-analyzer, trustmybot/tmb#354)"
+            "n": 495,
+            "of": 495
           },
           "linksFoundByState": {
             "n": 495,
             "of": 14228
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Rust's links have no reference yet (rust-analyzer, trustmybot/tmb#354)"
+            "n": 495,
+            "of": 7234
           },
           "callsAccountedFor": {
             "n": 14228,
             "of": 14228
           },
           "missesByCause": {
-            "notScored": "not judged: Rust's links have no reference yet (rust-analyzer, trustmybot/tmb#354)"
+            "a method, called through a value": 4237,
+            "an item, called by its path": 1271,
+            "a function or a constructor, called by its bare name": 1231
           }
         },
         "B": {
           "functionsFound": {
-            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+            "n": 3460,
+            "of": 3460
           },
           "linksRight": {
-            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+            "n": 7234,
+            "of": 7234,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
-            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+            "n": 7234,
+            "of": 7588
           },
           "linksFoundByReference": {
-            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+            "n": 7234,
+            "of": 7234
           },
           "callsAccountedFor": {
-            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
+            "n": 14228,
+            "of": 14228
           },
-          "missesByCause": {
-            "notScored": "not built (rust-analyzer, trustmybot/tmb#354)"
-          }
+          "missesByCause": {}
         }
       }
     },
