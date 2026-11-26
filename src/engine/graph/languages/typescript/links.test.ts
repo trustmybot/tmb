@@ -83,8 +83,10 @@ describe("the graph's links agree with the compiler on a fixture", () => {
   test("every call is accounted for, in the function it is written in", async () => {
     const { calls } = await checkRepo(fixture);
     expectCallsAccounted(calls);
-    // use(): renderA, renderB, make and `.map` written in it, and `render()` in its arrow.
-    expect(calls.accounted).toBe(5);
+    // use(): renderA, renderB, make and `.map` written in it, and `render()` in its arrow; and
+    // `parseInt` at the top of outside.ts, a global, outside the repo.
+    expect(calls.accounted).toBe(6);
+    expect(calls.outside).toBe(1);
   });
 
   test("a call written in a type is no call, and one in a class body outside its methods counts for the file", () => {
