@@ -223,6 +223,10 @@ flowchart TD
 - **Example 2.** A function calls a name imported from an outside package: no link, and not a miss. Outside means a package the project installs, such as one from a public registry. A package that lives in the same repo is the repo's own code and is linked.
 - **Edge case.** `import pkg` followed by `pkg.f()`. Proving the call needs the type of the thing it is called on, so there is no link.
 
+- **The type of the thing a method is called on is read from that thing's own declaration.** The built-in rules find the declaration by looking the name up in its own scope. Only a class name written as its type, with or without type arguments, or a `new` of that class, is proof. Planned (trustmybot/tmb#364): today the type may be taken from another variable of the same name in the file.
+  - **Example 1.** `const cart: Cart = load()` then `cart.total()`: link to `Cart.total`. `ctx: Context<Env>` then `ctx.text()`: link to `Context.text`.
+  - **Example 2.** `(c) => c.text()`, where the type of `c` comes from the call the function is passed to. No type is written, so there is no link. The language's tool links it.
+  - **Edge case.** Another function in the file declares `c: Context`. That proves nothing about this `c`.
 - **A name is looked up the way the language looks it up** (trustmybot/tmb#246), in TypeScript, JavaScript and Python. The first place that has the name decides. If what is found there is a function or a file-level name of the repo, the call links to it, whatever the name holds. If it is anything else, there is no link, and the lookup does not go on to another function of the same name. A call on the object itself looks only in its class and the class's parents.
   - A name imported inside a Python function holds only in that function. A name imported under a new name is looked up in the file that import names.
   - Left with no link by the built-in rules, and linked by the language's tool: a call on the parent, the object itself inside a class written as an expression, and a Python class with several parents unless exactly one of them has the method.
@@ -521,10 +525,11 @@ The graph is measured against each language's own tool, on tmb's own repo and on
 |---|---|---|
 | Functions found | 100% | A test (trustmybot/tmb#247): the compiler lists every function, and the graph must match that list one to one |
 | Links right | 100% | A test (trustmybot/tmb#242), in TypeScript and JavaScript, on every pull request: no link the graph makes between files is wrong |
-| Links found | Close to 100% of the calls that can be proven | Scored per way and per language for every release. The score may not fall |
+| Links found | Close to 100% of the calls that can be proven | Scored per way and per language for every release. The score may not fall, except to remove links that were not proven |
 | Calls accounted for | 100% | A test (trustmybot/tmb#252): in every function, linked plus outside plus not known equals the calls the compiler finds, and no call marked outside is one the compiler declares in the repo |
 
 - **Links right comes before links found.** A change that raises links found and makes one wrong link fails.
+  - **Edge case.** A fix removes links that were right by luck and not by proof. Links found falls, and the fall is accepted: the new score is recorded with the issue that removed them, and links right must still be 100%.
 - **Example.** A file has 10 calls: 6 linked, 3 to an outside package, 1 not known. Links found is 6 of 7. Calls accounted for is 10 of 10.
 - **Every link is judged, in the same file or across files.**
 - **Way B needs a second judge.** In TypeScript the reference is the compiler, which is also way B's source. Way B's links right is judged on Python and on samples checked by hand.
@@ -892,6 +897,7 @@ All are FTS5 virtual tables.
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | A call with several proven declarations links to each | trustmybot/tmb#344 |
 | The project's config names the Python environment first | trustmybot/tmb#365 |
+| A receiver's type is read from its own declaration | trustmybot/tmb#364 |
 | A TypeScript method with no body is a node | trustmybot/tmb#367 |
 | Python overload stubs are no nodes | trustmybot/tmb#368 |
 | Java, Rust, C and C++, each with its tool | trustmybot/tmb#353, #354, #355 |
