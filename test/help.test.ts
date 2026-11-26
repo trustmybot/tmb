@@ -17,7 +17,7 @@ import {
 setDefaultTimeout(30_000);
 
 const ESC = "\u001b[";
-const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "dashboard", "update", "help"];
+const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "help"];
 
 describe("typingDistance", () => {
   test("counts an added, dropped or changed letter as one", () => {

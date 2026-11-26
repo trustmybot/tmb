@@ -12,7 +12,7 @@ import { SYMBOL_KINDS, type SymbolKind } from "./languages/contract.ts";
 import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 10;
+export const GRAPH_SCHEMA_VERSION = 11;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -184,6 +184,13 @@ const KINDS_BEFORE_SCHEMA_10: Readonly<Record<string, SymbolKind>> = {
 const SCHEMA_9_TO_10 = Object.entries(KINDS_BEFORE_SCHEMA_10).map(([before, now]) => `UPDATE symbols SET kind = '${now}' WHERE kind = '${before}'`);
 
 /**
+ * Schema 11 records, for each tool a way B layer was built with, whose copy it was and where it is
+ * (trustmybot/tmb#392). A record made before it names no copy, so it is dropped: the layer is stale
+ * and the next read rebuilds it, as one built before schema 9.
+ */
+const SCHEMA_10_TO_11 = ["UPDATE layers SET built_with = NULL"];
+
+/**
  * Schema 9 records what each way B layer was built with: each tool's version and the installed
  * packages it read (trustmybot/tmb#325). A way B layer built before it records nothing, so it is
  * stale and the next read rebuilds it; a layer built by the built-in rules rests on neither.
@@ -271,6 +278,7 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         db.run(SCHEMA);
         // After the tables are made: a graph of schema 1 to 9 may hold no symbols table yet.
         if (version >= 1 && version <= 9) for (const statement of SCHEMA_9_TO_10) db.run(statement);
+        if (version >= 1 && version <= 10) for (const statement of SCHEMA_10_TO_11) db.run(statement);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();

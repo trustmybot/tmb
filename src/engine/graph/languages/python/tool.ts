@@ -430,6 +430,8 @@ function answerCalls(
 /** pyright, way B's tool for Python. */
 export const pyright: LanguageTool = {
   name: "pyright",
+  // tmb carries it in its own program: tmb's copy, at the version it carries.
+  copy: { carried: CARRIED_VERSION },
   reads: (file: string) => file.endsWith(STUB_EXTENSION) || SETTINGS_FILES.has(path.posix.basename(file)),
   async open(repoDir: string): Promise<OpenedTool> {
     const loaded = await carriedPyright();
@@ -438,12 +440,12 @@ export const pyright: LanguageTool = {
       answer: (input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(loaded, repoDir, input, note, readFrom),
     };
   },
-  // pyright is the one tmb carries, so its version is tmb's own. The installed packages are those
+  // pyright is the one tmb carries, so the find order gives its version. The installed packages are those
   // of the environment it read, and which folders at the top of the repo are environments, which
   // decides the environment when the project's config names none.
   builtWith(repoDir: string, places: readonly string[]): BuiltWith {
     const tops = topEnvironments(path.resolve(repoDir));
-    return { tool: CARRIED_VERSION, packages: [`environments: ${tops.join(" ")}`, ...places.map(installedIn)].join("\n") };
+    return { packages: [`environments: ${tops.join(" ")}`, ...places.map(installedIn)].join("\n") };
   },
 };
 

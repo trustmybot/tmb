@@ -330,27 +330,63 @@ export interface ToolInput {
 // (ToolCall.inMacro), `{ call: false }` says the tool does not answer it as a call: it is dropped.
 export type ToolAnswer = { nodes: readonly [number, ...number[]] } | { state: 'outside' | 'not_known' } | { call: false };
 
-// A language's own tool, opened for one repo. tmb installs nothing: a tool tmb carries is always
-// the one used; one that cannot run in the repo says why. Opening may wait (a tool that loads its
-// own parts first); answering does not.
+// A language's own tool, opened for one repo with the copy the find order found (CODE_GRAPH.md,
+// "Where a language's tool comes from"); one that cannot run in the repo says why. Opening may wait
+// (a tool that loads its own parts first); answering does not.
 export interface LanguageTool {
   // What it is, for a reader.
   name: string;
+  // Where its copy comes from: the facts the find order reads.
+  copy: ToolCopy;
   // The files of the commit the tool reads besides its languages' own, such as its settings files
   // or the language's stubs; absent when it reads none.
   reads?(path: string): boolean;
-  open(repoDir: string): OpenedTool | Promise<OpenedTool>;
-  // What its answers rest on beyond the commit (CODE_GRAPH.md: "A way B graph is stale when the
-  // tool or the installed packages change", trustmybot/tmb#325), made again at each read of a layer
-  // it built: a change in either makes the layer stale. `places` are where it read the repo's
+  open(repoDir: string, found: FoundCopy): OpenedTool | Promise<OpenedTool>;
+  // What its answers rest on beyond the commit and the copy (CODE_GRAPH.md: "A way B graph is stale
+  // when the tool or the installed packages change", trustmybot/tmb#325), made again at each read
+  // of a layer it built: a change makes the layer stale. `places` are where it read the repo's
   // installed packages, as its answer gave them (OpenedTool), [] when it did not run. It reads only
   // what says what is installed, never the packages' code, and runs no code of the repo.
-  builtWith(repoDir: string, places: readonly string[]): BuiltWith;
+  builtWith(repoDir: string, places: readonly string[], found: FoundCopy): BuiltWith;
 }
 
-// What a tool's answers rest on beyond the commit: the tool, as it reports its own version (or why
-// it cannot run), and the repo's installed packages at the places it read them, as one text.
-export type BuiltWith = { tool: string; packages: string };
+// The repo's installed packages a tool's answers rest on, at the places it read them, as one text.
+export type BuiltWith = { packages: string };
+
+/**
+ * Whose copy of a tool is used (CODE_GRAPH.md, "Where a language's tool comes from"): the one a
+ * setting names, the user's own, or tmb's.
+ */
+export type Whose = 'setting' | 'user' | 'tmb';
+
+/**
+ * The copy the find order found: whose it is, its program's path (null for one tmb carries in its
+ * own program), and its version as it reports it. `note` says why the user's copy was passed over.
+ */
+export type FoundCopy = { whose: Whose; path: string | null; version: string; note?: string };
+
+/**
+ * A tool's facts for the find order, kept in its language's module:
+ * - carried: tmb carries the tool in its own program, at this version;
+ * - else a program the find order looks for: its file's name; how a reader names it; the arguments
+ *   that make it report its version, and the environment it runs in; its report from its output;
+ *   the lowest version tmb supports, for a reader, and whether a report is at or above it; the
+ *   folders besides PATH where the language's own installer puts the user's copy; and whether tmb
+ *   keeps a copy of it in its tools folder, which it never does for a language's own command.
+ */
+export type ToolCopy =
+  | { carried: string }
+  | {
+      program: string;
+      what: string;
+      versionArgs: readonly string[];
+      env?: Readonly<Record<string, string>>;
+      report(output: { stdout: string; stderr: string }): string;
+      lowest: string;
+      supported(report: string): boolean;
+      userPlaces?(): string[];
+      tmbInstalls: boolean;
+    };
 
 // A tool that runs may still tell the reader something its answers rest on, such as a setting of
 // the repo it could not follow: `note` adds it to the answer's freshness. `readFrom` names the

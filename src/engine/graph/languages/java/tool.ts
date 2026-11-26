@@ -9,12 +9,14 @@
 // - outside, when javac reads it from outside the repo: the JDK;
 // - not known, otherwise: no answer, an answer that rests on an error, a declaration no file
 //   writes, or a class two files declare (javac_links.java says each).
-// Without `java` on PATH, way B for Java cannot run, and the built-in rules make the links.
+// The JDK is the user's, as the find order finds its `java` (tool-copy.ts): tmb installs a tool,
+// never a language. Without it, way B for Java cannot run, and the built-in rules make the links.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ADAPTER from "./javac_links.java" with { type: "text" };
+import { atLeast, versionNumbers } from "../../tool-copy.ts";
 import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 /** The longest the adapter's output may be. */
@@ -45,17 +47,29 @@ export type AdapterCall = {
 
 export type AdapterOutput = { java: string; errors: number; firstErrors: string[]; calls: AdapterCall[] };
 
-/** The `java` on PATH, as `java -version` reports it, or why it does not run. */
-function javaVersion(): { version: string } | { unavailable: string } {
-  const run = spawnSync("java", ["-version"], { encoding: "utf8" });
-  if (run.error !== undefined) return { unavailable: "no `java` on PATH" };
-  if (run.status !== 0) return { unavailable: `\`java -version\` failed: ${run.stderr.trim()}` };
-  // The JDK reports its version on standard error.
-  return { version: `${run.stdout}${run.stderr}`.trim() };
+/** The program way B for Java runs: the user's JDK's `java`. */
+export const JAVA = "java";
+
+/**
+ * The lowest JDK tmb supports: `java` runs the adapter in its source-file mode, which JDK 11 added
+ * (JEP 330, "Launch Single-File Source-Code Programs").
+ */
+export const LOWEST_JDK = "11";
+
+/** `java -version`'s first line: `<vendor> version "<version>"…`; a JDK before 9 numbered itself `1.<feature>`. */
+const VERSION_LINE = /\bversion "(\d+(?:\.\d+)*)/;
+
+/** Whether a report is at or above the lowest JDK tmb supports. */
+export function supportedJdk(report: string): boolean {
+  const match = VERSION_LINE.exec(report);
+  if (match === null) return false;
+  const numbers = versionNumbers(match[1]!);
+  const feature = numbers[0] === 1 ? numbers.slice(1) : numbers;
+  return atLeast(feature, versionNumbers(LOWEST_JDK));
 }
 
 /** Runs the adapter on the repo's Java files at the commit, written to a scratch folder, and returns its answer. */
-export function runAdapter(input: Pick<ToolInput, "files">): AdapterOutput {
+export function runAdapter(input: Pick<ToolInput, "files">, program: string = JAVA): AdapterOutput {
   const scratch = mkdtempSync(path.join(tmpdir(), "tmb-javac-"));
   try {
     const repo = path.join(scratch, "repo");
@@ -72,7 +86,7 @@ export function runAdapter(input: Pick<ToolInput, "files">): AdapterOutput {
     const adapter = path.join(scratch, "adapter");
     mkdirSync(adapter);
     writeFileSync(path.join(adapter, ADAPTER_FILE), ADAPTER);
-    const run = spawnSync("java", [path.join(adapter, ADAPTER_FILE), repo, classes], { cwd: adapter, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES });
+    const run = spawnSync(program, [path.join(adapter, ADAPTER_FILE), repo, classes], { cwd: adapter, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES });
     if (run.error !== undefined || run.status !== 0) throw new Error(`the javac adapter failed: ${run.error?.message ?? run.stderr.trim()}`);
     return JSON.parse(run.stdout) as AdapterOutput;
   } finally {
@@ -122,15 +136,22 @@ export function answerCalls(input: ToolInput, out: AdapterOutput): ToolAnswer[] 
 /** javac, way B's tool for Java. */
 export const javacTool: LanguageTool = {
   name: "javac",
-  open() {
-    const java = javaVersion();
-    if ("unavailable" in java) return java;
-    return { answer: (input: ToolInput) => answerCalls(input, runAdapter(input)) };
+  copy: {
+    program: JAVA,
+    what: "a JDK",
+    versionArgs: ["-version"],
+    // The JDK reports its version on standard error.
+    report: ({ stdout, stderr }) => `${stdout}${stderr}`.trim(),
+    lowest: `JDK ${LOWEST_JDK}`,
+    supported: supportedJdk,
+    tmbInstalls: false,
   },
-  // The tool is the user's JDK, as it reports its version. javac reads no class path, so its
-  // answers rest on no installed package.
+  open(_repoDir, found) {
+    const program = found.path ?? JAVA;
+    return { answer: (input: ToolInput) => answerCalls(input, runAdapter(input, program)) };
+  },
+  // javac reads no class path, so its answers rest on no installed package.
   builtWith(): BuiltWith {
-    const java = javaVersion();
-    return { tool: "unavailable" in java ? `cannot run: ${java.unavailable}` : java.version, packages: "" };
+    return { packages: "" };
   },
 };

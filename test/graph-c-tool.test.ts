@@ -391,7 +391,7 @@ test("without `clangd` on PATH, way B for C and C++ does not run, and the layer 
     const db = openGraphDb(project, null);
     try {
       const stats = await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
-      expect(stats.linksNote).toContain("c, cpp: clangd cannot run (no `clangd` on PATH), so the built-in rules");
+      expect(stats.linksNote).toContain("c, cpp: clangd cannot run (clangd is missing: no `clangd` on PATH or in tmb's tools folder), so the built-in rules");
     } finally {
       db.close();
     }

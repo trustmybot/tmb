@@ -270,7 +270,7 @@ test("without `go` on PATH, way B for Go does not run: the built-in rules make t
     const db = openGraphDb(project, null);
     try {
       const stats = await buildLayer(db, project, sha, "b", { force: true, links: "language-tool" });
-      expect(stats.linksNote).toContain("go: Go's type checker (go/types) cannot run (no `go` on PATH), so the built-in rules");
+      expect(stats.linksNote).toContain("go: Go's type checker (go/types) cannot run (the `go` command is missing: no `go` on PATH), so the built-in rules");
       expect(layerRow(db, "b")?.links_note).toBe(stats.linksNote);
       const rows = calls(db, "b");
       expect(call(rows, "orchard/crates.go:crate", "slat")).toMatchObject({ dst: "orchard/crates.go:slat", call_state: "linked" });

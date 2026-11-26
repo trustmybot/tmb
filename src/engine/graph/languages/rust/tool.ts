@@ -1,4 +1,4 @@
-// Way B for Rust (trustmybot/tmb#354): rust-analyzer, the user's own, makes the links of the graph's
+// Way B for Rust (trustmybot/tmb#354): rust-analyzer makes the links of the graph's
 // calls. It asks rust-analyzer; it does not imitate it. Its `scip` command writes, for every name of
 // the repo's code it resolves, the symbol the name refers to and where that symbol is defined, and
 // its `diagnostics` command the errors it reports. For each call the built-in parser found, the
@@ -21,18 +21,20 @@
 // the parser can prove: the macro may make a call of it, or a pattern, or text. It is a call when
 // the symbol rust-analyzer gives at it is a function or a method (a SCIP method descriptor), and it
 // is then answered as above; any other name there is dropped. A tuple struct or a variant is
-// written the same way in a pattern as in a construction, so neither is answered as a call there. Without rust-analyzer on PATH, way B for Rust
-// cannot run, and the built-in rules make the links.
+// written the same way in a pattern as in a construction, so neither is answered as a call there.
+// The copy of rust-analyzer is the one the find order finds (tool-copy.ts); with none, way B for
+// Rust cannot run, and the built-in rules make the links.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Node, Parser } from "web-tree-sitter";
 import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
+import { atLeast, versionNumbers } from "../../tool-copy.ts";
 import { isNameToken } from "./keywords.ts";
 import { ENCODING, isFunction, isLocal, KIND_ENUM_MEMBER, ownerOfType, packageOf, readScip, ROLE_DEFINITION, type ScipDocument } from "./scip.ts";
 
-/** The program way B for Rust runs: the user's own rust-analyzer, on PATH. */
+/** The program way B for Rust runs, as the find order names it (CODE_GRAPH.md, "Where a language's tool comes from"). */
 export const RUST_ANALYZER = "rust-analyzer";
 
 /** Cargo's files that lay a package out (The Cargo Book, "The Manifest Format", "Cargo.toml vs Cargo.lock"). */
@@ -50,10 +52,11 @@ export const TOOL_ENV = { CARGO_NET_OFFLINE: "true", RUSTUP_AUTO_INSTALL: "0" } 
  * one that prints none, rust-analyzer's own `--version`: no build script is compiled or run. No proc
  * macro is expanded.
  */
-export const SCIP_SETTINGS = {
-  cargo: { buildScripts: { enable: false, overrideCommand: [RUST_ANALYZER, "--version"] } },
-  procMacro: { enable: false },
-} as const;
+export const scipSettings = (program: string) =>
+  ({
+    cargo: { buildScripts: { enable: false, overrideCommand: [program, "--version"] } },
+    procMacro: { enable: false },
+  }) as const;
 
 /** The same, for `diagnostics`, which takes them as flags. */
 export const DIAGNOSTICS_FLAGS = ["--disable-build-scripts", "--disable-proc-macros"] as const;
@@ -79,12 +82,28 @@ export type RustAnalyzerOutput = {
   failed: string[];
 };
 
-/** rust-analyzer's version, as `rust-analyzer --version` reports it, or why it does not run. */
-function rustAnalyzerVersion(): { version: string } | { unavailable: string } {
-  const run = spawnSync(RUST_ANALYZER, ["--version"], { encoding: "utf8", env: { ...process.env, ...TOOL_ENV } });
-  if (run.error !== undefined) return { unavailable: "no `rust-analyzer` on PATH" };
-  if (run.status !== 0) return { unavailable: `\`rust-analyzer --version\` failed: ${run.stderr.trim()}` };
-  return { version: run.stdout.trim() };
+/**
+ * The lowest rust-analyzer tmb supports: the first that prints each error in the form ERROR_LINE
+ * reads ("Improve `rust-analyzer diagnostics`", rust-lang/rust-analyzer 27897e48, 2025-09-14).
+ * rustup's copy names the Rust toolchain it came with, the first being Rust 1.92.0; a release of
+ * rust-analyzer's own names the day of the commit it was built from.
+ */
+export const LOWEST_TOOLCHAIN = "1.92.0";
+export const LOWEST_COMMIT_DAY = "2025-09-14";
+
+/** `rust-analyzer --version`: `rust-analyzer <version> (<commit> <day>)`. */
+const VERSION_LINE = /^rust-analyzer (\d+(?:\.\d+)*)\S* \(\S+ (\d{4}-\d{2}-\d{2})\)/;
+
+/**
+ * Whether a report is at or above the lowest rust-analyzer tmb supports: a toolchain's version
+ * from 1 on is rustup's copy, compared with LOWEST_TOOLCHAIN; one below 1 is a release of
+ * rust-analyzer's own, compared by its commit's day.
+ */
+export function supportedRustAnalyzer(report: string): boolean {
+  const match = VERSION_LINE.exec(report.trim());
+  if (match === null) return false;
+  const version = versionNumbers(match[1]!);
+  return (version[0] ?? 0) >= 1 ? atLeast(version, versionNumbers(LOWEST_TOOLCHAIN)) : match[2]! >= LOWEST_COMMIT_DAY;
 }
 
 /** Cargo's home, where it keeps the crates it fetched: `$CARGO_HOME`, else `~/.cargo` (The Cargo Book, "Cargo Home"). */
@@ -229,28 +248,28 @@ function readErrors(stdout: string, repo: string, files: ReadonlyMap<string, str
  * Runs rust-analyzer on the repo's files at the commit, written to a scratch folder with Cargo's
  * manifests: `scip` and `diagnostics` in each workspace's folder.
  */
-export function runRustAnalyzer(input: Pick<ToolInput, "files" | "configs" | "read">): RustAnalyzerOutput {
+export function runRustAnalyzer(input: Pick<ToolInput, "files" | "configs" | "read">, program: string = RUST_ANALYZER): RustAnalyzerOutput {
   const scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "tmb-rust-analyzer-")));
   try {
     const repo = path.join(scratch, "repo");
     mkdirSync(repo);
     const roots = workspaceRoots(writeRepo(input, repo));
     const settings = path.join(scratch, "settings.json");
-    writeFileSync(settings, JSON.stringify(SCIP_SETTINGS));
+    writeFileSync(settings, JSON.stringify(scipSettings(program)));
     // Cargo's own output folder is in scratch too, though nothing is built.
     const env = { ...process.env, ...TOOL_ENV, CARGO_TARGET_DIR: path.join(scratch, "target") };
     const out: RustAnalyzerOutput = { workspaces: [], errors: [], failed: [] };
     roots.forEach((root, i) => {
       const cwd = root === "." ? repo : path.join(repo, ...root.split("/"));
       const index = path.join(scratch, `index-${i}.scip`);
-      const scip = spawnSync(RUST_ANALYZER, ["scip", ".", "--output", index, "--config-path", settings], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env });
+      const scip = spawnSync(program, ["scip", ".", "--output", index, "--config-path", settings], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env });
       if (scip.error !== undefined || scip.status !== 0) {
         out.failed.push(`${root}: \`rust-analyzer scip\` failed (${scip.error?.message ?? scip.stderr.trim().split("\n").at(-1) ?? ""})`);
         return;
       }
       out.workspaces.push({ root, documents: readScip(new Uint8Array(readFileSync(index))) });
       // It exits with an error when it reports one; its report ends with this line.
-      const diagnostics = spawnSync(RUST_ANALYZER, ["diagnostics", ".", ...DIAGNOSTICS_FLAGS], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env });
+      const diagnostics = spawnSync(program, ["diagnostics", ".", ...DIAGNOSTICS_FLAGS], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env });
       if (diagnostics.error !== undefined || !diagnostics.stdout.includes("diagnostic scan complete")) {
         // Without its errors, no answer in this workspace stands.
         out.workspaces.pop();
@@ -429,10 +448,22 @@ export function answerCalls(input: ToolInput, out: RustAnalyzerOutput, parser: P
 /** rust-analyzer, way B's tool for Rust. */
 export const rustAnalyzer: LanguageTool = {
   name: "rust-analyzer",
+  // The user's copy comes from rustup, which puts it in Cargo's bin folder (The rustup book,
+  // "Installation"), or is on PATH; else tmb's.
+  copy: {
+    program: RUST_ANALYZER,
+    what: "rust-analyzer",
+    versionArgs: ["--version"],
+    env: TOOL_ENV,
+    report: ({ stdout }) => stdout.trim(),
+    lowest: `rust-analyzer of Rust ${LOWEST_TOOLCHAIN}, or a release of rust-analyzer's own from ${LOWEST_COMMIT_DAY}`,
+    supported: supportedRustAnalyzer,
+    userPlaces: () => [path.join(cargoHome(), "bin")],
+    tmbInstalls: true,
+  },
   reads: (file) => (MANIFESTS as readonly string[]).includes(path.posix.basename(file)),
-  async open() {
-    const ra = rustAnalyzerVersion();
-    if ("unavailable" in ra) return ra;
+  async open(_repoDir, found) {
+    const program = found.path ?? RUST_ANALYZER;
     // The parser that finds a call's extent; loaded here, as the graph's loader names this module.
     const { loadParsers } = await import("../../loader.ts");
     const parser = (await loadParsers(["rust"])).get("rust");
@@ -440,19 +471,16 @@ export const rustAnalyzer: LanguageTool = {
     return {
       answer(input, note, readFrom) {
         readFrom(registryCrates(locksOf(input)));
-        const out = runRustAnalyzer(input);
+        const out = runRustAnalyzer(input, program);
         for (const failed of out.failed) note(failed);
         if (out.workspaces.length === 0 && out.failed.length === 0) note("no Cargo.toml: rust-analyzer loads no file");
         return answerCalls(input, out, parser);
       },
     };
   },
-  // The tool is the user's rust-analyzer, as it reports its version. The installed packages are
-  // Cargo's registry on disk: of each crate Cargo.lock resolves from a registry, whether Cargo has
-  // unpacked it, in any registry's folder.
+  // The installed packages are Cargo's registry on disk: of each crate Cargo.lock resolves from a
+  // registry, whether Cargo has unpacked it, in any registry's folder.
   builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
-    const ra = rustAnalyzerVersion();
-    if ("unavailable" in ra) return { tool: `cannot run: ${ra.unavailable}`, packages: "" };
     const sources = path.join(cargoHome(), ...REGISTRY_SOURCES);
     let registries: string[] = [];
     try {
@@ -461,6 +489,6 @@ export const rustAnalyzer: LanguageTool = {
       // No registry on disk: no crate is held.
     }
     const held = places.map((place) => `${place}: ${registries.some((r) => existsSync(path.join(sources, r, place))) ? "held" : "not held"}`);
-    return { tool: ra.version, packages: [`registry: ${sources}`, ...held].join("\n") };
+    return { packages: [`registry: ${sources}`, ...held].join("\n") };
   },
 };

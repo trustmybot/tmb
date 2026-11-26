@@ -391,14 +391,14 @@ describe("Rust: the user's rust-analyzer, and Cargo's registry", () => {
   };
 
   test("the layer records the rust-analyzer it was built with, as `rust-analyzer --version` reports it", async () => {
-    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    fakeRustAnalyzer("rust-analyzer 1.95.0 (fake 2026-01-01)");
     commit(CODE);
     const { builtWith } = await read();
-    expect(builtWith["rust-analyzer"]?.tool).toBe("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    expect(builtWith["rust-analyzer"]?.tool).toBe("rust-analyzer 1.95.0 (fake 2026-01-01)");
   });
 
   test("nothing changed: the layer is still fresh", async () => {
-    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    fakeRustAnalyzer("rust-analyzer 1.95.0 (fake 2026-01-01)");
     commit(CODE);
     const first = await read();
     await tick();
@@ -407,7 +407,7 @@ describe("Rust: the user's rust-analyzer, and Cargo's registry", () => {
   });
 
   test("rust-analyzer reports another version: the layer is stale", async () => {
-    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    fakeRustAnalyzer("rust-analyzer 1.95.0 (fake 2026-01-01)");
     commit(CODE);
     const first = await read();
     await tick();
@@ -418,7 +418,7 @@ describe("Rust: the user's rust-analyzer, and Cargo's registry", () => {
   });
 
   test("a crate Cargo.lock resolves arrives in Cargo's registry: the layer is stale", async () => {
-    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    fakeRustAnalyzer("rust-analyzer 1.95.0 (fake 2026-01-01)");
     commit(CODE);
     const first = await read();
     await tick();
@@ -429,7 +429,7 @@ describe("Rust: the user's rust-analyzer, and Cargo's registry", () => {
   });
 
   test("a crate Cargo.lock does not resolve arrives in the registry: the layer is still fresh", async () => {
-    fakeRustAnalyzer("rust-analyzer 1.0.0 (fake 2026-01-01)");
+    fakeRustAnalyzer("rust-analyzer 1.95.0 (fake 2026-01-01)");
     commit(CODE);
     const first = await read();
     await tick();
