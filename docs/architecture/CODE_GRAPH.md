@@ -240,7 +240,7 @@ Every call is in exactly one state (trustmybot/tmb#252), and a function's answer
 
 - **What a call is.** A place where the code runs a callable: a call, a construction with `new` or by a class's name, a tagged template, a dynamic import, a call to the parent's constructor, and a decorator written as a call, `@cache()`.
   - **Not a call.** Naming a parent class, a JSX element, and a decorator written as a bare name, `@cache`. They are uses, and belong with what depends on a symbol beyond calls (trustmybot/tmb#148).
-- **Who owns a call.** The nearest callable around it. A call in a field's initial value belongs to the type. A call in an unnamed function is answered under the nearest named one.
+- **Who owns a call.** The nearest callable around it. A call in a field's initial value belongs to the type. A decorator's call belongs to what encloses the decorated thing, since it runs when that thing is defined and not when it is called: the type for a method, the file for a top-level function or type. A call in an unnamed function is answered under the nearest named one.
 - **A built-in is outside only when nothing nearer declares the name.** The scope and the repo are looked up first, so a repo function named `parse` is never taken for the built-in.
 - **The lists of built-ins are generated, never written by hand.** Each language module's list comes from the language's own tool, and a test fails when it is stale.
 - **Edge case.** A language with no lookup of its own (bash, Perl, SQL): its calls get no state and are counted apart, so 100% holds for the languages that have one.
