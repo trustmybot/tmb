@@ -99,7 +99,7 @@ flowchart TD
   - **Why it is a node.** A call made inside a callback needs an owner, and the count of functions can then be checked one to one against the compiler's list.
 - **Unnamed functions never show to a reader.** They stay out of search, and a lookup names the nearest named function instead.
   - **Example.** A test calls `total()` inside `it("adds", () => { ... })`. The answer to "who calls `total`" names the nearest named function around the callback, not the callback.
-  - Open, for the Human: whether unnamed functions stay as hidden nodes, or are not nodes at all and their calls belong to the enclosing named function.
+  - **Its links can leave the file.** Nothing in another file can call a function with no name, but the calls it makes can reach any file, so they need this owner.
 - **A coverage test holds it at 100%** (trustmybot/tmb#247). [Benchmark](#benchmark) has the test and its targets.
 - **Nothing is skipped in silence.** A file that could not be parsed is in the graph as a file marked so, and indexing prints how many there are. "Not parsed" means only a file in a language tmb reads that failed to parse.
 - **What the graph does not read is named and counted** (trustmybot/tmb#234).
