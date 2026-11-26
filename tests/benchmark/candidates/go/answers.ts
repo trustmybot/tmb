@@ -59,7 +59,7 @@ export type GotypesOut = { go: string; loadMs: number; packages: number; errors:
 /** Runs `gotypes` on the repo; each call gets its UTF-16 position. */
 export async function runGotypes(bin: string, repo: string, fileList: string, texts: Map<string, string>, patterns: string[]): Promise<GotypesOut & { ms: number }> {
   const t = performance.now();
-  const p = spawn([bin, repo, fileList, ...patterns], { stdout: "pipe", stderr: "pipe" });
+  const p = spawn([bin, repo, fileList, ...patterns], { stdout: "pipe", stderr: "pipe", env: { ...process.env } });
   const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   if ((await p.exited) !== 0) throw new Error(`gotypes failed: ${err}`);
   const ms = Math.round(performance.now() - t);
@@ -150,7 +150,7 @@ type Loc = { uri?: string; targetUri?: string; range?: { start: { line: number }
 export async function goplsAnswers(bin: string, repo: string, calls: GoCall[]): Promise<Answers> {
   const root = resolve(repo);
   const t = performance.now();
-  const proc = spawn([bin, "serve"], { cwd: root, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const proc = spawn([bin, "serve"], { cwd: root, stdin: "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env } });
   const lsp = new Lsp(proc);
   const uri = (f: string) => `file://${join(root, f)}`;
   await lsp.request("initialize", { processId: process.pid, rootUri: `file://${root}`, workspaceFolders: [{ uri: `file://${root}`, name: "repo" }], capabilities: {} });
@@ -300,7 +300,7 @@ const isTypeSymbol = (s: string) => s.endsWith("#");
 /** scip-go as a candidate: runs it, then reads the symbol at each call and where it is defined. */
 export async function scipAnswers(bin: string, repo: string, module: string, out: string, calls: GoCall[], texts: Map<string, string>): Promise<Answers> {
   const t = performance.now();
-  const p = spawn([bin, "index", "--quiet", "--output", out], { cwd: repo, stdout: "pipe", stderr: "pipe" });
+  const p = spawn([bin, "index", "--quiet", "--output", out], { cwd: repo, stdout: "pipe", stderr: "pipe", env: { ...process.env } });
   const err = await new Response(p.stderr).text();
   const code = await p.exited;
   const total0 = Math.round(performance.now() - t);

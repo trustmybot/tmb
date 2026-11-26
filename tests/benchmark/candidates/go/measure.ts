@@ -107,7 +107,6 @@ async function main() {
   if (withoutModules) {
     process.env.GOMODCACHE = env("TMB_GO_EMPTY_MODCACHE");
     process.env.GOPROXY = "off";
-    process.env.GOFLAGS = "-mod=mod";
   }
 
   const results: Record<string, unknown> = {};
