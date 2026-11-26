@@ -144,7 +144,8 @@ The graph uses one set of kinds for every language. Each language module maps it
 | Accessor | A method that is called like a field: a getter or a setter | Yes, as a method |
 | Unnamed function | A callable written as a value with no name | Yes, hidden |
 | Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
-| File-level data | A constant or variable declared outside any type or function, each name a destructuring binds included; a database table, index or trigger | Yes |
+| File-level data | A constant or variable declared outside any type or function, each name a destructuring binds included | Yes |
+| Data source | A place the code reads or writes data: a table, a bucket, a collection, a queue ([Data sources](#data-sources)) | A table, an index and a trigger, from SQL. Planned (trustmybot/tmb#339): every kind, and no index |
 | Local | A variable, a parameter or a statement inside a callable; a name bound by a block, a loop or a catch at file level, which the rest of the file cannot see | No |
 
 How two languages write each kind:
@@ -298,6 +299,34 @@ flowchart LR
   - **Edge case.** A call decided only at run time, such as a method picked by a string. Neither way links it. It is counted as not known.
 - **Way A keeps growing.** Its next proofs are the stated types (trustmybot/tmb#249), the four bindings (trustmybot/tmb#287) and the other languages (trustmybot/tmb#141).
 - **No rule is written for one repo.** A rule in either way is the language's rule. Neither way names a benchmark repo, a file or a symbol of one, and a failing benchmark case is fixed by the rule or left unlinked.
+
+## Data sources
+
+Planned (trustmybot/tmb#339). The graph is a code graph, not a data graph. A data source is a leaf at its edge: the graph says which code reads or writes it and never what is inside it.
+
+```mermaid
+flowchart LR
+    F1["saveOrder()"] -->|writes| T["Table: orders"]
+    F2["listOrders()"] -->|reads| T
+    F3["exportReport()"] -->|writes| B["Object storage"]
+    T -.-|"not in the graph"| X["Columns, keys, links between tables"]
+```
+
+| Level | Example | In the graph |
+|---|---|---|
+| Kind and name | `saveOrder` writes the table `orders` | Yes |
+| Kind only | `exportReport` writes to object storage | Yes, when the code does not state the name |
+| Inside the store | Columns, keys, lineage between tables | No |
+
+- **A data source is one node: its kind and its name.** It has no members and no links to another data source. The links are reads and writes, from the code that touches it.
+  - **Example 1.** A task changes the table `orders`. The graph answers which functions read or write `orders`, so the worker reads those and not the whole repo.
+  - **Example 2.** A function sends a file to a bucket named in a setting. The name is not in the code, so the link goes to the store alone: object storage.
+  - **Edge case.** An index is inside the store, so it is no node. A trigger is code that runs in the store, so it is a node as code, with a link to its table.
+- **The names come from a tool.** A table name in an SQL statement, in a file or in a string in code, comes from an SQL parser chosen as every tool is ([Two ways to make links](#two-ways-to-make-links)). A call that reaches a store is known from the call's own answer: it goes outside the repo, to a package.
+- **A pipeline's own graph is not rebuilt.** A tool that runs steps as a graph draws it itself. The functions its steps run are ordinary code nodes.
+  - **Example.** A scheduled pipeline has five steps. The graph holds the five functions and what each reads and writes, not the order the pipeline runs them in.
+
+Open, for the Human: where the list of packages that are data stores comes from.
 
 ## Concepts
 
@@ -783,6 +812,7 @@ All are FTS5 virtual tables.
 | The stored symbol kinds are the common set; each language module maps to them | trustmybot/tmb#314 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | Way A links a call to a file-level name that holds a callable, `const helper = make(); helper()`, as way B does | trustmybot/tmb#332 |
+| A data source is a leaf node with a kind and a name; table names come from an SQL parser ([Data sources](#data-sources)) | trustmybot/tmb#339 |
 | The language's tool is the default way | trustmybot/tmb#337 |
 | The tool for each language is chosen by an A/B test | trustmybot/tmb#338 |
 | Way B follows the project's own configs | trustmybot/tmb#324 |
