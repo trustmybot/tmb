@@ -146,7 +146,7 @@ The graph uses one set of kinds for every language. Each language module maps it
 | Field | Data stored on a type or on each of its objects | Planned (trustmybot/tmb#312) |
 | File-level data | A constant or variable declared outside any type or function, each name a destructuring binds included | Yes |
 | Data source | A place the code reads or writes data: a table, a bucket, a collection, a queue ([Data sources](#data-sources)) | A table, an index and a trigger, from SQL. Planned (trustmybot/tmb#339): every kind, and no index |
-| Local | A variable, a parameter or a statement inside a callable; a name bound by a block, a loop or a catch at file level, which the rest of the file cannot see | No |
+| Local | A variable, a parameter or a statement inside a callable; a name bound by a block, a loop or a catch at file level, when the language's scope rule hides it from the rest of the file | No |
 
 How two languages write each kind:
 
@@ -169,6 +169,10 @@ How two languages write each kind:
   - **A symbol's lines are its whole declaration.** A function written as the value of a field or of a file-level name is one callable node, and it starts where that declaration starts: its first decorator, else its first modifier or its name.
   - **Example.** `@bind() onChange = () => {}` starts at `@bind()`. A field whose type is written over three lines before the `=` starts at the field's name, not at the arrow.
   - **Edge case.** The reference lists the function alone, starting at its arrow. The benchmark pairs the two when the reference's function is the declaration's value. It does not move the node's start.
+- **The language's scope rule decides what is file-level data.** A name the whole file can see is a node, wherever it is written.
+  - **Example 1.** TypeScript: `for (const x of xs)` at file level hides `x` from the rest of the file, so `x` is a local.
+  - **Example 2.** TypeScript: `var x` inside a file-level block is seen by the whole file, so `x` is a node. Python: a file-level `for x in xs` binds a module name, so `x` is a node.
+  - **Edge case.** A TypeScript `namespace` holds members, so it is a type, and a variable in it is a field (trustmybot/tmb#312).
 - **A member is always inside its type.** A method, a constructor, an accessor and a field are never standalone nodes: each is held by its type and named through it, as `Cart.total`.
 - **Example 1.** A class `Cart` with a method `total` gives two nodes in either language: the type `Cart` and the method `Cart.total`.
 - **Example 2.** Python's `@property def items(self)` is read as `cart.items`, with no call marks. It is an accessor, so it is a method node. The data behind it, `self._items`, is the field.
