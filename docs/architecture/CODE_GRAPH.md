@@ -128,7 +128,20 @@ flowchart TD
 | Left out by rule | Folders named `dist`, `node_modules` or `vendor`, as on Linguist's list of vendored paths; source maps; files named as minified; lockfiles |
 | Read all the same | A folder named `build`: the graph is built from git, so build output that git ignores is never in it |
 | Unread languages | Named from a copy of Linguist's programming languages, plus Vue and Svelte. Where languages share a file ending, Linguist's first one is named |
-| Not counted | Prose, data, settings and images; code in a file ending tmb does not know. Planned (trustmybot/tmb#154): a file's language comes from Linguist's list |
+| Not counted | Prose, data, settings and images; code in a file ending tmb does not know |
+
+**Planned (trustmybot/tmb#154): a file's language comes from Linguist's data.** tmb carries a copy of Linguist's language list and its rules for shared file endings, taken from a Linguist release. It asks in Linguist's own order: the file's name, its first line naming an interpreter, its ending, then the rules for a shared ending.
+
+- **Example 1.** `Makefile` is Makefile by its name. `api.proto` is Protocol Buffer by its ending.
+- **Example 2.** `run` has no ending and starts with `#!/usr/bin/env python3`. It is Python.
+- **Example 3.** `legacy.pl` could be Perl or Prolog. It holds `use strict;`, which Linguist's rule reads as Perl.
+- **Edge case 1.** The rules settle nothing and one of the candidates is a language tmb reads. The file is read as that language: `mod.rs` is Rust. A file tmb read before is never dropped for want of an answer.
+- **Edge case 2.** The rules settle nothing and tmb reads none of the candidates. The file's language is named as "one of" them. It is never guessed.
+- **Edge case 3.** A rule names another language for a file tmb would read: a `.ts` file that holds `<TS` is XML to Linguist. Linguist's answer stands, as it does on GitHub.
+- **The repo's `.gitattributes` wins.** A `linguist-language` line there sets the language, the same line that fixes it on GitHub. It is the way out of edge case 3.
+- **A dialect keeps its module.** Linguist names a `.sql` file SQL, PLpgSQL, TSQL, PLSQL or SQLPL. The SQL module reads it under any of the five names.
+- **What is left out by rule does not change.** Linguist's longer list of vendored paths is not applied: it would drop files the graph reads now.
+- **Checked against Linguist's own samples.** tmb's copy of the rules must name no sample a language other than Linguist's. Where a rule cannot run in tmb, it gives no answer, never a different one.
 
 ### Kinds of symbol
 
@@ -925,6 +938,6 @@ All are FTS5 virtual tables.
 | Every C and C++ function a node | trustmybot/tmb#387 |
 | Links found, measured for every release as a benchmark | trustmybot/tmb#244 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
-| A file's language comes from Linguist's list | trustmybot/tmb#154 |
+| A file's language comes from Linguist's data | trustmybot/tmb#154 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
 | The planner keeps concepts and areas written: a rule for when it writes them, and a view of the code not yet placed | trustmybot/tmb#310 |
