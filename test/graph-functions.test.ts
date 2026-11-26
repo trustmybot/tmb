@@ -27,8 +27,8 @@ describe("every symbol has a container", () => {
     const py = extractFile(parsers, "tools/a.py", "python", "class A:\n    def run(self):\n        return 1\n\ndef top():\n    return 2\n").symbols;
     expect(py.find((s) => s.qualified_name === "A.run")?.parent).toBe(py.findIndex((s) => s.qualified_name === "A"));
     expect(py.find((s) => s.qualified_name === "top")?.parent).toBe(0);
-    const sql = extractFile(null, "db/a.sql", "sql", "CREATE TABLE t (id INTEGER);\n").symbols;
-    expect(sql[1]?.parent).toBe(0);
+    const sql = extractFile(null, "db/a.sql", "sql", "CREATE TABLE t (id INTEGER);\nCREATE TRIGGER t_added AFTER INSERT ON t BEGIN SELECT 1; END;\n").symbols;
+    expect(sql.find((s) => s.kind === "sql_trigger")?.parent).toBe(0);
   });
 });
 

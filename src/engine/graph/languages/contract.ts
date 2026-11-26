@@ -11,9 +11,8 @@ export type SymbolKind =
   | 'type'
   | 'const'
   | 'sh_function'
-  | 'sql_table'
-  | 'sql_index'
   | 'sql_trigger'
+  | 'data_source'
   | 'module'
   | 'hook'
   | 'runner';
@@ -24,9 +23,8 @@ export type EdgeKind =
   | 'instantiates'
   | 'sources'
   | 'runs'
-  | 'reads_table'
-  | 'writes_table'
-  | 'indexes'
+  | 'reads_data'
+  | 'writes_data'
   | 'triggers_on'
   | 'bundles'
   | 'reads_config'
@@ -102,8 +100,14 @@ export interface ExtractedEdge {
   // grammar writes one, whatever its callee (trustmybot/tmb#252). Absent on every other reference,
   // such as a function passed as a value or a class a class extends.
   call?: 1;
-  // On a call: its position in the file, which tells two calls of one name on one line apart
-  // (CODE_GRAPH.md, "Two ways to make links"). See CallMark.
+  // On a link to a data source (CODE_GRAPH.md, "Data sources"): the data source's kind, such as a
+  // table. Its name is dst_name, '' when the code does not state one. A data source is no symbol
+  // of a file: the layer holds one node of each kind and name, and links to it.
+  data?: string;
+  // Where the name it links is written: on a call, its position (CallAt), which tells two calls of
+  // one name on one line apart (CODE_GRAPH.md, "Two ways to make links"); on a use that is no
+  // call, such as a function passed as a value or a parent class, where that name is written, the
+  // same in every parser, so the compiler's answer for that name can be matched to it.
   pos?: number;
   // On a call: where the language's lookup ends for its name, or for the name of the object it is
   // called on, when that is no definition of the repo it could link.
@@ -161,6 +165,9 @@ export interface Extraction {
   edges: ExtractedEdge[];
   // Absent when the file re-exports nothing.
   exports?: ExtractedExport[];
+  // Statements the language's parser could not read, each of which gave no link (CODE_GRAPH.md,
+  // "Data sources"); absent when there are none.
+  statementsNotRead?: number;
 }
 
 // Gathers one file's symbols and references as a language's rules find them.
@@ -168,6 +175,7 @@ export class Collector {
   readonly symbols: ExtractedSymbol[] = [];
   readonly edges: ExtractedEdge[] = [];
   readonly exports: ExtractedExport[] = [];
+  statementsNotRead = 0;
   private readonly byKey = new Map<string, number>();
 
   // A symbol seen again under the same key is the same row: by default its
@@ -181,7 +189,13 @@ export class Collector {
     return this.symbols.length - 1;
   }
 
-  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt): void {
+  // A link to a data source of this kind and name ('' when the code does not state it).
+  dataLink(src: number, kind: EdgeKind, data: string, name: string, line: number): void {
+    this.edges.push({ src, kind, dst_name: name, line, hint: null, data });
+  }
+
+  // `at` is where a use that is no call writes its name; a call's place is in `call`.
+  edge(src: number, kind: EdgeKind, dstName: string, line: number, hint: string | null = null, bound?: Bound, local?: string, call?: CallAt, at?: number): void {
     this.edges.push({
       src,
       kind,
@@ -190,7 +204,7 @@ export class Collector {
       hint,
       ...(bound ? { bound } : {}),
       ...(local ? { local } : {}),
-      ...(call ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}) } : {}),
+      ...(call ? { call: 1 as const, pos: call.pos, ...(call.outside ? { outside: call.outside } : {}) } : at !== undefined ? { pos: at } : {}),
     });
   }
 
@@ -251,9 +265,10 @@ export interface ToolCall {
 }
 
 // What a repo gives its tool: the text of every file of the tool's languages at the commit, the
-// project's settings files at the commit (package.json, tsconfig.json, …), any other file of the
-// commit read when the tool asks for it by its path (a settings file another one names), the
-// graph's nodes in those files and the graph's calls in them.
+// project's settings files at the commit (package.json, tsconfig.json, … and each file the tool
+// reads besides, LanguageTool.reads), any other file of the commit read when the tool asks for it
+// by its path (a settings file another one names), the graph's nodes in those files and the
+// graph's calls in them.
 export interface ToolInput {
   files: ReadonlyMap<string, string>;
   configs: ReadonlyMap<string, string>;
@@ -267,9 +282,15 @@ export interface ToolInput {
 export type ToolAnswer = { node: number } | { state: 'outside' | 'not_known' };
 
 // A language's own tool, opened for one repo. tmb installs nothing: a tool tmb carries is always
-// the one used; one that cannot run in the repo says why.
+// the one used; one that cannot run in the repo says why. Opening may wait (a tool that loads its
+// own parts first); answering does not.
 export interface LanguageTool {
   // What it is, for a reader.
   name: string;
-  open(repoDir: string): { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };
+  // The files of the commit the tool reads besides its languages' own, such as its settings files
+  // or the language's stubs; absent when it reads none.
+  reads?(path: string): boolean;
+  open(repoDir: string): OpenedTool | Promise<OpenedTool>;
 }
+
+export type OpenedTool = { answer(input: ToolInput): ToolAnswer[] } | { unavailable: string };

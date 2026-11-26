@@ -12,6 +12,7 @@ import type { Feature, Store } from "../store/index.ts";
 import { buildLayer, type BuildStats, EXTRACTOR_VERSION } from "./build.ts";
 import { BASE_LAYER, dropLayer, featureLayer, layerRow, openGraphDb, taskLayer } from "./db.ts";
 import { baseCommit, resolveCommit } from "./git-source.ts";
+import { layerNotRead } from "./not-read.ts";
 import type { LinkWay } from "./ways.ts";
 
 /** What a read was answered from, and whether it had to bring the graph forward first. */
@@ -32,6 +33,8 @@ export type Freshness = {
    * rules instead: it has no tool, or its tool cannot run in the repo; null when none was (trustmybot/tmb#311).
    */
   links: { way: LinkWay; note: string | null };
+  /** Statements of the layer read from that its language's parser could not read, each of which gave no link (CODE_GRAPH.md, "Data sources"). */
+  statementsNotRead: number;
 };
 
 export type GraphView = { db: Database; layer: string; freshness: Freshness };
@@ -185,6 +188,7 @@ export async function openView(projectDir: string, store: Store, options: ViewTa
       task: null,
       feature: null,
       links: { way: links, note: layerRow(db, BASE_LAYER)?.links_note ?? null },
+      statementsNotRead: layerNotRead(db, BASE_LAYER).statements ?? 0,
     };
     const feature =
       options.feature !== undefined
@@ -198,13 +202,13 @@ export async function openView(projectDir: string, store: Store, options: ViewTa
       const tip = featureTipCommit(repo, feature);
       const layer = featureLayer(feature.id);
       await bringForward(db, repo.dir, layer, tip, links);
-      return { db, layer, freshness: { ...freshness, feature: { name: feature.name, commit: tip } } };
+      return { db, layer, freshness: { ...freshness, feature: { name: feature.name, commit: tip }, statementsNotRead: layerNotRead(db, layer).statements ?? 0 } };
     }
     if (options.taskId === undefined) return { db, layer: BASE_LAYER, freshness };
     const onTop = taskCommit(store, options.taskId);
     const layer = taskLayer(options.taskId);
     await bringForward(db, repo.dir, layer, onTop, links);
-    return { db, layer, freshness: { ...freshness, task: { id: options.taskId, commit: onTop } } };
+    return { db, layer, freshness: { ...freshness, task: { id: options.taskId, commit: onTop }, statementsNotRead: layerNotRead(db, layer).statements ?? 0 } };
   } catch (error) {
     db.close();
     throw error;

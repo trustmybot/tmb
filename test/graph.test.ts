@@ -163,7 +163,7 @@ describe("indexing", () => {
       expect(named("formatPrice")).toEqual(["function web/util.js"]);
       expect(named("weekly_report")).toEqual(["function tools/report.py"]);
       expect(named("deploy_site")).toEqual(["sh_function scripts/deploy.sh"]);
-      expect(named("orders")[0]).toContain("db/schema.sql");
+      expect(named("orders")).toEqual(["data_source "]);
       expect(named("legacy_total")[0]).toContain("scripts/legacy.pl");
     } finally {
       view.db.close();

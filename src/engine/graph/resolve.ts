@@ -1,11 +1,10 @@
 // Links a reference to its definition only on proof, carried over from the plugin's resolver:
 // the same file, a resolved import, an explicit path, a declared receiver type, or the one
-// definition of a table or script. A bare name that matches a symbol elsewhere is never
+// definition of a script. A bare name that matches a symbol elsewhere is never
 // proof, so such a reference stays unresolved rather than risk a wrong link.
 import { basename, posix } from "node:path";
 import type { EdgeKind, ExtractedEdge, ExtractedExport, SymbolKind } from "./extract.ts";
 import { fileCandidates, ImportConfig } from "./import-config.ts";
-import { isTestPath } from "./test-paths.ts";
 
 /**
  * A symbol an edge may link to; `id` is the caller's own index for it. `reach` marks a function
@@ -40,7 +39,6 @@ const CALLABLE = new Set<SymbolKind>(["function", "method", "class", "sh_functio
  * the name is not.
  */
 const FILE_DATA = new Set<SymbolKind>(["const"]);
-const TABLE_EDGES = new Set<EdgeKind>(["reads_table", "writes_table", "indexes", "triggers_on"]);
 /** Edges that name a key, not a symbol: they are never linked. */
 export const NAME_ONLY_EDGES: ReadonlySet<EdgeKind> = new Set<EdgeKind>(["reads_config", "covers"]);
 
@@ -380,12 +378,6 @@ export class Resolver {
     }
     if (edge.kind === "bundles") return link(this.modules.get(edge.dst_name), "exact");
     if (edge.kind === "runs" || edge.kind === "sources") return link(this.scriptTarget(edge.dst_name)?.id, "exact");
-    if (TABLE_EDGES.has(edge.kind)) {
-      const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => c.kind === "sql_table");
-      const real = cands.filter((c) => !isTestPath(c.path));
-      const only = real.length === 1 ? real[0] : real.length === 0 && cands.length === 1 ? cands[0] : undefined;
-      return link(only?.id, "exact");
-    }
     const call = edge.call === 1;
     const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
     // A bare or imported name is never a class's method of that name (trustmybot/tmb#242). A call
