@@ -11,7 +11,7 @@ import { buildLayer } from "../../build.ts";
 import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "../../ways.ts";
 import { openGraphDb } from "../../db.ts";
 import { resolveCommit } from "../../git-source.ts";
-import { type CallReport, checkLinks, checkRepo, compilerCalls, compilerLookup, type GraphLink, graphLinks, judge, type LinkReport } from "./links.ts";
+import { type CallReport, checkLayer, checkLinks, checkRepo, commitTexts, compilerCalls, compilerLookup, compilerProgram, type GraphLink, graphLinks, judge, type LinkReport } from "./links.ts";
 import { installPinnedTools } from "../../../../../tests/lib/pinned-tools.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -310,6 +310,71 @@ describe("a call to a method an alias lists, or a class and an interface of one 
     expect(named(made, "open")).toEqual([]);
     expect(named(made, "tick")).toEqual(["5 till.ts:8-8"]);
   });
+});
+
+// "The three states of a call" (trustmybot/tmb#426): an import type, `import("m").T` or
+// `typeof import("m")` written where a type stands, names a module's types and runs nothing (the
+// TypeScript handbook's import types), so it is no call, in a function's body as anywhere. A
+// dynamic `import("m")` written as an expression runs, so it stays a call.
+describe("an import type in a function is no call, and a dynamic import is one", () => {
+  const PORT: Record<string, string> = {
+    "port.ts": [
+      "export class Harbor {",
+      '  dock(berth: import("node:net").Socket): import("node:http").Server | undefined {',
+      '    const crane: import("node:http").Server | null = null;',
+      '    const ropes: Array<import("node:http").Agent> = [];',
+      '    const tide = berth as unknown as import("node:events").EventEmitter;',
+      '    const gauge = tide satisfies import("node:events").EventEmitter;',
+      '    const shelf: Map<string, typeof import("node:os")> | null = null;',
+      '    const depth = parseInt("7", 10);',
+      "    moor();",
+      '    const later = import("node:path");',
+      "    return undefined;",
+      "  }",
+      "}",
+      'export function anchor(): import("node:http").Server | undefined {',
+      '  const knot = {} as import("node:http").Agent;',
+      "  moor();",
+      "  return undefined;",
+      "}",
+      "function moor() {}",
+      "",
+    ].join("\n"),
+  };
+  // Written by hand from the rule: dock() makes `parseInt()`, `moor()` and `import("node:path")`;
+  // anchor() makes `moor()`; nothing else in the file runs. `moor()` is linked twice, `parseInt` is
+  // the default library's, outside, and the dynamic import, of no installed package, is not known.
+  // No call holds a module the compiler cannot find, so way B's answer for each is no answer on an
+  // error ("Way B per language").
+  const CALLS = { "2-12": 3, "14-18": 1 };
+  const STATES = { compiler: 4, linked: 2, outside: 1, notKnown: 1 };
+
+  let repo: { dir: string; commit: string };
+  beforeAll(() => {
+    repo = makeRepo(PORT);
+  });
+  afterAll(() => {
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("the compiler finds the calls written by hand", () => {
+    expect(Object.fromEntries(compilerCalls("port.ts", PORT["port.ts"]!))).toEqual(CALLS);
+  });
+
+  for (const way of [BUILT_IN, LANGUAGE_TOOL]) {
+    test(`the graph built by ${way} counts the same calls, each in one state`, async () => {
+      const db = openGraphDb(path.join(repo.dir, `scratch-${way}`));
+      try {
+        await buildLayer(db, repo.dir, repo.commit, "base", { force: true, links: way });
+        const texts = commitTexts(repo.dir, repo.commit);
+        const { calls } = checkLayer(db, compilerProgram(repo.dir, repo.commit, texts), texts);
+        expectCallsAccounted(calls);
+        expect({ compiler: calls.compiler, linked: calls.linked, outside: calls.outside, notKnown: calls.notKnown }).toEqual(STATES);
+      } finally {
+        db.close();
+      }
+    });
+  }
 });
 
 function report(repo: string, r: LinkReport, c?: CallReport): void {
