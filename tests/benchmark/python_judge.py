@@ -27,6 +27,11 @@ Jedi is set up as the reference sets pyright up:
 - A declaration is where the declared name is written. A place Jedi names whose text there is not
   the name is no declaration, and is left out of the answer: Jedi can name such a place, as for a
   class method of an `Enum`, which it places in the built-ins at a line that holds another name.
+- Each binding of a name is a declaration of it. Python binds a name at each assignment, `def`,
+  `class` or import, and the bindings of a name in one scope are the one variable (the language
+  reference, "Naming and binding"). Jedi names only the binding that reaches the place asked, as
+  `f = staticmethod(f)` after `def f`, so for a declaration in the repo the answer holds every
+  binding of that variable in its file, as Jedi finds them.
 """
 
 import json
@@ -73,6 +78,20 @@ def main():
     lines = {}
     declared_lines = {}
 
+    bound = {}
+
+    def bindings(path, line, column):
+        """Every binding, as (line from 1, column in code points), of the variable declared at a place."""
+        key = (path, line, column)
+        if key not in bound:
+            try:
+                with open(path, encoding="utf-8") as f:
+                    script = jedi.Script(f.read(), path=path, project=project, environment=environment)
+                bound[key] = [(r.line, r.column) for r in script.get_references(line, column, scope="file") if r.is_definition() and r.line is not None]
+            except Exception:  # noqa: BLE001 - no bindings found: the declaration Jedi named stands alone
+                bound[key] = []
+        return bound[key] or [(line, column)]
+
     def declared_line(path, line):
         if path not in declared_lines:
             try:
@@ -82,6 +101,11 @@ def main():
                 declared_lines[path] = None
         text = declared_lines[path]
         return text[line] if text is not None and line < len(text) else None
+
+    root_prefix = os.path.join(os.path.realpath(root), "")
+
+    def in_repo(path):
+        return os.path.realpath(path).startswith(root_prefix)
 
     out = []
     for path, line, character in request["asked"]:
@@ -103,8 +127,15 @@ def main():
             source = declared_line(file, name.line - 1)
             if source is not None and not source.startswith(name.name, name.column):
                 continue
-            start = utf16(source[: name.column]) if source is not None else name.column
-            decls.append([file, name.line - 1, start, start + utf16(name.name)])
+            places = bindings(file, name.line, name.column) if source is not None and in_repo(file) else [(name.line, name.column)]
+            for line_1, column in places:
+                text = declared_line(file, line_1 - 1)
+                if text is not None and not text.startswith(name.name, column):
+                    continue
+                start = utf16(text[:column]) if text is not None else column
+                decl = [file, line_1 - 1, start, start + utf16(name.name)]
+                if decl not in decls:
+                    decls.append(decl)
         out.append(decls or None)
     json.dump({"version": jedi.__version__, "answers": out}, sys.stdout)
 

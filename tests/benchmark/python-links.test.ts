@@ -94,14 +94,38 @@ const DYE = [
   "",
 ].join("\n");
 
+// Names bound twice. Python binds a name at each assignment, `def` or `class`, and all the bindings of
+// a name in one scope are the one variable (the language reference, "Naming and binding"), so each
+// binding is a declaration of it. Jedi names only the binding that reaches the call; pyright, the
+// binding a node is.
+const KILN = [
+  "class Kiln:", // 1
+  "    def fire(self):", // 2
+  "        return self.heat(1)", // 3: Jedi names line 6, which binds the method again
+  "    def heat(n):", // 4
+  "        return n", // 5
+  "    heat = staticmethod(heat)", // 6: `staticmethod` is outside the repo
+  "", // 7
+  "glaze = None", // 8: file-level data
+  "", // 9
+  "def load():", // 10
+  "    global glaze", // 11
+  "    glaze = Kiln", // 12: binds the file's `glaze` again, from inside a function
+  "", // 13
+  "def fire_all():", // 14
+  "    glaze()", // 15: Jedi names line 12
+  "",
+].join("\n");
+
 const FILES = new Map([
   ["brew.py", BREW],
   ["cup.py", CUP],
   ["mill.py", MILL],
   ["dye.py", DYE],
+  ["kiln.py", KILN],
 ]);
 /** The files whose reference links every tool that resolves on proof gives alike. */
-const ALIKE = new Set(["brew.py", "cup.py", "mill.py"]);
+const ALIKE = new Set(["brew.py", "cup.py", "mill.py", "kiln.py"]);
 
 const hasPython = spawnSync("python3", ["-I", "-c", "pass"]).status === 0;
 /** Why the second judge cannot run here, or null: Jedi needs a newer Python than the reference does. */
@@ -119,14 +143,16 @@ const FIXTURE_LINKS = [
   "cup.py:4 infuse/steep -> brew.py:7",
   "cup.py:5 Kettle -> brew.py:1",
   "cup.py:5 boil -> brew.py:2",
+  "kiln.py:3 heat -> kiln.py:4",
+  "kiln.py:15 glaze -> kiln.py:8",
   "mill.py:13 Waterwheel -> mill.py:5",
   "mill.py:14 turn -> mill.py:2",
   "mill.py:15 grind -> mill.py:9",
   "mill.py:17 Wheel -> mill.py:1",
 ].sort();
 // `missing_name()`, `w.turn()` and `hopper[0].turn()` have no answer; `len([])` and
-// `hopper.append()` are outside; `fn()` is a parameter.
-const FIXTURE_COUNTS = { sites: 20, misplaced: 0, noAnswer: 3, outside: 2, noNode: 1 };
+// `hopper.append()` and `staticmethod(heat)` are outside; `fn()` is a parameter.
+const FIXTURE_COUNTS = { sites: 23, misplaced: 0, noAnswer: 3, outside: 3, noNode: 1 };
 
 // The reference and way B load pyright from tmb's tools folder; the setup installs tmb's pinned copy.
 beforeAll(installPinnedTools);
@@ -307,6 +333,33 @@ describe("Jedi as the second judge of Python's links", () => {
     // pyright, the reference, declares the class method.
     expect(judgeLink(link, await checkerAnswers(repo, commit, FILES, ref, [at], { sites: false }), nodes)).toBe("right");
     expect(judgeLink(link, await checkerAnswers(repo, commit, FILES, ref, [at], { tool: judgeDeclarations, sites: false }), nodes)).toBe("not judged");
+  });
+
+  test("each binding of a name in its scope is a declaration Jedi gives, though it names only the binding that reaches the call", async () => {
+    const ref = pythonReference(FILES);
+    const asked = [
+      { file: "kiln.py", pos: offsetOf(KILN, 3, "heat") },
+      { file: "kiln.py", pos: offsetOf(KILN, 15, "glaze") },
+    ];
+    const answers = await checkerAnswers(repo, commit, FILES, ref, asked, { tool: judgeDeclarations, sites: false });
+    const nodes = new Map([
+      [
+        "kiln.py",
+        [
+          { name: "Kiln", start: 1, end: 6 },
+          { name: "fire", start: 2, end: 3 },
+          { name: "heat", start: 4, end: 5 },
+          { name: "glaze", start: 8, end: 8 },
+          { name: "load", start: 10, end: 12 },
+          { name: "fire_all", start: 14, end: 15 },
+        ],
+      ],
+    ]);
+    const link = (at: (typeof asked)[number], dstName: string, start: number, end: number) => ({ file: at.file, pos: at.pos, dst: "kiln.py", dstName, start, end });
+    expect(judgeLink(link(asked[0]!, "heat", 4, 5), answers, nodes)).toBe("right");
+    expect(judgeLink(link(asked[0]!, "fire", 2, 3), answers, nodes)).toBe("wrong");
+    expect(judgeLink(link(asked[1]!, "glaze", 8, 8), answers, nodes)).toBe("right");
+    expect(judgeLink(link(asked[1]!, "load", 10, 12), answers, nodes)).toBe("wrong");
   });
 
   test("way B's links right is judged by Jedi, not by pyright, which made them", async () => {
