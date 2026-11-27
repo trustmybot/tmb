@@ -448,8 +448,7 @@ describe("hook session-start", () => {
     expect(namingProgram(reviewerRole).length).toBeLessThanOrEqual(SESSION_TEXT_BUDGET);
   });
 
-  // Fails until roles/planner.md is under the budget (trustmybot/tmb#295): then make it a plain test.
-  test.failing("the planner's role fits its session-start text's budget", () => {
+  test("the planner's role fits its session-start text's budget", () => {
     expect(namingProgram(plannerRole).length).toBeLessThanOrEqual(SESSION_TEXT_BUDGET);
   });
 

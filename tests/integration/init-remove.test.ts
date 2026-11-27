@@ -89,6 +89,13 @@ function tmbHooksByEvent(settings: Record<string, unknown>): Record<string, stri
   return wired;
 }
 
+/** Each Claude Code hook event tmb wires, with the names of its hooks there, in wiring order. */
+function wiredByEvent(): Record<string, string[]> {
+  const wired: Record<string, string[]> = {};
+  for (const hook of TMB_HOOKS) wired[hook.hookEvent] = [...(wired[hook.hookEvent] ?? []), hook.name];
+  return wired;
+}
+
 function noTmbHookLeft(project: string): void {
   const file = path.join(project, SETTINGS);
   if (!existsSync(file)) return;
@@ -105,7 +112,7 @@ describe("tmb init on a fresh project", () => {
 
     const settings = readJson(path.join(project, SETTINGS));
     expect(settings.enabledMcpjsonServers).toEqual(["tmb"]);
-    expect(tmbHooksByEvent(settings)).toEqual(Object.fromEntries(TMB_HOOKS.map((hook) => [hook.hookEvent, [hook.name]])));
+    expect(tmbHooksByEvent(settings)).toEqual(wiredByEvent());
 
     expect(readdirSync(path.join(project, ".claude", "agents")).sort()).toEqual(["reviewer.md", "worker.md"]);
     for (const role of SUBAGENT_ROLES) expect(readFileSync(roleFilePath(project, role.name), "utf8")).toContain(role.prompt.trim());
@@ -142,7 +149,7 @@ describe("tmb remove", () => {
 
     setUp(project);
     // Setup did wire itself in beside the Human's own entries, so remove has something to take back.
-    expect(tmbHooksByEvent(readJson(path.join(project, SETTINGS)))).toEqual(Object.fromEntries(TMB_HOOKS.map((hook) => [hook.hookEvent, [hook.name]])));
+    expect(tmbHooksByEvent(readJson(path.join(project, SETTINGS)))).toEqual(wiredByEvent());
     expect(Object.keys(readJson(path.join(project, MCP_JSON)).mcpServers as object).sort()).toEqual(["mine", "tmb"]);
 
     human(["remove"], project);
