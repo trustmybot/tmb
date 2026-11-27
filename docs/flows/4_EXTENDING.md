@@ -26,6 +26,7 @@ This one rule holds for all four flows. The planner drafts or proposes, the Huma
 - **Example 1.** The planner drafts a skill and the Human says yes. The skill lands in the project.
 - **Example 2.** The planner drafts a skill and the Human says no. The draft is discarded and nothing is written.
 - **Edge case.** The Human asks for a change to the draft. The planner revises it and asks again.
+- **Where.** Each recorded item is one `extensions` row ([TRAJECTORY.md](../architecture/TRAJECTORY.md#extensions)).
 - **Edge case.** An agent writes the file itself, around the approval. tmb watches no file write, but the file is not in the record, so tmb never routes work to it.
 
 ## tmb's own skills

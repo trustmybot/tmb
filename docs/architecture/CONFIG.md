@@ -42,8 +42,8 @@ The planner reads them with `settings_get`. Hooks only read them.
 - **Example 2.** The planner sets `base_branch` to the value already in force. Nothing is written or recorded.
 - **Example 3.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
 - **Example 4.** Every write goes through tmb, which also records it as a setting change. That history says who changed what. No reader takes a value from it.
-- **Edge case.** A key only the Human may set is edited in the file by hand. tmb compares the file with the last recorded change and refuses the mismatch until the Human confirms on a terminal.
-- **Open, for the Human:** whether the file is committed to git, so a team shares it.
+- **Example 5.** The file is local. It is in tmb's folder, which git ignores, so each person's workspace has its own.
+- **Edge case.** The Human edits the file by hand. tmb reads the new value. That edit has no history, and no check compares the file with the record.
 
 ## Keys
 

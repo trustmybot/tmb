@@ -341,7 +341,7 @@ The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and
 The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
-- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`. Planned: `sessions`, `pull_requests`, `milestones`, `repos`, `issue_links`, `docs`.
+- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`. Planned: `sessions`, `pull_requests`, `milestones`, `repos`, `remotes`, `extensions`, `issue_links`, `docs`.
 - **Search** — `search`, one full-text index.
 - **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned, trustmybot/tmb#70), where each poll of the remote stopped.
 
@@ -390,6 +390,13 @@ erDiagram
     repos |o..o{ features : "cut in"
     repos |o..o{ tasks : "cut in"
     repos |o..o{ setting_changes : "set for"
+    repos ||..o{ remotes : "has"
+    remotes |o..o{ issues : "mirrors"
+    remotes |o..o{ discussions : "mirrors"
+    remotes |o..o{ pull_requests : "mirrors"
+    remotes |o..o{ milestones : "mirrors"
+    remotes ||..o{ sync_state : "polled as"
+    extensions |o..o{ runs : "ran"
     issues ||..o{ issue_links : "from"
     issues ||..o{ issue_links : "to"
     pull_requests |o..o{ discussions : "has"
@@ -511,6 +518,40 @@ Planned (trustmybot/tmb#466). **One row per repo tmb works in, so every record t
 | `path` | TEXT | NOT NULL | UNIQUE. Relative to the project folder; `.` is the folder itself |
 | `created_at` | TEXT | NOT NULL |  |
 
+#### `remotes`
+
+Planned (trustmybot/tmb#467). **One row per remote repository of a repo, so every mirrored row names its remote by foreign key.** The table is identity only: which remote issues come from is a setting ([CONFIG.md](CONFIG.md)).
+
+- **Example.** A fork has two rows for one repo: the fork and its upstream.
+- **Edge case.** The remote repository is renamed. One row changes, found by `remote_id`; no mirrored row is touched.
+- **Edge case.** A contributor's fork is not one of the project's remotes. It gets no row, and a pull request names it as text.
+
+| Column | Type | Null | Holds and constraints |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `repo_id` | TEXT | NOT NULL | FK → `repos.id` |
+| `url` | TEXT | NOT NULL | UNIQUE. Its address |
+| `remote_id` | TEXT | nullable | The remote's own id for the repository, which a rename does not change |
+| `created_at`, `updated_at` | TEXT | NOT NULL |  |
+
+#### `extensions`
+
+Planned (trustmybot/tmb#468). **One row per thing a project adds to its team: a created agent, a project skill or a cheatcode** ([4_EXTENDING.md](../flows/4_EXTENDING.md)). Record kind `extension`.
+
+- **Example.** The Human approves a drafted agent. Its row is made by the Human, and each run of that agent names the row.
+- **Edge case.** An install lands but its wiring fails. The row's state is `broken`, and the next session start reports it.
+- **Edge case.** An uninstall keeps the row, as `removed`, because its runs still point at it.
+
+| Column | Type | Null | Holds and constraints |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `kind` | TEXT | NOT NULL | `agent`, `skill`, `tool_server` or `host_plugin` |
+| `name` | TEXT | NOT NULL | UNIQUE with `kind` and `source` |
+| `source` | TEXT | nullable | Where it was published, with its version. NULL when it was written in the project |
+| `state` | TEXT | NOT NULL | `installed`, `broken` or `removed` |
+| `attachments` | TEXT | NOT NULL | A JSON list: each role it is attached to and what was wired, so an uninstall reverses exactly that. Default `'[]'` |
+| `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
+
 #### `discussions`
 
 | Column | Type | Null | Holds and constraints | Planned |
@@ -542,7 +583,7 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `task_id` | TEXT | nullable | FK → `tasks.id`. At most one of `feature_id` and `task_id` is set; a teammate's pull request has neither |
 | `author` | TEXT | nullable | The remote account that opened it. NULL when tmb opened it |
 | `closes` | TEXT | NOT NULL | A JSON list of the issues it closes. Default `'[]'` |
-| `base_remote`, `head_remote` | TEXT | nullable | The remote repository it merges into, and the one its branch is in. They differ for a fork |
+| `head_remote` | TEXT | nullable | The remote repository its branch is in, as text. It differs from `remote` for a fork |
 | `state` | TEXT | NOT NULL | `open`, `merged` or `closed` |
 | `draft` | INTEGER | NOT NULL | 1 while it is a draft. Default 0 |
 | `head_commit` | TEXT | nullable | The commit at its tip when last seen |
@@ -632,6 +673,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `role` | TEXT | NOT NULL | `planner`, `worker` or `reviewer`, checked by the engine |  |
 | `host` | TEXT | nullable | The host that ran the agent. It can differ from the host of the session that started it | trustmybot/tmb#256 |
 | `model`, `runner` | TEXT | nullable | The model that ran, and the name of the configured agent that ran it. Which agent serves which role is a setting; which one ran is a fact of the run | trustmybot/tmb#411 |
+| `extension_id` | TEXT | nullable | FK → `extensions.id`. The created agent that ran. NULL for a shipped role | trustmybot/tmb#468 |
 | `effort` | TEXT | nullable | The effort it was given | trustmybot/tmb#256 |
 | `started_at` | TEXT | NOT NULL |  |  |
 | `ended_at` | TEXT | nullable |  |  |
@@ -705,7 +747,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 - **Example 2.** A setting changes. One `setting_changes` row says who changed it, from what and to what.
 - **Edge case.** A record made before these tables kept every such entry in one catch-all table. The upgrade writes each old entry again as an event of its new kind, made by tmb. The old events are never rewritten, and no entry is lost.
 - **Edge case.** An old entry on how a review mode was chosen has no setting change beside it. It becomes its own row for the key `review_mode`, with no values.
-- **Edge case.** tmb moved to a new program. That alone changes no value: its row repeats the tie in force, and the wiring refresh that follows writes the new tie.
+- **Edge case.** tmb moved to a new program. Its row is history. The tie in force is the project's wiring itself, which tmb never reads from the record.
 - **Edge case.** An old review mark names a commit that no review and no waiver covers, so its parent cannot be found. It gets no row; its old event stays in `events`.
 - **Edge case.** An old entry holds a detail that has no column, such as a feedback report's title. The new event's data keeps it; the row takes only its columns.
 - **Planned (trustmybot/tmb#305).** A `setting_changes` row is history only. The value in force is in the config file ([CONFIG.md](CONFIG.md)).
@@ -717,7 +759,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | A review carried over a rebase | A `reviews` row with `carried_from`, or a `waivers` row with `carried_from` when a waiver covered the old commit |
 | A setting change | A `setting_changes` row for its key |
 | How a review mode was chosen | The `how` of that review mode's `setting_changes` row |
-| Which tmb program the project is tied to, tmb moved, and tmb's wiring redone after an update | A `setting_changes` row with the key `program`. Each holds the whole tie, so the newest row is the tie in force |
+| Which tmb program the project is tied to, tmb moved, and tmb's wiring redone after an update | A `setting_changes` row with the key `program`. History only: the tie in force is the project's wiring |
 | A base branch brought into a feature branch | An `updated` event on the feature branch, which sets `base_merged_commit` |
 | A freeze of every session's work, and its lifting | A `freezes` row. The table is built; freezing is Planned (trustmybot/tmb#64) |
 | A feedback report filed or its form opened | A `feedback_reports` row |
@@ -778,7 +820,7 @@ Planned (trustmybot/tmb#70). One row per remote repository and list. It is not f
 
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
-| `remote` | TEXT | NOT NULL | The remote repository. PK with `list`. A fork has two remotes, so two sets of rows |
+| `remote` | TEXT | NOT NULL | FK → `remotes.id` (trustmybot/tmb#467). PK with `list`. A fork has two remotes, so two sets of rows |
 | `list` | TEXT | NOT NULL | Issues, comments, review comments, pull requests or milestones |
 | `tag` | TEXT | nullable | The tag the remote gave last time, sent back to ask "has anything changed?" |
 | `since` | TEXT | nullable | The time the next "what changed?" asks from |
@@ -805,7 +847,7 @@ Planned (trustmybot/tmb#70). **Every record the remote also holds carries the re
 
 | Column | Holds |
 |---|---|
-| `remote` | The remote repository the row is mirrored from, named as `sync_state` names it. For a fork it is the upstream |
+| `remote` | FK → `remotes.id` (trustmybot/tmb#467). The remote repository the row is mirrored from. For a fork it is the upstream |
 | `remote_id` | The remote's own id for the item, which a rename does not change. UNIQUE with `remote`. NULL for a local row, which the syncer leaves alone |
 | `remote_updated_at` | The remote's time of last change, so an unchanged item is skipped |
 | `remote_gone_at` | When the syncer found it deleted or out of reach. NULL while it is there |
@@ -840,8 +882,6 @@ Each is a table the plugin had or a split that was weighed.
 | A table per review finding | A finding has no state of its own; the next review judges the next commit |
 | A table for handoffs between sessions | The record is the handoff |
 | A table of people | An account on the remote stays text on the row it acts on. Which account is the user's is a setting ([CONFIG.md](CONFIG.md)) |
-| A table of remotes | A remote is text on the rows that name it. Which one issues come from is a setting |
-| A table for agents a project creates | Creating one is an event, and its file is the host's ([ROLES.md](ROLES.md#agents-a-project-creates)) |
 | A lanes table | A lane is a session |
 
 ### Search
