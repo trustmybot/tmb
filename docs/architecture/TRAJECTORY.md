@@ -30,6 +30,18 @@ flowchart LR
 
 **The record works with no remote. A remote adds what teammates see, and replaces nothing in the record.**
 
+```mermaid
+flowchart LR
+    subgraph L["The user's machine"]
+        R["The record: issues, tasks, runs, checks, verdicts"]
+    end
+    subgraph G["The remote, when there is one"]
+        I["Issues, comments, milestones, pull requests"]
+    end
+    I -->|"the syncer reads (Planned)"| R
+    R -->|"a backup push, a pull request, a published issue"| I
+```
+
 A person working with agents needs a memory that a remote has no place for: which task an agent took, what it cost, which commit a verdict judged, why the gate said no. The record keeps that on the user's machine, whether or not the project has a remote.
 
 - **Example 1, local.** A project has no remote. Its issues, decisions, tasks, runs and verdicts are all in the record. It needs no account and no network, and a new session resumes from it.
@@ -79,6 +91,20 @@ A person working with agents needs a memory that a remote has no place for: whic
 
 tmb records outcomes at checkpoints. It does not record each tool call or each step of an agent.
 
+```mermaid
+flowchart TD
+    I[Issue] --> D["Discussion: notes and decisions"]
+    I --> T[Task]
+    F[Feature branch] --> T
+    T --> R1["Run: a worker"]
+    T --> C[Check run]
+    T --> V1["Review of a truest task's commit"]
+    F --> R2["Run: the reviewer on the branch"]
+    R2 --> V2["Review of the branch's tip"]
+    G[Guard decision] -.-> R1
+    G -.-> R2
+```
+
 - **Example 1.** A worker closes its task. The check run at close is recorded, with each command and its result.
 - **Example 2.** The gate denies a worker's start. The deny is recorded with its reason.
 - **Not recorded:** file writes and shell commands. tmb reads neither.
@@ -127,6 +153,15 @@ A run and a check run each write their start before any work. The end is a secon
 
 Each record points at its parent, so the work forms a tree. Each record also names its maker: the Human, or the role and host that acted. tmb itself is the maker of a write no person or agent made, such as an upgrade. Planned: the session that acted (trustmybot/tmb#63).
 
+```mermaid
+flowchart TD
+    S1["Session: the Human's (Planned)"] --> R1["Run: a worker on a task"]
+    S1 --> R2["Run: the reviewer on a branch"]
+    R1 --> H1["Guard decision: start allowed"]
+    R1 --> V1["Check run at close, no end yet"]
+    R2 --> W["Review: the verdict"]
+```
+
 | Record | Names |
 |---|---|
 | Run | Its task, or its feature branch for a branch review |
@@ -150,6 +185,17 @@ Agents, the command line and the dashboard change the record only through the en
 
 A run opens when the gate allows the start, and ends as finished or stopped.
 
+```mermaid
+stateDiagram-v2
+    [*] --> running: the gate allows the start
+    running --> finished: a worker's task left the open state
+    running --> finished: a reviewer recorded a verdict
+    running --> stopped: any other end
+    running --> stopped: the host failed to make the agent
+    finished --> [*]
+    stopped --> [*]
+```
+
 | A run ends as | When |
 |---|---|
 | Finished | A worker's task left the open state, or a reviewer recorded a verdict |
@@ -172,12 +218,33 @@ A run opens when the gate allows the start, and ends as finished or stopped.
 
 Verification is recorded as check runs. The checks run at close, and again after a fold or a rebase moved the commit.
 
+```mermaid
+stateDiagram-v2
+    [*] --> running: the checks start
+    running --> passed: every command passed
+    running --> failed: naming the command
+    running --> not_run: with the reason
+    passed --> [*]
+    failed --> [*]
+    not_run --> [*]
+```
+
 - **It ends one of three ways.** Passed: every command passed. Failed, naming the command. Not run, with the reason.
 - **Edge case.** A check run killed with its session keeps its start and has no end, so it shows as a finding.
 
 ## 7. A guard decision is one answer of the gate
 
 Every answer the gate gives at a checkpoint is recorded, allow and deny, with the event and the reason. The checkpoints, and how a gate fails, are in [ENGINE.md](ENGINE.md#gates-fail-closed).
+
+```mermaid
+stateDiagram-v2
+    [*] --> asked: the host or git raises the event
+    asked --> allowed: recorded with the reason
+    asked --> denied: recorded with the reason and what would be allowed
+    asked --> denied: the record cannot be read or written
+    allowed --> [*]
+    denied --> [*]
+```
 
 - **Example.** An allow is recorded with the reason. A deny is recorded with the reason and what would be allowed.
 - **Edge case.** A task's start and close are not events: a refusal there writes no guard decision.
@@ -186,6 +253,15 @@ Every answer the gate gives at a checkpoint is recorded, allow and deny, with th
 ## 8. A session holds the runs
 
 Planned (trustmybot/tmb#63, trustmybot/tmb#254). A record names the role and host, not the session. The session record is what tells the work of two sessions on one project apart.
+
+```mermaid
+stateDiagram-v2
+    [*] --> active: session starts
+    active --> active: compacted, cleared or resumed
+    active --> ended: the host reports the session ended
+    ended --> active: the Human resumes it
+    ended --> [*]
+```
 
 - **One stable id** across a compaction, a clear and a resume. The session stays active through each.
 - **A session ends** when the host reports it ended. The Human's resume makes it active again.
@@ -203,6 +279,16 @@ A step that did not run is recorded as not run, with the reason.
 ## 10. Stuck work is listed, never ended
 
 tmb has no watcher and no timer: it runs only when something calls it.
+
+```mermaid
+flowchart TD
+    A["A session start, or the health check"] --> B["List runs and check runs with a start and no end<br/>and open tasks with no run"]
+    B --> C["Named to the planner in one line, and listed in full by the health check"]
+    C --> D{The planner decides}
+    D --> E["Leave it: still working"]
+    D --> F["Resume: start a worker on the open task again"]
+    D --> G[Drop the task with a reason]
+```
 
 - **What is listed.** At a session start, and by the health check: runs and check runs with a start and no end, and open tasks with no run. The planner is told in one line, and the health check lists them in full ([1_INSTALL.md](../flows/1_INSTALL.md)).
 - **The planner decides.** Leave it, because it is still working. Resume it: start a worker on the open task again. Or drop the task with a reason ([3_TASKS.md](../flows/3_TASKS.md#debugging-a-stuck-task)).

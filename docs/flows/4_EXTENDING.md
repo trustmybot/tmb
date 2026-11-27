@@ -45,6 +45,14 @@ flowchart TD
 
 **Planned.** A tmb skill holds one situational procedure of tmb's own harness. A role loads it when its trigger fires, so the role's always-loaded prompt stays short. Skills are written once, host-neutral, like the roles, and each adapter writes them in its host's format.
 
+```mermaid
+flowchart LR
+    R["Role prompt: always loaded, short"] --> T{A skill's trigger fires?}
+    T -- no --> W[Work goes on with the role prompt alone]
+    T -- yes --> L[The role loads that skill]
+    L --> P[The skill carries the procedure]
+```
+
 What goes in a role's prompt, a skill or code is decided by the placement test in [JUDGMENT_LAYER.md](../prompt-engineering/JUDGMENT_LAYER.md).
 
 The procedures in tmb's flows that a skill would hold. **The whole table is Planned, and the names are not fixed.**
@@ -80,6 +88,15 @@ flowchart TD
     T -- "no, and it is a skill" --> X["Install refused: no orphan skill"]
     T -- "yes, or a pure server tool" --> I[Install in one transaction]
     I --> L["Hot-load: now, or at the next restart"]
+    L --> C[Reconcile at each session start and index]
+    C --> U["Uninstall, when the Human confirms it"]
+```
+
+After the approval:
+
+```mermaid
+flowchart LR
+    I[Install] --> L["Hot-load: now, or at the next restart"]
     L --> C[Reconcile at each session start and index]
     C --> U["Uninstall, when the Human confirms it"]
 ```
@@ -137,6 +154,15 @@ An install ends in one of three ways:
 ### Attachment
 
 Installing loads a cheatcode; attachment decides which role can use it. A skill, published or written in the project, is attached to a role once, and each adapter writes it in its host's format for every host in that role.
+
+```mermaid
+flowchart LR
+    S[Skill] --> R[Attached to a role, recorded once]
+    R --> A1[Claude Code adapter]
+    R --> A3[Any later adapter]
+    A1 --> H1["That host's files for the role"]
+    A3 --> H3["That host's files for the role"]
+```
 
 | Kind | Attachment |
 |---|---|

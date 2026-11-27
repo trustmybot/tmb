@@ -39,7 +39,16 @@ Every push to `dev` runs `.github/workflows/dev-release.yml`; it can also be sta
 
 ## What a release run does
 
-The dev run and the tag run (`.github/workflows/release.yml`) do the same steps. The last three run side by side once the release is published.
+The dev run and the tag run (`.github/workflows/release.yml`) do the same steps.
+
+```mermaid
+flowchart TD
+    V["name the version"] --> B["build: bun test, then compile"]
+    B --> P["publish to the release repo"]
+    P --> I["install test, 3 systems"]
+    P --> U["update test, 3 systems"]
+    P --> M["fill package-manager manifests"]
+```
 
 | Step | What it does |
 |---|---|

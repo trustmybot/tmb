@@ -49,7 +49,14 @@ These four are the high-level pages the Human reviews. Every other page is the d
 
 ## When two things disagree
 
-These docs are the ground truth: code, specs and issues follow them. When two pages disagree, or code, a spec or an issue disagrees with a page, the question goes to the Human, and both sides are then changed to agree.
+These docs are the ground truth: code, specs and issues follow them.
+
+```mermaid
+flowchart LR
+    X["Two pages disagree, or code, a spec or an issue disagrees with a page"] --> Q["The question goes to the Human"]
+    Q --> A["The Human answers"]
+    A --> F["Both sides are changed to agree"]
+```
 
 - **No side wins by rank.** A high-level page does not overrule a detail page, and code does not overrule a page. A disagreement means one of them is wrong, and the Human says which.
 - **Nothing is fixed silently.** Whoever finds the disagreement raises it before changing either side.

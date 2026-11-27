@@ -8,6 +8,16 @@ Everything before [Containment](#containment) is the design. Containment is deta
 
 Every way in calls the same engine.
 
+```mermaid
+flowchart LR
+    AG["Agents in a host"] -- tool server --> EN["The engine"]
+    HO["The host, at a checkpoint"] -- host events --> AD["Host adapter"] --> EN
+    GI["git, at a push"] -- "pre-push hook" --> EN
+    HU["The Human"] -- command line --> EN
+    HU -- dashboard --> EN
+    EN --> RC["The record"]
+```
+
 | Way in | Used by | Why |
 |---|---|---|
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |

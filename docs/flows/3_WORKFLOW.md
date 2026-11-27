@@ -59,6 +59,14 @@ flowchart TD
 
 Only the Human switches, by the same fence as the first choice. A later change applies to tasks started after it.
 
+```mermaid
+flowchart TD
+    A["Human changes the project's mode"] --> B[Tasks started later use it, in every repo that names no mode of its own]
+    C["Human changes one repo's mode"] --> D[Tasks started later in that repo use it]
+    B --> K[Tasks already started keep theirs]
+    D --> K
+```
+
 - **Example 1.** The Human changes the project's mode. Tasks started later use it, in every repo that names no mode of its own.
 - **Example 2.** The Human changes one repo's mode. Tasks started later in that repo use it.
 - **Edge case.** A task opened under one mode finishes under it.

@@ -310,6 +310,15 @@ What happens when a pattern matches no file, a file is in no area or an area bre
 | Where does X live? | Every role |
 | What calls or imports X, and which tests cover it? | The planner when it scopes a task; the worker before it changes X; the reviewer when it judges what a change may break |
 
+```mermaid
+flowchart LR
+    G[(Code graph)] --> P["Planner: the map at session start, then lookups and a draft of a task's files"]
+    G --> W["Worker: what calls X, before it changes X"]
+    G --> V["Reviewer: what a change may break"]
+    G --> H["The Human: the command line and the dashboard's Code page"]
+    G --> D["Health check: behind, older indexer, files not parsed"]
+```
+
 - **Agents read it through tmb's tools**, as calls that return an answer. The Human reads it on the dashboard's Code page and from the command line, which reads the same graph ([the reference](../reference/README.md#the-record-from-the-command-line)).
 - **The planner** reads the map at cold start and asks "where does X live" directly. A scope gives it a draft of a task's files: the hits for the task's objective, plus the callers, importers and tests of the symbols it names.
 - **The reviewer starts from git's diff.** The diff says what changed, and no graph tool repeats it. The reviewer asks the graph only what the diff cannot say: what calls a changed function, and which tests cover it.
