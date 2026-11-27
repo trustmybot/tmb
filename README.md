@@ -18,7 +18,15 @@ You talk to one planner. It writes the spec, workers write the code, and a revie
 
 - **Work you can trace.** Every task has a spec, its checks, a review and a result, all in one record on your machine.
 - **Less spent on review.** A reviewer alone is not a gate: in [our study](https://arxiv.org/abs/2611.33639), every reviewer setting still accepted at least 45% of wrong patches. So tmb puts your project's own checks first and, in agile mode (the recommended one), reviews a whole feature branch once, not every commit.
-- **Reviews that cost cents.** In the same study, a review by Claude Opus 5.5 cost about $0.09 on average. Anthropic's managed Code Review [averages $15–25](https://claude.com/blog/code-review). The two are not the same job, but the gap is the point.
+- **Reviews that cost cents.** One review by Claude Opus 5.5 at medium effort, measured in the same study:
+
+  | | Per review |
+  |---|---|
+  | Tokens (median) | 2,244 output, 598 thinking |
+  | Cost at API list price (mean) | $0.09 |
+  | Anthropic's managed [Code Review](https://claude.com/blog/code-review) | $15–25 |
+  | Saved | over 99% |
+
 - **Fewer tokens on reading.** The planner scopes a task from the code graph, and each worker starts from a spec that names the files in scope.
 - **A heavier model plans, cheaper ones do the work.**
 - **Your code stays with you.** The engine runs on your machine and needs no internet access. macOS, Windows and Linux.
