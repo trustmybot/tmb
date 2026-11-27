@@ -8,7 +8,7 @@ import { deleteFile } from "../common/json-file.ts";
 
 const AGENTS_RELATIVE = path.join(".claude", "agents");
 // A YAML comment as the frontmatter's first line: Claude Code ignores it, and it tells tmb the file is its own.
-const MARKER = "# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
+export const MARKER = "# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
 // The marker builds before tmb init wrote, so their files are still recognised and replaced or removed.
 const EARLIER_MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
 const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
@@ -37,7 +37,8 @@ export function roleFilePath(projectDir: string, roleName: string): string {
   return path.join(agentsDir(projectDir), `${roleName}.md`);
 }
 
-function isTmbRoleFile(file: string): boolean {
+/** Whether tmb wrote the file: its frontmatter opens with tmb's marker. Role files and skill files share it. */
+export function isTmbFile(file: string): boolean {
   const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
   return [MARKER, EARLIER_MARKER].some((marker) => text.startsWith(`---\n${marker}\n`));
 }
@@ -74,7 +75,7 @@ export function writeRoleFiles(projectDir: string, roles: readonly SubagentRole[
     const file = roleFilePath(projectDir, role.name);
     const text = roleFileText(role);
     if (existsSync(file)) {
-      if (!isTmbRoleFile(file)) {
+      if (!isTmbFile(file)) {
         result.notOurs.push(role.name);
         continue;
       }
@@ -101,7 +102,7 @@ export function removeRoleFiles(projectDir: string, only: (file: string) => bool
   const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of entries) {
     const file = path.join(dir, entry.name);
-    if (!entry.isFile() || !entry.name.endsWith(".md") || !only(file) || !isTmbRoleFile(file)) continue;
+    if (!entry.isFile() || !entry.name.endsWith(".md") || !only(file) || !isTmbFile(file)) continue;
     deleteFile(file, projectDir);
     removed.push(file);
   }
@@ -115,7 +116,7 @@ export function roleFileGaps(projectDir: string, roles: readonly SubagentRole[])
     const file = roleFilePath(projectDir, role.name);
     const shown = path.relative(projectDir, file);
     if (!existsSync(file)) gaps.push(`${shown} is missing: the ${role.name} role is not written`);
-    else if (!isTmbRoleFile(file)) gaps.push(`${shown} is not tmb's, so the ${role.name} role is not tmb's either; tmb leaves it alone`);
+    else if (!isTmbFile(file)) gaps.push(`${shown} is not tmb's, so the ${role.name} role is not tmb's either; tmb leaves it alone`);
     else if (readFileSync(file, "utf8") !== roleFileText(role)) gaps.push(`${shown} is not this version's ${role.name} role`);
   }
   const wanted = new Set(roles.map((role) => roleFilePath(projectDir, role.name)));
@@ -123,7 +124,7 @@ export function roleFileGaps(projectDir: string, roles: readonly SubagentRole[])
   if (existsSync(dir)) {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const file = path.join(dir, entry.name);
-      if (entry.isFile() && entry.name.endsWith(".md") && !wanted.has(file) && isTmbRoleFile(file)) {
+      if (entry.isFile() && entry.name.endsWith(".md") && !wanted.has(file) && isTmbFile(file)) {
         gaps.push(`${path.relative(projectDir, file)} is tmb's role file for a role this version no longer has`);
       }
     }
