@@ -103,7 +103,7 @@ flowchart TD
 - **Example 1.** A task closes. Its branch was cut from the feature branch's tip and folds back into it, so the next task builds on the last.
 - **Example 2.** A request adds to an open branch's work. It becomes the next task on that branch. A new branch is only for separate work.
 - **Example 3.** The Human tries the feature in the branch's own worktree. The engine cuts and moves the branch without checking it out, so the main folder never switches under a session.
-- **Edge case.** In a multi-repo workspace, a feature branch belongs to one repo, and its tasks work in that repo. Feature names are unique in the record.
+- **Edge case.** In a multi-repo workspace, a feature branch belongs to one repo, and its tasks work in that repo. A milestone belongs to one repo too ([TRAJECTORY.md](../architecture/TRAJECTORY.md#milestones)). Feature names are unique in the record.
 
 ### Safe close
 

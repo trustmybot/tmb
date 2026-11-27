@@ -179,7 +179,7 @@ The settings are kept in the record; the keys are in [CONFIG.md](../architecture
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
-- Never overwrites an agent file in `.claude/agents/` that tmb did not write.
+- Never overwrites an agent file in `.claude/agents/` that tmb did not write. Planned (trustmybot/tmb#461): nor one of its own that you edited.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
 - In a git work tree, writes git's pre-push hook, so every push asks tmb first, and tmb refuses only an unreviewed push to the base branch; in a multi-repo workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
 - Indexes the code graph of the base branch, once it has a commit; in a multi-repo workspace, each repo's from its own base branch.

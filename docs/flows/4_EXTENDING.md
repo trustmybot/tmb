@@ -21,11 +21,12 @@ flowchart LR
 
 ## Nothing is written without the Human's approval
 
-This one rule holds for all four flows. The planner drafts or proposes, the Human approves each item, and only then does tmb record it and write it.
+This one rule holds for all four flows. The planner drafts or proposes, the Human approves each item, and only then does tmb record it and write it. The approval is a step only the Human may take: a yes typed on a terminal, like a waiver ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)).
 
 - **Example 1.** The planner drafts a skill and the Human says yes. The skill lands in the project.
 - **Example 2.** The planner drafts a skill and the Human says no. The draft is discarded and nothing is written.
 - **Edge case.** The Human asks for a change to the draft. The planner revises it and asks again.
+- **Edge case.** An agent writes the file itself, around the approval. tmb watches no file write, but the file is not in the record, so tmb never routes work to it.
 
 ## tmb's own skills
 
@@ -226,7 +227,7 @@ flowchart TD
 | **A backbone role is never copied** | Attaching a skill or a cheatcode to the worker or the reviewer extends that role's lists; the adapter writes the result |
 | **An approval covers one file and lapses** | A draft approved but not written within a short window needs a new approval |
 | **The agent's files stay local** | They stay in this checkout |
-| **tmb never touches an agent file it did not write** | Setup leaves such a file alone and says so, and replaces only its own |
+| **tmb never touches an agent file it did not write** | Setup leaves such a file alone and says so, and replaces only its own while nobody edited it ([ENGINE.md](../architecture/ENGINE.md#a-file-tmb-wrote-at-an-update)) |
 
 ## Consultants
 

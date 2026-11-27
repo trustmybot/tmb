@@ -253,7 +253,7 @@ The other symptoms:
 | Symptom | Where to look |
 |---|---|
 | No task will start | The review mode is not set: the Human runs `tmb onboard`. Or the issue is closed |
-| The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a multi-repo workspace, start it from inside the task's repo; the deny names the folder |
+| The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a multi-repo workspace the start must come from inside the task's repo, and the deny names the folder. Reading the repo from the task is Planned (trustmybot/tmb#463) |
 | The reviewer's verdict is refused | No reviewer run is open, the commit is not the branch's current tip, or the task is not in review at that commit |
 | The pull request will not open | No pass or waiver covers the tip or the commit. The Human waives with `tmb feature waive` or `tmb task waive` |
 | The push is denied | It goes to the base branch and carries a commit no pass or waiver covers, or the record cannot be read. The hook's message names the cause |

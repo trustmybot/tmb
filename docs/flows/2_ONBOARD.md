@@ -18,7 +18,7 @@ flowchart TD
     G -- yes --> J
     G -- "no, someone can answer" --> H[Planner asks the Human: each mode with its cost, agile recommended]
     H --> I[Planner stores the Human's answer]
-    I --> J[Planner proposes the project's areas; the Human keeps some]
+    I --> J[Planner names the project's areas]
     G -- "no, unattended run" --> X[Stays unset: no task starts until the Human sets it]
     J --> K[Session starts say nothing more about settings]
 ```
@@ -38,7 +38,7 @@ Each step, who takes it and what it leaves in the record.
 | The review mode | Agile or truest, [the Human's choice](#the-review-mode-is-the-humans-choice). In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own. | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
 | The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it. A repo marked exempt gets none ([3_GIT.md](3_GIT.md)). | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
 | The checks | Found in the project and stored as a setting, not as a file in the repo ([The repo's checks](#the-repos-checks)). | the planner, or `tmb onboard` | the checks, per repo in a multi-repo workspace |
-| The areas | Once the code graph is built, the planner proposes named parts of the project, one line each, and writes those the Human keeps ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md)). | the planner | the areas |
+| The areas | Once the code graph is built, the planner names the parts of the project, one line each, and writes them. It asks nothing ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md#when-the-areas-change)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
 | Issue sync | Planned, inside the syncer (trustmybot/tmb#70). | | |
 
@@ -51,12 +51,27 @@ Each step, who takes it and what it leaves in the record.
 - **Example 3.** The folder is not a git work tree and holds no repo. Init runs `git init`, and the folder is a project of one repo.
 - **Edge case.** No host is installed. Init stops and changes nothing.
 
+## A repo with no commit
+
+**Planned (trustmybot/tmb#464). Work needs a first commit to cut branches from. tmb makes it only in a repo it made itself that holds no file.**
+
+| The folder at init | What tmb does |
+|---|---|
+| Not a git work tree, holds repos | A workspace. No `git init`. Each repo follows the last two rows |
+| Empty, in no repo | `git init` and an empty first commit. Work can start |
+| Holds files, in no repo | `git init` and no commit: the files are the Human's |
+| A repo the Human made, with no commit yet | No commit |
+| A repo with commits | Nothing more, with or without a remote |
+
+- **Example.** A repo has files and no commit. Init, each session start and a refused task start say it needs its first commit. Its code graph is built once it has one.
+- **Edge case.** One repo of a workspace has no commit. The other repos work, and that one says why it cannot.
+
 ## The planner onboards by itself
 
 **When a planner's session starts and the base branch, the review mode or the checks is empty, the engine says so, with what it found. The planner applies what it recommends before other work and shows it.**
 
 - **Example 1.** The base branch and the checks are empty. The planner works both out, applies them and shows them. It asks nothing.
-- **Example 2.** The review mode is empty too. The planner asks the Human and stores the answer. Then it proposes the project's areas, and the Human keeps some.
+- **Example 2.** The review mode is empty too. The planner asks the Human and stores the answer. Then it names the project's areas and writes them.
 - **Example 3.** The planner reminds the Human that `tmb onboard` can be run again, and that it can change a value when asked.
 - **Example 4.** Every setting is stored. Later session starts say nothing more about settings.
 - **Edge case.** The run is unattended. The planner applies its recommendations and names each value in its answer. It never sets the review mode.
@@ -104,7 +119,7 @@ flowchart TD
 **The planner asks through the host's question tool, and only when the Human must choose. A person who has never used tmb must be able to answer from the card alone.**
 
 - **Example 1.** The review mode gets a card: one option per mode with what it costs, agile marked as recommended.
-- **Example 2.** The areas to keep get a card, and so does the feedback program on stable. The base branch and the checks get none.
+- **Example 2.** The feedback program on stable gets a card. The base branch, the checks and the areas get none.
 - **Example 3.** Repo modes are asked only in a multi-repo workspace. A project of one repo takes the project's mode.
 - **Edge case.** A card that asks for consent recommends nothing.
 

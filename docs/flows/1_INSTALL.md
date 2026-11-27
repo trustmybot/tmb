@@ -97,7 +97,7 @@ The limits on each are in [ENGINE.md](../architecture/ENGINE.md).
 - **Example 1.** Init leaves the settings empty. It ends by saying so and how they get filled ([2_ONBOARD.md](2_ONBOARD.md)).
 - **Example 2.** Claude Code is not installed. Init stops, says it needs Claude Code and changes nothing.
 - **Example 3.** Init installs git's pre-push hook; session start does not. A repo marked exempt gets none, and a hook that is another tool's is kept ([3_GIT.md](3_GIT.md)).
-- **Edge case.** Run again, init replaces only what tmb wrote. It takes out what this version does not wire: role files for roles it does not have, and hooks under an event it does not use. The Human's own entries stay. Files marked as written by `tmb setup` count as tmb's.
+- **Edge case.** Run again, init replaces only what tmb wrote. It takes out what this version does not wire: role files for roles it does not have, and hooks under an event it does not use. The Human's own entries stay. Files marked as written by `tmb setup` count as tmb's. Planned (trustmybot/tmb#461): a file of tmb's that the Human edited is kept ([ENGINE.md](../architecture/ENGINE.md#a-file-tmb-wrote-at-an-update)).
 
 ## Session start
 
@@ -214,7 +214,7 @@ flowchart TD
 
 | Rule | Detail |
 |---|---|
-| Who is offered a report | The feedback program is on by default on dev and rc. On stable tmb asks once, at the first run. The setting belongs to the person: it is kept with the machine-wide state of each channel's program. |
+| Who is offered a report | The feedback program is on by default on dev and rc. On stable tmb asks at the first run, and the question is settled only when the person answers (Planned, trustmybot/tmb#462). The setting belongs to the person: it is kept with the machine-wide state of each channel's program. |
 | Where a report goes | A public issue on the source repo, from the user's own GitHub account. |
 | What a report follows | The repo's bug form as it stands on the default branch, so the version, the labels and the questions are always current ([contributing](../contributing/README.md#issues)). |
 | What a report never holds | Source code, file contents, prompts, agent messages or environment variables. |

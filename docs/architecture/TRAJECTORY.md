@@ -341,7 +341,7 @@ The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and
 The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
-- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`. Planned: `sessions`, `pull_requests`, `milestones`, `issue_links`, `docs`.
+- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`. Planned: `sessions`, `pull_requests`, `milestones`, `repos`, `issue_links`, `docs`.
 - **Search** — `search`, one full-text index.
 - **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned, trustmybot/tmb#70), where each poll of the remote stopped.
 
@@ -383,6 +383,7 @@ erDiagram
     tasks |o..o{ reviews : "judged"
     reviews |o..o{ reviews : "carried from"
     milestones |o..o{ issues : "groups"
+    repos ||..o{ milestones : "holds"
     issues ||..o{ issue_links : "from"
     issues ||..o{ issue_links : "to"
     pull_requests |o..o{ discussions : "has"
@@ -480,15 +481,26 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
 | `id` | TEXT | PK |  |
-| `title` | TEXT | NOT NULL | UNIQUE with `repo` |
+| `title` | TEXT | NOT NULL | UNIQUE with `repo_id` |
 | `description` | TEXT | NOT NULL | Default `''` |
 | `state` | TEXT | NOT NULL | `open` or `closed` |
-| `repo` | TEXT | nullable | Named as `tasks.repo` names its own |
+| `repo_id` | TEXT | NOT NULL | FK → `repos.id`. A milestone belongs to exactly one repo |
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
+- **One repo.** A goal that spans two repos is one milestone in each.
 - **No due date.** The record holds no schedule.
 - **Edge case.** An upgrade finds issues that name a milestone by text. It makes one row per name and repo and points each issue at it.
+
+#### `repos`
+
+Planned (trustmybot/tmb#70). One row per repo tmb works in, kept in step with the set init records ([CONFIG.md](CONFIG.md)).
+
+| Column | Type | Null | Holds and constraints |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `path` | TEXT | NOT NULL | UNIQUE. Relative to the project folder; `.` is the folder itself |
+| `created_at` | TEXT | NOT NULL |  |
 
 #### `discussions`
 

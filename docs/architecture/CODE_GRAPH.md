@@ -294,13 +294,27 @@ An area is a logical part of the project, such as login or billing, with a one-l
 Until then an area is a named group of files, as below.
 
 - **Defined by path patterns**, to include and to leave out. A path rule cannot tell login from billing, so the planner names the areas and tmb stores and checks them. A function takes its file's area.
-- **Only the planner writes or removes an area.** It proposes the areas to the Human at onboarding ([2_ONBOARD.md](../flows/2_ONBOARD.md)). Every role can list them, and so can the Human from the command line.
+- **Only the planner writes or removes an area.** It names them itself and asks nothing ([When the areas change](#when-the-areas-change)). Every role can list them, and so can the Human from the command line.
 - **"tests" is there from the start**, and holds every file the built-in test rule matches. The planner changes that rule on the area itself, with patterns to add and to leave out. It cannot be removed.
 - **One level of nesting.** An area may have a parent.
 - **A file can be in several areas, and has one main area**: its nested area, else the area with the most exact pattern, else the name that sorts first, and tests always comes last ([Areas: cases](#areas-cases)).
   - **Example.** A test file inside billing has billing as its main area and is also in tests.
 
 What happens when a pattern matches no file, a file is in no area or an area breaks, and where an area shows in answers, search and the dashboard, are in [Areas: cases](#areas-cases).
+
+### When the areas change
+
+**Planned (trustmybot/tmb#465). The code graph gives the signal and the planner judges. The Human is not asked.**
+
+| Scenario | The signal, from the code graph | The planner |
+|---|---|---|
+| Cold start | The first index ends and only tests exists | Names the areas from the map and writes them |
+| New code | An index leaves files in no area | Places them, or names a new area |
+| A restructure | An area is marked broken, or its size moved by more than a quarter | Redraws it |
+| A design change | None | Redraws the areas when a task's scope shows they no longer fit the design |
+
+- **Example.** A refactor moves billing into two folders. The next index marks the area broken, the session start names it in one line, and the planner redraws it.
+- **Edge case.** A project is too small to split. The planner leaves it with tests alone.
 
 ## Consumers
 

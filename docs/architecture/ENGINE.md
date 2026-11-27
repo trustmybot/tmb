@@ -162,11 +162,28 @@ flowchart TD
 
 | What | Limit |
 |---|---|
-| The host's project files, through its adapter: the tool server's registration, the event wiring and the role files | Each is marked as tmb's. A role file tmb did not write is never overwritten. |
+| The host's project files, through its adapter: the tool server's registration, the event wiring and the role files | Each is marked as tmb's. A role file tmb did not write is never overwritten, and one the Human edited is kept ([below](#a-file-tmb-wrote-at-an-update)). |
 | git's pre-push hook in each repo tmb works in | A hook that is another tool's is left alone; with the Human's yes tmb adds one line first in it. |
 | Ignore lines for its folder and for the host files that are the Human's alone | Remove leaves these lines. |
 | `git init` | Once, in a folder that is in no repo and holds none. |
 | Feature and task branches in git | tmb never deletes them while they hold work. |
+
+### A file tmb wrote, at an update
+
+**Planned (trustmybot/tmb#461). tmb keeps the checksum of each project file it writes. An update replaces a file only while the checksum still matches. An edited file is the Human's.**
+
+| The file | An update, a refresh, or init run again |
+|---|---|
+| Not written by tmb | Never touched |
+| tmb's, unchanged | Replaced by this version's |
+| tmb's, edited since | Kept. The session start and the health check say so, and that deleting it and running init brings tmb's back |
+| tmb's, unchanged, for something this version no longer ships | Removed |
+| The same, edited | Kept, and named |
+| An agent or a skill the Human approved (Planned, trustmybot/tmb#437) | Never removed. It is in the record, and is written again from it when missing |
+| Missing | Written |
+
+- **Example.** The Human tunes the worker's prompt in its role file. The next update leaves the file, and the health check says it differs from this version's.
+- **Edge case.** A settings file holds the Human's entries and tmb's. tmb changes only its own entries.
 
 Planned (trustmybot/tmb#436, trustmybot/tmb#437, trustmybot/tmb#112): the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([4_EXTENDING.md](../flows/4_EXTENDING.md)).
 
