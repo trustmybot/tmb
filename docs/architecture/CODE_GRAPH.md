@@ -705,7 +705,7 @@ The repos, the scoring rules and the judging rules of the [Benchmark](#benchmark
 | Language | Repos | Reference for functions | Reference for links |
 |---|---|---|---|
 | TypeScript and JavaScript | tmb, hono | The TypeScript compiler | The TypeScript compiler |
-| Python | flask, datasette | Python's own parser | Planned (trustmybot/tmb#399): a type checker's answer where it gives one; a link it cannot answer for is counted and not judged |
+| Python | flask, datasette | Python's own parser | tmb's pinned pyright: where it says each call points. A call it cannot answer, such as one into an installed package, is counted and not judged |
 | Go | gin | Go's own parser | Go's type checker |
 | Java | jsoup | javac | javac |
 | Rust | ripgrep | rust-analyzer | rust-analyzer |
@@ -719,7 +719,7 @@ The repos, the scoring rules and the judging rules of the [Benchmark](#benchmark
 - **A language with no module is not scored.** It joins the benchmark when its module does (trustmybot/tmb#141).
 - **The repos are named only in the benchmark.** No code of the graph names one ([Two ways to make links](#two-ways-to-make-links)).
 - **Every link is judged, in the same file or across files.**
-- **Way B needs a second judge.** In TypeScript the reference is the compiler, which is also way B's source. Way B's links right is judged on Python and on samples checked by hand.
+- **Way B needs a second judge.** In each language the reference is also way B's source: the compiler for TypeScript, pyright for Python. So the reference judges way A's links and how many links way B finds, and way B's links right is judged on samples checked by hand. Open, for the Human: whether a second Python tool judges way B.
 - **A link the compiler places outside the repo is wrong.** The graph links only the repo's own code, so a link to a repo symbol for a name the compiler declares only outside the repo fails the test.
 - **When a link is right.** It names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
 - **Why way A misses links.** It leaves a call unlinked when proving it needs the type of the thing it is called on ([Links on proof](#links-on-proof)).
@@ -1133,7 +1133,6 @@ All are FTS5 virtual tables.
 |---|---|
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
-| Python's benchmark reference is a type checker | trustmybot/tmb#399 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
 | Every C and C++ function a node | trustmybot/tmb#387 |
