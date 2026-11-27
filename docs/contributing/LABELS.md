@@ -2,7 +2,7 @@
 
 The issue labels on trustmybot/tmb, tmb's own board, as GitHub holds them (`gh label list --repo trustmybot/tmb`), and how a contributor uses them. The design of fields and labels is in [ISSUES.md](../architecture/ISSUES.md).
 
-Planned (trustmybot/tmb#403): type and priority leave the labels for GitHub's own fields.
+Priority is GitHub's Priority field, not a label. Planned (trustmybot/tmb#403): type leaves the labels for GitHub's issue types.
 
 ## Rule: one type, one priority, one area
 
@@ -13,7 +13,7 @@ flowchart LR
     F["issue form"] --> L["type/ label + status/needs-triage"]
     T["tmb feedback, through GitHub's CLI"] --> W["feedback-labels workflow"]
     W --> L
-    L --> M["maintainer sets priority/ and area/"]
+    L --> M["maintainer sets the Priority field and area/"]
     M --> D["removes status/needs-triage, sets the milestone"]
 ```
 
@@ -37,14 +37,14 @@ Planned (trustmybot/tmb#403): type moves to GitHub's issue types, one type per l
 
 ### Priority — exactly one
 
-Planned (trustmybot/tmb#403): priority moves to GitHub's built-in Priority field, with the same four values, and these four labels go.
+Priority is GitHub's built-in Priority field. The board has no priority label.
 
-| Label | Means |
+| Value | Means |
 |---|---|
-| `priority/urgent` | Critical priority — broken-in-prod class |
-| `priority/high` | High priority — blocks meaningful workflows |
-| `priority/medium` | Medium priority — quality / UX |
-| `priority/low` | Low priority — polish / nice-to-have |
+| Urgent | Critical — broken-in-prod class |
+| High | Blocks meaningful workflows |
+| Medium | Quality / UX |
+| Low | Polish / nice-to-have |
 
 ### Area — exactly one
 
@@ -96,7 +96,7 @@ Planned (trustmybot/tmb#403): priority moves to GitHub's built-in Priority field
 
 ## Filing with labels
 
-Whoever files an issue, a contributor or an agent working on tmb, applies one type, one priority and one area from the list above ([README.md](README.md#issues) has the forms).
+Whoever files an issue, a contributor or an agent working on tmb, applies one type label, one area label and the Priority field from the list above ([README.md](README.md#issues) has the forms).
 
 - **No label fits.** Propose a new one in a pull request to this page; never make up a label on the spot.
 - **Edge case.** No label marks an issue as stale: it would only repeat the issue's last-update time. Search by that time instead (`gh issue list --state open --search 'updated:<YYYY-MM-DD>'`).

@@ -36,7 +36,7 @@ flowchart LR
 - **Edge case.** The remote has no such field, such as a repo with no issue types. The record still keeps the type and the priority, and a search through tmb still uses them. tmb makes no label to stand in for the field.
 - **Edge case.** The remote's field has a value outside tmb's four priorities. The record keeps it as it is and orders it last.
 
-**Planned** (trustmybot/tmb#403): tmb's own board moves its type and priority labels to the two fields.
+**Planned** (trustmybot/tmb#403): tmb's own board moves its type labels to issue types. Its priority is already the field.
 
 ## The label groups
 
