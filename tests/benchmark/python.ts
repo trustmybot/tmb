@@ -3,6 +3,8 @@
 // (trustmybot/tmb#399): its answer where it gives one; a call it gives no answer for is counted and
 // not judged. Way B is pyright too, tmb's pinned copy (trustmybot/tmb#347), built as the
 // program builds it; the reference asks pyright itself (python_checker.ts), not way B's graph.
+// pyright cannot judge the links it makes, so way B's links right is judged by a second tool,
+// Jedi (python_judge.ts, trustmybot/tmb#427), by the same rule: its answer where it gives one.
 import type { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -11,14 +13,15 @@ import { BASE_LAYER, layerRow } from "../../src/engine/graph/db.ts";
 import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { listTree, resolveCommit } from "../../src/engine/graph/git-source.ts";
 import { graphCallCounts, graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
-import { CHECKER_VERSION, checkerDeclarations, type Declaration } from "./python_checker.ts";
+import { CHECKER_VERSION, checkerDeclarations, type Declaration, type LspPosition } from "./python_checker.ts";
+import { JUDGE, judgeDeclarations } from "./python_judge.ts";
 import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type Way, type WayScores } from "./score.ts";
 import type { Measured } from "./typescript.ts";
 
 const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["python"]);
 
-/** Way B's links are made by the very tool that judges them: links right is shown, and it is no proof of way B. */
-export const SAME_TOOL = "same tool as the reference";
+/** Way B's links right is judged by the second judge, not by pyright, which made them. */
+export const JUDGED_BY = `judged by ${JUDGE}`;
 
 /** How each way builds the graph, as the program builds it: way B uses tmb's pinned copy of pyright. */
 const BUILD: Record<Way, BuildOptions> = {
@@ -29,8 +32,9 @@ const BUILD: Record<Way, BuildOptions> = {
 /**
  * The version of the Python reference, raised when the reference changes what it counts.
  * 3: links are judged against pyright's answer (trustmybot/tmb#399).
+ * 4: way B's links right is judged by Jedi, a tool that is not way B's (trustmybot/tmb#427).
  */
-export const REFERENCE_VERSION = 3;
+export const REFERENCE_VERSION = 4;
 
 const SCRIPT = path.join(import.meta.dir, "python_reference.py");
 
@@ -81,7 +85,7 @@ export const LINK_CAUSES = {
 
 /** A declaration pyright gives that is a node of the graph: its file, its name, what it is, and the line of the node. */
 type NodeDeclaration = { file: string; name: string; kind: DeclaredKind; line: number };
-/** pyright's answer at one place: none, or the declarations it gives, those that are nodes apart. */
+/** A tool's answer at one place: none, or the declarations it gives, those that are nodes apart. */
 export type CheckerAnswer = { answered: false } | { answered: true; nodes: NodeDeclaration[]; outside: number; inRepo: number };
 
 const placeKey = (file: string, pos: number) => `${file}:${pos}`;
@@ -101,29 +105,40 @@ function lspPosition(text: string, pos: number): { line: number; character: numb
   return { line, character: pos - start };
 }
 
+/** A tool that names the declarations of the name written at each place asked: pyright, or the second judge. */
+export type Declarations = (root: string, files: ReadonlyMap<string, string>, asked: readonly { file: string; at: LspPosition }[]) => Promise<(Declaration[] | null)[]>;
+
 /**
- * pyright's answer at each place of the repo at `sha`: every call site Python's parser finds, and
- * each place in `extra`, by `file:pos`. The working tree must be at `sha`: pyright reads the
- * project's config from it. A declaration is in the repo when its file is a file of the commit; it
- * is a node when Python's parser declares a node at that place, of that name.
+ * A tool's answer, pyright's unless `tool` names another, at each place of the repo at `sha`:
+ * every call site Python's parser finds, unless `sites` is false, and each place in `extra`, by
+ * `file:pos`. The working tree must be at `sha`: the tool reads the project's config from it. A
+ * declaration is in the repo when its file is a file of the commit; it is a node when Python's
+ * parser declares a node at that place, of that name.
  */
-export async function checkerAnswers(repoDir: string, sha: string, texts: ReadonlyMap<string, string>, ref: PythonReference, extra: readonly { file: string; pos: number }[]): Promise<Map<string, CheckerAnswer>> {
+export async function checkerAnswers(
+  repoDir: string,
+  sha: string,
+  texts: ReadonlyMap<string, string>,
+  ref: PythonReference,
+  extra: readonly { file: string; pos: number }[],
+  { tool = checkerDeclarations, sites = true }: { tool?: Declarations; sites?: boolean } = {},
+): Promise<Map<string, CheckerAnswer>> {
   const root = path.resolve(repoDir);
   const head = resolveCommit(root, "HEAD");
-  if (head !== sha) throw new Error(`pyright reads the project's config from the working tree, which is at ${head ?? "no commit"}, not ${sha}`);
+  if (head !== sha) throw new Error(`the Python reference reads the project's config from the working tree, which is at ${head ?? "no commit"}, not ${sha}`);
   const tracked = new Set(listTree(root, sha).map((e) => e.path));
   const places = new Map<string, { file: string; pos: number }>();
   // A site is asked about where its name is written. Python's parser places a call inside an
   // f-string by an approximate column before Python 3.12; a site whose name is not written where it
   // is placed is not asked about, and is counted apart.
-  for (const [file, answer] of Object.entries(ref.files)) {
+  for (const [file, answer] of sites ? Object.entries(ref.files) : []) {
     if ("error" in answer) continue;
     const text = texts.get(file);
     for (const [pos, , , names] of answer.sites) if (text?.startsWith(names[0]!, pos) === true) places.set(placeKey(file, pos), { file, pos });
   }
   for (const e of extra) places.set(placeKey(e.file, e.pos), e);
   const asked = [...places.values()].filter((p) => texts.has(p.file));
-  const found = await checkerDeclarations(
+  const found = await tool(
     root,
     texts,
     asked.map((p) => ({ file: p.file, at: lspPosition(texts.get(p.file)!, p.pos) })),
@@ -147,6 +162,7 @@ export async function checkerAnswers(repoDir: string, sha: string, texts: Readon
       return;
     }
     const isOwn = (d: Declaration) => {
+      if (!path.isAbsolute(d.file)) return false;
       const rel = path.relative(root, d.file);
       return !rel.startsWith("..") && !path.isAbsolute(rel) && tracked.has(rel.split(path.sep).join("/"));
     };
@@ -204,10 +220,10 @@ export type PythonLink = { file: string; pos: number; dst: string; dstName: stri
 export type NamedNodes = ReadonlyMap<string, readonly { name: string; start: number; end: number }[]>;
 
 /**
- * The verdict on one link (CODE_GRAPH.md, Benchmark): right when pyright, at the link's position,
- * gives a declaration that is the linked node: in its file, of its name, on a line it holds, and
- * no smaller node of that name holds that line. Wrong when pyright gives declarations and none is,
- * those outside the repo included. Not judged when pyright gives none.
+ * The verdict on one link (CODE_GRAPH.md, Benchmark): right when the judging tool, at the link's
+ * position, gives a declaration that is the linked node: in its file, of its name, on a line it
+ * holds, and no smaller node of that name holds that line. Wrong when the tool gives declarations
+ * and none is, those outside the repo included. Not judged when the tool gives none.
  */
 export function judgeLink(link: PythonLink, answers: ReadonlyMap<string, CheckerAnswer>, nodes: NamedNodes): "right" | "wrong" | "not judged" {
   const a = answers.get(placeKey(link.file, link.pos));
@@ -282,23 +298,27 @@ export async function measurePython(repoDir: string, sha: string, way: Way): Pro
     // The links: pyright's answer at every call site, and at every link of the graph.
     const linked = graphLinks(db, read);
     const answers = await checkerAnswers(repoDir, sha, texts, ref, linked);
+    // Way B's links are pyright's, so the second judge judges them, asked at each link alone.
+    const judging = way === "B" ? await checkerAnswers(repoDir, sha, texts, ref, linked, { tool: judgeDeclarations, sites: false }) : answers;
+    const judge = way === "B" ? JUDGE : `pyright ${CHECKER_VERSION}`;
     const nodes = namedNodes(db);
     const verdicts = { right: 0, wrong: [] as string[], notJudged: [] as string[] };
     for (const link of linked) {
-      const v = judgeLink(link, answers, nodes);
+      const v = judgeLink(link, judging, nodes);
       if (v === "right") verdicts.right++;
       else if (v === "not judged") verdicts.notJudged.push(`${link.file}:${link.line} \`${link.name}\``);
       else {
-        const a = answers.get(placeKey(link.file, link.pos));
-        const said = a?.answered === true ? [...a.nodes.map((n) => `${n.file}:${n.line} ${n.name}`), ...(a.inRepo > a.nodes.length ? ["a declaration in the repo that is no node"] : []), ...(a.outside > 0 ? ["outside the repo"] : [])].join(" | ") : "";
-        verdicts.wrong.push(`${link.file}:${link.line} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end} ${link.dstName}; pyright: ${said}`);
+        const said = (a: CheckerAnswer | undefined) =>
+          a?.answered === true ? [...a.nodes.map((n) => `${n.file}:${n.line} ${n.name}`), ...(a.inRepo > a.nodes.length ? ["a declaration in the repo that is no node"] : []), ...(a.outside > 0 ? ["outside the repo"] : [])].join(" | ") : "no answer";
+        const at = placeKey(link.file, link.pos);
+        verdicts.wrong.push(`${link.file}:${link.line} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end} ${link.dstName}; ${judge}: ${said(judging.get(at))}${way === "B" ? `; pyright: ${said(answers.get(at))}` : ""}`);
       }
     }
     const reference = referenceLinks(ref, answers, scored);
     const byReference = linksFoundByReference(reference.calls, linked);
     const scores: WayScores = {
       functionsFound: functionsFound(functions, graphFunctionLines(db, functions.keys())),
-      linksRight: { n: verdicts.right, of: verdicts.right + verdicts.wrong.length, ...(way === "B" ? { note: SAME_TOOL } : {}) },
+      linksRight: { n: verdicts.right, of: verdicts.right + verdicts.wrong.length, ...(way === "B" ? { note: JUDGED_BY } : {}) },
       linksFoundByState: linksFoundByState(graph),
       linksFoundByReference: { n: byReference.n, of: byReference.of },
       callsAccountedFor: callsAccountedFor(calls, scoredGraph.byFunction),
@@ -306,7 +326,7 @@ export async function measurePython(repoDir: string, sha: string, way: Way): Pro
     };
     const c = reference.counts;
     const detail = [
-      `links right: ${linked.length} links, ${verdicts.right} right, ${verdicts.wrong.length} wrong, ${verdicts.notJudged.length} not judged (pyright gives no answer)${verdicts.notJudged.length > 0 ? `, such as ${verdicts.notJudged.slice(0, EXAMPLES).join(", ")}` : ""}`,
+      `links right, by ${judge}: ${linked.length} links, ${verdicts.right} right, ${verdicts.wrong.length} wrong, ${verdicts.notJudged.length} not judged (${judge} gives no answer)${verdicts.notJudged.length > 0 ? `, such as ${verdicts.notJudged.slice(0, EXAMPLES).join(", ")}` : ""}`,
       `reference links: ${c.sites} calls whose callee is a name, ${reference.calls.length} declared as a node, ${c.misplaced} not where Python's parser places them (not judged), ${c.noAnswer} no answer (not judged), ${c.outside} outside the repo, ${c.noNode} declared in the repo as no node`,
       `calls: ${graph.linked + graph.outside + graph.notKnown} with a state, ${graph.linked} linked, ${graph.outside} outside, ${graph.notKnown} not known`,
       `files: ${texts.size} Python files read by the page's rules, ${read.size} parsed by the graph, ${errors.length} Python's parser cannot read`,
@@ -314,6 +334,6 @@ export async function measurePython(repoDir: string, sha: string, way: Way): Pro
       ...verdicts.wrong.map((w) => `wrong link: ${w}`),
       ...examples(byReference.missed),
     ];
-    return { scores, ms: { graph: graphMs, reference: Math.round(performance.now() - t) }, detail, reference: `Python ${ref.version} ast, pyright ${CHECKER_VERSION}` };
+    return { scores, ms: { graph: graphMs, reference: Math.round(performance.now() - t) }, detail, reference: `Python ${ref.version} ast, pyright ${CHECKER_VERSION}, way B's links right by ${JUDGE}` };
   });
 }
