@@ -8,7 +8,7 @@ on:
   pull_request:
     paths:
       - src/engine/push-gate.ts
-      - test/push-gate-line.test.ts
+      - tests/unit/push-gate-line.test.ts
       - .github/workflows/windows-hook.yml
   workflow_dispatch:
 
@@ -24,4 +24,4 @@ jobs:
         with:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
-      - run: bun test test/push-gate-line.test.ts
+      - run: bun test tests/unit/push-gate-line.test.ts
