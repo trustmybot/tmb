@@ -10,6 +10,7 @@
 // looks for a `src` layout, and it runs no Python, so with no environment named it reads no
 // installed package and a call into one has no answer. A place it gives no declaration for has no
 // answer, and is never guessed.
+import type { FileSink } from "bun";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -62,12 +63,12 @@ class Client {
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffer = Buffer.alloc(0);
   private readonly proc: ReturnType<typeof Bun.spawn>;
-  private readonly stdin: import("bun").FileSink;
+  private readonly stdin: FileSink;
   private exited = false;
 
   constructor(serverEntry: string, cwd: string) {
     this.proc = Bun.spawn([process.execPath, serverEntry, "--stdio"], { cwd, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
-    this.stdin = this.proc.stdin as import("bun").FileSink;
+    this.stdin = this.proc.stdin as FileSink;
     void this.read();
     void this.proc.exited.then(() => {
       this.exited = true;
