@@ -2,7 +2,7 @@
   "command": "bun tests/benchmark/run.ts --write",
   "referenceVersions": {
     "typescript": 3,
-    "python": 2,
+    "python": 3,
     "go": 2,
     "java": 2,
     "rust": 3,
@@ -155,7 +155,7 @@
       "repo": "flask",
       "language": "python",
       "commit": "49943b5a94413a530761350f04e896f76e8d620e",
-      "reference": "Python 3.9.6 ast",
+      "reference": "Python 3.9.6 ast, pyright 1.1.414",
       "ways": {
         "A": {
           "functionsFound": {
@@ -163,21 +163,27 @@
             "of": 1470
           },
           "linksRight": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 383,
+            "of": 383
           },
           "linksFoundByState": {
             "n": 384,
             "of": 3102
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 383,
+            "of": 1207
           },
           "callsAccountedFor": {
             "n": 3472,
             "of": 3961
           },
           "missesByCause": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "a method on a name": 633,
+            "a method on an expression (a chain, a call's result, an index)": 99,
+            "a function's name called directly": 48,
+            "a construction by a class's name": 38,
+            "a method on `super()`": 6
           }
         },
         "B": {
@@ -186,21 +192,26 @@
             "of": 1470
           },
           "linksRight": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 1134,
+            "of": 1134,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
             "n": 1134,
             "of": 2852
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 1134,
+            "of": 1207
           },
           "callsAccountedFor": {
             "n": 3472,
             "of": 3961
           },
           "missesByCause": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "a construction by a class's name": 36,
+            "a function's name called directly": 36,
+            "a method on a name": 1
           }
         }
       }
@@ -209,7 +220,7 @@
       "repo": "datasette",
       "language": "python",
       "commit": "b91f2668004b3c115a8672474739a88f08945605",
-      "reference": "Python 3.9.6 ast",
+      "reference": "Python 3.9.6 ast, pyright 1.1.414",
       "ways": {
         "A": {
           "functionsFound": {
@@ -217,21 +228,28 @@
             "of": 3949
           },
           "linksRight": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 4226,
+            "of": 4226
           },
           "linksFoundByState": {
             "n": 4228,
             "of": 18996
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 4221,
+            "of": 7097
           },
           "callsAccountedFor": {
             "n": 22576,
             "of": 24078
           },
           "missesByCause": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "a method on a name": 1850,
+            "a method on an expression (a chain, a call's result, an index)": 627,
+            "a function's name called directly": 278,
+            "a construction by a class's name": 113,
+            "a method on `super()`": 6,
+            "a method on the method's first parameter (`self`, `cls`)": 2
           }
         },
         "B": {
@@ -240,21 +258,26 @@
             "of": 3949
           },
           "linksRight": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 6710,
+            "of": 6710,
+            "note": "same tool as the reference"
           },
           "linksFoundByState": {
             "n": 6710,
             "of": 17865
           },
           "linksFoundByReference": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "n": 6705,
+            "of": 7097
           },
           "callsAccountedFor": {
             "n": 22576,
             "of": 24078
           },
           "missesByCause": {
-            "notScored": "not judged: Python's links have no reference yet (trustmybot/tmb#244)"
+            "a function's name called directly": 278,
+            "a construction by a class's name": 113,
+            "a method on a name": 1
           }
         }
       }
