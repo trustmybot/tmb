@@ -405,3 +405,83 @@ describe("a call in a macro's arguments", () => {
     }
   });
 });
+
+// A conditional directive is processed before the code is parsed (C11 5.1.1.2 phase 4, 6.10.1 p6):
+// the compiler reads one group of each conditional, and the directive may stand between any two
+// tokens. Where a conditional cuts a construct, as the head of a `for` or an initializer here, way A
+// reads the construct with the conditional's first group, the code compiled when its condition
+// holds; the functions after it are read as they are. A definition in that group is compiled only
+// when the condition holds, so a call outside it is not known.
+const KILN = lines(
+  "static int heat(int n) { return n; }", //            1
+  "", //                                                2
+  "int fire(int n) {", //                               3
+  "  int total = 0;", //                                4
+  "#ifdef SLOW_KILN", //                                5
+  "  for (int i = 0; i < n * 2; i++) {", //             6
+  "#else", //                                           7
+  "  for (int i = 0; i < n; i++) {", //                 8
+  "#endif", //                                          9
+  "    total += heat(i);", //                           10
+  "  }", //                                             11
+  "  return total;", //                                 12
+  "}", //                                               13
+  "", //                                                14
+  "#ifdef FAST_KILN", //                                15
+  "static int spark(void) { return 1; }", //            16
+  "static const int glazes[] = {", //                   17
+  "#else", //                                           18
+  "static const int glazes[] = {", //                   19
+  "#endif", //                                          20
+  "  3, 5,", //                                         21
+  "};", //                                              22
+  "", //                                                23
+  "int cool(void) {", //                                24
+  "  return heat(glazes[0]) + spark();", //             25
+  "}", //                                               26
+  "", //                                                27
+  "int vent(int n) {", //                               28
+  "  static const int flues[][2] = {", //               29
+  "#ifdef WIDE_FLUE", //                                30
+  "    { 1, 2 },", //                                   31
+  "#endif", //                                          32
+  "    { 3, 4 },", //                                   33
+  "  };", //                                            34
+  "  return flues[n][0];", //                           35
+  "}", //                                               36
+  "", //                                                37
+  "int stoke(void) { return heat(2); }", //             38
+);
+
+describe("a conditional inside a construct", () => {
+  test("a construct a conditional cuts is read with the conditional's first group (C11 6.10.1); the functions after it are nodes, and a definition in that group is linked only from inside it", async () => {
+    const db = await built({ "pottery/kiln.c": KILN });
+    try {
+      const file = "pottery/kiln.c";
+      const rows = symbols(db, "a").filter((r) => r.path === file);
+      expect(rows.map(({ kind, qualified_name, start_line, end_line, parent }) => ({ kind, qualified_name, start_line, end_line, parent }))).toEqual(
+        expect.arrayContaining([
+          { kind: "function", qualified_name: "heat", start_line: 1, end_line: 1, parent: file },
+          { kind: "function", qualified_name: "fire", start_line: 3, end_line: 13, parent: file },
+          { kind: "function", qualified_name: "spark", start_line: 16, end_line: 16, parent: file },
+          { kind: "file_level_data", qualified_name: "glazes", start_line: 17, end_line: 22, parent: file },
+          { kind: "function", qualified_name: "cool", start_line: 24, end_line: 26, parent: file },
+          { kind: "function", qualified_name: "vent", start_line: 28, end_line: 36, parent: file },
+          { kind: "function", qualified_name: "stoke", start_line: 38, end_line: 38, parent: file },
+        ]),
+      );
+      expect(rows).toHaveLength(7);
+      const all = calls(db, "a");
+      const state = (needle: string) => {
+        const r = callAt(all, file, at(KILN, needle));
+        return [r.src, r.call_state, r.dst];
+      };
+      expect(state("heat(i)")).toEqual([`${file}:fire`, "linked", `${file}:heat`]);
+      expect(state("heat(glazes")).toEqual([`${file}:cool`, "linked", `${file}:heat`]);
+      expect(state("spark()")).toEqual([`${file}:cool`, "not_known", null]);
+      expect(state("heat(2)")).toEqual([`${file}:stoke`, "linked", `${file}:heat`]);
+    } finally {
+      db.close();
+    }
+  });
+});
