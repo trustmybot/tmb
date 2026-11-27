@@ -167,9 +167,9 @@ describe("tmb onboard", () => {
   test("changes a setting, and can be run again to change another", () => {
     const project = newProject();
     tmb(["init"], project);
-    expect(tmb(["onboard", "--base", "release"], project)).toContain("Recorded 2 changes in the record's audit trail.");
+    expect(tmb(["onboard", "--base", "release"], project)).toContain("Recorded 2 changes in the record's setting changes.");
     expect(config(project)).toMatchObject({ base_branch: "release", review_mode: null, checks: ["bun run test"] });
-    expect(human(["onboard", "--review-mode", "truest", "--role", "reviewer", "--yes"], project)).toContain("Recorded 2 changes in the record's audit trail.");
+    expect(human(["onboard", "--review-mode", "truest", "--role", "reviewer", "--yes"], project)).toContain("Recorded 2 changes in the record's setting changes.");
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["bun run test"], graph_links: null });
     expect(tmb(["onboard"], project)).toContain("No setting changed, so nothing was recorded.");
   }, 30_000);

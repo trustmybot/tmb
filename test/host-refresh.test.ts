@@ -12,9 +12,9 @@ import { hookCommand, install, settingsPath } from "../src/adapters/claude-code/
 import { installHooks } from "../src/adapters/codex/hooks-json.ts";
 import { hooksJsonPath } from "../src/adapters/codex/paths.ts";
 import { HOST_ADAPTERS } from "../src/adapters/index.ts";
-import { handleEvent, HOST_FILES_HEADING, installPushGate, openProjectStore, SUBAGENT_ROLES, tiedProgram, tieProgram, writeSetting } from "../src/engine/index.ts";
+import { handleEvent, HOST_FILES_HEADING, installPushGate, openProjectStore, recordProgramMove, SUBAGENT_ROLES, tiedProgram, tieProgram, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
-import { REFRESH_AUDIT, refreshProject } from "../src/refresh.ts";
+import { refreshProject } from "../src/refresh.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -99,7 +99,9 @@ function wiredFiles(dir: string): Record<string, string> {
 }
 
 const refresh = (dir: string, version = B, program = "tmb") => refreshProject({ projectDir: dir, program: { name: program, version }, tmbCommand: COMMAND, adapters: HOST_ADAPTERS });
-const refreshes = (dir: string) => withStore(dir, (store) => store.listAuditAbout(REFRESH_AUDIT));
+/** The refreshes the record holds: each a change of the program tie whose event names the refresh. */
+const refreshes = (dir: string) =>
+  withStore(dir, (store) => store.listSettingChanges("program").flatMap((change) => (store.history(change.id)[0]!.data.refresh ? [store.history(change.id)[0]!.data.refresh as Record<string, any>] : [])));
 
 describe("refreshing a project's host files after an update", () => {
   test("a project wired by A, opened by B, ends with the files a fresh init by B writes, and one refresh in the record", () => {
@@ -117,9 +119,27 @@ describe("refreshing a project's host files after an update", () => {
 
     const entries = refreshes(old);
     expect(entries).toHaveLength(1);
-    const detail = JSON.parse(entries[0]!.detail);
+    const detail = entries[0]!;
     expect(detail).toMatchObject({ program: "tmb", from: A, to: B, hosts: ["claude-code"] });
     expect(detail.changed.join("\n")).toContain("dropped-role");
+    expect(withStore(old, tiedProgram)).toEqual({ program: "tmb", version: B, command: COMMAND });
+  });
+
+  test("a move to another build keeps the tie in force, so the session start after it still rewires the hosts", () => {
+    const old = newProject("old");
+    wire(old, A);
+    ageFiles(old);
+    const fresh = newProject("fresh");
+    wire(fresh, B);
+
+    withStore(old, (store) => recordProgramMove(store, HUMAN, { program: "tmb", from: A, to: B }));
+    const moved = withStore(old, (store) => store.listSettingChanges("program").at(-1)!);
+    expect(moved.oldValue).toBe(moved.newValue);
+    expect(withStore(old, tiedProgram)).toEqual({ program: "tmb", version: A, command: COMMAND });
+    expect(withStore(old, (store) => store.history(moved.id)[0]!.data)).toMatchObject({ moved: { program: "tmb", from: A, to: B } });
+
+    expect(refresh(old)).toContain(`tmb refreshed this project's host files from tmb ${A} to ${B}`);
+    expect(wiredFiles(old)).toEqual(wiredFiles(fresh));
     expect(withStore(old, tiedProgram)).toEqual({ program: "tmb", version: B, command: COMMAND });
   });
 
@@ -128,11 +148,11 @@ describe("refreshing a project's host files after an update", () => {
     wire(dir, A);
     refresh(dir);
     const before = wiredFiles(dir);
-    const audits = withStore(dir, (store) => store.listAudit().length);
+    const audits = withStore(dir, (store) => store.listSettingChanges().length);
 
     expect(refresh(dir)).toBeNull();
     expect(wiredFiles(dir)).toEqual(before);
-    expect(withStore(dir, (store) => store.listAudit().length)).toBe(audits);
+    expect(withStore(dir, (store) => store.listSettingChanges().length)).toBe(audits);
   });
 
   test("the Human's own entries in the host's settings stay as they were", () => {

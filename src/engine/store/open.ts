@@ -4,7 +4,7 @@ import { Database, SQLiteError } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { runningProgram, upgradeAdvice } from "../../program.ts";
 import { version as tmbVersion } from "../../version.ts";
-import { SCHEMA_STEPS, SCHEMA_VERSION } from "./schema.ts";
+import { SCHEMA_STEPS, SCHEMA_VERSION, runStep } from "./schema.ts";
 import { SHAPE_WRITER_KEY, type ShapeWriter, Store } from "./store.ts";
 
 const BUSY_TIMEOUT_MS = 5000;
@@ -94,7 +94,7 @@ function upgrade(db: Database, writer: ShapeWriter): void {
   db.transaction(() => {
     const { user_version: from } = db.query("PRAGMA user_version").get() as { user_version: number };
     if (from >= SCHEMA_VERSION) return;
-    for (const step of SCHEMA_STEPS.slice(from)) db.run(step);
+    for (const step of SCHEMA_STEPS.slice(from)) runStep(db, step);
     // A step may copy a table that others point at, so the upgrade runs with foreign keys off
     // and refuses to commit a record whose links it broke.
     const broken = db.query("PRAGMA foreign_key_check").all();

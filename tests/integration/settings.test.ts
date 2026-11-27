@@ -71,7 +71,7 @@ function auditCount(project: string): number {
   const opened = openProjectStore(project, { create: false });
   if (!opened.ok) throw opened.error;
   try {
-    return opened.store.listAudit().length;
+    return opened.store.listSettingChanges().length;
   } finally {
     opened.store.close();
   }
@@ -81,7 +81,7 @@ describe("tmb init, then tmb onboard", () => {
   test("onboard --yes in a fresh git project stores the base branch, agile and the detected checks, and tmb config shows them", () => {
     const project = newBunProject();
     expect(tmb(["init"], project)).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
-    expect(human(["onboard", "--yes", "--review-mode", "agile"], project)).toContain("Recorded 3 changes in the record's audit trail.");
+    expect(human(["onboard", "--yes", "--review-mode", "agile"], project)).toContain("Recorded 3 changes in the record's setting changes.");
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"], graph_links: null });
     expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\ngraph links: (not set)\n');
   });

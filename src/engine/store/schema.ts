@@ -3,14 +3,22 @@
 // baseline; each later version is one step on top of the one before, so a new database
 // and an upgraded one end up with the same tables.
 
+import type { Database } from "bun:sqlite";
+import { upgradeAudit } from "./upgrade-audit.ts";
+
 /** Projection tables, children before parents so they can be emptied in this order. */
 export const PROJECTION_TABLES = [
+  "waivers",
+  "review_marks",
+  "setting_changes",
+  "freezes",
+  "feedback_reports",
+  "imports",
   "discussions",
   "check_runs",
   "reviews",
   "runs",
   "guard_decisions",
-  "audit",
   "tasks",
   "features",
   "issues",
@@ -376,7 +384,94 @@ DROP TABLE guard_decisions;
 ALTER TABLE guard_decisions_v12 RENAME TO guard_decisions;
 `;
 
+// Version 13: `audit` goes (trustmybot/tmb#408). Each kind of entry becomes its own record with its
+// own columns, so a gate reads rows and never parses text. A rebase carries a review or a waiver
+// as a row naming the one it carries, and a feature branch names the base commit last brought in.
+// The tables are made here; moving the old entries needs code, in upgrade-audit.ts.
+const VERSION_13_SQL = `
+ALTER TABLE reviews ADD COLUMN carried_from TEXT REFERENCES reviews(id);
+ALTER TABLE features ADD COLUMN base_merged_commit TEXT;
+
+CREATE TABLE waivers (
+  id           TEXT PRIMARY KEY,
+  task_id      TEXT REFERENCES tasks(id),
+  feature_id   TEXT REFERENCES features(id),
+  carried_from TEXT REFERENCES waivers(id),
+  commit_sha   TEXT NOT NULL CHECK (length(trim(commit_sha)) > 0),
+  reason       TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+  created_by   TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  CHECK ((task_id IS NULL) <> (feature_id IS NULL))
+);
+CREATE INDEX idx_waivers_task ON waivers(task_id, id);
+CREATE INDEX idx_waivers_feature ON waivers(feature_id, id);
+CREATE INDEX idx_waivers_commit ON waivers(commit_sha, id);
+
+CREATE TABLE review_marks (
+  id         TEXT PRIMARY KEY,
+  task_id    TEXT REFERENCES tasks(id),
+  feature_id TEXT REFERENCES features(id),
+  commit_sha TEXT NOT NULL CHECK (length(trim(commit_sha)) > 0),
+  kind       TEXT NOT NULL,
+  state      TEXT NOT NULL,
+  sent_at    TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  CHECK ((task_id IS NULL) <> (feature_id IS NULL))
+);
+CREATE INDEX idx_review_marks_commit ON review_marks(commit_sha, id);
+
+CREATE TABLE setting_changes (
+  id         TEXT PRIMARY KEY,
+  key        TEXT NOT NULL CHECK (length(trim(key)) > 0),
+  repo       TEXT,
+  old_value  TEXT CHECK (old_value IS NULL OR json_valid(old_value)),
+  new_value  TEXT CHECK (new_value IS NULL OR json_valid(new_value)),
+  how        TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_setting_changes_key ON setting_changes(key, repo, id);
+
+CREATE TABLE freezes (
+  id         TEXT PRIMARY KEY,
+  reason     TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+  session_id TEXT,
+  lifted_by  TEXT CHECK (lifted_by IS NULL OR json_valid(lifted_by)),
+  lifted_at  TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE feedback_reports (
+  id         TEXT PRIMARY KEY,
+  route      TEXT NOT NULL CHECK (length(trim(route)) > 0),
+  url        TEXT,
+  issue_id   TEXT REFERENCES issues(id),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE imports (
+  id         TEXT PRIMARY KEY,
+  source     TEXT NOT NULL CHECK (length(trim(source)) > 0),
+  repo       TEXT,
+  detail     TEXT NOT NULL CHECK (json_valid(detail)),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
+/** One step: SQL, or code for a step SQL alone cannot take. A step's code is frozen with it and never reads today's projections. */
+export type SchemaStep = string | ((db: Database) => void);
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL];
+export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL)];
+
+/** Runs one schema step on `db`. */
+export function runStep(db: Database, step: SchemaStep): void {
+  if (typeof step === "string") db.run(step);
+  else step(db);
+}
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

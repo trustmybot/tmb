@@ -141,7 +141,7 @@ In an unattended run nobody can answer, so the task start is refused, the refusa
 
 ### Settings
 
-Init, onboard and `settings_set` store the settings in the record. Each change to a setting is kept as an entry in the record's audit trail, and the newest entry is the value in force. Init and onboard print the settings in force, and `tmb config` shows them later.
+Init, onboard and `settings_set` store the settings in the record. Each change to a setting is kept in the record as a setting change, and the newest one that sets a value is the value in force. Init and onboard print the settings in force, and `tmb config` shows them later.
 
 `tmb init` also:
 

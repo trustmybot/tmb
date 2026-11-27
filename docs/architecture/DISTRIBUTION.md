@@ -29,7 +29,7 @@ Init and onboard replace the earlier `tmb setup`, which is gone (trustmybot/tmb#
 - **Never while a task is open.** tmb waits for a session start with none open, and says so.
 - **Not for a project tied to another channel's program.** Moving a project stays the Human's `tmb init`.
 - **The hosts read their files when a session starts**, so a refresh takes effect from the next session. The session start says so in one line, and in an unattended run the role names it in its answer.
-- **The record keeps each refresh** as an audit entry: the program, from which version to which, the hosts and what changed. The project is then tied to the new version.
+- **The record keeps each refresh** as a change of the program tie: the program, from which version to which, the hosts and what changed. The project is then tied to the new version.
 - **A refresh that fails never stops the session.** The line says what failed and names `tmb init`.
 - **Init takes out what a version no longer wires**, as remove would: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use.
 
@@ -72,7 +72,7 @@ Channels and versions live side by side, as built for trustmybot/tmb#89 (Part 2)
 - Each channel is a program of its own name: `tmb` follows stable, `tmb-rc` rc, `tmb-dev` dev, and `tmb-<version>` is one rc or stable release that never updates itself. The name is the installed file's. A `tmb` follows the channel its version names, so a dev build installed as `tmb` before the names were split keeps following dev.
 - Each program updates itself only from its own channel and keeps its machine-wide state in a folder of its own name, so one never swaps another.
 - Every command a program prints for its reader to run names that program: a project set up by `tmb-dev` is told to run `tmb-dev init`, never `tmb init`. This holds for messages, refusals such as the push gate's, usage text, briefs and the role prompts given to agents. "tmb" as the product's name in a sentence stays, and so do the markers tmb writes into host files, so one channel never rewrites another's. A test builds tmb as `tmb-dev`, runs it, and fails on any printed `tmb <command>`. Built (trustmybot/tmb#268); decided by bro, for the Human's review.
-- A project is tied to the program whose init last wired it: its hooks, its tool server and git's push hook call that program, and the record's audit trail keeps every move from one program to another.
+- A project is tied to the program whose init last wired it: its hooks, its tool server and git's push hook call that program, and the record keeps every move from one program to another; a move leaves the tie in force, so the next session start rewires the hosts.
 - The record's shape is signed with the version and program that wrote it. A tmb that finds a newer shape than it knows refuses the record and names them.
 - The installers take `TMB_CHANNEL` and, to pin one release, `TMB_INSTALL_VERSION`, and install under the matching name.
 

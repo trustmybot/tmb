@@ -8,10 +8,10 @@ import { repoDirOf, workingRepos } from "./repos.ts";
 import type { RepoPolicies } from "./settings.ts";
 import type { Actor, Store, Task } from "./store/index.ts";
 
-/** The audit entry a migration from the plugin writes, with the plugin repo it read and the ids it gave. */
-export const MIGRATION_AUDIT = "migration.plugin";
+/** The source an import from the plugin names; its detail holds the plugin repo it read and the ids it gave. */
+export const PLUGIN_IMPORT = "plugin";
 
-/** What a migration's audit entry says, as far as a task's repo needs it. */
+/** What a migration's import says, as far as a task's repo needs it. */
 type MigrationDetail = { repo?: string | null; into?: string | null; ids?: { tasks?: Record<string, string> } };
 
 /** Tasks that name no repo in a workspace; none in a project of one repo, where no task names one. */
@@ -23,13 +23,8 @@ export function tasksWithNoRepo(store: Store, repos: RepoPolicies | null): Task[
 /** The plugin repo each task migrated with no workspace repo came from, by task id. */
 function migratedFrom(store: Store): Map<string, string> {
   const from = new Map<string, string>();
-  for (const entry of store.listAuditAbout(MIGRATION_AUDIT)) {
-    let detail: MigrationDetail;
-    try {
-      detail = JSON.parse(entry.detail) as MigrationDetail;
-    } catch {
-      continue;
-    }
+  for (const entry of store.listImports(PLUGIN_IMPORT)) {
+    const detail = (entry.detail ?? {}) as MigrationDetail;
     if (typeof detail.repo !== "string" || (detail.into ?? null) !== null) continue;
     for (const id of Object.values(detail.ids?.tasks ?? {})) from.set(id, detail.repo);
   }

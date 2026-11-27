@@ -22,7 +22,6 @@ export type Verdict = (typeof VERDICTS)[number];
 /** The state of a feature branch once the engine has opened its pull request. */
 export { PR_OPEN };
 /** What an audit entry of a Human waiver is about. */
-export const WAIVER = "waiver";
 
 const PR_TIMEOUT_MS = 120_000;
 
@@ -113,14 +112,20 @@ export function summaryOf(review: Review): ReviewSummary {
   return { id: review.id, verdict: review.verdict, commit: review.commitSha, findings: findingsOf(review), by: review.createdBy, at: review.createdAt };
 }
 
-function parseWaiver(detail: string): Omit<Waiver, "id" | "at"> & { featureId: string } {
-  const parsed = JSON.parse(detail) as { feature_id: string; feature: string; commit: string; reason: string };
-  return { featureId: parsed.feature_id, feature: parsed.feature, commit: parsed.commit, reason: parsed.reason };
-}
-
-/** Every Human waiver in the record, oldest first, with the feature branch id it names. */
+/** Every Human waiver of a feature branch's review, oldest first, with the feature branch id it names. */
 function allWaivers(store: Store): (Waiver & { featureId: string })[] {
-  return store.listAuditAbout(WAIVER).map((entry) => ({ id: entry.id, at: entry.createdAt, ...parseWaiver(entry.detail) }));
+  const names = new Map(store.listFeatures().map((feature) => [feature.id, feature.name]));
+  return store
+    .listWaivers()
+    .filter((waiver) => waiver.featureId !== null)
+    .map((waiver) => ({
+      id: waiver.id,
+      featureId: waiver.featureId!,
+      feature: names.get(waiver.featureId!) ?? waiver.featureId!,
+      commit: waiver.commitSha,
+      reason: waiver.reason,
+      at: waiver.createdAt,
+    }));
 }
 
 /**
@@ -314,7 +319,7 @@ export function reviewRecord(store: Store, actor: Actor, input: unknown, context
   });
   const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
   if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, FINISHED);
-  const mark = markReviewed(store, actor, dir, tip, given.verdict, blocking.length);
+  const mark = markReviewed(store, actor, dir, { featureId: feature.id }, tip, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
     ? hasOrigin(dir)
@@ -342,11 +347,11 @@ export function featureWaive(store: Store, actor: Actor, input: unknown, context
   const feature = requireOpenFeature(store, given.feature, "there is no review to waive");
   const dir = featureDir(store, context.projectDir, feature);
   const commit = featureTip(dir, feature);
-  const detail = { feature_id: feature.id, feature: feature.name, commit, reason: given.reason.trim() };
-  const id = store.recordAudit(actor, { what: WAIVER, detail: JSON.stringify(detail) });
-  const entry = store.listAuditAbout(WAIVER).find((each) => each.id === id)!;
-  const mark = markReviewed(store, actor, dir, commit, "waiver", detail.reason);
-  return { id, feature: feature.name, commit, reason: detail.reason, at: entry.createdAt, mark };
+  const reason = given.reason.trim();
+  const id = store.recordWaiver(actor, { featureId: feature.id, commitSha: commit, reason, detail: { feature: feature.name } });
+  const waiver = store.getWaiver(id)!;
+  const mark = markReviewed(store, actor, dir, { featureId: feature.id }, commit, "waiver", reason);
+  return { id, feature: feature.name, commit, reason, at: waiver.createdAt, mark };
 }
 
 // --- feature_pr ---------------------------------------------------------------------------
