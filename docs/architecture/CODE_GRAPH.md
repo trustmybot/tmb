@@ -389,7 +389,7 @@ flowchart LR
 
 ### Where a language's tool comes from
 
-Finding a tool is built. Installing one is Planned (trustmybot/tmb#393), and so are the Go helper built from source (trustmybot/tmb#394) and the TypeScript compiler and pyright leaving the tmb program (trustmybot/tmb#395). Until then a missing tool means the built-in rules, and TypeScript and Python always use the copy tmb carries.
+Finding a tool is built. Installing one is Planned (trustmybot/tmb#393), and so is the TypeScript compiler and pyright leaving the tmb program (trustmybot/tmb#395). Until then a missing tool means the built-in rules, and TypeScript and Python always use the copy tmb carries.
 
 **A tool is found or installed once per machine, and only for a language a repo uses.** tmb is installed once per machine, and so is each tool. Installing tmb installs no tool.
 
@@ -439,14 +439,14 @@ flowchart LR
 | Rust | rust-analyzer | From rustup or on PATH; the Rust toolchain is needed | The pinned rust-analyzer |
 | C, C++ | clangd | On PATH; the compile database is needed | The pinned clangd |
 
-- **Go's helper is built once, from source tmb carries.** Planned (trustmybot/tmb#394). Today tmb compiles it again at every build of a graph.
+- **Go's helper is built once, from source tmb carries.**
   - **When.** The first time a Go repo is indexed. It is a local compile and downloads nothing, so a setting that turns installs off does not stop it.
-  - **With the user's `go`,** the same one that then runs it. A helper built by an older `go` gives wrong answers, so it is rebuilt when the user's `go`, tmb's source or the machine's kind changes. The old one is removed.
-  - **The build takes none of the user's Go settings** and uses no network. The run takes them as before. The build uses the user's Go build cache.
-  - **A failed build** means the built-in rules for Go, with a note that names the error.
-  - **The layer records** the user's `go` and the helper: its source and the `go` that built it. `tmb tools` lists the helper with Go.
+  - **With the user's `go`,** the same one that then runs it. A helper built by an older `go` gives wrong answers, so it is rebuilt when the user's `go`, tmb's source or the machine's kind changes. The old one is removed once the new one is finished, so a build under way in another session is not cut off.
+  - **The build takes none of the user's Go settings,** not the environment's and not Go's own settings file, and uses no network. The run takes them as before. The build uses the user's Go build cache.
+  - **A failed build** means the built-in rules for Go, with a note that gives the whole error. It is not tried again until the user's `go` or tmb's source changes, or the user asks for a rebuild.
+  - **The layer records** the user's `go` and the helper: its source and the `go` that built it, also when the build failed. `tmb tools` lists the helper with Go.
   - **Edge case.** The user sets Go to build for another operating system. The helper is still built for this machine.
-  - **Edge case.** The helper cannot check a package at all, such as a repo that needs a newer Go. That is an error and the built-in rules are used; it is never taken as "no call is known". An ordinary type error in a file is not this case: its calls are not known, and counted.
+  - **Edge case.** The helper cannot check a package at all, such as a repo or one of its dependencies that needs a newer Go than the user's. That is an error and the built-in rules are used; it is never taken as "no call is known". The helper tells these cases by Go's own signals, never by the text of a message. An ordinary type error in a file is not this case: its calls are not known, and counted.
 - **Edge case.** The repo's own copy of the TypeScript compiler in `node_modules` is not the user's copy. It differs from repo to repo, and one machine gives one answer.
 
 ## Data sources
@@ -1046,7 +1046,7 @@ All are FTS5 virtual tables.
 
 | Piece | Tracked in |
 |---|---|
-| A language's tool is installed once per machine | trustmybot/tmb#393, trustmybot/tmb#394, trustmybot/tmb#395 |
+| A language's tool is installed once per machine | trustmybot/tmb#393, trustmybot/tmb#395 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
 | Python's benchmark reference is a type checker | trustmybot/tmb#399 |
