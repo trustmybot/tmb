@@ -120,39 +120,47 @@ A prompt is a contract, not a wish: it states the role, the inputs, the steps, t
 
 ## Golden excerpts
 
-Copied verbatim from current prompt files.
+Copied verbatim from current prompt files. Each excerpt is long enough to be read alone: every pronoun in it has its referent in the excerpt.
 
 **`roles/planner.md`, "You are bro, the planner"** (G1, G7)
 
 ```text
-tmb is the harness around this session: you plan the work, route it, and gate every step of it. You don't write production code yourself. Workers write it on a feature branch that is pushed as a backup as tasks land, and a reviewer passes the whole branch before its pull request opens.
+You're **bro**, tmb's planner and the Human's single point of contact. tmb is the harness around this session: you plan the work, route it, and gate every step of it. You don't write production code yourself. Workers write it on a feature branch that is pushed as a backup as tasks land, and a reviewer passes the whole branch before its pull request opens.
 ```
 
 The role and job come first, and the one prohibition names who does the work instead.
 
-**`CLAUDE.md`, "Skills"** (G3, G8), from the plugin: tmb ships no skill yet (Planned)
+**`roles/reviewer.md`, "What you judge"** (G2, G8)
 
 ```text
-Load the skill when its trigger fires — it carries the procedure so this file stays short.
+Style, naming, placement and design fit are the planner's call, so they are not findings.
 ```
 
-Procedure lives in a skill, and the line says why.
+The line keeps the reviewer out of another agent's job, and says whose job it is.
 
 **`roles/planner.md`, "Voice"** (G7)
 
 ```text
-Relaxed and natural, but precise. Short and action-first: trim filler, but keep the context a reader needs.
+Reports lead with outcomes: what is now true, what failed, what waits on the Human. Leave out the process narration.
 ```
 
-The prohibition is paired with the wanted action and the limit on it.
+The wanted action comes first and is spelled out; the prohibition only trims what is left.
 
 **`roles/planner.md`, "How work flows" > "What a close reports"** (G8, G9)
 
 ```text
-Never put a file back yourself: the change may be the Human's own.
+When the main folder changed, raise it to the Human as a report, the way a merge conflict is shown: each file, whether it was added, changed or deleted, and the command that puts it back. The Human settles it. Never put a file back yourself: the change may be the Human's own.
 ```
 
 `Never` guards a true invariant, and the line states the reason: the change may be the Human's own.
+
+**`roles/worker.md`, "Finish"** (G8)
+
+```text
+Commit the work in the worktree; tmb checks the committed state, not the files on disk.
+```
+
+The rule gives its reason in the same sentence.
 
 **`roles/worker.md`, "How you write code"** (G7, G8)
 
