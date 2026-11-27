@@ -6,7 +6,7 @@ Every flow of tmb, in the order it runs. A flow is a sequence with its own start
 flowchart LR
     G1["1. Install"] --> G2["2. Cold start"]
     G2 --> G3["3. Agent task handling"]
-    G3 --> C["Checkpoints: task close, review, push"]
+    G3 --> C["Checkpoints: task close, review, merge gate"]
     C --> M["Human merges"]
     G4["4. Extending the team (Planned)"] -.-> G3
     G5["5. Reporting tmb bugs"]
@@ -128,7 +128,7 @@ flowchart LR
     C --> D["A worker implements and closes; a docs task the planner writes itself"]
     D --> E["Checks pass on the task's commit"]
     E --> F["Review, per the review mode: 3.9 or 3.10"]
-    F --> G["Push gate passes; pull request opens"]
+    F --> G["Merge gate: the pull request opens on the covered commit"]
     G --> H["Human merges"]
 ```
 
@@ -146,7 +146,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A["Human approves a milestone's feature branch"] --> B["Engine cuts it from the base branch"]
+    A["Planner names a milestone's feature branch"] --> B["Engine cuts it from the base branch"]
     B --> C["Planner starts a task off it"]
     C --> D["Worker implements, or the planner writes docs"]
     D --> E["Checks pass: task closes with no review and folds in"]
@@ -167,8 +167,8 @@ flowchart LR
     A["Engine cuts the task branch from the base branch"] --> B["Worker implements, or the planner writes docs"]
     B --> C["Checks pass; the task waits in review"]
     C --> D["Reviewer reviews the task's commit"]
-    D -- "pass, or Human waiver" --> E["Engine rebases if the base moved, pushes, opens the pull request, closes the task"]
-    E --> F["Human merges"]
+    D -- "pass, or Human waiver" --> E["Engine rebases if the base moved, pushes and opens the pull request"]
+    E --> F["Human merges; the task closes"]
     D -. fail .-> G["Task reopens; the worker reworks it"]
     G -.-> C
 ```

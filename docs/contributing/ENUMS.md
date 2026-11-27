@@ -185,12 +185,12 @@ The engine checks it.
 | Value | Raised when |
 |---|---|
 | `session-start` | A host session starts |
-| `before-file-write` | An agent is about to write a file |
+| `before-file-write` | An agent is about to write a file. Planned removal (trustmybot/tmb#457) |
 | `before-agent-start` | A subagent is about to start |
 | `agent-start-failed` | A subagent's start failed |
 | `after-agent-stop` | A subagent stopped |
 | `worker-in-folder` | A worker names its task from the folder it works in |
-| `before-shell-command` | An agent is about to run a shell command |
+| `before-shell-command` | An agent is about to run a shell command. Planned removal (trustmybot/tmb#457) |
 
 The event's `role` is a role above, `main-agent` for the host's main agent, or `unnamed-agent` when the host does not say which agent is starting.
 

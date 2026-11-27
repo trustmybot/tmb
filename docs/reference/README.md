@@ -174,23 +174,22 @@ The settings are kept in the record; the keys are in [CONFIG.md](../architecture
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
 - Adds five hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - A SessionStart hook runs `tmb hook session-start`, which starts each session with the role this host was set up with, the planner unless you chose the reviewer, and the open work from the record.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. It also runs before a shell command, and denies one that runs a [step only you may take](#steps-only-you-may-take); tmb reads no other shell command, and git's pre-push hook checks every push.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write and reads no shell command. **Planned (trustmybot/tmb#457):** the hook no longer runs before a file write or a shell command.
   - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
-- In a git work tree, writes git's pre-push hook, so every push asks tmb first; in a multi-repo workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
+- In a git work tree, writes git's pre-push hook, so every push asks tmb first, and tmb refuses only an unreviewed push to the base branch; in a multi-repo workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
 - Indexes the code graph of the base branch, once it has a commit; in a multi-repo workspace, each repo's from its own base branch.
 
 Running init or onboard again with the same answers changes no file and records nothing.
 
 Once the project is set up:
 
-- tmb records each file write, subagent start and subagent end that the hooks report.
-- tmb refuses file writes and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb. A record file that is there but empty counts as one it cannot read.
-- tmb refuses every file write by the reviewer, through any of Claude Code's edit tools. tmb does not read shell commands, so a file the reviewer writes from its shell is not refused; git's pre-push hook still checks its pushes.
+- tmb records each subagent start and subagent end that the hooks report.
+- tmb refuses subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb. A record file that is there but empty counts as one it cannot read.
 - tmb lets a worker start only when its start prompt names an open task as `task_id=<id>` and that task's worktree exists. It records the worker's run from its start to its end.
 - When tmb allows an action it says nothing, so Claude Code still asks you for permission as it would without tmb.
 
@@ -250,7 +249,7 @@ For more information, try 'tmb --help'.
 | A project folder that is not a git repo and holds repos the record does not name: the push gate is off there, the repos are not set and no code graph can be built | `tmb init`, run again in the project folder |
 | The program the project is tied to, and any running session that keeps it on an older build | Shown only |
 | Empty settings, and the review mode not chosen | `tmb onboard` |
-| Runs and checks with a start and no end, and open tasks no agent run is on | Shown only: the planner decides |
+| Runs and checks with a start and no end, and open code tasks no agent run is on | Shown only: the planner decides |
 | Worktrees and branches of closed and dropped tasks still on disk | Removes each on your yes, by the same rules as closing a task: a worktree with work nobody committed stays |
 | The code graph behind its base branch, built by an older indexer, or with files not parsed | `tmb index` |
 | GitHub's CLI installed and signed in | `gh auth login` |

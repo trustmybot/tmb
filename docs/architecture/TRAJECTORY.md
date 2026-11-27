@@ -202,6 +202,7 @@ stateDiagram-v2
 | Stopped | Any other end, or the host failed to make the agent |
 
 - **Example.** A reviewer gives no verdict. Its run is stopped.
+- **Planned (trustmybot/tmb#459).** A run also ends when its task closes or a new run starts on the task, and a verdict attaches to the run that reviewed that commit.
 - **Edge case.** The gate allows a start and the host then fails to make the agent. No agent ran, so no stop would come to end the run. The run is stopped.
 - **A denied start opens no run.** It is recorded as a guard decision with its reason, so "why did the worker never start?" has a record.
 - **The planner's own turns are not a run.** They belong to the session record, which is Planned (trustmybot/tmb#63).
@@ -282,7 +283,7 @@ tmb has no watcher and no timer: it runs only when something calls it.
 
 ```mermaid
 flowchart TD
-    A["A session start, or the health check"] --> B["List runs and check runs with a start and no end<br/>and open tasks with no run"]
+    A["A session start, or the health check"] --> B["List runs and check runs with a start and no end<br/>and open code tasks with no run"]
     B --> C["Named to the planner in one line, and listed in full by the health check"]
     C --> D{The planner decides}
     D --> E["Leave it: still working"]
@@ -290,7 +291,7 @@ flowchart TD
     D --> G[Drop the task with a reason]
 ```
 
-- **What is listed.** At a session start, and by the health check: runs and check runs with a start and no end, and open tasks with no run. The planner is told in one line, and the health check lists them in full ([1_INSTALL.md](../flows/1_INSTALL.md)).
+- **What is listed.** At a session start, and by the health check: runs and check runs with a start and no end, and open code tasks with no run. A docs task has no run, because the planner writes it; leaving it out is Planned (trustmybot/tmb#460). The planner is told in one line, and the health check lists them in full ([1_INSTALL.md](../flows/1_INSTALL.md)).
 - **The planner decides.** Leave it, because it is still working. Resume it: start a worker on the open task again. Or drop the task with a reason ([3_TASKS.md](../flows/3_TASKS.md#debugging-a-stuck-task)).
 - **Last activity needs no heartbeat.** It is the newest record under the run.
 - **Nothing is ended for the agent.** tmb lists what has no end and deletes nothing.
@@ -319,7 +320,7 @@ The file sits inside the project's folder and is left out of git. The engine cre
 
 | Question | Where the answer is |
 |---|---|
-| What is stuck? | `tmb doctor`: runs and check runs with a start and no end, and open tasks with no run |
+| What is stuck? | `tmb doctor`: runs and check runs with a start and no end, and open code tasks with no run |
 | Why did the worker never start? | The guard decision for its start: the deny names the reason and what would be allowed |
 | Did the worker finish? | Its run's outcome: finished or stopped |
 | Why did the close fail? | The task's newest check run: each command and its result |

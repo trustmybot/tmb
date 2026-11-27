@@ -18,7 +18,7 @@ flowchart LR
 | Human | The developer | Intent | Sets the goal and the review mode, waives a review, and merges. |
 | Planner, addressed as bro | The host's main agent | The spec and design fit | Holds the full picture: the system design and alignment with the Human. It does everything except coding, is the only agent that talks to the Human, and owns the plan, the spec and the design call. |
 | Worker | A subagent the host starts | Functionality | Codes. |
-| Reviewer | A subagent the host starts | The diff | An independent third party before the push, with no edit tools. Its verdict, or a Human waiver, is the only thing the push gate accepts. |
+| Reviewer | A subagent the host starts | The diff | An independent third party before the pull request, with no edit tools. Its verdict, or a Human waiver, is the only thing the gates accept. |
 
 ## Why three roles
 
@@ -103,7 +103,7 @@ flowchart TD
     C --> D["The host enforces the tool list itself"]
     B --> E["Event wiring: agent start and stop, session start"]
     E --> F["Engine answers allow or deny from the record"]
-    D --> G["Whatever got past: checks at close, the review, git's pre-push hook"]
+    D --> G["Whatever got past: checks at close, the review, the merge gate"]
     F --> G
 ```
 
@@ -148,8 +148,8 @@ A lane is one session with the work it took. The host starts sessions, carries m
 | **No lock, and no lost fold** | Each task has its own branch and worktree, so two tasks may change the same file. A fold is refused when the feature branch moved under it: the engine rebases the later task and runs its checks again first. So git settles the overlap, and a clash holds back only the later task's close. |
 | **A main folder no session switches under another** | The engine cuts and moves branches without checking them out. |
 | **A report of the main folder at close** | The close lists what changed there since the task started. With several sessions that can be another session's edit or the Human's own, so tmb puts nothing back and the planner raises the list to the Human. |
-| **A health check that finds what stalled** | An open task no agent run is on, a run that never ended, and a worktree the host's files do not wire. The planner's session start names the count in one line. |
-| **One gate for all** | The push gate and the review judge commits, not sessions. |
+| **A health check that finds what stalled** | An open code task no agent run is on, a run that never ended, and a worktree the host's files do not wire. The planner's session start names the count in one line. |
+| **One gate for all** | The gates and the review judge commits, not sessions. |
 
 ### What is left to the host
 

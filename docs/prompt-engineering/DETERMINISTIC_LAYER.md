@@ -9,7 +9,7 @@ The rules for moving tmb doctrine out of prompts and into code: the layers, what
 | # | Layer | What it is for | What it guarantees |
 |---|---|---|---|
 | 1 | **Engine** (behind the tool server and the command line) | Role-bound tool access, input validation, server-side defaults for omitted args, and atomic composite tools that run a multi-step workflow as one call. | Wire-level rejection (`is_error: true`) regardless of prompt content; a composite's steps land together or not at all. |
-| 2 | **Checkpoints** | git's own hooks first (pre-push refuses a push), then the few host hooks an adapter writes: PreToolUse blocks an agent start until its prerequisite holds; SubagentStop records the run's end; SessionStart injects context. No hook guards each edit. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
+| 2 | **Checkpoints** | git's own hooks first (pre-push refuses an unreviewed push to the base branch), then the few host hooks an adapter writes: PreToolUse blocks an agent start until its prerequisite holds; SubagentStop records the run's end; SessionStart injects context. No hook guards each edit. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
 | 3 | **Role file** | The tool list in each role file, written by the host's adapter from what the role may do. | The host withholds the listed tools at spawn. Claude Code does. |
 | 4 | **Schema constraints** | `CHECK`, `UNIQUE`, `NOT NULL`, FK on the trajectory DB. | Rejects malformed writes at the storage layer, including raw-SQL bypasses of MCP handlers. |
 | 5 | **Skill `paths:`** | Skill auto-loads when matching files are in the active context. | Soft — reduces prompt noise; the model can still ignore loaded content. Planned (trustmybot/tmb#436): tmb ships no skill yet. |
@@ -78,7 +78,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 | Session start: the planner's role, the open work and the empty settings injected | 2 (injection) |
 | A docs task changes only docs file types; any other file refuses its close | 1 (close) |
 | Every code change goes to a worker | 6 only |
-| The planner's docs task commits pass the same checks and push gate as code; the reviewer sees them in the same review | 1 (close) + 2 (push) |
+| The planner's docs task commits pass the same checks and merge gate as code; the reviewer sees them in the same review | 1 (close) + 2 (push) |
 | The main folder never switches onto a branch an open task owns | 6 only; the close reports what changed in the main folder |
 | A cheatcode installs only after the Human approves that candidate | Planned (trustmybot/tmb#112) |
 | The planner's open work restored from the record at each session start | 2 (injection) |

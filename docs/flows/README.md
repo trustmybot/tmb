@@ -23,7 +23,7 @@ flowchart LR
 | 1. Install | [1_INSTALL.md](1_INSTALL.md) | Install, channels, updates, session start, removal, the health check, bug reports |
 | 2. Cold start | [2_ONBOARD.md](2_ONBOARD.md) | First contact: what it asks, what it records, and a repo's checks |
 | 2. Cold start | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) | Building and refreshing the code graph |
-| 3. Agent task handling | [3_TASKS.md](3_TASKS.md) | A task from ask to merge, who owns each check, the push gate, retries, a stuck task |
+| 3. Agent task handling | [3_TASKS.md](3_TASKS.md) | A task from ask to merge, who owns each check, the gates, retries, a stuck task |
 | 3. Agent task handling | [3_WORKFLOW.md](3_WORKFLOW.md) | The workflow modes: agile and truest |
 | 3. Agent task handling | [3_GIT.md](3_GIT.md) | Where the work sits in git at each step, and in which repo |
 | 4. Extending the team | [4_EXTENDING.md](4_EXTENDING.md) | Agents, skills and cheatcodes a project adds |

@@ -22,7 +22,7 @@ Everything before [Containment](#containment) is the design. Containment is deta
 |---|---|---|
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
 | Host events, through the host adapter | The host, at a checkpoint | The engine can refuse an action no agent asked it about. |
-| Git's pre-push hook | git | A push is checked even when typed by hand. |
+| Git's pre-push hook | git | A push to the base branch is checked even when typed by hand. |
 | Command line | The Human | Every step the Human runs by hand, such as init, onboard and `tmb doctor`, the health check. The list is in the [reference](../reference/README.md). |
 | Dashboard | The Human | A local web page over the record. |
 | Desktop program | The Human | Planned (trustmybot/tmb#79), with the dashboard built in. |
@@ -65,7 +65,7 @@ The fenced steps are: waiving a review, of a feature branch or of a task; settin
 flowchart LR
     W["An agent works in its worktree"] --> C1["Task close: the checks run on the commit"]
     C1 --> C2["Review: the reviewer judges what it did not write"]
-    C2 --> C3["Push: git's hook refuses unreviewed commits"]
+    C2 --> C3["Merge gate: a pull request opens only on a reviewed commit<br/>git's hook refuses an unreviewed push to the base branch"]
     C3 --> C4["GitHub: a review mark that branch protection can require"]
 ```
 
@@ -76,7 +76,7 @@ flowchart LR
 | A task changes files outside its spec | The close names each file. It refuses only on its checks. |
 | A docs task changes code | The close refuses, and names the file |
 | The reviewer edits what it judges | Its role has no editing tool ([ROLES.md](ROLES.md#reviewer)) |
-| Unreviewed commits leave the machine | git's pre-push hook, whoever typed the push |
+| An unreviewed commit heads for the base branch | The merge gate refuses its pull request. git's pre-push hook refuses a push straight to the base branch, whoever typed it |
 | An agent takes a step that is the Human's alone | The command line's fence ([Ways into the engine](#ways-into-the-engine)) |
 | Two tasks change the same file | No lock. git settles it when the work is merged, and a clash holds back the later task's close. |
 
@@ -99,7 +99,7 @@ Planned:
 | An agent start that failed | The host could not start the subagent | The run that was opened is ended | Host | After a failed call of its agent tool |
 | A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | That folder becomes the task's worktree | Host | Before a call of tmb's brief or close tool |
 | After an agent stop | A subagent has ended | Its run is ended, with the tokens it used where the host tells | Host | Its subagent stop event, with the subagent's token use |
-| Before a push | Commits are about to leave the machine | Refused while they are not reviewed, as the review mode asks | git | git's pre-push hook |
+| Before a push | A push is about to leave the machine | Refused only when it brings unreviewed commits to the base branch, or deletes it | git | git's pre-push hook |
 
 - **Example 1.** An event carries the same fields whatever raised it: the role, the task and what is about to happen. A push tmb makes for an agent carries that agent's role. A push typed by hand is the Human's.
 - **Example 2.** A push is judged by git's pre-push hook, not by reading an agent's command.

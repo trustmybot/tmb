@@ -1,19 +1,19 @@
 # Git workflow
 
-Where the work sits in git at each step of a task, in time order: what the engine does there, what the push gate lets leave the machine, and which repo a step belongs to in a multi-repo workspace. [FLOWS.md](FLOWS.md) shows the task chain this serves.
+Where the work sits in git at each step of a task, in time order: what the engine does there, what guards the base branch, and which repo a step belongs to in a multi-repo workspace. [FLOWS.md](FLOWS.md) shows the task chain this serves.
 
 ```mermaid
 flowchart LR
     B["Engine cuts a branch from a fresh base"] --> W["Worker commits in the task's worktree"]
     W --> C["Close: the checks pass on the commit"]
     C --> R["Review: a pass, or the Human's waiver"]
-    R --> P["Engine pushes; the push gate judges"]
+    R --> P["Engine opens the pull request on the covered commit"]
     P --> M["Human merges the pull request"]
 ```
 
 ## Local is canonical, origin is downstream
 
-**The local branch is the source of truth at every step. Work reaches origin only through a push the engine makes.**
+**The local branch is the source of truth at every step. tmb sends work to origin only through a push the engine makes.**
 
 - **Example 1.** A worker commits in its task's worktree. Nothing leaves the machine, so the Human can inspect, rebase or drop anything before it reaches origin.
 - **Example 2.** No worker or reviewer pushes. The engine does every git step, so each one is recorded ([ENGINE.md](../architecture/ENGINE.md#containment)).
@@ -21,11 +21,11 @@ flowchart LR
 
 ## tmb has no git guards
 
-**tmb blocks no git command. It judges what leaves the machine, at [the push gate](#the-push-gate-at-gits-own-hook).**
+**tmb blocks no git command. It guards one thing, the base branch: at [the merge gate](3_WORKFLOW.md#merge-gate) and at [the push gate](#the-push-gate-at-gits-own-hook).**
 
 - **Example 1.** Someone commits directly. tmb does not block the commit.
 - **Example 2.** tmb reads no shell command to find a commit, a merge, a checkout or a push. A list of every way to write a git command has no end.
-- **Edge case.** A push typed in an unusual shell form still meets the gate, because git itself runs the hook.
+- **Edge case.** A push to the base branch typed in an unusual shell form still meets the gate, because git itself runs the hook.
 
 The other checkpoints are in [ENGINE.md](../architecture/ENGINE.md#containment).
 
@@ -128,7 +128,9 @@ flowchart TD
 
 ## The push gate at git's own hook
 
-**git runs the repo's pre-push hook on every push and hands it the exact refs and commits. The gate judges those.** It reads no command text, so no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
+**The push gate guards the base branch only. It refuses a push to the base branch that brings a commit no pass or Human waiver covers. Every other push is a backup and goes freely, in both modes.** Review gates the merge, at [the pull request step](3_WORKFLOW.md#merge-gate).
+
+git runs the repo's pre-push hook on every push and hands it the exact refs and commits. The gate reads no command text, so no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
 
 ```mermaid
 flowchart TD
@@ -140,19 +142,16 @@ flowchart TD
     D -- no --> N2["Allowed: tmb has no policy for it"]
     D -- yes --> E{"A ref deletes the base branch?"}
     E -- yes --> X1["Denied"]
-    E -- no --> M{"The repo's review mode?"}
-    M -- agile --> G{"A ref pushes to the base branch?"}
-    G -- no --> OK1["Allowed: feature backups and the Human's own branches go freely"]
+    E -- no --> G{"A ref pushes to the base branch?"}
+    G -- no --> OK1["Allowed: a feature branch, a task branch or the Human's own branch is a backup"]
     G -- yes --> I{"Every commit it brings is held by a covered tip?"}
-    M -- truest --> H{"A ref to the base brings an uncovered commit, or any ref brings a task's uncovered commit?"}
-    H -- no --> OK2["Allowed"]
-    H -- yes --> X2["Denied, naming the commits and the next step"]
     I -- yes --> OK3["Allowed"]
-    I -- no --> X2
+    I -- no --> X2["Denied, naming the commits and the next step"]
 ```
 
-- **Example 1.** In an agile repo the engine pushes a feature branch as a backup. No ref goes to the base branch, so the gate allows it.
-- **Example 2.** In an agile repo the Human types a push to the base branch that brings a commit no covered tip holds. The gate denies it and names the commits and the next step.
+- **Example 1.** The engine pushes a feature branch as a backup. No ref goes to the base branch, so the gate allows it.
+- **Example 2.** The Human types a push to the base branch that brings a commit no covered tip holds. The gate denies it and names the commits and the next step.
+- **Example 3.** Planned (trustmybot/tmb#456): the rule is the same in truest mode, so a task branch pushed before its review goes freely.
 - **Edge case.** The record file is there but empty. That counts as damaged, so the gate denies the push ([ENGINE.md](../architecture/ENGINE.md#gates-fail-closed)).
 
 ### What the gate counts
@@ -165,10 +164,10 @@ flowchart TD
 
 ### Whom the gate judges
 
-**The gate judges every push, the Human's too, and records each decision with who pushed.**
+**The gate judges every push to the base branch, the Human's too, and records each decision with who pushed.**
 
 - **Example 1.** The engine pushes for an agent. The record names that agent. A push with no name is the Human's.
-- **Example 2.** In truest mode the Human pushes a commit of no task to a branch other than the base. It goes freely, so the Human's own branches need no waiver.
+- **Example 2.** The Human pushes a branch other than the base. It goes freely, so the Human's own branches need no waiver.
 - **Edge case.** A push comes from a task's worktree. Linked worktrees share the hook, so the gate judges it as a push from the repo the worktree was cut from.
 
 ### The hook file
@@ -189,11 +188,12 @@ flowchart TD
 
 ### Beyond the local hook
 
-**A local hook can be skipped, so the gate also has a place on the server.**
+**A local hook can be skipped, so the gate also has a place on the server. It holds there only when the Human requires it.**
 
 - **Example 1.** Each verdict or waiver sets a commit status named tmb/review on that exact commit: success for a pass or a waiver, failure for a fail. The repo's branch protection can require it before a merge.
 - **Example 2.** The protection settings are the Human's. tmb says whether the base branch requires the mark and how to turn that on, and never changes the settings. The remote host is the last line of defence: tmb's hook does not replace the branch rules the Human sets there.
-- **Example 3.** tmb sends the mark with the Human's own GitHub command line, and only when origin is a GitHub repo. The mark is a convention among people who can write to the repo, not proof.
+- **Example 3.** tmb does not control what the Human does by hand. A pull request the Human opens, and the merge button, are the Human's own. The mark stops such a merge only when it is a required check.
+- **Example 4.** tmb sends the mark with the Human's own GitHub command line, and only when origin is a GitHub repo. The mark is a convention among people who can write to the repo, not proof.
 - **Edge case.** A mark could not be sent. tmb records that and sends it at the next review, waiver or pull request. It never fails the review.
 
 The health check counts the commits on each base branch that went around tmb. Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
@@ -272,7 +272,7 @@ flowchart TD
 | Policy | Each repo has its own base branch and checks, taken from its own git at setup: origin's default branch, else the current branch. A policy set before is kept. The project-wide base branch and checks are not read in a multi-repo workspace ([CONFIG.md](../architecture/CONFIG.md)) |
 | Origin | Each repo pushes to its own origin and opens pull requests on its own remote repo |
 | The record | One. Task worktrees stay under the workspace, so a worker finds the shared record. Feature names are unique in the record. Issues live in the record and name no repo |
-| The gate | Setup writes the pre-push hook into every managed repo. The hook names the workspace's folder: the gate reads the record there and judges the push against that repo's base branch and mode |
+| The gate | Setup writes the pre-push hook into every managed repo. The hook names the workspace's folder: the gate reads the record there and judges the push against that repo's base branch |
 | The code graph | One per repo, built from its own base branch, with paths relative to that repo |
 | Mode | One per repo, [below](#each-repo-has-a-mode) |
 
@@ -285,7 +285,7 @@ flowchart TD
 
 - **Example 1.** A repo names no mode. It follows the workspace's.
 - **Example 2.** A repo holds fixtures that never ship, and tmb does no work in it. The Human marks it exempt: it is listed in the record and left untouched, with no task, no hook, no code graph and no push gate.
-- **Example 3.** Everything that reads the mode reads the repo's: starting work, the push gate, the session start and the health check. The settings and the planner's session start list each repo with its base branch and its mode.
+- **Example 3.** Everything that reads the mode reads the repo's: starting work, the session start and the health check. The settings and the planner's session start list each repo with its base branch and its mode.
 - **Edge case.** Only the Human chooses a repo's mode, as for the workspace's. In unattended mode a repo's mode is not changed.
 
 ## Open, for the Human

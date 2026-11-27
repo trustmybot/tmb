@@ -7,7 +7,7 @@ flowchart LR
     I["Idea"] -->|"planner and Human"| G["Goal: an issue"]
     G -->|"planner"| T["Tasks: one spec each"]
     T -->|"workers"| C["Code"]
-    C -->|"checks, review, push gate"| M["Human merges"]
+    C -->|"checks, review, merge gate"| M["Human merges"]
 ```
 
 ## 1. Idea to goal, goal to tasks
@@ -125,7 +125,7 @@ tmb checks what is delivered, as CI does. Agents work unwatched. There is no gua
 flowchart LR
     W["Agents work, unwatched"] --> C1["Task close: checks pass on the commit"]
     C1 --> C2["Review: a pass, or the Human's waiver"]
-    C2 --> C3["Push: the record covers every commit"]
+    C2 --> C3["Merge gate: a pass or a waiver covers the commit"]
     C3 --> M["Human merges"]
 ```
 
@@ -133,11 +133,11 @@ flowchart LR
 |---|---|---|
 | Guide an agent | Session-start text and role prompts | Weak: a prompt can be ignored |
 | Offer tools | Its tool server and command line | Strong where a step must go through the tool |
-| Refuse an outcome | Task close, review, push | Strong: the engine or git enforces it |
+| Refuse an outcome | Task close, review, pull request, a push to the base branch | Strong: the engine or git enforces it |
 | Remember | The record | Lets a new session carry on |
 
 - **Example 1.** A worker's change breaks a test. Nothing stops the edit. The close runs the task's checks on the commit and refuses it.
-- **Example 2.** A host fails to raise an event. The push gate still checks every commit: a later checkpoint catches what an earlier one missed.
+- **Example 2.** A host fails to raise an event. The merge gate still checks the commit: a later checkpoint catches what an earlier one missed.
 - **Edge case.** The Human switches tmb off. That is the Human's choice. tmb does not enforce against its own user.
 - **What tmb cannot do.** Make an agent act, see an agent's reasoning, or steer a model mid-turn. So a rule is a refusal or a tool, never a hope.
 - **No background program.** tmb runs only when a session, a hook, git, the command line or the dashboard calls it. Periodic work is triggered by what already happens, such as a session start.
@@ -146,7 +146,7 @@ flowchart LR
 
 Where git can do the job, tmb uses git. tmb builds nothing of its own unless it must.
 
-- **Example 1.** The push gate is git's pre-push hook, so it holds for an agent's push and for a push typed by hand.
+- **Example 1.** The push gate on the base branch is git's pre-push hook, so it holds for an agent's push and for a push typed by hand.
 - **Example 2.** Two tasks change the same file. There is no lock: each has its branch and worktree, and the merge decides.
 - **Example 3.** The engine does the git steps itself (branches, worktrees, folds, pushes, pull requests). Agents ask through tmb's tools, so every step is recorded.
 - **Edge case.** tmb needs a sandbox or a lane manager. The host does that well, so tmb builds neither.

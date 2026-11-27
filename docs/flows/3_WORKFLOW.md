@@ -17,18 +17,24 @@ flowchart TD
 
 ## The two modes
 
-**The review mode decides who reviews a change and when.** Who merges is a separate question: the Human does, in both modes.
+**The two modes differ in one thing: the unit of review.** Who merges is a separate question: the Human does, in both modes.
 
-| Mode | Review | Reaches the base branch as | For |
-|---|---|---|---|
-| **Agile** (recommended; the Human chooses) | Once, on the whole feature branch | One pull request per milestone | A feature built in many small tasks and judged as a whole |
-| **Truest** | On every task, before its push | One pull request per task | A repo where nothing may reach the base branch unreviewed |
+| | **Agile** (recommended; the Human chooses) | **Truest** |
+|---|---|---|
+| Reviewed | The whole feature branch, once | Each task |
+| A task branch is cut from | The feature branch | The base branch |
+| Reaches the base branch as | One pull request per milestone | One pull request per task |
+| A failed review | Fix tasks on the feature branch | The same task reopens |
+| For | A feature built in many small tasks and judged as a whole | A change that stands alone, such as a bug fix |
+
+**The gates are the same in both.** The engine opens a pull request only on a covered commit, and git refuses an uncovered push to the base branch ([Merge gate](#merge-gate)).
 
 **The review itself is the same in both.** The planner starts the reviewer on a feature branch or on a task. The verdict is a pass or a fail on one exact commit, and the newest verdict on a commit decides. What the reviewer reads and judges is in [ROLES.md](../architecture/ROLES.md).
 
 - **Example 1.** Agile: a milestone's tasks each close on their checks and fold into the feature branch. The reviewer judges the branch once, and it reaches the base branch as one pull request.
 - **Example 2.** Truest: a task's checks pass and it waits in review at its commit. Once it passes, it gets its own pull request.
 - **Example 3.** The verdict is a pass. The planner reads it from the record, judges the design fit and asks for the pull request without being told.
+- **Example 4.** A repo is truest. The planner cannot widen the unit: it reviews every task and batches none. Only the Human waives.
 - **Edge case.** The verdict is a fail. The planner sends the work back to its author without asking the Human.
 
 ## Where the review mode is set
@@ -77,7 +83,7 @@ Agility is the one goal: the feature reaches a state the Human can try, change o
 
 ```mermaid
 flowchart TD
-    A["Human names a milestone"] --> B["Planner proposes the feature branch and its scope; Human approves"]
+    A["Human names a milestone"] --> B["Planner names the feature branch and its scope"]
     B --> C["Engine cuts the feature branch from a fresh base branch"]
     C --> D["Engine cuts each task branch from the feature branch's tip"]
     D --> E["Task closes on its checks and folds into the feature branch locally"]
@@ -89,6 +95,7 @@ flowchart TD
     P --> Z["Human merges; tmb records the branch as merged"]
 ```
 
+- **No approval.** The planner names the branch and starts it without asking. The Human can ask for another name.
 - **Pushed only as a backup.** No pull request opens before the review, so no CI runs on the branch.
 - **The base branch is brought in before the review.** The planner asks the engine for it at the milestone, and earlier whenever the base moved ([3_GIT.md](3_GIT.md#keeping-the-base-fresh)).
 - **How it ends.** Merged, closed or dropped ([Merge gate](#merge-gate)). tmb never deletes the branch.
@@ -174,7 +181,7 @@ flowchart LR
 
 ### Merge gate
 
-**The feature branch reaches the base branch only through one gated pull request.** The engine opens it only when a pass or a Human waiver covers the tip, and the push gate backs it ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)).
+**The feature branch reaches the base branch only through one gated pull request.** The engine opens it only when a pass or a Human waiver covers the tip. A push straight to the base branch meets the push gate ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)).
 
 ```mermaid
 flowchart TD
@@ -191,7 +198,8 @@ flowchart TD
 ```
 
 - **Waivers.** Only the Human waives a review ([3_TASKS.md](3_TASKS.md#task-lifecycle)). A waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The record keeps it as a waiver, and the commit's mark on GitHub says the review was waived.
-- **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line: at the planner's session start, when the branches are listed, and for the dashboard. A read that fails changes nothing. The session start names each pull request that ended since the last session.
+- **What tmb does not gate.** A pull request the Human opens by hand, and the merge button. The commit's mark on GitHub stops a merge only when the Human makes it a required check ([3_GIT.md](3_GIT.md#beyond-the-local-hook)).
+- **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line. A read that fails changes nothing. The session start names each pull request that ended since the last session. **Planned (trustmybot/tmb#458):** the sync with the remote (trustmybot/tmb#70) reads the state, and the session start reports it from the record without calling GitHub.
 - **Dropped is final.** The planner or the Human drops a branch nobody will merge, with a reason. The branch is kept in git.
 
 - **Example 1.** A pass covers the tip and no pull request is open. The engine pushes the branch and opens one pull request, and the Human merges it.
@@ -200,7 +208,7 @@ flowchart TD
 
 ### New work on a branch whose pull request is open
 
-**The branch takes more tasks, and no unreviewed commit reaches the open pull request.**
+**The branch takes more tasks. The engine holds its backup push until the new tip is covered, so it moves the pull request only to a reviewed tip.**
 
 - **Example 1.** A check fails on the pull request, or a review comment asks for a fix. The fix is a task on the same branch.
 - **Example 2.** New work builds on what the branch holds. The base branch does not hold that work yet, so a new branch could not build on it. The planner does not stop to ask. It says in its reply that the pull request grows.
@@ -232,7 +240,7 @@ A truest task is recorded ready the same way ([3_GIT.md](3_GIT.md#rebasing-a-rev
 
 ## Truest mode
 
-**Nothing reaches the base branch unreviewed.** There is no feature branch: every task is cut from the base branch and gets its own review and its own pull request.
+**Every task is reviewed on its own.** There is no feature branch: every task is cut from the base branch and gets its own review and its own pull request.
 
 ```mermaid
 flowchart TD
@@ -244,12 +252,13 @@ flowchart TD
     E -- fail --> F["Task open again in the same worktree"]
     F --> B
     E -- "pass, or the Human waives this task" --> G{"Base branch moved?"}
-    G -- no --> P["Engine pushes the task branch, opens its pull request, closes the task"]
+    G -- no --> P["Engine pushes the task branch and opens its pull request"]
     G -- yes --> R["Engine rebases the reviewed commit, runs the checks again"]
     R -- "conflict, or checks fail" --> F
     R -- "same change" --> P
     R -- "change differs" --> D
-    P --> H["Human merges"]
+    P --> H["Human merges; the task closes"]
+    P -- "a check or a comment asks for a fix" --> F
 ```
 
 - **Example 1.** A task's checks pass at close. Nothing is pushed: the task waits at its commit, in its own worktree, for the reviewer.
@@ -257,6 +266,8 @@ flowchart TD
 - **Example 3.** The Human waives the review of one task. Only the Human can, and a waiver covers one task ([3_TASKS.md](3_TASKS.md#task-lifecycle)).
 - **Edge case.** The base branch moved before the first push. The engine rebases the reviewed commit once and runs the checks again ([3_GIT.md](3_GIT.md#rebasing-a-reviewed-task)).
 
-The push gate holds here too ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)). Every failure path is in [3_TASKS.md](3_TASKS.md#retry-and-escalation).
+The gates are the same as in agile mode ([Merge gate](#merge-gate)). Every failure path is in [3_TASKS.md](3_TASKS.md#retry-and-escalation).
+
+**Planned (trustmybot/tmb#458).** The task stays in review while its pull request is open and closes when it merges. A fix reopens the same task on the same branch, and its new commit is reviewed before the pull request is updated.
 
 **Planned (trustmybot/tmb#442).** The review queue: the tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel.
