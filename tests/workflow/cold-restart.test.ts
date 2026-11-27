@@ -1,4 +1,4 @@
-// Workflow simulation, ported from the plugin's flow 09 (cold restart): once the project is set
+// Workflow simulation of a cold restart: once the project is set
 // up and work is recorded, a new session's start, answered by the session start hook, lists the
 // open issue and the open task from the record, and asks for no init or onboarding; the settings
 // onboard stored are still in force. Scripted through the tool server and the hook, with no model.
@@ -9,10 +9,10 @@ import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { tmbJson, setUpProject, sessionStart, connect, cleanup } = tmbProcesses("tmb-flow-09-");
+const { tmbJson, setUpProject, sessionStart, connect, cleanup } = tmbProcesses("tmb-cold-restart-");
 afterAll(cleanup);
 
-describe("flow 09: a cold restart", () => {
+describe("a cold restart: a new session resumes from the record", () => {
   test("a new session after init, onboard and recorded work is told the open issue and open task, and is not sent to init or onboarding", async () => {
     const project = setUpProject("true");
     const first = await connect(project);

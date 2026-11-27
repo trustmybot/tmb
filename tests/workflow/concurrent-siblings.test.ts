@@ -1,4 +1,4 @@
-// Workflow simulation, ported from the plugin's flow 11 (concurrent sibling tasks): two open
+// Workflow simulation of concurrent sibling tasks: two open
 // tasks on one feature branch, each on its own branch and worktree (open tasks sharing a file are
 // covered by shared-files.test.ts). Closing the first folds it and leaves the second open with its worktree; closing
 // the second then rebases it onto the moved feature branch, runs the checks again on the rebased
@@ -13,10 +13,10 @@ setDefaultTimeout(30_000);
 
 const FEATURE = "feat/siblings";
 
-const { scratch, git, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-flow-11-");
+const { scratch, git, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-concurrent-siblings-");
 afterAll(cleanup);
 
-describe("flow 11: concurrent sibling tasks", () => {
+describe("concurrent sibling tasks: each folds into the feature branch as it stands", () => {
   test("two tasks on one feature branch; each close folds, the second rebased and checked again", async () => {
     const project = setUpProject("true");
     const base = git(project, "rev-parse", "main");
