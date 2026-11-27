@@ -44,7 +44,7 @@ Each step, who takes it and what it leaves in the record.
 
 ## Init asks nothing
 
-**Init never waits for input, on a terminal or not. It sets the host and its role and leaves every other setting empty.**
+**Init never waits for input, on a terminal or not. It sets the host and leaves every other setting empty.**
 
 - **Example 1.** The Human runs init in a repo. Init creates the record, wires the host, adds the push hook and indexes the code graph. Its last lines say how the empty settings get filled.
 - **Example 2.** The folder is not a git work tree and holds repos. It becomes a multi-repo workspace: init records every top-level folder, repo or not, and finds repos up to two folders down. Here init also sets each repo's base branch and the checks found in it. Later steps never scan or guess ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
