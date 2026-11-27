@@ -8,13 +8,16 @@
 // 3. tmb's copy, in its tools folder, kept once per machine. A tool that is a language's own
 //    command has none: tmb installs a tool, never a language.
 // 4. None: the tool is missing, and the built-in rules build the graph; why names what is missing.
-// A tool tmb carries in its own program is tmb's copy, at the version it carries.
-// Finding runs only the copy's version command: it downloads and installs nothing.
+// A library, a package tmb loads into its own program, is only ever tmb's copy, at tmb's pin: no
+// setting and no copy of the user's is looked for, on PATH or in a repo's own packages, so one tmb
+// gives one answer. Its version is the one its package names.
+// Finding runs only the copy's version command, and reads a library's package file: it downloads
+// and installs nothing.
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, readFileSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { programStateDir, runningName } from "../../program.ts";
-import type { FoundCopy, ToolCopy } from "./languages/contract.ts";
+import type { FoundCopy, ReleaseAsset, ToolCopy, ToolRelease } from "./languages/contract.ts";
 
 export type { FoundCopy, ToolCopy, Whose } from "./languages/contract.ts";
 
@@ -24,7 +27,7 @@ export type CopySearch = FoundCopy | { missing: string };
 /** The machine's places the order looks in: the PATH it searches, and tmb's machine-wide state folder. */
 export type CopyPlaces = { searchPath: string; stateDir: string };
 
-/** tmb's tools folder, inside its machine-wide state folder: one folder per program, holding `bin/<program>`. */
+/** tmb's tools folder, inside its machine-wide state folder: one folder per tool, holding `bin/<program>`, or a library's package. */
 export const TOOLS_FOLDER = "tools";
 
 /**
@@ -34,11 +37,20 @@ export const TOOLS_FOLDER = "tools";
  */
 export const TOOL_PATHS_FILE = "tools.json";
 
+/** The file of a package that names it and its version. */
+const PACKAGE_FILE = "package.json";
+
 /** tmb's tools folder in a state folder. */
 export const toolsFolder = (stateDir: string): string => path.join(stateDir, TOOLS_FOLDER);
 
-/** tmb's own folder for one tool, in its tools folder: it holds `bin/<program>` and what the release lays out beside it. */
-export const toolFolder = (stateDir: string, program: string): string => path.join(toolsFolder(stateDir), program);
+/** tmb's own folder for one tool, in its tools folder: it holds `bin/<program>` and what the release lays out beside it, or a library's package. */
+export const toolFolder = (stateDir: string, name: string): string => path.join(toolsFolder(stateDir), name);
+
+/** The name a tool's folder in the tools folder takes: its program's, or its package's. */
+export const copyName = (tool: ToolCopy): string => ("library" in tool ? tool.library : tool.program);
+
+/** The asset of a release for a machine: its own, else the one for every machine. */
+export const assetFor = (release: ToolRelease | undefined, kind: string): ReleaseAsset | undefined => release?.assets[kind] ?? release?.everyMachine;
 
 /** A program's file name on this platform. */
 export const fileName = (program: string): string => (process.platform === "win32" ? `${program}.exe` : program);
@@ -72,9 +84,9 @@ export const installsOff = (stateDir: string): boolean => toolSettings(stateDir)
 export const machineKind = (): string => `${process.platform}-${process.arch}`;
 
 /** How a tool tmb does not have yet can come: the command that installs it, or why it cannot. */
-function howToInstall(tool: Spawned, stateDir: string): string {
+function howToInstall(tool: ToolCopy, stateDir: string): string {
   if (installsOff(stateDir)) return `installs are off in ${path.join(stateDir, TOOL_PATHS_FILE)}`;
-  if (tool.release?.assets[machineKind()] === undefined) return `tmb has no release of it for ${machineKind()}`;
+  if (assetFor(tool.release, machineKind()) === undefined) return `tmb has no release of it for ${machineKind()}`;
   return `\`${runningName()} tools install\` installs it`;
 }
 
@@ -99,7 +111,31 @@ function onPath(program: string, folders: readonly string[]): string | null {
   return null;
 }
 
-type Spawned = Exclude<ToolCopy, { carried: string }>;
+type Spawned = Extract<ToolCopy, { program: string }>;
+type Library = Extract<ToolCopy, { library: string }>;
+
+/** The version a package names in its package file, or null when it names none. */
+function packageVersion(folder: string): string | null {
+  try {
+    const { version } = JSON.parse(readFileSync(path.join(folder, PACKAGE_FILE), "utf8")) as { version?: unknown };
+    return typeof version === "string" ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A library's copy: tmb's, in its tools folder, at tmb's pin and holding every file it must; else missing. */
+function findLibrary(tool: Library, stateDir: string): CopySearch {
+  const folder = toolFolder(stateDir, tool.library);
+  const pin = tool.release.version;
+  const how = howToInstall(tool, stateDir);
+  const version = packageVersion(folder);
+  if (version === null) return { missing: `${tool.what} is missing: tmb's tools folder holds no ${tool.library} ${pin}; ${how}` };
+  if (version !== pin) return { missing: `${tool.what} is missing: tmb's copy at ${folder} is ${tool.library} ${version}, and tmb uses only ${pin}; ${how}` };
+  const lacking = tool.holds.filter((file) => !existsSync(path.join(folder, file)));
+  if (lacking.length > 0) return { missing: `${tool.what} is missing: tmb's copy at ${folder} lacks ${lacking.join(", ")}; ${how}` };
+  return { whose: "tmb", path: folder, version };
+}
 
 /** A copy's version, as it reports it, or why it does not run. */
 function reportOf(tool: Spawned, file: string): { report: string } | { fails: string } {
@@ -111,7 +147,7 @@ function reportOf(tool: Spawned, file: string): { report: string } | { fails: st
 
 /** Finds the copy of a tool to use, in the one order above. */
 export function findCopy(tool: ToolCopy, places: CopyPlaces): CopySearch {
-  if ("carried" in tool) return { whose: "tmb", path: null, version: tool.carried };
+  if ("library" in tool) return findLibrary(tool, places.stateDir);
   // 1. The setting: that copy, and nothing searched.
   const named = toolPaths(places.stateDir)[tool.program];
   if (named !== undefined) {

@@ -37,7 +37,7 @@ A call is outside the repo only on the same proof a link needs. Its name, or the
 - an import of a module that names no file of the repo and none of its own code, the same answer that makes the import no miss; or
 - a global value of the compiler's default library, with no declaration of that name anywhere in the file and none at the top of any file of the repo, since a script's top-level names are globals too. On `x.f()`, the library must declare a callable `f` on `x`.
 
-[globals.ts](globals.ts) holds those globals. [globals.gen.ts](globals.gen.ts) writes it from the TypeScript compiler tmb carries for way B; run it after the compiler is upgraded. A test fails when the two differ. A method called on any other value, a parameter say, is not known: the graph does not guess a receiver's type.
+[globals.ts](globals.ts) holds those globals. [globals.gen.ts](globals.gen.ts) writes it from the TypeScript compiler at the version tmb pins for way B, a development dependency of tmb; run it after the pin moves. A test fails when the two differ. A method called on any other value, a parameter say, is not known: the graph does not guess a receiver's type.
 
 ## Its tests
 

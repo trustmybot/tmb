@@ -14,9 +14,10 @@
 // definition follows the stubs and they are one node together; and a construction links to the
 // class, which is what pyright names.
 //
-// tmb carries pyright (carried.ts), loaded only when way B builds a Python graph, and never runs
-// the user's Python. pyright reads the repo's files from the commit, the standard library's stubs
-// tmb carries from memory, and the repo's own virtual environment from disk, with the project's
+// tmb uses its pinned pyright, installed on ask into its tools folder (load.ts), loaded only when
+// way B builds a Python graph, and never runs the user's Python. pyright reads the repo's files from
+// the commit, its copy's standard library stubs from memory, and the repo's own virtual environment
+// from disk, with the project's
 // config (CODE_GRAPH.md, "Way B for Python reads the environment in the working tree"). The
 // environment is the one the project's config names, pyright's own `venvPath` and `venv`, else the
 // one folder at the top of the working tree that is one; two or more with no config naming one
@@ -25,8 +26,9 @@
 // what the environment it read installs; a read that finds any changed rebuilds it (trustmybot/tmb#325).
 import { type Dirent, existsSync, readdirSync, type Stats, statSync } from "node:fs";
 import path from "node:path";
-import { CARRIED_VERSION, type Exporting, loadCarried, PYRIGHT_DIR, TYPESHED_ROOT } from "./carried.ts";
-import type { BuiltWith, LanguageTool, OpenedTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
+import { type Exporting, loadPyright, PYRIGHT_DIR, PYRIGHT_HOLDS, TYPESHED_ROOT } from "./load.ts";
+import type { BuiltWith, FoundCopy, LanguageTool, OpenedTool, ToolAnswer, ToolCall, ToolInput, ToolNode, ToolRelease } from "../contract.ts";
+import { npmRelease } from "../npm.ts";
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
@@ -45,8 +47,14 @@ const SETTINGS_FILES = new Set(["pyproject.toml", "pyrightconfig.json"]);
 const SITE_PACKAGES = "site-packages";
 
 /**
+ * The pyright tmb uses, and the only one: version 1.1.414 of its package, from the npm registry,
+ * checked against the sha512 the registry publishes for it.
+ */
+export const PYRIGHT_PIN: ToolRelease = npmRelease("pyright", "1.1.414", "FPZZb51jepDX4eP7TEYDeNFtmE3WgwkkEcJpvH3/QmUSsj0EAy3LXu+xB4T/FWDejtsXlCfFr/rbWFjwuwuXww==");
+
+/**
  * The kinds of pyright's syntax tree that place a declaration and a call, as pyright 1.1.414, the
- * version tmb carries, numbers them (`ParseNodeType`, which its bundle does not export by name).
+ * version tmb pins, numbers them (`ParseNodeType`, which its bundle does not export by name).
  * A test reads them back off a tree pyright parses.
  */
 export const NODE = { Call: 9, Class: 10, Comprehension: 11, ImportFromAs: 26, Function: 31, Lambda: 33, MemberAccess: 35, Module: 36, Name: 38 } as const;
@@ -59,19 +67,22 @@ type Uri = { getFilePath(): string; isEmpty(): boolean };
 
 /** The parts of pyright tool.ts uses, loaded on first use: way B alone needs them. */
 type Pyright = { part: Exporting; stdlib: ReadonlyMap<string, string> };
-let carried: Pyright | undefined;
+/** Each copy loaded, by its folder. */
+const loaded = new Map<string, Pyright>();
 
-/** The pyright tmb carries, or why it cannot be loaded. */
-async function carriedPyright(): Promise<Pyright | { unavailable: string }> {
-  if (carried !== undefined) return carried;
+/** The copy of pyright in a folder, or why it cannot be loaded. */
+async function pyrightAt(folder: string): Promise<Pyright | { unavailable: string }> {
+  const known = loaded.get(folder);
+  if (known !== undefined) return known;
   try {
-    const { exporting, stdlib } = loadCarried();
+    const { exporting, stdlib } = loadPyright(folder);
     // pyright loads its reader of `pyproject.toml` on its own, and reads no config before it has.
     await exporting("ensureTomlModuleLoaded").ensureTomlModuleLoaded();
-    carried = { part: exporting, stdlib };
-    return carried;
+    const copy = { part: exporting, stdlib };
+    loaded.set(folder, copy);
+    return copy;
   } catch (error) {
-    return { unavailable: `the pyright tmb carries did not load (${error instanceof Error ? error.message : String(error)})` };
+    return { unavailable: `the pyright at ${folder} did not load (${error instanceof Error ? error.message : String(error)})` };
   }
 }
 
@@ -90,7 +101,7 @@ function topEnvironments(root: string): string[] {
 }
 
 /**
- * A file or a folder of a place served from memory: the commit, or the stubs tmb carries. `addDir`
+ * A file or a folder of a place served from memory: the commit, or the standard library's stubs. `addDir`
  * lists a folder served from elsewhere in the folders above it, so pyright, which looks for a
  * folder in its parent's list, finds it.
  */
@@ -153,8 +164,8 @@ const statOf = (isFile: boolean, size: number): Stats =>
 const entryOf = (name: string, isFile: boolean): Dirent => ({ name, isFile: () => isFile, isDirectory: () => !isFile, isSymbolicLink: () => false }) as unknown as Dirent;
 
 /**
- * pyright's file system for one commit: the repo's files from the commit, the stubs tmb carries
- * from memory, and everything else, the environment pyright is set up with included, from disk.
+ * pyright's file system for one commit: the repo's files from the commit, the standard library's
+ * stubs from memory, and everything else, the environment pyright is set up with included, from disk.
  * `environment()` is that environment's folder, an absolute path, or null for none.
  */
 function commitFileSystem(real: Record<string, any>, root: string, commit: Served, environment: () => string | null, stdlib: Served): Record<string, any> {
@@ -430,17 +441,17 @@ function answerCalls(
 /** pyright, way B's tool for Python. */
 export const pyright: LanguageTool = {
   name: "pyright",
-  // tmb carries it in its own program: tmb's copy, at the version it carries.
-  copy: { carried: CARRIED_VERSION },
+  // tmb's pinned copy, in its tools folder, installed on ask; never the user's.
+  copy: { library: "pyright", what: "pyright", holds: PYRIGHT_HOLDS, release: PYRIGHT_PIN },
   reads: (file: string) => file.endsWith(STUB_EXTENSION) || SETTINGS_FILES.has(path.posix.basename(file)),
-  async open(repoDir: string): Promise<OpenedTool> {
-    const loaded = await carriedPyright();
-    if ("unavailable" in loaded) return loaded;
+  async open(repoDir: string, found: FoundCopy): Promise<OpenedTool> {
+    const copy = await pyrightAt(found.path);
+    if ("unavailable" in copy) return copy;
     return {
-      answer: (input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(loaded, repoDir, input, note, readFrom),
+      answer: (input: ToolInput, note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(copy, repoDir, input, note, readFrom),
     };
   },
-  // pyright is the one tmb carries, so the find order gives its version. The installed packages are those
+  // The find order gives pyright's copy and its version. The installed packages are those
   // of the environment it read, and which folders at the top of the repo are environments, which
   // decides the environment when the project's config names none.
   builtWith(repoDir: string, places: readonly string[]): BuiltWith {

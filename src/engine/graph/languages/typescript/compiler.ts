@@ -5,7 +5,7 @@
 import path from "node:path";
 import type TS from "typescript5";
 
-/** A TypeScript compiler module: the one tmb carries (tool.ts), or the benchmark's reference (links.ts). */
+/** A TypeScript compiler module: tmb's copy (tool.ts), or the benchmark's reference (links.ts). */
 export type TypeScriptModule = typeof TS;
 
 /** The options of a program that reads every TypeScript and JavaScript file and emits nothing. */
@@ -36,7 +36,7 @@ export type CommitFiles = {
    */
   read?: (rel: string) => string | undefined;
   /**
-   * The compiler's default library files by name, when the program carries them: then they are
+   * The compiler's default library files by name, when they are given: then they are
    * read from here, never from the compiler's folder on disk. Without it they are read from disk.
    */
   library?: ReadonlyMap<string, string>;
@@ -56,7 +56,7 @@ function installedFolderOf(dir: string): string | null {
 
 /** Where a file of the repo or of the disk is read: the commit, or the disk. */
 type RepoPlace = { from: "commit"; rel: string } | { from: "disk" };
-/** Where a file the compiler asks for is read: the commit, the disk, or the library carried. */
+/** Where a file the compiler asks for is read: the commit, the disk, or the library given. */
 type Place = RepoPlace | { from: "library"; name: string };
 
 function placeOf(root: string, file: string, installed: boolean): RepoPlace {
@@ -70,15 +70,15 @@ function placeOf(root: string, file: string, installed: boolean): RepoPlace {
 
 /**
  * A compiler host that reads the repo's files from the commit; the compiler's default library from
- * `library` when it is carried, else from the compiler's folder; and from disk only what is outside
+ * `library` when it is given, else from the compiler's folder; and from disk only what is outside
  * the repo or, with `installed`, the project's installed packages.
  */
 export function commitHost(ts: TypeScriptModule, root: string, files: CommitFiles, options: TS.CompilerOptions): TS.CompilerHost {
   const host = ts.createCompilerHost(options, true);
   const dirs = new Set<string>();
   for (const file of files.texts.keys()) for (let d = path.posix.dirname(file); d !== "."; d = path.posix.dirname(d)) dirs.add(d);
-  // The folder the compiler looks in for its default library. With a carried library, each of its
-  // files is read from what is carried; any other file there is read where it lives, as an
+  // The folder the compiler looks in for its default library. With a library given, each of its
+  // files is read from what is given; any other file there is read where it lives, as an
   // installed package's declarations beside the compiler's own are.
   const libraryDir = path.dirname(ts.getDefaultLibFilePath(options));
   const { library } = files;

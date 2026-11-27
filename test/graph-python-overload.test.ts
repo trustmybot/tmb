@@ -4,7 +4,7 @@
 // `typing_extensions.overload`, as Python's own lookup finds it: imported under any name, or used
 // as an attribute of the module imported under any name. A decorator that only shares the name is
 // not it, and its definitions stay nodes. Every expectation is read off the rule, not off the graph.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -13,9 +13,13 @@ import path from "node:path";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { openGraphDb } from "../src/engine/graph/db.ts";
 import type { LinkWay } from "../src/engine/graph/ways.ts";
+import { installPinnedTools } from "../tests/lib/pinned-tools.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
+
+// Way B loads pyright from tmb's tools folder; the setup installs tmb's pinned copy.
+beforeAll(installPinnedTools);
 
 let project: string;
 

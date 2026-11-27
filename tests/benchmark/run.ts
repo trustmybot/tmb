@@ -23,6 +23,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
+import { installPinnedTools } from "../lib/pinned-tools.ts";
 import { compileDatabase, measureC, REFERENCE_VERSION as C_REFERENCE_VERSION } from "./c.ts";
 import { measureGo, REFERENCE_VERSION as GO_REFERENCE_VERSION } from "./go.ts";
 import { measureJava, REFERENCE_VERSION as JAVA_REFERENCE_VERSION } from "./java.ts";
@@ -47,11 +48,11 @@ const TITLES: Record<ScoreName, string> = {
 const INSTALLED: Record<string, Record<Way, string>> = {
   typescript: {
     A: "nothing: tmb's own parser",
-    B: "nothing for the compiler: tmb carries it; the repo's packages installed, for its calls of them to be outside",
+    B: "the compiler at tmb's pin in tmb's tools folder (`tmb tools install typescript`); the repo's packages installed, for its calls of them to be outside",
   },
   python: {
     A: "nothing: tmb's own parser",
-    B: "nothing for pyright: tmb carries it; the repo's own virtual environment, for its calls of packages to be outside",
+    B: "pyright at tmb's pin in tmb's tools folder (`tmb tools install python`); the repo's own virtual environment, for its calls of packages to be outside",
   },
   go: { A: "nothing: tmb's own parser", B: "the user's own `go`, which runs the helper tmb carries; the repo's modules in the module cache, for its calls of them to be known (measured with none)" },
   java: { A: "nothing: tmb's own parser", B: "a JDK, whose `java` runs the adapter tmb carries; no class path, so the repo's calls of its libraries are not known" },
@@ -150,6 +151,8 @@ async function main(args: string[]): Promise<number> {
     console.error(issue.error);
     return 2;
   }
+  // Way B for TypeScript and Python loads its tool from tmb's tools folder: tmb's pinned copies are installed first.
+  await installPinnedTools();
   const run = await measureAll();
   console.log(report(run));
   for (const [repo, lines] of Object.entries(run.detail)) for (const line of lines) console.log(`${repo}: ${line}`);

@@ -5,9 +5,10 @@
 // ("The graph keeps itself fresh"), and the answer's freshness says so; a read that finds both
 // unchanged answers from the layer it has. A layer built by the built-in rules rests on neither.
 // Each language's installed packages are its own:
-// - TypeScript and JavaScript: tmb carries the compiler, whose version is the one it carries; the
-//   packages are the `node_modules` folders the compiler looks in;
-// - Python: tmb carries pyright; the packages are those of the environment pyright reads;
+// - TypeScript and JavaScript: tmb's copy of the compiler in its tools folder, whose version is tmb's
+//   pin; the packages are the `node_modules` folders the compiler looks in;
+// - Python: tmb's copy of pyright in its tools folder, at tmb's pin; the packages are those of the
+//   environment pyright reads;
 // - Go: the user's `go`; the packages are the modules the repo's go.sum names, in the module cache;
 // - Java: the user's JDK; javac reads no class path, so there are no packages;
 // - Rust: the user's rust-analyzer; the packages are the crates the repo's Cargo.lock resolves
@@ -15,9 +16,9 @@
 // - C and C++: the user's clangd; what it reads beyond the commit is the project's compile database,
 //   which a build makes and git does not hold, and the headers outside the repo its answers name.
 // Each expectation is read off the page's rule, not off the graph's output.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Database } from "bun:sqlite";
@@ -25,8 +26,14 @@ import { BASE_LAYER, GRAPH_SCHEMA_VERSION, graphDbPath, layerRow, openGraphDb } 
 import { type GraphView, openView } from "../src/engine/graph/fresh.ts";
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+import { PYRIGHT_PIN } from "../src/engine/graph/languages/python/tool.ts";
+import { TYPESCRIPT_PIN } from "../src/engine/graph/languages/typescript/tool.ts";
+import { installPinnedTools } from "../tests/lib/pinned-tools.ts";
 
 setDefaultTimeout(30_000);
+
+// Way B loads the TypeScript compiler and pyright from tmb's tools folder; the setup installs them.
+beforeAll(installPinnedTools);
 
 const HUMAN: Actor = { kind: "human" };
 const HAS_GO = spawnSync("go", ["version"]).status === 0;
@@ -123,7 +130,7 @@ function shim(name: string, versionArg: string, version: string, toStderr: boole
 
 const pkg = (name: string, version: string) => JSON.stringify({ name, version, types: "index.d.ts" });
 
-describe("TypeScript and JavaScript: the compiler tmb carries, and the repo's node_modules", () => {
+describe("TypeScript and JavaScript: tmb's copy of the compiler, and the repo's node_modules", () => {
   const SHOP = {
     "src/till.ts": ['import { round } from "rounding";', "export function rounded(n: number): number {", "  return round(n);", "}", ""].join("\n"),
   };
@@ -132,11 +139,10 @@ describe("TypeScript and JavaScript: the compiler tmb carries, and the repo's no
     "node_modules/rounding/index.d.ts": "export declare function round(n: number): number;\n",
   });
 
-  test("the layer records the compiler it was built with: the version tmb carries", async () => {
+  test("the layer records the compiler it was built with: the version tmb pins", async () => {
     commit(SHOP, ROUNDING("1.0.0"));
-    const carried = JSON.parse(readFileSync(require.resolve("typescript5/package.json"), "utf8")) as { version: string };
     const { builtWith } = await read();
-    expect(builtWith["the TypeScript compiler"]?.tool).toBe(carried.version);
+    expect(builtWith["the TypeScript compiler"]?.tool).toBe(TYPESCRIPT_PIN.version);
   });
 
   test("nothing changed: the layer is still fresh", async () => {
@@ -205,17 +211,16 @@ describe("TypeScript and JavaScript: the compiler tmb carries, and the repo's no
   });
 });
 
-describe("Python: the pyright tmb carries, and the repo's environment", () => {
+describe("Python: tmb's copy of pyright, and the repo's environment", () => {
   const ENV = ".venv";
   const SITE = `${ENV}/lib/python3.12/site-packages`;
   const CODE = { "shop/till.py": ["import inkwell", "", "", "def blotted():", "    return inkwell.blot(1)", ""].join("\n") };
   const environment = { [`${ENV}/pyvenv.cfg`]: "home = /usr/bin\ninclude-system-site-packages = false\nversion = 3.12.0\n", [`${SITE}/inkwell/__init__.py`]: "def blot(n):\n    return n\n" };
 
-  test("the layer records the pyright it was built with: the version tmb carries", async () => {
+  test("the layer records the pyright it was built with: the version tmb pins", async () => {
     commit(CODE, environment);
-    const carried = JSON.parse(readFileSync(require.resolve("pyright/package.json"), "utf8")) as { version: string };
     const { builtWith } = await read();
-    expect(builtWith.pyright?.tool).toBe(carried.version);
+    expect(builtWith.pyright?.tool).toBe(PYRIGHT_PIN.version);
   });
 
   test("nothing changed: the layer is still fresh", async () => {

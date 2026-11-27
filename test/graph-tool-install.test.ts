@@ -228,7 +228,7 @@ describe("what tmb would install", () => {
   test("the missing tools of the languages given, each once, and never a language's toolchain", () => {
     setEnv("CARGO_HOME", path.join(scratch, "cargo"));
     const { offers, notes } = missingTools(["go", "java", "rust", "c", "cpp", "typescript", "python", "bash"], places());
-    expect(offers.map((offer) => offer.tool).sort()).toEqual(["clangd", "rust-analyzer"]);
+    expect(offers.map((offer) => offer.tool).sort()).toEqual(["clangd", "pyright", "rust-analyzer", "the TypeScript compiler"]);
     expect(offers.find((offer) => offer.tool === "clangd")?.languages).toEqual(["c", "cpp"]);
     expect(notes.join("\n")).toContain("tmb installs no language");
   });
@@ -322,11 +322,6 @@ describe("tmb tools install", () => {
     expect(toolsHeld()).toEqual([]);
   });
 
-  test("a language tmb carries the tool of has nothing to install", async () => {
-    const { lines, sink } = output();
-    expect(await runToolsCommand(["install", "typescript"], scratch, sink, options())).toBe(0);
-    expect(lines.out.join("\n")).toContain("carries");
-  });
 
   test("a language that is not one tmb reads is a usage error", async () => {
     const { sink } = output();
@@ -348,7 +343,7 @@ describe("the pins", () => {
       for (const [platform, asset] of Object.entries(release.assets)) {
         expect(PLATFORMS as readonly string[]).toContain(platform);
         expect(asset!.url.startsWith(`${OFFICIAL[tool.name]}${release.version}/`)).toBe(true);
-        expect(asset!.sha256).toMatch(/^[0-9a-f]{64}$/);
+        expect((asset as { sha256?: string }).sha256).toMatch(/^[0-9a-f]{64}$/);
       }
       for (const platform of ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]) expect(Object.keys(release.assets)).toContain(platform);
     });

@@ -66,7 +66,7 @@ export type Projects = {
  */
 export function projectsOf(ts: TypeScriptModule, root: string, files: CommitFiles, owned: Iterable<string>): Projects {
   const matchFiles = (ts as unknown as { matchFiles?: MatchFiles }).matchFiles;
-  if (typeof matchFiles !== "function") throw new Error("the compiler tmb carries has no matchFiles to read a config's include");
+  if (typeof matchFiles !== "function") throw new Error("the TypeScript compiler has no matchFiles to read a config's include");
   const reader = commitHost(ts, root, files, {});
 
   // The commit's folders, each with the names of its files and folders, as the compiler reads a
