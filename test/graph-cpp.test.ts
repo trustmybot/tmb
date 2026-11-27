@@ -541,3 +541,58 @@ describe("a lambda bound to a file-level name", () => {
     }
   });
 });
+
+// A conditional directive is processed before the code is parsed ([cpp.pre], [cpp.cond]): the
+// compiler reads one group of each conditional, and the directive may stand between any two tokens,
+// here inside a constructor's member initializer list. Way A reads the constructor with the
+// conditional's first group, and the members after it are read as they are.
+const LADDER = lines(
+  "namespace orchard {", //                             1
+  "class Ladder {", //                                  2
+  " public:", //                                        3
+  "  explicit Ladder(int rungs)", //                    4
+  "      :", //                                        5
+  "#if defined(SAFETY_CHECKS)", //                      6
+  "        checked_(true),", //                         7
+  "#else", //                                           8
+  "        checked_(false),", //                        9
+  "#endif", //                                          10
+  "        rungs_(rungs), height_(rungs * 2) {}", //    11
+  "  int Rungs() const { return rungs_; }", //          12
+  "  int Height() const { return Climb(height_); }", // 13
+  "  int Climb(int h) const;", //                       14
+  "", //                                                15
+  " private:", //                                       16
+  "  int rungs_;", //                                   17
+  "  bool checked_;", //                                18
+  "  int height_;", //                                  19
+  "};", //                                              20
+  "", //                                                21
+  "int Ladder::Climb(int h) const { return h; }", //    22
+  "}  // namespace orchard", //                         23
+);
+
+describe("a conditional inside a construct", () => {
+  test("a member initializer list a conditional cuts is read with the conditional's first group ([cpp.cond]); the members after it are nodes of the class, and their calls link", async () => {
+    const db = await built({ "orchard/ladder.cc": LADDER });
+    try {
+      const file = "orchard/ladder.cc";
+      const rows = symbols(db, "a").filter((r) => r.path === file);
+      expect(rows.map(({ kind, qualified_name, start_line, end_line, parent }) => ({ kind, qualified_name, start_line, end_line, parent }))).toEqual(
+        expect.arrayContaining([
+          { kind: "type", qualified_name: "orchard", start_line: 1, end_line: 23, parent: file },
+          { kind: "type", qualified_name: "orchard.Ladder", start_line: 2, end_line: 20, parent: "orchard" },
+          { kind: "method", qualified_name: "orchard.Ladder.Ladder", start_line: 4, end_line: 11, parent: "orchard.Ladder" },
+          { kind: "method", qualified_name: "orchard.Ladder.Rungs", start_line: 12, end_line: 12, parent: "orchard.Ladder" },
+          { kind: "method", qualified_name: "orchard.Ladder.Height", start_line: 13, end_line: 13, parent: "orchard.Ladder" },
+          { kind: "method", qualified_name: "orchard.Ladder.Climb", start_line: 22, end_line: 22, parent: "orchard.Ladder" },
+        ]),
+      );
+      expect(rows).toHaveLength(6);
+      const r = callAt(calls(db, "a"), file, at(LADDER, "Climb(height_)"));
+      expect([r.src, r.call_state, r.dst]).toEqual([`${file}:orchard.Ladder.Height`, "linked", `${file}:orchard.Ladder.Climb`]);
+    } finally {
+      db.close();
+    }
+  });
+});

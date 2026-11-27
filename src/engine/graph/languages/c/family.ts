@@ -3,7 +3,7 @@
 // members, a lambda, a construction with `new`. Each rule names the section of the C standard
 // (ISO/IEC 9899:2011, "C11") or of the C++ standard (ISO/IEC 14882:2020, by its stable names, such as
 // [basic.lookup.unqual]) it reads. Way A links only what those rules prove inside one file.
-import type { Node, Parser } from 'web-tree-sitter';
+import type { Node, Parser, Tree } from 'web-tree-sitter';
 import { type CallMark, type Collector, type LanguageModule, SYMBOL_KINDS, type SymbolKind } from '../contract.ts';
 import { docOf, memberHint, named, normalizedHash, signatureOf } from '../kit.ts';
 
@@ -125,17 +125,18 @@ function spanOf(n: Node): Node {
   return s;
 }
 
-/** The conditional groups around a node. */
-function groupsOf(n: Node): number[] {
-  const out: number[] = [];
-  for (let p = n.parent; p; p = p.parent) if (CONDITIONAL_GROUPS.has(p.type)) out.push(p.id);
+/** The conditional groups around a node: the grammar's, and the first groups way A kept of those it blanked (`kept`), as keys. */
+function groupsOf(n: Node, kept: readonly Blank[]): string[] {
+  const out: string[] = [];
+  for (let p = n.parent; p; p = p.parent) if (CONDITIONAL_GROUPS.has(p.type)) out.push(`node ${p.id}`);
+  for (const [start, end] of kept) if (n.startIndex >= start && n.startIndex < end) out.push(`kept ${start}`);
   return out;
 }
 
 /** Whether `target` is compiled whenever `call` is: every conditional group around it is around the call too. */
-function compiledWith(target: Node, call: Node): boolean {
-  const around = new Set(groupsOf(call));
-  return groupsOf(target).every((g) => around.has(g));
+function compiledWith(target: Node, call: Node, kept: readonly Blank[]): boolean {
+  const around = new Set(groupsOf(call, kept));
+  return groupsOf(target, kept).every((g) => around.has(g));
 }
 
 /** Whether a declaration has the storage class `word` (C11 6.7.1; [dcl.stc]). */
@@ -264,29 +265,202 @@ function macrosAroundHeads(root: Node, cpp: boolean): Blank[] {
   return blanks;
 }
 
+/** The directives of a conditional (C11 6.10.1, with C23's `#elifdef` and `#elifndef`; C++ [cpp.cond]): one that opens it, one that starts another group, and one that closes it. */
+const OPENING_DIRECTIVES: ReadonlySet<string> = new Set(['if', 'ifdef', 'ifndef']);
+const GROUP_DIRECTIVES: ReadonlySet<string> = new Set(['elif', 'elifdef', 'elifndef', 'else']);
+const CLOSING_DIRECTIVE = 'endif';
+
+/** The grammar's nodes for a conditional, and for each group after its first. */
+const CONDITIONAL_OPENERS: ReadonlySet<string> = new Set(['preproc_if', 'preproc_ifdef']);
+const CONDITIONAL_ALTERNATIVES: ReadonlySet<string> = new Set(['preproc_elif', 'preproc_elifdef', 'preproc_else']);
+
+/** One directive line: where its `#` is, and where the line ends, with the lines a backslash continues it onto (C11 5.1.1.2 phase 2). */
+interface Directive {
+  word: string;
+  hash: number;
+  start: number;
+  end: number;
+}
+
+/** A conditional as the text writes it: its directives in order, from the one that opens it to its `#endif`. */
+interface Conditional {
+  directives: Directive[];
+}
+
+/**
+ * The conditionals of a file, from its text: a directive is a line whose first token is `#` (C11
+ * 6.10 p2; [cpp.pre]), outside a comment and a literal. A conditional the text does not close is
+ * left out.
+ */
+function conditionalsOf(text: string): Conditional[] {
+  const out: Conditional[] = [];
+  const open: Conditional[] = [];
+  let i = 0;
+  let lineStart = true;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === '\n') {
+      lineStart = true;
+      i++;
+      continue;
+    }
+    if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\f' || ch === '\v') {
+      i++;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      i = close < 0 ? text.length : close + 2;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      i = endOfLogicalLine(text, i);
+      continue;
+    }
+    if (ch === '#' && lineStart) {
+      const start = text.lastIndexOf('\n', i - 1) + 1;
+      const end = endOfLogicalLine(text, i);
+      const word = /^#\s*([A-Za-z_]+)/.exec(text.slice(i, end))?.[1] ?? '';
+      const d: Directive = { word, hash: i, start, end };
+      if (OPENING_DIRECTIVES.has(word)) open.push({ directives: [d] });
+      else if (GROUP_DIRECTIVES.has(word)) open.at(-1)?.directives.push(d);
+      else if (word === CLOSING_DIRECTIVE) {
+        const c = open.pop();
+        if (c) {
+          c.directives.push(d);
+          out.push(c);
+        }
+      }
+      i = end;
+      continue;
+    }
+    lineStart = false;
+    if (ch === '"' || ch === "'") {
+      // A literal ends at its unescaped quote, and never past its line.
+      let j = i + 1;
+      while (j < text.length && text[j] !== ch && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+      i = j + 1;
+      continue;
+    }
+    i++;
+  }
+  return out;
+}
+
+/** Where the logical line around `i` ends: before the newline that no backslash escapes. */
+function endOfLogicalLine(text: string, i: number): number {
+  let at = i;
+  for (;;) {
+    const nl = text.indexOf('\n', at);
+    if (nl < 0) return text.length;
+    if (!/\\\r?$/.test(text.slice(at, nl))) return nl;
+    at = nl + 1;
+  }
+}
+
+/**
+ * Whether the grammar read a conditional as the text writes it: a conditional's node opens at its
+ * first directive, each group after the first starts at its directive, and the node's `#endif` is
+ * the conditional's own. The grammar reads a conditional only where a declaration, a member or a
+ * statement may stand; elsewhere it reads the directives as tokens of the construct around them.
+ */
+function readAsWritten(root: Node, c: Conditional): boolean {
+  const first = c.directives[0]!;
+  const last = c.directives.at(-1)!;
+  let node: Node | null = root.descendantForIndex(first.hash);
+  while (node && !(CONDITIONAL_OPENERS.has(node.type) && node.startIndex === first.hash)) node = node.parent;
+  if (!node) return false;
+  const groups: number[] = [];
+  for (let n: Node | null = node; n; ) {
+    const next: Node | null = n.children.find((ch): ch is Node => ch !== null && CONDITIONAL_ALTERNATIVES.has(ch.type)) ?? null;
+    if (next) groups.push(next.startIndex);
+    n = next;
+  }
+  const middle = c.directives.slice(1, -1).map((d) => d.hash);
+  const endif = node.children.find((ch) => ch?.type === `#${CLOSING_DIRECTIVE}`);
+  return endif?.startIndex === last.hash && groups.length === middle.length && groups.every((g, k) => g === middle[k]);
+}
+
+/** What way A reads of a conditional the grammar cannot place: the spans it keeps, and the macros the groups it drops define. */
+interface ConditionalReading {
+  kept: Blank[];
+  dropped: Set<string>;
+}
+
+// A conditional is processed before the code is parsed (C11 5.1.1.2 phase 4, 6.10.1 p6; C++
+// [cpp.cond]): the compiler reads one of its groups and none of the others, and a directive may stand
+// between any two tokens. The grammar reads a conditional only where a declaration, a member or a
+// statement may stand. One that cuts a construct, inside a member initializer list, the head of a
+// `for` or an initializer, it reads as tokens of that construct, and the constructs after it are
+// misread. Way A reads such a conditional with its first group, the code compiled when its
+// condition holds: its directives and its other groups are blanked, keeping every line and column.
+// Innermost first: a conditional nested in one the grammar misreads may be what misreads it.
+function conditionalsCut(root: Node, text: string): { blanks: Blank[]; reading: ConditionalReading } {
+  const all = conditionalsOf(text);
+  const cut = all.filter((c) => !readAsWritten(root, c));
+  const inside = (a: Conditional, b: Conditional): boolean => a !== b && a.directives[0]!.start > b.directives[0]!.start && a.directives.at(-1)!.end < b.directives.at(-1)!.end;
+  const innermost = cut.filter((c) => !cut.some((d) => inside(d, c)));
+  const blanks: Blank[] = [];
+  const reading: ConditionalReading = { kept: [], dropped: new Set() };
+  for (const c of innermost) {
+    const [first, second] = c.directives;
+    const last = c.directives.at(-1)!;
+    blanks.push([first!.start, first!.end]);
+    reading.kept.push([first!.end, second!.start]);
+    // The groups after the first, with their directives, through the `#endif`.
+    blanks.push([second!.start, last.end]);
+    for (const m of text.slice(second!.start, last.end).matchAll(/^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)/gm)) reading.dropped.add(m[1]!);
+  }
+  return { blanks, reading };
+}
+
+/** Each tree's reading of the conditionals parseFamily blanked, for extractFamily. */
+const READINGS = new WeakMap<Tree, ConditionalReading>();
+
+/** How many times the macros around heads are blanked, each pass finding what the last one's blanks uncovered. */
+const MACRO_PASSES = 8;
+
+/** Blanks a span, keeping its line breaks, so every line and column stays where it is. */
+const blank = (text: string, [start, end]: Blank): string => text.slice(0, start) + text.slice(start, end).replace(/[^\r\n]/g, ' ') + text.slice(end);
+
 /**
  * Parses a C or C++ file, blanking each span `find` gives, and the macros around a function's head
- * (macrosAroundHeads), and parsing again until none is left. Every line and column stays where it is.
+ * (macrosAroundHeads), and parsing again until none is left; then, the same way, reading each
+ * conditional the grammar cannot place with its first group (conditionalsCut). Every line and
+ * column stays where it is.
  */
 export function parseFamily(dialect: Dialect, find: (root: Node) => Blank[] = () => []): NonNullable<LanguageModule['parse']> {
   return (parser: Parser, src: string) => {
     let text = src;
     let tree = parser.parse(text);
+    const reading: ConditionalReading = { kept: [], dropped: new Set() };
     // Each pass blanks what it finds; what is nested in it is found once the outer part parses.
-    for (let pass = 0; tree && pass < 8; pass++) {
-      const blanks = [...find(tree.rootNode), ...macrosAroundHeads(tree.rootNode, dialect === 'cpp')];
+    let macroPasses = 0;
+    while (tree) {
+      let blanks = macroPasses < MACRO_PASSES ? [...find(tree.rootNode), ...macrosAroundHeads(tree.rootNode, dialect === 'cpp')] : [];
+      if (blanks.length > 0) macroPasses++;
+      else {
+        // Each pass blanks at least one conditional's directives, so the passes end.
+        const cut = conditionalsCut(tree.rootNode, text);
+        blanks = cut.blanks;
+        reading.kept.push(...cut.reading.kept);
+        for (const name of cut.reading.dropped) reading.dropped.add(name);
+      }
       if (blanks.length === 0) break;
-      for (const [start, end] of blanks) text = text.slice(0, start) + ' '.repeat(end - start) + text.slice(end);
+      for (const span of blanks) text = blank(text, span);
       tree.delete();
       tree = parser.parse(text);
     }
-    return tree ? { tree, src: text } : null;
+    if (!tree) return null;
+    READINGS.set(tree, reading);
+    return { tree, src: text };
   };
 }
 
 /** The nodes and calls of a C or C++ file, by its dialect's rules, into `out`. */
 export function extractFamily(dialect: Dialect, root: Node, src: string, out: Collector, moduleSymbol: number): void {
   const cpp = dialect === 'cpp';
+  const reading = READINGS.get(root.tree) ?? { kept: [], dropped: new Set<string>() };
   const symbolOf = (
     kind: SymbolKind,
     name: string,
@@ -718,6 +892,8 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
     const name = m?.childForFieldName('name')?.text;
     if (name) macros.add(name);
   }
+  // A macro a blanked group defines is still the file's: the compiler may read that group instead.
+  for (const name of reading.dropped) macros.add(name);
 
   // A macro's arguments are tokens it may stringify, paste or drop (C11 6.10.3): what a call written
   // there becomes is the macro's to say, and the rules do not expand the file's `#define`.
@@ -735,7 +911,7 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
     const defs = entries.filter((e) => e.kind === 'definition');
     if (defs.length !== 1 || entries.some((e) => e.kind === 'other')) return null;
     const def = defs[0]!;
-    if (!def.provable || def.template || def.symbol === undefined || !compiledWith(def.node, call)) return null;
+    if (!def.provable || def.template || def.symbol === undefined || !compiledWith(def.node, call, reading.kept)) return null;
     return def.symbol;
   };
 
@@ -760,12 +936,12 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
       // [basic.lookup.unqual] p8). One member function of that name, with no using-declaration of it,
       // is the call's target.
       const decls = cls.functions.get(name.text) ?? [];
-      if (decls.length === 1 && !cls.usings.has(name.text) && !cls.others.has(name.text) && compiledWith(decls[0]!, call)) {
+      if (decls.length === 1 && !cls.usings.has(name.text) && !cls.others.has(name.text) && compiledWith(decls[0]!, call, reading.kept)) {
         const decl = decls[0]!;
         const inBody = symbolByNode.get(decl.id);
         if (inBody !== undefined) return { target: inBody };
         const defs = outOfLine.get(`${cls.full}\u0000${name.text}`) ?? [];
-        if (defs.length === 1 && compiledWith(defs[0]!.node, call)) return { target: defs[0]!.symbol };
+        if (defs.length === 1 && compiledWith(defs[0]!.node, call, reading.kept)) return { target: defs[0]!.symbol };
         return {};
       }
       // The class's own name in its scope is the class (the injected-class-name, [class.pre] p2), and
@@ -773,7 +949,7 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
       if (plain && decls.length === 0 && !cls.usings.has(name.text)) {
         if (name.text === cls.own && !cls.others.has(name.text)) return { target: cls.symbol };
         const nested = cls.nested.get(name.text);
-        if (nested?.length === 1 && compiledWith(nested[0]!.node, call)) return { target: nested[0]!.symbol };
+        if (nested?.length === 1 && compiledWith(nested[0]!.node, call, reading.kept)) return { target: nested[0]!.symbol };
       }
       return {};
     }
@@ -782,7 +958,7 @@ export function extractFamily(dialect: Dialect, root: Node, src: string, out: Co
       if (cls.functions.has(name.text) || cls.usings.has(name.text)) return {};
       if (name.text === cls.own && !cls.others.has(name.text)) return { target: cls.symbol };
       const nested = cls.nested.get(name.text);
-      if (nested?.length === 1 && compiledWith(nested[0]!.node, call)) return { target: nested[0]!.symbol };
+      if (nested?.length === 1 && compiledWith(nested[0]!.node, call, reading.kept)) return { target: nested[0]!.symbol };
       return {};
     }
     // Outside a class, `f()` with no arguments has no associated namespaces to search
