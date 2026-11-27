@@ -71,8 +71,12 @@ export type RemoteMilestone = RemoteItem & {
 export const LISTS = ["issues", "comments", "review_comments", "pull_requests", "milestones"] as const;
 export type ListName = (typeof LISTS)[number];
 
-/** Where one list stopped: the tag the remote gave, and the time the next read asks from. */
-export type ListKept = { tag: string | null; since: string | null };
+/**
+ * Where one list stopped: the tag the remote gave, the time the next read asks from, and, after
+ * a read cut short on a list with no "updated since", where the next read carries on. The caller
+ * stores `resume` as it is and hands it back; only the reader reads it.
+ */
+export type ListKept = { tag: string | null; since: string | null; resume?: string | null };
 
 /** What the caller keeps between reads. A lost one costs one read of everything. */
 export type Kept = {
@@ -85,8 +89,8 @@ export type Kept = {
 
 export const NOTHING_KEPT: Kept = { lists: {}, notBefore: null, waitUntil: null };
 
-/** Why the remote was not read. `too_soon` is the floor or the remote's wait, not a failure. */
-export type Cannot = "not_github" | "no_sign_in" | "no_network" | "rate_limited" | "too_soon" | "failed";
+/** Why the remote was not read. `no_client` is a missing `gh`, which is fixed by installing it. `too_soon` is the floor or the remote's wait, not a failure. */
+export type Cannot = "not_github" | "no_client" | "no_sign_in" | "no_network" | "rate_limited" | "too_soon" | "failed";
 
 export type Changes = {
   issues: RemoteIssue[];
@@ -101,7 +105,7 @@ export type ReadAnswer =
       remote: string;
       /** False when nothing changed: every list answered "not modified". */
       changed: boolean;
-      /** Lists cut short by the page limit. Their since-time still moved where it safely could. */
+      /** Lists cut short by the page limit. Each carries on from where it stopped at the next read. */
       incomplete: ListName[];
       /** How many requests counted against the remote's hourly limit. */
       requests: number;

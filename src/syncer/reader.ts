@@ -1,7 +1,7 @@
 // The read: what changed on the remote since the last one. Cheapest first — one conditional
 // request per list, and a list that answers "not modified" costs nothing. Requests go one after
 // another, a wait the remote asks for is handed back to be obeyed, and nothing here throws.
-import { firstPage, isGithubHost, isPullRequestInIssues, itemPath, newestFirst, remoteName, sincePage, toComment, toIssue, toMilestone, toPullRequest } from "./github.ts";
+import { firstPage, isGithubHost, isPullRequestInIssues, itemPath, laterPage, newestFirst, remoteName, sincePage, toComment, toIssue, toMilestone, toPullRequest } from "./github.ts";
 import type { ItemKind, Repo } from "./github.ts";
 import { nextPage, waitAsked } from "./transport.ts";
 import type { Answer, Ask } from "./transport.ts";
@@ -75,7 +75,7 @@ type ListRead = { requests: number } & ({ refusal: Refusal } | { modified: boole
 
 async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, now: Date, pageLimit: number): Promise<ListRead> {
   let requests = 0;
-  const page = async (path: string, tag: string | null): Promise<{ refusal: Refusal } | { notModified: true } | { items: Raw[]; tag: string | null; next: string | null }> => {
+  const page = async (path: string, tag: string | null): Promise<Page> => {
     const answer = await ask({ host: repo.host, path, tag });
     if (answer.sent && answer.status === 304) return { notModified: true };
     requests += 1;
@@ -94,6 +94,11 @@ async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, 
   const fresh = (items: Raw[]): Raw[] => items.filter((item) => before.since === null || String(item.updated_at) >= before.since);
   const latest = (items: Raw[]): string | null => items.reduce<string | null>((max, item) => (typeof item.updated_at === "string" && (max === null || item.updated_at > max) ? item.updated_at : max), before.since);
 
+  if (newestFirst(list) && sincePage(repo, list, null) === null) {
+    const read = await readNewestFirst(repo, list, before, page, pageLimit);
+    return { requests, ...read };
+  }
+
   const first = await page(firstPage(repo, list), before.tag);
   if ("refusal" in first) return { requests, refusal: first.refusal };
   if ("notModified" in first) return { requests, modified: false, complete: true, items: [], keep: before };
@@ -111,22 +116,112 @@ async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, 
   const items: Raw[] = resumable === null ? [...first.items] : [];
   let next: string | null = resumable ?? first.next;
   let pages = 1;
-  let reachedKept = false;
-  while (next !== null && !reachedKept && pages < pageLimit) {
+  while (next !== null && pages < pageLimit) {
     const more = await page(next, null);
     if ("refusal" in more) return { requests, refusal: more.refusal };
     if ("notModified" in more) break;
     items.push(...more.items);
     next = more.next;
     pages += 1;
-    reachedKept = resumable === null && newestFirst(list) && before.since !== null && more.items.some((item) => String(item.updated_at) < before.since!);
   }
-  const complete = next === null || reachedKept;
+  const complete = next === null;
   const kept = fresh(items);
   if (resumable !== null) return { requests, modified: true, complete, items: kept, keep: { tag: complete ? first.tag : null, since: latest(kept) } };
-  // Newest first and cut short leaves older changes unread, so the since-time must not move.
-  // A list in no order of change spans pages its first page's tag does not cover: no tag is kept.
-  return { requests, modified: true, complete, items: kept, keep: { tag: complete && newestFirst(list) ? first.tag : null, since: complete ? latest(kept) : before.since } };
+  // A list in no order of change spans pages its first page's tag does not cover: no tag is
+  // kept, every read lists it all, and a read cut short does not move its since-time.
+  return { requests, modified: true, complete, items: kept, keep: { tag: null, since: complete ? latest(kept) : before.since } };
+}
+
+type Page = { refusal: Refusal } | { notModified: true } | { items: Raw[]; tag: string | null; next: string | null };
+/** Where a read cut short stopped: the last page read, and the time below which all is already read. */
+type Resume = { page: number; until: string | null };
+
+function resumeOf(kept: string | null | undefined): Resume | null {
+  try {
+    const found = JSON.parse(kept ?? "null") as Resume | null;
+    return found !== null && Number.isInteger(found.page) && found.page > 0 ? { page: found.page, until: typeof found.until === "string" ? found.until : null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A list that comes newest change first and takes no "updated since". The head is read from the
+ * first page down to the kept time. A read cut short keeps the page it stopped at, and the next
+ * read carries on below it after reading the new head. A change only ever moves an item to the
+ * front and pushes the others to later pages, so nothing unread slips above the kept page.
+ */
+async function readNewestFirst(
+  repo: Repo,
+  list: ListName,
+  before: ListKept,
+  page: (path: string, tag: string | null) => Promise<Page>,
+  pageLimit: number,
+): Promise<{ refusal: Refusal } | { modified: boolean; complete: boolean; items: Raw[]; keep: ListKept }> {
+  const older = (items: Raw[], than: string | null): boolean => than !== null && items.some((item) => String(item.updated_at) < than);
+  const pending = resumeOf(before.resume);
+  const items: Raw[] = [];
+  let pages = 0;
+  let tag = before.tag;
+  let resume: Resume | null = pending;
+
+  const first = await page(firstPage(repo, list), before.tag);
+  if ("refusal" in first) return { refusal: first.refusal };
+  if ("notModified" in first && pending === null) return { modified: false, complete: true, items: [], keep: before };
+  if (!("notModified" in first)) {
+    tag = first.tag;
+    let current = first;
+    for (;;) {
+      pages += 1;
+      items.push(...current.items);
+      // The head ends at the kept time, or at the list's end, which leaves nothing below to read.
+      if (current.next === null) resume = null;
+      if (current.next === null || older(current.items, before.since)) break;
+      if (pages >= pageLimit) {
+        // The head itself was cut short: carry on below it, down to what was already read.
+        resume = { page: pages, until: pending === null ? before.since : pending.until };
+        break;
+      }
+      const more = await page(current.next, null);
+      if ("refusal" in more) return { refusal: more.refusal };
+      if ("notModified" in more) break;
+      current = more;
+    }
+  }
+
+  // The part an earlier read left: from the page after the one it stopped at. At least one page
+  // of it is read whatever the head took, so every read moves forward.
+  if (pending !== null && resume === pending) {
+    let at = pending.page;
+    let read = 0;
+    for (;;) {
+      const more = await page(laterPage(repo, list, at + 1), null);
+      if ("refusal" in more) return { refusal: more.refusal };
+      if ("notModified" in more) break;
+      at += 1;
+      read += 1;
+      items.push(...more.items);
+      if (more.next === null || older(more.items, pending.until)) {
+        resume = null;
+        break;
+      }
+      resume = { page: at, until: pending.until };
+      if (pages + read >= pageLimit) break;
+    }
+  }
+
+  // An ordinary read drops what is older than the kept time. A read that is catching up returns
+  // all it read: an item seen twice is the same value, and the caller skips what it holds.
+  const catchingUp = pending !== null || resume !== null;
+  const seen = new Set<string>();
+  const kept = items.filter((item) => {
+    const id = String(item.node_id);
+    if (seen.has(id) || (!catchingUp && before.since !== null && String(item.updated_at) < before.since)) return false;
+    seen.add(id);
+    return true;
+  });
+  const since = items.reduce<string | null>((max, item) => (typeof item.updated_at === "string" && (max === null || item.updated_at > max) ? item.updated_at : max), before.since);
+  return { modified: true, complete: resume === null, items: kept, keep: { tag, since, resume: resume === null ? null : JSON.stringify(resume) } };
 }
 
 /** Why an answer is no good, or null when it is one. */

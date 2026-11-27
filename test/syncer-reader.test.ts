@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FLOOR_MS, NOTHING_KEPT, readItem, readRemote } from "../src/syncer/index.ts";
 import type { Answer, Ask, Kept, Request } from "../src/syncer/index.ts";
-import { ghArgs, nextPage, readGhOutput, waitAsked } from "../src/syncer/transport.ts";
+import { askThroughGh, ghArgs, nextPage, readGhOutput, waitAsked } from "../src/syncer/transport.ts";
 
 const recorded = (name: string): string => readFileSync(join(import.meta.dir, "fixtures", "syncer", `${name}.txt`), "utf8");
 const REPO = { host: "github.com", owner: "trustmybot", name: "tmb" };
@@ -53,6 +53,16 @@ describe("reading gh's output", () => {
     expect(readGhOutput("", "To get started with GitHub CLI, please run:  gh auth login\n")).toMatchObject({ sent: false, why: "no_sign_in" });
     expect(readGhOutput("", 'Get "https://api.github.com/repos/a/b": dial tcp: lookup api.github.com: no such host\n')).toMatchObject({ sent: false, why: "no_network" });
     expect(readGhOutput("", "something else\n")).toMatchObject({ sent: false, why: "failed" });
+  });
+
+  test("a machine with no gh says so, apart from no sign-in", async () => {
+    const path = process.env.PATH;
+    process.env.PATH = import.meta.dir;
+    try {
+      expect(await askThroughGh(import.meta.dir)({ host: "github.com", path: "repos/a/b" })).toEqual({ sent: false, why: "no_client", said: "gh is not installed" });
+    } finally {
+      process.env.PATH = path;
+    }
   });
 
   test("only GET is sent, with the kept tag", () => {
@@ -167,18 +177,73 @@ describe("the next read", () => {
     expect(answer.keep.lists.issues!.since! > "2026-11-01T00:00:00Z").toBe(true);
   });
 
-  test("a pull request list cut short keeps its since-time, so no change is skipped", async () => {
-    const { ask } = recordedAsk([["/pulls?", recorded("pulls")], ["/repositories/", recorded("pulls")], ...everyList()]);
-    const answer = await readRemote({ repo: REPO, kept: NOTHING_KEPT, ask, now: NOW, pageLimit: 2 });
+  test("a pull request list cut short carries on from where it stopped, and never starts over", async () => {
+    // Seven pull requests served two to a page, newest change first, as the remote orders them.
+    const one = JSON.parse(recorded("pulls").split("\r\n\r\n")[1]!)[0];
+    let pulls = [1, 2, 3, 4, 5, 6, 7].map((number) => ({ ...one, number, node_id: `PR_${number}`, updated_at: `2026-11-0${number}T00:00:00Z` }));
+    const paths: string[] = [];
+    const ask: Ask = async (request) => {
+      if (!request.path.includes("/pulls?")) return readGhOutput(recorded("not-modified"), "");
+      paths.push(request.path);
+      const sorted = [...pulls].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+      const tag = `"${sorted[0]!.node_id}-${sorted[0]!.updated_at}"`;
+      const page = Number(/[?&]page=(\d+)/.exec(request.path)?.[1] ?? 1);
+      if (page === 1 && request.tag === tag) return readGhOutput(recorded("not-modified"), "");
+      const link = page * 2 < sorted.length ? `Link: <https://api.github.com/repositories/1/pulls?state=all&page=${page + 1}>; rel="next"\r\n` : "";
+      return readGhOutput(`HTTP/2.0 200 OK\r\nEtag: ${tag}\r\n${link}\r\n${JSON.stringify(sorted.slice((page - 1) * 2, page * 2))}`, "");
+    };
+    const read = async (kept: Kept) => {
+      paths.length = 0;
+      const answer = await readRemote({ repo: REPO, kept, ask, now: NOW, force: true, pageLimit: 2 });
+      if (!answer.ok) throw new Error(answer.why);
+      return answer;
+    };
+    const numbers = (answer: { pullRequests: { number: number }[] }) => answer.pullRequests.map((pull) => pull.number);
+
+    const first = await read(NOTHING_KEPT);
+    expect(numbers(first)).toEqual([7, 6, 5, 4]);
+    expect(first.incomplete).toEqual(["pull_requests"]);
+    expect(first.keep.lists.pull_requests).toMatchObject({ since: "2026-11-07T00:00:00Z" });
+    expect(first.keep.lists.pull_requests!.resume).toBeString();
+
+    // A pull request already read changes before the next read: it moves to the front.
+    pulls = pulls.map((pull) => (pull.number === 5 ? { ...pull, updated_at: "2026-11-08T00:00:00Z" } : pull));
+    const second = await read(first.keep);
+    expect(numbers(second)).toContain(5);
+    expect(numbers(second)).toContain(3);
+    expect(numbers(second)).toContain(2);
+    expect(second.incomplete).toEqual(["pull_requests"]);
+    expect(second.keep.lists.pull_requests!.since).toBe("2026-11-08T00:00:00Z");
+
+    // Nothing changed since: the first page is not modified, and the read still finishes the rest.
+    const third = await read(second.keep);
+    expect(numbers(third)).toEqual([1]);
+    expect(paths.map((path) => /[?&]page=(\d+)/.exec(path)?.[1] ?? "1")).toEqual(["1", "4"]);
+    expect(third.requests).toBe(1);
+    expect(third.incomplete).toEqual([]);
+    expect(third.keep.lists.pull_requests!.resume).toBeNull();
+
+    expect(new Set([...numbers(first), ...numbers(second), ...numbers(third)]).size).toBe(7);
+    const fourth = await read(third.keep);
+    expect(fourth).toMatchObject({ changed: false, requests: 0, pullRequests: [] });
+  });
+
+  test("an ordinary read of pull requests stops at the kept time", async () => {
+    const { ask, asked } = recordedAsk([["/pulls?", recorded("pulls")], ["", recorded("not-modified")]]);
+    const kept: Kept = { lists: { pull_requests: { tag: "old", since: "2026-11-27T02:08:57Z" } }, notBefore: null, waitUntil: null };
+    const answer = await readRemote({ repo: REPO, kept, ask, now: NOW });
     if (!answer.ok) throw new Error(answer.why);
-    expect(answer.incomplete).toEqual(["pull_requests"]);
-    expect(answer.keep.lists.pull_requests).toEqual({ tag: null, since: null });
+    expect(asked.filter((request) => request.path.includes("/pulls?"))).toHaveLength(1);
+    expect(answer.pullRequests).toEqual([]);
+    expect(answer.incomplete).toEqual([]);
+    expect(answer.keep.lists.pull_requests).toMatchObject({ since: "2026-11-27T02:08:57Z", resume: null });
   });
 });
 
 describe("a remote that cannot be read", () => {
   const cases: [string, Parameters<typeof readRemote>[0]["repo"], string | Answer, object][] = [
     ["no GitHub origin", null, recorded("not-modified"), { cannot: "not_github" }],
+    ["no gh on the machine", REPO, { sent: false, why: "no_client", said: "gh is not installed" }, { cannot: "no_client" }],
     ["no sign-in", REPO, { sent: false, why: "no_sign_in", said: "gh auth login" }, { cannot: "no_sign_in" }],
     ["no network", REPO, { sent: false, why: "no_network", said: "no such host" }, { cannot: "no_network" }],
     ["a host that is not GitHub", { ...REPO, host: "gitlab.com" }, recorded("not-found"), { cannot: "not_github" }],

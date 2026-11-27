@@ -14,7 +14,7 @@ export type Request = {
 
 export type Answer =
   | { sent: true; status: number; headers: Record<string, string>; body: string }
-  | { sent: false; why: "no_sign_in" | "no_network" | "failed"; said: string };
+  | { sent: false; why: "no_client" | "no_sign_in" | "no_network" | "failed"; said: string };
 
 /** Asks the remote one thing. Tests pass their own, which answers from recordings. */
 export type Ask = (request: Request) => Promise<Answer>;
@@ -35,7 +35,7 @@ export function askThroughGh(cwd: string): Ask {
         { cwd, encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
         (error, stdout, stderr) => {
           const code = error === null ? null : (error as NodeJS.ErrnoException).code;
-          if (code === "ENOENT") return resolve({ sent: false, why: "no_sign_in", said: "gh is not installed" });
+          if (code === "ENOENT") return resolve({ sent: false, why: "no_client", said: "gh is not installed" });
           if (error !== null && error.killed) return resolve({ sent: false, why: "no_network", said: "gh timed out" });
           resolve(readGhOutput(stdout, stderr));
         },
