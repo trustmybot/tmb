@@ -308,7 +308,16 @@ function stateFolderCheck(env: DoctorEnv): Finding {
   try {
     accessSync(dir, constants.R_OK | constants.W_OK | (env.platform === "win32" ? 0 : constants.X_OK));
     return finding("state folder", { status: "ok", summary: `${dir} can be read and written` });
-  } catch {
+  } catch (error) {
+    // EPERM, not EACCES: the folder's own permissions allow it, and something around this
+    // process, such as a sandbox, denies it. chmod would change nothing.
+    if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      return finding("state folder", {
+        status: "fail",
+        summary: `${dir} cannot be read and written from here: its permissions allow it, so something around this process, such as a sandbox, denies it`,
+        fix: { say: "run tmb outside that sandbox, or allow it to write the folder" },
+      });
+    }
     return finding("state folder", { status: "fail", summary: `${dir} cannot be read and written by you`, fix: { say: repair } });
   }
 }

@@ -1,7 +1,8 @@
 // trustmybot/tmb#160: `tmb doctor` checks the machine and the project, reads only, and with
 // `--fix` does each fix the Human says yes to. Each check here is broken once and found.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import * as fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -269,6 +270,33 @@ describe("the machine", () => {
     const [others] = of(runChecks(env({ versionOf: (file) => `${path.basename(file)} 9.9.9 (x)` })), "other programs");
     expect(others!.status).toBe("ok");
     expect(others!.details).toEqual([`tmb-1.0.0 9.9.9 at ${path.join(binDir, "tmb-1.0.0")}`, `tmb-rc 9.9.9 at ${path.join(binDir, "tmb-rc")}`]);
+  });
+
+  test("a state folder a sandbox denies says so instead of asking for chmod", () => {
+    const spy = spyOn(fs, "accessSync").mockImplementation(() => {
+      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    });
+    try {
+      const [state] = of(runChecks(env()), "state folder");
+      expect(state!.status).toBe("fail");
+      expect(state!.summary).toContain("such as a sandbox");
+      expect(state!.fix!.say).not.toContain("chmod");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("a state folder its own permissions deny asks for chmod", () => {
+    if (process.platform === "win32" || process.getuid?.() === 0) return;
+    mkdirSync(stateDir, { recursive: true });
+    chmodSync(stateDir, 0o500);
+    try {
+      const [state] = of(runChecks(env()), "state folder");
+      expect(state!.status).toBe("fail");
+      expect(state!.fix!.say).toContain("chmod u+rwx");
+    } finally {
+      chmodSync(stateDir, 0o700);
+    }
   });
 
   test("a state folder that is a file fails", () => {
