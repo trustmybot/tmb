@@ -100,7 +100,7 @@ flowchart TD
 
 ### Safe close
 
-**Dropping the per-task review removes one gate and nothing else.** The close still refuses on its checks ([3_TASKS.md](3_TASKS.md#31-code-task)), and then the task folds.
+**Dropping the per-task review removes one gate and nothing else.** The close still refuses on its checks ([3_TASKS.md](3_TASKS.md#31-task)), and then the task folds.
 
 ```mermaid
 flowchart TD
@@ -140,7 +140,7 @@ flowchart TD
 
 - **A group per task.** The branch's brief lists each closed task's commits in the order they landed. The reviewer reads each group against its spec before it reads what the tasks break together.
 - **Whole diff.** The review reads what the feature branch adds to the base branch.
-- **Docs tasks are in the same review** ([3_TASKS.md](3_TASKS.md#32-non-code-task)).
+- **Docs tasks are in the same review** ([3_TASKS.md](3_TASKS.md#docs-task)).
 - **The planner judges the design fit once,** on the whole branch after the reviewer, not at each close.
 
 - **Example 1.** A later task undid an earlier task's change. That change is never reviewed.
@@ -257,6 +257,6 @@ flowchart TD
 - **Example 3.** The Human waives the review of one task. Only the Human can, and a waiver covers one task ([3_TASKS.md](3_TASKS.md#task-lifecycle)).
 - **Edge case.** The base branch moved before the first push. The engine rebases the reviewed commit once and runs the checks again ([3_GIT.md](3_GIT.md#rebasing-a-reviewed-task)).
 
-The push gate holds here too ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)). Every failure path is in [3_TASKS.md](3_TASKS.md#34-retry-and-escalation).
+The push gate holds here too ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)). Every failure path is in [3_TASKS.md](3_TASKS.md#retry-and-escalation).
 
 **Planned (trustmybot/tmb#442).** The review queue: the tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel.

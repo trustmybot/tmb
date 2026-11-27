@@ -1,6 +1,6 @@
 # Extending the team
 
-What a project adds to its team: skills, cheatcodes (published capabilities), created agents and consultants. This page holds every case of flows 4.1 to 4.4 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [ROLES.md](../architecture/ROLES.md).
+What a project adds to its team: skills, cheatcodes (published capabilities), created agents and consultants. This page holds every case of flows 4.1 and 4.2 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [ROLES.md](../architecture/ROLES.md).
 
 tmb ships three roles: planner, worker and reviewer. Everything else on this page is **Planned**: tmb's own skills (trustmybot/tmb#436), cheatcodes (trustmybot/tmb#112), and created agents, project skills and consultants (trustmybot/tmb#437).
 
@@ -14,10 +14,10 @@ flowchart LR
 | Section | Flow | Adds |
 |---|---|---|
 | [tmb's own skills](#tmbs-own-skills) | | A procedure a shipped role loads when needed |
-| [Skills](#skills) | 4.3 Skill creation | A project skill |
+| [Skills](#skills) | 4.2 Creating an agent or a skill | A project skill |
 | [Cheatcodes](#cheatcodes) | 4.1 Cheatcode lifecycle | A published skill, tool server or host plugin |
-| [Created agents](#created-agents) | 4.2 Agent creation | A project agent |
-| [Consultants](#consultants) | 4.4 Consultant invocation | A second opinion |
+| [Created agents](#created-agents) | 4.2 Creating an agent or a skill | A project agent |
+| [Consultants](#consultants) | 4.2 Creating an agent or a skill | A second opinion |
 
 ## Nothing is written without the Human's approval
 
@@ -52,19 +52,19 @@ The procedures in tmb's flows that a skill would hold. **The whole table is Plan
 | Onboarding: the base branch, the checks, the review mode question, the project's areas | Planner | A session starts in a project whose settings are empty (flow 2.1) |
 | Writing a spec and scoping it from the code graph | Planner | Before each code task (flow 3.1) |
 | Agent search: several word queries, then follow the code graph | Planner | It must find where a thing lives or what depends on it (flow 2.2) |
-| Doc review | Planner, reviewer | Grading a docs or prompts change (flow 3.2) |
-| Retry and escalation | Planner | A check fails at close, a review fails, a fold or rebase conflicts, or a run never ended (flow 3.4) |
+| Doc review | Planner, reviewer | Grading a docs or prompts change ([3_TASKS.md](3_TASKS.md#docs-task)) |
+| Retry and escalation | Planner | A check fails at close, a review fails, a fold or rebase conflicts, or a run never ended ([3_TASKS.md](3_TASKS.md#retry-and-escalation)) |
 | Pull request comment triage | Planner | Review comments reach a pull request tmb opened (flow 3.5; depends on trustmybot/tmb#70) |
-| Running parallel sessions | Planner | The Human asks for several independent streams of work (flow 3.8) |
+| Running parallel sessions | Planner | The Human asks for several independent streams of work ([ROLES.md](../architecture/ROLES.md#parallel-lanes)) |
 | Truest mode: a review and a pull request per task | Planner | A task is in a repo set to truest (flow 3.10) |
 | Installing a cheatcode | Planner | A task needs a capability the project lacks (flow 4.1; depends on trustmybot/tmb#112) |
-| Creating an agent or a skill | Planner | Routing hits a role with no agent, or a recurring pattern needs encoding (flows 4.2 and 4.3) |
+| Creating an agent or a skill | Planner | Routing hits a role with no agent, or a recurring pattern needs encoding (flow 4.2) |
 | The review procedure: what to read, what to probe, findings and the verdict | Reviewer | It is started on a feature branch or on a task's commit (flows 3.9 and 3.10) |
 | Reporting a tmb bug | Planner | tmb itself breaks and the feedback program is on (flow 5.1) |
 
 ## Skills
 
-**Planned (trustmybot/tmb#437).** Flow 4.3. A recurring pattern becomes a project skill: the planner drafts it, the Human approves it, and it is attached to a role.
+**Planned (trustmybot/tmb#437).** Flow 4.2. A recurring pattern becomes a project skill: the planner drafts it, the Human approves it, and it is attached to a role.
 
 ```mermaid
 flowchart TD
@@ -230,7 +230,7 @@ flowchart TD
 
 ## Consultants
 
-**Planned (trustmybot/tmb#437).** Flow 4.4. A consultant is one kind of created agent: it advises, and never decides or writes workflow state ([ROLES.md](../architecture/ROLES.md)).
+**Planned (trustmybot/tmb#437).** Flow 4.2. A consultant is one kind of created agent: it advises, and never decides or writes workflow state ([ROLES.md](../architecture/ROLES.md)).
 
 ```mermaid
 flowchart TD

@@ -1,6 +1,6 @@
 # Agent task handling
 
-Flows 3.1 to 3.5 of [FLOWS.md](FLOWS.md): a task from the Human's ask to the merge, how it fails, its states and how to debug a stuck one. The review and the pull request are in [3_WORKFLOW.md](3_WORKFLOW.md). Branches, worktrees and the push gate are in [3_GIT.md](3_GIT.md).
+Flows 3.1 and 3.5 of [FLOWS.md](FLOWS.md): a task from the Human's ask to the merge, how it fails, its states and how to debug a stuck one. The review and the pull request are in [3_WORKFLOW.md](3_WORKFLOW.md). Branches, worktrees and the push gate are in [3_GIT.md](3_GIT.md).
 
 ```mermaid
 flowchart LR
@@ -11,7 +11,7 @@ flowchart LR
     E --> F["Checkpoint: the review"]
     F --> G["Checkpoint: the push gate"]
     G --> H["Human merges"]
-    E -. fails .-> X["3.4: back to its owner"]
+    E -. fails .-> X["Back to its owner"]
     F -. fails .-> X
     G -. fails .-> X
 ```
@@ -29,7 +29,7 @@ tmb checks the outcome at these three checkpoints and watches no step in between
 | **Milestone** | A group of issues the Human wants to judge as a whole, such as a first usable build |
 
 - **Example 1.** The Human asks for a light and a dark theme. That goal is one issue. The planner splits it into three tasks: the colour tokens, the toggle, and saving the choice.
-- **Example 2.** A task is one of two kinds. A worker implements a **code task** ([3.1](#31-code-task)). The planner writes a **docs task**, a docs or prompts change, itself ([3.2](#32-non-code-task)). Both end in the same review, push gate and retry paths.
+- **Example 2.** A task is one of two kinds. A worker implements a **code task** ([3.1](#31-task)). The planner writes a **docs task**, a docs or prompts change, itself ([Docs task](#docs-task)). Both end in the same review, push gate and retry paths.
 - **Edge case.** The review mode decides where a task's review happens, and a task keeps the mode it was started in ([3_WORKFLOW.md](3_WORKFLOW.md)).
 
 ## Quality layers
@@ -49,7 +49,7 @@ flowchart LR
 - **Example 2.** The reviewer records a finding. It goes back to the author. A design misfit goes back to the planner's spec.
 - **Edge case.** A later step or CI catches a cheap check. That is a leak, and it points upstream: the fix is to move the check into the step that owns it. A leak rate per step as the health metric is Planned (trustmybot/tmb#439).
 
-## 3.1 Code task
+## 3.1 Task
 
 **Any change that touches code is a code task. The planner plans and judges, a worker implements, the reviewer reviews and the Human merges.** The engine does every git step ([ENGINE.md](../architecture/ENGINE.md#containment)).
 
@@ -68,7 +68,7 @@ flowchart LR
 
 - **Example 1.** A check fails. The close is refused and names the check.
 - **Example 2.** The worktree holds uncommitted work, or the task has no commit past where it was cut. The close is refused.
-- **Example 3.** The fold conflicts ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)), or a docs task's commit holds a file that is not a docs type ([3.2](#32-non-code-task)). The close is refused.
+- **Example 3.** The fold conflicts ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)), or a docs task's commit holds a file that is not a docs type ([Docs task](#docs-task)). The close is refused.
 - **Edge case.** A refused close changes nothing. The task stays open, and the feature branch and the worktree stay as they were.
 
 **Checks never fail open.**
@@ -91,7 +91,7 @@ flowchart LR
 
 **Planned (trustmybot/tmb#439) at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
 
-## 3.2 Non-code task
+## Docs task
 
 **A docs task changes docs or prompts and changes no behaviour. The planner writes it, in the worker's place, through 3.1's steps.** These steps differ:
 
@@ -105,11 +105,11 @@ flowchart LR
 - **Example 1.** A check fails at close. The task stays open: the planner fixes and closes again.
 - **Example 2.** The commit touches a file that is not a docs type. The close is refused and names the file. The code part becomes a code task for a worker.
 - **Example 3.** The reviewer finds the docs task changed behaviour. That is a blocking finding: that part is redone as a code task.
-- **Edge case.** A fold conflict, a rebase conflict, or a failing check after a rebase goes as for a code task ([3.4](#34-retry-and-escalation)).
+- **Edge case.** A fold conflict, a rebase conflict, or a failing check after a rebase goes as for a code task ([Retry and escalation](#retry-and-escalation)).
 
 **Planned (trustmybot/tmb#436): the doc-review skill.** The author's self-check and the reviewer's matching checklist.
 
-## 3.3 Push gate
+## Push gate
 
 **After the close, a task of either kind passes two more checkpoints: the review and the push gate. A commit leaves only when a pass or a Human waiver covers it.** Each checkpoint has its own page.
 
@@ -123,7 +123,7 @@ flowchart LR
 - **Example 2.** In truest mode the reviewer's verdict is on the task's own commit.
 - **Edge case.** A push carries a commit that no pass or waiver covers. git's pre-push hook refuses the push.
 
-## 3.4 Retry and escalation
+## Retry and escalation
 
 **A failure goes back to its owner. Nothing waits for a timer: tmb runs only when something calls it.**
 
@@ -173,7 +173,7 @@ flowchart TD
     A["Trigger: sync with the remote, or the Human points at the pull request"] --> B["Each comment stored once on the linked issue"]
     B --> C{"Would it change the issue's intent or scope?"}
     C -- yes --> D["Recorded on the issue: the planner asks the Human"]
-    C -- no --> E["Grouped into fix tasks through 3.1 or 3.2, on the same branch"]
+    C -- no --> E["Grouped into fix tasks through 3.1, on the same branch"]
     E --> F["New tip reviewed or waived, then the same pull request is updated"]
 ```
 
@@ -210,7 +210,7 @@ stateDiagram-v2
 | ready | Covered by a pass or a waiver in a repo with no remote, waiting for the Human's local merge |
 | closed | Final. An agile task is folded, with its mode recorded; the review or waiver is on the feature branch. A truest task has its pull request |
 | dropped | Final, with a reason. The task that replaces it names it |
-| failed | **Planned (trustmybot/tmb#438).** A task whose worker stopped on a broken environment or a contradictory spec ([3.4](#34-retry-and-escalation)) |
+| failed | **Planned (trustmybot/tmb#438).** A task whose worker stopped on a broken environment or a contradictory spec ([Retry and escalation](#retry-and-escalation)) |
 
 **Closed and dropped are final.**
 

@@ -1,6 +1,6 @@
 # First contact
 
-Flows 2.1 and 2.3 in [FLOWS.md](FLOWS.md): how tmb learns a project's shape, its policy and [its checks](#the-repos-checks). Init comes first and asks nothing. The planner's onboarding follows at the first session.
+Flow 2.1 in [FLOWS.md](FLOWS.md): how tmb learns a project's shape, its policy and [its checks](#the-repos-checks). Init comes first and asks nothing. The planner's onboarding follows at the first session.
 
 ```mermaid
 flowchart TD

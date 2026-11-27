@@ -52,7 +52,7 @@ Agents the project creates are Planned (trustmybot/tmb#437) ([Agents a project c
 | **Plans and routes** | Records the goal as an issue, scopes the work from the code graph, names the feature branch, writes the task spec, and asks the engine to start the task. |
 | **Judges, re-checks nothing** | After the review passes it judges only whether the change fits the design, and whether the files changed outside the spec should have been touched. It runs no check again and reviews no diff again. |
 | **Asks for the pull request** | Reads the verdict from the record, never from reply text, and asks the engine to push and open the pull request. It never pushes or opens one by hand. |
-| **Writes only docs tasks** | A change to docs or prompts that changes no behaviour is a docs task. The planner writes it itself, in that task's worktree. The close refuses one that touches a file that is not a docs type ([3_TASKS.md](../flows/3_TASKS.md#32-non-code-task)). |
+| **Writes only docs tasks** | A change to docs or prompts that changes no behaviour is a docs task. The planner writes it itself, in that task's worktree. The close refuses one that touches a file that is not a docs type ([3_TASKS.md](../flows/3_TASKS.md#docs-task)). |
 | **Keeps the code graph's knowledge** | Records the flows and rules that span files, and proposes the project's areas to the Human. Only the planner writes or removes an area. |
 | **Talks to the Human** | Only the planner asks the Human questions and reports to them. It raises main-folder changes as a report and never puts a file back itself. |
 | **Never takes the Human's steps** | Setting the review mode, waiving a review and removing tmb are the Human's alone. The planner stores the Human's answer and never picks one. |
@@ -131,7 +131,7 @@ flowchart TD
 
 **tmb keeps no lane record and manages no lanes. It gives every session the same record, and its tools tell the planner what it needs to stay out of another session's way.**
 
-A lane is one session with the work it took. Several sessions working in one project at once is flow 3.8, charted in [FLOWS.md](../flows/FLOWS.md). The host starts sessions, carries messages between them and lists them.
+A lane is one session with the work it took. The host starts sessions, carries messages between them and lists them.
 
 - **Example 1.** Two sessions each start a task. Each task has its own branch and worktree, and both read the same open work at session start.
 - **Example 2.** A new task's spec names a file that another open task's spec also names. The task still starts, and the answer names the other task.

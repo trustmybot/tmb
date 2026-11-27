@@ -1,6 +1,6 @@
 # The list of tmb's flows
 
-Every flow of tmb, in the order it runs. Each flow has one line in the table, a state, a link to the page that holds its steps, and one chart of its ideal case.
+Every flow of tmb, in the order it runs. A flow is a sequence with its own start, its own actors and its own end. Each flow has one line in the table, a state, a link to the page that holds its steps, and one chart of its ideal case.
 
 ```mermaid
 flowchart LR
@@ -18,8 +18,9 @@ The three checkpoints are in [ENGINE.md](../architecture/ENGINE.md), and who own
 
 **This page decides which flows tmb has. A pull request that changes a flow also changes that flow's line here and its steps page.**
 
-- **Example 1.** A pull request changes what the push gate requires. It also edits the line of flow 3.3 in the table below, and the steps in [3_TASKS.md](3_TASKS.md).
+- **Example 1.** A pull request changes what a task close requires. It also edits the line of flow 3.1 in the table below, and the steps in [3_TASKS.md](3_TASKS.md).
 - **Example 2.** A pull request adds a flow. It adds the flow's line and its chart here, and its steps to a steps page.
+- **Example 3.** A checkpoint, a mode, a command or a workspace shape is not a flow, so it has no line here. The push gate and multi-repo workspaces are sections of [3_GIT.md](3_GIT.md), a task's failures of [3_TASKS.md](3_TASKS.md#retry-and-escalation), a project with no remote of [3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote), cleanup of [1_INSTALL.md](1_INSTALL.md#debugging), parallel lanes of [ROLES.md](../architecture/ROLES.md#parallel-lanes) and the unattended run of [ENGINE.md](../architecture/ENGINE.md#unattended-mode).
 - **Edge case.** A flow's line here and its steps page disagree. The question goes to the Human, and both are changed to agree ([docs/README.md](../README.md#when-two-things-disagree)).
 
 ## 2. The ideal case is here, every other case is in the steps page
@@ -28,21 +29,21 @@ The three checkpoints are in [ENGINE.md](../architecture/ENGINE.md), and who own
 
 - **Example 1.** The chart of flow 1.2 shows an update that is found, verified and installed. What happens otherwise is in [1_INSTALL.md](1_INSTALL.md#upgrade).
 - **Example 2.** No other page repeats a chart from this page. A steps page starts where the ideal case ends.
-- **Edge case.** The steps of flows 3.8 and 3.12 are in an architecture page, because a part owns them more than a sequence does. Their lines link there.
+- **Edge case.** Group 5 has no page of its own. The steps of flow 5.1 are in [1_INSTALL.md](1_INSTALL.md#bug-reports), and its line links there.
 
 ## 3. A flow keeps its number
 
 **Flows are grouped by when they run and numbered inside their group. Other pages cite a flow by its number, so the number does not change.**
 
 - **Example 1.** "Flow 1.1" is Install and session start: group 1, first flow.
-- **Example 2.** [ROLES.md](../architecture/ROLES.md#parallel-lanes) writes "flow 3.8" to point at parallel lanes.
-- **Edge case.** A flow is removed. The flows after it keep their numbers, so every citation still points at the same flow.
+- **Example 2.** [3_WORKFLOW.md](3_WORKFLOW.md) writes "flows 3.9 and 3.10" to point at the two review modes.
+- **Edge case.** A flow is removed. The flows after it keep their numbers, so every citation still points at the same flow. Its number stays unused: there is no flow 3.2.
 
 ## 4. An unbuilt flow is marked Planned
 
 **A flow that is designed but not built has "Planned" and its GitHub issue in the State column. A built flow says "Built" and names no issue.**
 
-- **Example 1.** Flow 3.1, the code task, is Built.
+- **Example 1.** Flow 3.1, the task, is Built.
 - **Example 2.** Flow 3.5, Pull request comment triage, is Planned (trustmybot/tmb#70).
 - **Edge case.** A whole group can be Planned: every flow of group 4 is.
 
@@ -60,25 +61,14 @@ The complete list. "Steps" links the page that holds every case of the flow.
 |---|---|---|---|---|
 | 1.1 | [Install and session start](#11-install-and-session-start) | The Human installs tmb in one step and runs `tmb init` once per project. Every session start then briefs the planner from the record. | Built | [1_INSTALL.md](1_INSTALL.md) |
 | 1.2 | [Updates and channels](#12-updates-and-channels) | An install follows one channel and updates itself. A running session keeps its build while a task is open. | Built | [1_INSTALL.md](1_INSTALL.md#upgrade) |
-| 2.1 | [First contact](#21-first-contact) | At the first session with empty settings, the planner applies the base branch and the checks it recommends, and asks the Human for the review mode. No task starts before the answer. | Built | [2_ONBOARD.md](2_ONBOARD.md) |
+| 2.1 | [First contact](#21-first-contact) | At the first session with empty settings, the planner applies the base branch and the checks tmb suggests from the repo's files, and asks the Human for the review mode. No task starts before the answer. | Built | [2_ONBOARD.md](2_ONBOARD.md) |
 | 2.2 | [Index and code-graph refresh](#22-index-and-code-graph-refresh) | `tmb init` or `tmb index` builds a code graph per repo from its base branch. A lookup that finds the graph behind brings it forward first. | Built | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) |
-| 2.3 | [Environment profile](#23-environment-profile) | tmb suggests a repo's checks from the files its stack leaves behind. The planner applies them, or the Human replaces them. | Built | [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) |
-| 3.1 | [Code task](#31-code-task) | The planner writes the spec, a worker implements, the engine runs the checks at close, the reviewer reviews, and the Human merges. | Built | [3_TASKS.md](3_TASKS.md) |
-| 3.2 | [Docs task](#32-docs-task) | The planner writes a docs or prompts change itself, in a task marked docs. It passes the same checks and the same review. | Built | [3_TASKS.md](3_TASKS.md) |
-| 3.3 | [Push gate](#33-push-gate) | A push is refused unless the record holds what the repo's review mode requires for its commits: a reviewer's pass or the Human's waiver. | Built | [3_TASKS.md](3_TASKS.md) |
-| 3.4 | [Retry and escalation](#34-retry-and-escalation) | A failed check, a review fail or a conflict sends the work back to its author without waiting on the Human. | Built | [3_TASKS.md](3_TASKS.md) |
+| 3.1 | [Task](#31-task) | The planner writes the spec, a worker implements, the engine runs the checks at close, the reviewer reviews, and the Human merges. A docs task is the same, written by the planner. | Built | [3_TASKS.md](3_TASKS.md) |
 | 3.5 | [Pull request comment triage](#35-pull-request-comment-triage) | A sync with the remote brings review comments into the record, and the planner sorts them into tasks on the pull request's branch. | Planned (trustmybot/tmb#70) | [3_TASKS.md](3_TASKS.md) |
-| 3.6 | [Multi-repo workspaces](#36-multi-repo-workspaces) | `tmb init` in a folder that holds several repos gives them one record. A feature or a task names its repo, and every later step runs there. | Built | [3_GIT.md](3_GIT.md) |
-| 3.7 | [Bulk cleanup](#37-bulk-cleanup) | `tmb doctor` lists what tmb left on disk, and `tmb doctor --fix` removes each item on the Human's yes. | Built | [1_INSTALL.md](1_INSTALL.md#debugging) |
-| 3.8 | [Parallel lanes](#38-parallel-lanes) | Several sessions work in one project at once, each from the shared record, with a branch and a worktree per task. tmb keeps no lane record. | Built | [ROLES.md](../architecture/ROLES.md#parallel-lanes) |
 | 3.9 | [Agile mode](#39-agile-mode) | Tasks close on their checks and fold into one feature branch per milestone. The branch is reviewed once and merges as one pull request. | Built | [3_WORKFLOW.md](3_WORKFLOW.md) |
 | 3.10 | [Truest mode](#310-truest-mode) | Each task is cut from the base branch, is reviewed after its checks pass, and gets its own pull request. | Built | [3_WORKFLOW.md](3_WORKFLOW.md) |
-| 3.11 | [Project with no remote](#311-project-with-no-remote) | Nothing is pushed and no pull request opens. Reviewed work is recorded as ready, and the Human merges it locally. | Built | [3_WORKFLOW.md](3_WORKFLOW.md), [3_GIT.md](3_GIT.md) |
-| 3.12 | [Unattended run](#312-unattended-run) | A run with no one to answer applies the planner's defaults and records each as a decision. The checkpoints allow and refuse as in a normal session. | Built | [ENGINE.md](../architecture/ENGINE.md#unattended-mode) |
-| 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | The planner finds and vets a published skill for a capability gap, and the Human approves each install. | Planned (trustmybot/tmb#112) | [4_EXTENDING.md](4_EXTENDING.md) |
-| 4.2 | [Agent creation](#42-agent-creation) | The planner drafts an agent for a role the project has none for, and the Human approves it. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
-| 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern becomes a project skill: the planner drafts, the Human approves. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
-| 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion. A consultant advises, the planner reports, and the Human decides. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
+| 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | The planner finds and vets a published skill, tool server or host plugin for a capability gap, and the Human approves each install. | Planned (trustmybot/tmb#112) | [4_EXTENDING.md](4_EXTENDING.md) |
+| 4.2 | [Creating an agent or a skill](#42-creating-an-agent-or-a-skill) | The planner drafts an agent or a project skill, and the Human approves it. A consultant is such an agent: it advises, and the Human decides. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
 | 5.1 | [Bug report](#51-bug-report) | When tmb itself breaks, or on `tmb feedback`, the Human reads a cleaned draft. Nothing is sent without the Human's yes. | Built | [1_INSTALL.md](1_INSTALL.md#bug-reports) |
 
 ## Ideal cases
@@ -113,7 +103,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     A["Session start: settings are empty"] --> B["Engine tells the planner what it found in the project"]
-    B --> C["Planner applies the base branch and checks it recommends, and shows them"]
+    B --> C["Planner applies the base branch and the checks tmb suggests, and shows them"]
     C --> D["Planner asks the Human for the review mode, agile recommended"]
     D --> E["Human's answer stored, with who chose it"]
     E --> F["Tasks can start"]
@@ -129,66 +119,17 @@ flowchart LR
     D --> E["The lookup is answered from the fresh graph"]
 ```
 
-### 2.3 Environment profile
+### 3.1 Task
 
 ```mermaid
 flowchart LR
-    A["Planner needs a repo's checks"] --> B["Engine suggests them from the repo's own files"]
-    B --> C["Planner applies them, or the Human replaces them"]
-    C --> D["Stored as the repo's checks"]
-    D --> E["Run at every task close"]
-```
-
-### 3.1 Code task
-
-```mermaid
-flowchart LR
-    A["Human asks"] --> B["Planner grounds it and records the issue"]
+    A["Human asks"] --> B["Planner records the issue, then grounds it"]
     B --> C["Planner writes the spec; engine cuts the task's branch and worktree"]
-    C --> D["Host starts a worker; it implements and closes"]
+    C --> D["A worker implements and closes; a docs task the planner writes itself"]
     D --> E["Checks pass on the task's commit"]
     E --> F["Review, per the review mode: 3.9 or 3.10"]
-    F --> G["3.3 Push gate: pass; pull request opens"]
+    F --> G["Push gate passes; pull request opens"]
     G --> H["Human merges"]
-```
-
-### 3.2 Docs task
-
-```mermaid
-flowchart LR
-    A["Human asks"] --> B["Planner grounds it and records the issue"]
-    B --> C["Planner starts a docs task"]
-    C --> D["Planner edits and closes"]
-    D --> E["Checks pass; only docs file types changed"]
-    E --> F["Review, per the review mode: 3.9 or 3.10"]
-    F --> G["3.3 Push gate: pass; pull request opens"]
-    G --> H["Human merges"]
-```
-
-### 3.3 Push gate
-
-```mermaid
-flowchart LR
-    A["Reviewer records a pass, or the Human a waiver"] --> B["Commit marked on GitHub"]
-    A --> C["A push, tmb's own or typed by hand"]
-    C --> D["git's pre-push hook asks the engine"]
-    D --> E{"Record covers every commit?"}
-    E -- yes --> F["Push goes"]
-    E -- no --> G["Refused, with the reason"]
-```
-
-### 3.4 Retry and escalation
-
-```mermaid
-flowchart LR
-    A["A check fails at close"] --> B["Close refused; names the check; task stays open"]
-    C["Reviewer fails the work"] --> D["Task reopens, or the planner starts fix tasks"]
-    E["A fold or a rebase conflicts"] --> F["Step undone; names the files"]
-    B --> G["The author reworks: worker, or the planner on a docs task"]
-    D --> G
-    F --> G
-    G --> H["Close again, then review again"]
-    G -. wrong approach .-> I["Task dropped with a reason; a new task replaces it"]
 ```
 
 ### 3.5 Pull request comment triage
@@ -197,43 +138,8 @@ flowchart LR
 flowchart LR
     A["Comments reach a pull request tmb opened"] --> B["Sync brings each into the record once"]
     B --> C["Planner groups the task-worthy ones"]
-    C --> D["3.1 or 3.2 per group, on the pull request's branch"]
+    C --> D["A fix task per group, on the pull request's branch"]
     D --> E["New tip reviewed, then pushed to the same pull request"]
-```
-
-### 3.6 Multi-repo workspaces
-
-```mermaid
-flowchart LR
-    A["tmb init in a folder that holds repos"] --> B["Every top-level folder recorded: repo, exempt, or not a repo"]
-    B --> C["Per managed repo: base branch, checks, optional review mode"]
-    B --> D["Per managed repo: pre-push hook and its own code graph"]
-    C --> E["A feature or task names its repo"]
-    D --> E
-    E --> F["Every later step runs in that repo"]
-```
-
-### 3.7 Bulk cleanup
-
-```mermaid
-flowchart LR
-    A["tmb doctor"] --> B["Lists leftovers, one line each"]
-    B --> C["tmb doctor --fix asks about each"]
-    C -- yes --> D["Removed"]
-    C -- no --> E["Kept"]
-    A -- "a tracked repo file" --> F["A task, as in 3.1 or 3.2"]
-```
-
-### 3.8 Parallel lanes
-
-```mermaid
-flowchart LR
-    A["Human asks for parallel work"] --> B["Planner splits it into independent issues"]
-    B --> C["Host starts one session per stream"]
-    C --> D["Each session's planner resumes from the shared record"]
-    D --> E["Each runs 3.1 or 3.2 on its own issues, a worktree per task"]
-    E --> F["Planner is told which open tasks share a file"]
-    F --> G["Pull requests merge like any other; git settles a clash"]
 ```
 
 ### 3.9 Agile mode
@@ -267,28 +173,6 @@ flowchart LR
     G -.-> C
 ```
 
-### 3.11 Project with no remote
-
-```mermaid
-flowchart LR
-    A["Review passes, or the Human waives it"] --> B["Pull request step records the work as ready"]
-    B --> C["Human gets the local merge command"]
-    C --> D["Human merges into the local base branch"]
-    D --> E["tmb sees the base branch holds the work"]
-    E --> F["Recorded as merged, or the task closed"]
-```
-
-### 3.12 Unattended run
-
-```mermaid
-flowchart LR
-    A["Run started in unattended mode"] --> B["Session start puts one instruction first: apply your defaults and name each"]
-    B --> C["Planner answers its own questions with its recommendation"]
-    C --> D["Each default recorded as a decision on its issue"]
-    D --> E["Work goes on; the answer names the defaults"]
-    C -. "no safe default" .-> F["Planner stops and says why"]
-```
-
 ### 4.1 Cheatcode lifecycle
 
 ```mermaid
@@ -296,35 +180,17 @@ flowchart LR
     A["Capability gap"] --> B["Search registries"]
     B --> C["Vet the pick"]
     C --> D["Human approves"]
-    D --> E["Skill given to a role"]
+    D --> E["Installed and recorded"]
 ```
 
-### 4.2 Agent creation
+### 4.2 Creating an agent or a skill
 
 ```mermaid
 flowchart LR
-    A["Role with no agent"] --> B["Up to three questions"]
-    B --> C["Tailored draft"]
+    A["A role with no agent, a recurring pattern, or a second opinion asked for"] --> B["Up to three questions"]
+    B --> C["Planner drafts the agent or the skill"]
     C --> D["Human approves"]
-    D --> E["Agent written for the host and registered"]
-```
-
-### 4.3 Skill creation
-
-```mermaid
-flowchart LR
-    A["Recurring pattern"] --> B["Planner drafts the skill"]
-    B --> C["Human approves"]
-    C --> D["Skill lands in the project"]
-```
-
-### 4.4 Consultant invocation
-
-```mermaid
-flowchart LR
-    A["Human asks for a second opinion"] --> B["Consultant started on the question"]
-    B --> C["Analysis recorded on the issue"]
-    C --> D["Planner reports, Human decides"]
+    D --> E["Written into the project and recorded"]
 ```
 
 ### 5.1 Bug report

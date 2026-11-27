@@ -1,6 +1,6 @@
 # Install, upgrade and session start
 
-Flows 1.1, 1.2, 3.7 and 5.1 of [FLOWS.md](FLOWS.md), in the order they happen: tmb gets onto a machine and into a project, each session starts from the record, updates land, and the Human finds what broke. The commands to type are in the [reference](../reference/README.md).
+Flows 1.1, 1.2 and 5.1 of [FLOWS.md](FLOWS.md), in the order they happen: tmb gets onto a machine and into a project, each session starts from the record, updates land, and the Human finds what broke. The commands to type are in the [reference](../reference/README.md).
 
 ```mermaid
 flowchart TD
@@ -231,7 +231,7 @@ flowchart TD
 **`tmb doctor` checks the machine and the project and names the fix for each finding.** It only reads; `--fix` asks before each change.
 
 - **Example 1.** The record is broken. Every check that does not need the record still runs, and the others say why they were skipped.
-- **Example 2.** Leftovers (flow 3.7). Doctor lists what tmb left on disk: old builds no session uses, entries of ended sessions, and worktrees and branches of closed and dropped tasks. `--fix` removes each on the Human's yes.
+- **Example 2.** Leftovers. Doctor lists what tmb left on disk: old builds no session uses, entries of ended sessions, and worktrees and branches of closed and dropped tasks. `--fix` removes each on the Human's yes.
 - **Edge case.** Doctor never touches a file tmb did not write, and deletes nothing without the Human's yes. A worktree holding work nobody committed stays. A tracked repo file is deleted through a task, like any other change.
 - **Edge case.** A check that fails by itself looks like tmb's own bug. Its line says so and names the bug report command.
 
