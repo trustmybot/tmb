@@ -120,4 +120,5 @@ Planned (trustmybot/tmb#305). The project settings move out of the record into o
 - **Why.** A text file needs no reader and can be read when the database cannot. The record is then for trajectory only.
 - **Writes still go through tmb,** which records each change as a setting change in the record (trustmybot/tmb#408).
 - **A Human-only key stays fenced.** tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal.
+- **For a repo shared with others** (trustmybot/tmb#411): the user's account on the remote, and which remote is the upstream of a fork. The record reads both and stores neither.
 - **Open, for the Human:** whether the file is committed to git, so a team shares it.

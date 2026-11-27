@@ -611,6 +611,7 @@ erDiagram
 | A pull request is a record | new `pull_requests`; the two `pr_url` columns go | Its state on the remote needs a place | trustmybot/tmb#405 |
 | A review and a guard decision name their parent | `reviews`, `guard_decisions` | Today a review's target is text and a guard decision names nothing | trustmybot/tmb#406 |
 | The syncer has what it needs | `issues`, `discussions`, `pull_requests`, `events`; new `milestones`, `sync_state` | A remote change is matched to its record by an id that never changes, and a poll asks only for what is new | trustmybot/tmb#70 |
+| The record fits a repo shared with others | `discussions`, `pull_requests`, `sync_state`, `runs` | A teammate's comment and pull request need a place, and a fork has two remotes | trustmybot/tmb#411 |
 | A design document is a record | new `docs` | The planner finds the design wherever it lives | trustmybot/tmb#302 |
 | Search covers tasks and docs | `search` | A spec and a design are searched like an issue | trustmybot/tmb#406, trustmybot/tmb#302 |
 
@@ -658,6 +659,7 @@ One row per host session. A projection: record kind `session`.
 | `stop_cause`, `stop_detail` | New. Why a run stopped early |
 | `effort`, `tool_calls`, `tools` | New. The effort it was given, its number of tool calls, and per tool the calls and result sizes |
 | `usage_source` | New. Where the token count came from, "not measured" included |
+| `model`, `runner` | New. The model that ran, and the name of the configured agent that ran it (trustmybot/tmb#411). Which agent serves which role is a setting; which one ran is a fact of the run |
 | `tmb_version` | New |
 
 #### Planned: `issues` and `issue_links`
@@ -720,7 +722,7 @@ On each mirrored table, `issues`, `discussions`, `pull_requests` and `milestones
 | `remote_updated_at` | The remote's time of last change, so an unchanged item is skipped |
 | `remote_gone_at` | When the syncer found it deleted or out of reach. NULL while it is there |
 
-`discussions` also gains the kind `comment`, a `remote_author`, and the right to change: a comment's `body` follows the remote's.
+`discussions` also gains the kind `comment`, a `remote_author`, and the right to change: a comment's `body` follows the remote's. A comment on a pull request belongs to it: `discussions` gains `pull_request_id` (FK → `pull_requests.id`), and exactly one of `issue_id` and `pull_request_id` is set (trustmybot/tmb#411).
 
 `milestones` is one row per milestone. A projection: record kind `milestone`.
 
@@ -735,17 +737,24 @@ On each mirrored table, `issues`, `discussions`, `pull_requests` and `milestones
 
 - **No due date.** The record holds no schedule.
 
-`sync_state` is one row per repo and list. Like `meta` it is not folded from events: a poll that finds nothing writes no event. A lost row costs one full pass.
+`sync_state` is one row per remote repository and list. Like `meta` it is not folded from events: a poll that finds nothing writes no event. A lost row costs one full pass.
 
 | Column | Holds |
 |---|---|
-| `repo`, `list` | The key: which repo, and issues, comments, pull requests or milestones |
+| `remote`, `list` | The key: which remote repository, and issues, comments, pull requests or milestones. A fork has two remotes, so two sets of rows |
 | `tag` | The tag the remote gave last time, sent back to ask "has anything changed?" |
 | `since` | The time the next "what changed?" asks from |
 | `synced_at`, `full_pass_at` | When the last poll and the last full pass ended, so a reader knows how old the copy is |
 | `wait_until` | Set when the remote asks for a wait. No poll runs before it |
 | `claimed_by`, `claim_until` | The short claim one syncer holds, which runs out by itself |
 | `last_error` | Why the last poll failed, NULL after a good one |
+
+**In a repo shared with others, the choice is a setting and what happened is in the record.** Planned (trustmybot/tmb#411).
+
+- **Example 1.** A teammate asks for changes on the user's pull request. The comment is a discussion on that pull request, so the worker is shown it.
+- **Example 2.** A teammate's pull request closes the user's issue. It is a row with an author, no task and no feature branch.
+- **Edge case.** The user works in a fork. Issues come from the upstream remote and the pull request's branch is in the fork; which remote is the upstream is a setting.
+- **Edge case.** An issue is assigned to a teammate. The planner sees the account is not the user's, which is a setting, and leaves the issue alone.
 
 #### Planned: `pull_requests`
 
@@ -757,7 +766,10 @@ One row per pull request. A projection: record kind `pull_request`.
 | `url` | TEXT | NOT NULL | UNIQUE |
 | `repo` | TEXT | nullable | Named as `tasks.repo` names its own |
 | `feature_id` | TEXT | nullable | FK → `features.id` |
-| `task_id` | TEXT | nullable | FK → `tasks.id`. Exactly one of `feature_id` and `task_id` is set |
+| `task_id` | TEXT | nullable | FK → `tasks.id`. At most one of `feature_id` and `task_id` is set; a teammate's pull request has neither |
+| `author` | TEXT | nullable | The remote account that opened it. NULL when tmb opened it |
+| `closes` | TEXT | NOT NULL | A JSON list of the issues it closes, default `'[]'` |
+| `base_remote`, `head_remote` | TEXT | nullable | The remote repository it merges into, and the one its branch is in. They differ for a fork |
 | `state` | TEXT | NOT NULL | `open`, `merged` or `closed` |
 | `head_commit` | TEXT | nullable | The commit at its tip when last seen |
 | `review_decision`, `checks` | TEXT | nullable | The remote's review decision and the result of its checks, when last seen |
@@ -813,6 +825,7 @@ Planned (trustmybot/tmb#408). **Each kind of entry is its own record, with its o
 |---|---|
 | A table per review finding | A finding has no state of its own; the next review judges the next commit |
 | A table for handoffs between sessions | The record is the handoff |
+| A table of people | An account on the remote stays text on the row it acts on. Which account is the user's is a setting ([CONFIG.md](CONFIG.md)) |
 | A table for agents a project creates | Creating one is an event, and its file is the host's ([ROLES.md](ROLES.md#agents-a-project-creates)) |
 
 #### Planned: `docs`
