@@ -147,7 +147,7 @@ Planned (trustmybot/tmb#437): a consultant is one kind of created agent, recorde
 | Specs live in the record: a task starts only through the tool that records its spec | 1 |
 | The planner's role injected in every session | 2 |
 | Project map at session start | 2 |
-| PR comment triage | Planned (trustmybot/tmb#70) |
+| Pull request comment triage | Planned (trustmybot/tmb#70) |
 | Task close as one composite: checks, fold, backup push | 1 |
 
 ## How to add a deterministic check

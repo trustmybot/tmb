@@ -18,30 +18,34 @@ flowchart LR
 | Human | The developer | Intent | Sets the goal and the review mode, waives a review, and merges. |
 | Planner, addressed as bro | The host's main agent | The spec and design fit | Holds the full picture: the system design and alignment with the Human. It does everything except coding, is the only agent that talks to the Human, and owns the plan, the spec and the design call. |
 | Worker | A subagent the host starts | Functionality | Codes. |
-| Reviewer | A subagent the host starts, or a second host set up as the reviewer | The diff | An independent third party before the push, with no edit tools. Its verdict, or a Human waiver, is the only thing the push gate accepts. |
+| Reviewer | A subagent the host starts | The diff | An independent third party before the push, with no edit tools. Its verdict, or a Human waiver, is the only thing the push gate accepts. |
 
 ## Why three roles
 
-Two things decide the split: what each role can be trusted to do without approving its own work, and which role keeps working when something unexpected happens.
+**Two things decide the split: what a role can be trusted to do without approving its own work, and which role keeps working when something unexpected happens.**
 
 The worker is split from the planner for three reasons:
 
-1. **Token cost.** Coding in the planner would fill its strategic context with diff noise.
-2. **No self-homework.** The engine runs the spec's checks on the worker's commit at close. The agent that writes the code does not sign it off.
-3. **Subagents are fragile.** A worker runs with a fresh context, and its run can end at any point. The plan, the spec and the pull request stay with the planner, the most resilient layer.
+- **Example 1: token cost.** Coding in the planner would fill its strategic context with diff noise.
+- **Example 2: no self-homework.** The engine runs the spec's checks on the worker's commit at close. The agent that writes the code does not sign it off.
+- **Example 3: subagents are fragile.** A worker runs with a fresh context, and its run can end at any point. The plan, the spec and the pull request stay with the planner, the most resilient layer.
 
 Each layer owns one level of quality, and no layer repeats another's check. [3_TASKS.md](../flows/3_TASKS.md#quality-layers) shows how the layers hand off.
 
 ## Which agents a project has
 
-- **Workflow backbone, always available.** Init writes the worker and the reviewer into the project in the host's own format. It replaces and removes only role files it wrote ([ENGINE.md](ENGINE.md#what-tmb-writes-and-where)).
-- **The host starts them.** tmb starts no agent, runs no model and never reads a login ([ADAPTERS.md](ADAPTERS.md)).
-- **Identity and context.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned (trustmybot/tmb#436).
-- **Agents the project creates.** Planned (trustmybot/tmb#437) ([Agents a project creates](#agents-a-project-creates)).
+**Every tmb project has the worker and the reviewer, and the host starts them.**
+
+- **Example 1.** Init writes the worker and the reviewer into the project in the host's own format.
+- **Example 2.** The planner starts a worker. tmb starts no agent, runs no model and never reads a login ([ADAPTERS.md](ADAPTERS.md)).
+- **Example 3.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned (trustmybot/tmb#436).
+- **Edge case.** A role file tmb did not write sits in the project. Init replaces and removes only role files it wrote ([ENGINE.md](ENGINE.md#what-tmb-writes-and-where)).
+
+Agents the project creates are Planned (trustmybot/tmb#437) ([Agents a project creates](#agents-a-project-creates)).
 
 ## Planner (bro)
 
-The planner's persona is not a role file. The engine gives it to the host's main agent at every session start, with the rules and the open work from the record. A run with no one to answer is in [ENGINE.md](ENGINE.md#unattended-mode).
+**The planner does everything except coding, and it is the only agent that talks to the Human.** Its persona is not a role file: the engine gives it to the host's main agent at every session start, with the rules and the open work from the record.
 
 | The planner | Rule |
 |---|---|
@@ -54,7 +58,11 @@ The planner's persona is not a role file. The engine gives it to the host's main
 | **Never takes the Human's steps** | Setting the review mode, waiving a review and removing tmb are the Human's alone. The planner stores the Human's answer and never picks one. |
 | **Runs parallel sessions** | With its prompt and tools ([Parallel lanes](#parallel-lanes)). |
 
+- **Edge case.** A run has no one to answer. The planner applies its defaults ([ENGINE.md](ENGINE.md#unattended-mode)).
+
 ## Worker
+
+**The worker codes one open task, in that task's worktree, and closes it with the checks.**
 
 | The worker | Rule |
 |---|---|
@@ -70,6 +78,8 @@ The planner's persona is not a role file. The engine gives it to the host's main
 
 ## Reviewer
 
+**The reviewer judges a diff it did not write and records a verdict. It never edits a file.**
+
 | The reviewer | Rule |
 |---|---|
 | **Agile: once per feature branch** | Tasks close and fold without a verdict of their own, code and docs alike. The reviewer judges the whole branch at its tip before its pull request opens ([3_WORKFLOW.md](../flows/3_WORKFLOW.md)). |
@@ -84,7 +94,7 @@ The planner's persona is not a role file. The engine gives it to the host's main
 
 ## How roles are enforced
 
-The host keeps each role in bounds, through files the adapter writes. tmb has no hook that checks a caller's role on every tool call.
+**The host keeps each role in bounds, through files the adapter writes. The engine's tools check the role on the calls that matter.** tmb has no hook that checks a caller's role on every tool call, and the adapter holds no rules ([ADAPTERS.md](ADAPTERS.md#the-engine-never-names-a-host)).
 
 ```mermaid
 flowchart TD
@@ -97,9 +107,14 @@ flowchart TD
     F --> G
 ```
 
-- **A role file takes away only what the role must never use.** The reviewer is given no tool that edits a file. The worker loses nothing. Every other tool, a project's own included, stays.
-- **The adapter holds no rules** ([ADAPTERS.md](ADAPTERS.md#the-engine-never-names-a-host)).
-- **The engine's tools check the role too.** The Human may always call.
+**A role file takes away only what the role must never use.**
+
+- **Example 1.** The reviewer is given no tool that edits a file.
+- **Example 2.** The worker loses nothing. Every other tool, a project's own included, stays.
+- **Example 3.** A model per role is written into the role file by the adapter ([ADAPTERS.md](ADAPTERS.md#different-models-on-one-task)).
+- **Edge case.** The reviewer writes a file from its shell. tmb watches no file write. The Planned git check (trustmybot/tmb#303, under [Reviewer](#reviewer)) covers it.
+
+**The engine's tools check the role too.** The Human may always call.
 
 | Tool call | Role that may make it |
 |---|---|
@@ -107,18 +122,20 @@ flowchart TD
 | Record a verdict | Reviewer |
 | Close a task | Worker or planner |
 
-- **The role is the one the caller gives.** A subagent passes its own role. The main agent defaults to the role its host was set up in: the planner, unless init or onboarding named another.
-- **Edge case.** tmb cannot prove which agent called. So a verdict also needs an open reviewer run on that host.
-- **The reviewer edits nothing, on any host.** tmb watches no file write. The Planned git check (trustmybot/tmb#303, under [Reviewer](#reviewer)) covers a write from its shell, and a host that does not name the agent on a call.
-- **A model per role** is written into the role file by the adapter ([ADAPTERS.md](ADAPTERS.md#different-models-on-one-task)).
-- **The Human's steps have one fence,** at the command line ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
-- **Edge case.** A host cannot deny an action. A later checkpoint still holds ([ADAPTERS.md](ADAPTERS.md#what-each-host-can-deny)).
+- **Example 1.** The role is the one the caller gives. A subagent passes its own role. The main agent defaults to the planner.
+- **Example 2.** The Human's steps have one fence, at the command line ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
+- **Edge case.** tmb cannot prove which agent called. So a verdict also needs an open reviewer run.
+- **Edge case.** The host cannot deny an action. A later checkpoint still holds ([ADAPTERS.md](ADAPTERS.md#what-the-host-can-deny)).
 
 ## Parallel lanes
 
-Flow 3.8, charted in [FLOWS.md](../flows/FLOWS.md): several sessions working in one project at once. A lane is one such session with the work it took.
+**tmb keeps no lane record and manages no lanes. It gives every session the same record, and its tools tell the planner what it needs to stay out of another session's way.**
 
-tmb keeps no lane record and manages no lanes. The host starts sessions, carries messages between them and lists them. tmb gives every session the same record, and its tools tell the planner what it needs to stay out of another session's way.
+A lane is one session with the work it took. Several sessions working in one project at once is flow 3.8, charted in [FLOWS.md](../flows/FLOWS.md). The host starts sessions, carries messages between them and lists them.
+
+- **Example 1.** Two sessions each start a task. Each task has its own branch and worktree, and both read the same open work at session start.
+- **Example 2.** A new task's spec names a file that another open task's spec also names. The task still starts, and the answer names the other task.
+- **Edge case.** Two tasks change the same file. There is no lock: git settles it, and a clash holds back only the later task's close.
 
 ### What the planner's prompt and tools give
 
@@ -141,7 +158,7 @@ tmb keeps no lane record and manages no lanes. The host starts sessions, carries
 - The list of running sessions.
 - Permission prompts shown to the Human.
 
-Two sessions of one host may both be planners. Two hosts may share a project too, each in its own role ([ADAPTERS.md](ADAPTERS.md)).
+Two sessions may both be planners.
 
 ### What tmb leaves out
 
@@ -157,7 +174,7 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 
 ## Agents a project creates
 
-**Planned (trustmybot/tmb#437).** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer: its file is written per host, its runs are recorded, its tool calls are role-checked, and its work passes the same checkpoints. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
+**Planned (trustmybot/tmb#437).** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer: its file is written in the host's format, its runs are recorded, its tool calls are role-checked, and its work passes the same checkpoints. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
 
 A consultant is one kind of created agent. It keeps three rules:
 

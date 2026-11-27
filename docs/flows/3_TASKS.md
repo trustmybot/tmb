@@ -1,6 +1,6 @@
 # Agent task handling
 
-Every case of flows 3.1 to 3.5 in [FLOWS.md](FLOWS.md): a task from the Human's ask to its close, its failure paths, its states and how to debug a stuck one. The review and the pull request are in [3_WORKFLOW.md](3_WORKFLOW.md). Branches, worktrees and the push gate are in [3_GIT.md](3_GIT.md).
+Flows 3.1 to 3.5 of [FLOWS.md](FLOWS.md): a task from the Human's ask to the merge, how it fails, its states and how to debug a stuck one. The review and the pull request are in [3_WORKFLOW.md](3_WORKFLOW.md). Branches, worktrees and the push gate are in [3_GIT.md](3_GIT.md).
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,7 @@ tmb checks the outcome at these three checkpoints and watches no step in between
 
 ## Units of work
 
-A task is one change that one agent can finish in one run.
+**A task is one change that one agent can finish in one run.** Tasks belong to an issue, and issues can be grouped into a milestone.
 
 | Unit | What it is |
 |---|---|
@@ -28,12 +28,13 @@ A task is one change that one agent can finish in one run.
 | **Task** | One change, with a spec: the intent, the files it may touch, the checks that must pass and the success criteria |
 | **Milestone** | A group of issues the Human wants to judge as a whole, such as a first usable build |
 
-- **Two kinds of task.** A **code task**, which a worker implements ([3.1](#31-code-task)), and a **docs task**, a docs or prompts change the planner writes itself ([3.2](#32-non-code-task)). Both end in the same review, push gate and retry paths.
-- **The review mode decides where a task's review happens,** and a task keeps the mode it was started in ([3_WORKFLOW.md](3_WORKFLOW.md)).
+- **Example 1.** The Human asks for a light and a dark theme. That goal is one issue. The planner splits it into three tasks: the colour tokens, the toggle, and saving the choice.
+- **Example 2.** A task is one of two kinds. A worker implements a **code task** ([3.1](#31-code-task)). The planner writes a **docs task**, a docs or prompts change, itself ([3.2](#32-non-code-task)). Both end in the same review, push gate and retry paths.
+- **Edge case.** The review mode decides where a task's review happens, and a task keeps the mode it was started in ([3_WORKFLOW.md](3_WORKFLOW.md)).
 
 ## Quality layers
 
-Each step owns one level of quality and hands the next a ready state. No step redoes another step's check ([PRINCIPLES.md](../architecture/PRINCIPLES.md), [ROLES.md](../architecture/ROLES.md)). A step's method is deterministic, done by the engine, or judgment, made by a role.
+**Each step owns one level of quality and hands the next a ready state. No step redoes another step's check** ([PRINCIPLES.md](../architecture/PRINCIPLES.md), [ROLES.md](../architecture/ROLES.md)). A step's method is deterministic, done by the engine, or judgment, made by a role.
 
 ```mermaid
 flowchart LR
@@ -44,12 +45,13 @@ flowchart LR
     G --> CI["CI confirms, it does not discover"]
 ```
 
-- **Failures return to their owner.** A failed check goes back to the author, a review finding to the author, a design misfit to the planner's spec.
-- **Leaks point upstream.** When a later step or CI catches a cheap check, the fix is to move that check into the step that owns it. A leak rate per step as the health metric is Planned (trustmybot/tmb#439).
+- **Example 1.** A check fails at close. It goes back to the author.
+- **Example 2.** The reviewer records a finding. It goes back to the author. A design misfit goes back to the planner's spec.
+- **Edge case.** A later step or CI catches a cheap check. That is a leak, and it points upstream: the fix is to move the check into the step that owns it. A leak rate per step as the health metric is Planned (trustmybot/tmb#439).
 
 ## 3.1 Code task
 
-Any change that touches code. The planner plans and judges, a worker implements, the reviewer reviews and the Human merges. The engine does every git step ([ENGINE.md](../architecture/ENGINE.md#containment)).
+**Any change that touches code is a code task. The planner plans and judges, a worker implements, the reviewer reviews and the Human merges.** The engine does every git step ([ENGINE.md](../architecture/ENGINE.md#containment)).
 
 | Step | Owner | Method | What it guarantees and hands over |
 |---|---|---|---|
@@ -62,20 +64,36 @@ Any change that touches code. The planner plans and judges, a worker implements,
 | Close | engine | deterministic | The task's and the repo's checks pass on the committed work, or the close is refused and names what failed |
 | Fold, review, design fit, pull request, merge | by review mode | | [3_WORKFLOW.md](3_WORKFLOW.md) |
 
-- **A close refuses only on its checks, its commit and a clash.** The causes: a failing check, uncommitted work, no commit past where the task was cut, a docs task's file that is not a docs type, or a conflict at the fold ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)).
-  - **Edge case.** A refused close changes nothing. The task stays open, and the feature branch and the worktree stay as they were.
-- **A task with no checks never closes.**
-- **Checks never fail open.** A check that could not run is recorded as not run, with the reason, and the task stays open.
-- **A close reports two things without refusing.**
-  - **Example 1.** The commit changes a file the spec does not list. The close names the file and the spec stays as written. The planner or the reviewer checks those names with git.
-  - **Example 2.** A file in the main folder changed since the task started. The close lists each one with the command that puts it back, and the planner raises the list to the Human. tmb puts nothing back, because the change may be the Human's own.
-- **Two tasks may change the same file.** There is no lock. git settles it at the fold, and a clash holds back the later task's close.
-- **The planner closes the issue.** Planned (trustmybot/tmb#438): it closes itself once all its tasks' commits reach the base branch.
-- **Planned (trustmybot/tmb#439) at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
+**A close refuses only on its checks, its commit and a clash.**
+
+- **Example 1.** A check fails. The close is refused and names the check.
+- **Example 2.** The worktree holds uncommitted work, or the task has no commit past where it was cut. The close is refused.
+- **Example 3.** The fold conflicts ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)), or a docs task's commit holds a file that is not a docs type ([3.2](#32-non-code-task)). The close is refused.
+- **Edge case.** A refused close changes nothing. The task stays open, and the feature branch and the worktree stay as they were.
+
+**Checks never fail open.**
+
+- **Example 1.** A check could not run. It is recorded as not run, with the reason, and the task stays open.
+- **Edge case.** A task with no checks never closes.
+
+**A close reports two things without refusing.**
+
+- **Example 1.** The commit changes a file the spec does not list. The close names the file and the spec stays as written. The planner or the reviewer checks those names with git.
+- **Example 2.** A file in the main folder changed since the task started. The close lists each one with the command that puts it back, and the planner raises the list to the Human.
+- **Edge case.** tmb puts nothing back in the main folder, because the change may be the Human's own.
+
+**Two tasks may change the same file. There is no lock.**
+
+- **Example 1.** A task starts while another open task lists the same file. The engine names that task, as information, and starts the new one.
+- **Edge case.** Both tasks change the file. git settles it at the fold, and a clash holds back the later task's close.
+
+**The planner closes the issue.** Planned (trustmybot/tmb#438): it closes itself once all its tasks' commits reach the base branch.
+
+**Planned (trustmybot/tmb#439) at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
 
 ## 3.2 Non-code task
 
-tmb calls it a **docs task**: a change to docs or prompts that changes no behaviour. It runs 3.1's steps with the planner in the worker's place. These steps differ:
+**A docs task changes docs or prompts and changes no behaviour. The planner writes it, in the worker's place, through 3.1's steps.** These steps differ:
 
 | Step | Owner | What differs |
 |---|---|---|
@@ -84,18 +102,16 @@ tmb calls it a **docs task**: a change to docs or prompts that changes no behavi
 | Close | engine | 3.1's checks, plus a check by file type: only prose, data and image types on a fixed list, and files with no extension such as a licence, may change. A type the list does not name counts as code. tmb does not read the file to guess. The list is in the [reference](../reference/README.md#what-a-docs-task-may-change) |
 | Review | reviewer | Seen in the same review as the code tasks. The engine cannot tell whether a config or data change alters behaviour; a docs task that did is a blocking finding |
 
-| What goes wrong | What happens |
-|---|---|
-| The commit touches a file that is not a docs type | The close is refused and names the file. The code part becomes a code task for a worker |
-| A check fails at close | The task stays open: the planner fixes and closes again |
-| The reviewer finds the docs task changed behaviour | A blocking finding: that part is redone as a code task |
-| Fold conflict, rebase conflict, or a failing check after rebase | As for a code task ([3.4](#34-retry-and-escalation)) |
+- **Example 1.** A check fails at close. The task stays open: the planner fixes and closes again.
+- **Example 2.** The commit touches a file that is not a docs type. The close is refused and names the file. The code part becomes a code task for a worker.
+- **Example 3.** The reviewer finds the docs task changed behaviour. That is a blocking finding: that part is redone as a code task.
+- **Edge case.** A fold conflict, a rebase conflict, or a failing check after a rebase goes as for a code task ([3.4](#34-retry-and-escalation)).
 
-- **Planned (trustmybot/tmb#436): the doc-review skill.** The author's self-check and the reviewer's matching checklist.
+**Planned (trustmybot/tmb#436): the doc-review skill.** The author's self-check and the reviewer's matching checklist.
 
 ## 3.3 Push gate
 
-After the close, a task of either kind passes two more checkpoints. Each has its own page.
+**After the close, a task of either kind passes two more checkpoints: the review and the push gate. A commit leaves only when a pass or a Human waiver covers it.** Each checkpoint has its own page.
 
 | Checkpoint | Rule | Every case |
 |---|---|---|
@@ -103,9 +119,24 @@ After the close, a task of either kind passes two more checkpoints. Each has its
 | The pull request | The engine opens it only when a pass or a Human waiver covers that commit | [3_WORKFLOW.md](3_WORKFLOW.md#merge-gate) |
 | The push gate | git's pre-push hook refuses a push that carries a commit no pass or waiver covers | [3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook) |
 
+- **Example 1.** In agile mode the reviewer passes the feature branch's tip. The engine opens the pull request for that commit.
+- **Example 2.** In truest mode the reviewer's verdict is on the task's own commit.
+- **Edge case.** A push carries a commit that no pass or waiver covers. git's pre-push hook refuses the push.
+
 ## 3.4 Retry and escalation
 
-Every failure and its path, in the order a task meets them. Nothing here waits for a timer: tmb runs only when something calls it.
+**A failure goes back to its owner. Nothing waits for a timer: tmb runs only when something calls it.**
+
+- **Example 1.** A check fails at close. The close is refused and names the check. The worker fixes and closes again.
+- **Example 2.** A feature branch fails its review. The planner starts a fix task per blocking finding, and the new tip is reviewed again.
+- **Example 3.** The approach is wrong. The planner or the Human drops the task with a reason, and a new task names the one it replaces.
+- **Edge case.** A run started and never ended. No timer ends it. It is named at the next session start and by the health check, and the planner decides.
+
+**Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
+
+**Rework is bounded** (Planned, trustmybot/tmb#400). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
+
+Every failure and its path, in the order a task meets them:
 
 | Cause | Path |
 |---|---|
@@ -123,7 +154,7 @@ Every failure and its path, in the order a task meets them. Nothing here waits f
 | Checks fail after a truest rebase | The rebase is undone and the task is open again; the worker fixes and closes again |
 | Rebased truest commit whose change differs | The task stays in review: one new review of the rebased commit |
 | A push carries a commit no pass or waiver covers | git refuses the push; the guard decision is recorded |
-| A check or a comment fails an open pull request | The planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned (trustmybot/tmb#70):** bringing the comments in ([3.5](#35-pr-comment-triage)) |
+| A check or a comment fails an open pull request | The planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned (trustmybot/tmb#70):** bringing the comments in ([3.5](#35-pull-request-comment-triage)) |
 | Pull request closed without a merge | The branch is recorded as closed and named at session start; a new pull request or a rework task reopens it |
 | Work merged outside the flow | The push gate refuses the uncovered push. **Planned (trustmybot/tmb#438):** its open tasks close, each recorded as a bypass when no review passed |
 | Design drift | The planner drops the task and replaces it. **Planned (trustmybot/tmb#438):** the planner amends the spec and reopens |
@@ -131,12 +162,11 @@ Every failure and its path, in the order a task meets them. Nothing here waits f
 | Nobody will merge the feature branch | The branch is dropped with a reason and kept in git |
 | A run started and never ended | Named at the next session start and by the health check; the planner decides |
 
-- **Rework is bounded** (Planned, trustmybot/tmb#400). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
-- **Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
-
-## 3.5 PR comment triage
+## 3.5 Pull request comment triage
 
 Planned (trustmybot/tmb#70).
+
+**Each comment on a pull request is stored once on the linked issue. The planner turns it into a fix task, unless it would change the issue's intent or scope: then the planner asks the Human.**
 
 ```mermaid
 flowchart TD
@@ -147,13 +177,14 @@ flowchart TD
     E --> F["New tip reviewed or waived, then the same pull request is updated"]
 ```
 
-- **Stored once.** A per-pull-request cursor means a re-fetch returns only newer comments.
-- **Intent stays the Human's.**
-- **Unresolvable pull requests are skipped,** and the gap is recorded.
+- **Example 1.** A comment changes neither intent nor scope. It is grouped with others into fix tasks on the same branch. The new tip is reviewed or waived, and then the same pull request is updated.
+- **Example 2.** A comment would change the issue's scope. It is recorded on the issue and the planner asks the Human. Intent stays the Human's.
+- **Example 3.** The comments are fetched a second time. A per-pull-request cursor means the re-fetch returns only newer comments, so each is stored once.
+- **Edge case.** A pull request cannot be resolved. It is skipped, and the gap is recorded.
 
 ## Task lifecycle
 
-Every task of both kinds moves through one state machine. Each move is added to the record as an event, the current state is derived from the events, and the engine is the only writer.
+**Every task of both kinds moves through one state machine. Each move is added to the record as an event, the current state is derived from the events, and the engine is the only writer.**
 
 ```mermaid
 stateDiagram-v2
@@ -181,32 +212,47 @@ stateDiagram-v2
 | dropped | Final, with a reason. The task that replaces it names it |
 | failed | **Planned (trustmybot/tmb#438).** A task whose worker stopped on a broken environment or a contradictory spec ([3.4](#34-retry-and-escalation)) |
 
-- **Closed and dropped are final.** Rework on closed agile work is a new fix task on the feature branch. A dropped task's work reaches no branch. A new task can name the dropped task it replaces, so a chain of retries reads as one line.
-- **In review keeps its worktree.** Nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
-- **Ready is for a repo with no remote.** The Human merges locally with the command tmb gives, and tmb then counts the work as merged ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)). A ready task the Human will not merge is dropped.
-- **Dropping keeps what holds work** ([3_GIT.md](3_GIT.md#closing-a-task)).
-- **An agile task closes unreviewed.** Its review state is on the feature branch, not the task ([3_WORKFLOW.md](3_WORKFLOW.md#review-state)).
-- **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner never waives.
-- **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
+**Closed and dropped are final.**
+
+- **Example 1.** Closed agile work needs rework. The rework is a new fix task on the feature branch.
+- **Example 2.** A task is dropped. Its work reaches no branch. A new task can name the dropped task it replaces, so a chain of retries reads as one line.
+- **Edge case.** Dropping keeps what holds work ([3_GIT.md](3_GIT.md#closing-a-task)).
+
+**Review is the default, and only the Human waives it.**
+
+- **Example 1.** A truest task is in review. It keeps its worktree and nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
+- **Example 2.** An agile task closes unreviewed. Its review state is on the feature branch, not the task ([3_WORKFLOW.md](3_WORKFLOW.md#review-state)).
+- **Example 3.** The Human waives a review. A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner never waives.
+- **Edge case.** The repo has no remote, so the reviewed task is ready. The Human merges locally with the command tmb gives, and tmb then counts the work as merged ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)). A ready task the Human will not merge is dropped.
+- **Open, for the Human:** waivers wider than one task or one branch (a listed set, an issue, a session's docs tasks).
+
+**Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
+
+- **Example.** A task went from in_review back to open. Its events give the move, and the review joined to it gives the blocking findings.
+
+**Planned moves and stops:**
+
 - **Planned (trustmybot/tmb#438):** each move names a cause from a fixed list and the record it rests on, and the record refuses a move without it.
 - **Planned (trustmybot/tmb#438):** a move the planner takes by hand carries a note saying why, so no bypass is silent.
 - **Planned (trustmybot/tmb#438):** closing an issue ends its open tasks.
 - **Planned: freeze** (trustmybot/tmb#64). The Human stops all work in a project with one request: task and agent starts, closes and pull requests are denied until it is lifted. Reads stay allowed.
-- **Open, for the Human:** waivers wider than one task or one branch (a listed set, an issue, a session's docs tasks).
 
 ## Debugging a stuck task
 
-tmb has no watcher, so a stuck task is found at the next session start or by `tmb doctor` ([TRAJECTORY.md](../architecture/TRAJECTORY.md)).
+**tmb has no watcher, so a stuck task is found at the next session start or by `tmb doctor`** ([TRAJECTORY.md](../architecture/TRAJECTORY.md)).
+
+- **Example 1.** A task is open and nothing works on it. `tmb doctor` lists runs with no end and open tasks with no run. The planner resumes the task or drops it.
+- **Example 2.** The task will not close. The refusal names the cause: a failing check, uncommitted work, a conflict with the feature branch, no checks set, or, for a docs task, a file that is not a docs type.
+- **Edge case.** Every command stops. The record is unreadable or from a newer tmb. `tmb doctor` still runs and names the cause.
+
+The other symptoms:
 
 | Symptom | Where to look |
 |---|---|
 | No task will start | The review mode is not set: the Human runs `tmb onboard`. Or the issue is closed |
 | The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a multi-repo workspace, start it from inside the task's repo; the deny names the folder |
-| The task will not close | The refusal names it: a failing check, uncommitted work, a conflict with the feature branch, no checks set, or, for a docs task, a file that is not a docs type |
 | The reviewer's verdict is refused | No reviewer run is open, the commit is not the branch's current tip, or the task is not in review at that commit |
 | The pull request will not open | No pass or waiver covers the tip or the commit. The Human waives with `tmb feature waive` or `tmb task waive` |
 | The push is denied | It carries a commit no pass or waiver covers, or the record cannot be read. The hook's message names the cause |
 | The push gate is off | Another tool owns the pre-push hook: `tmb doctor --fix` or `tmb onboard --add-push-gate` |
-| A task is open and nothing works on it | `tmb doctor` lists runs with no end and open tasks with no run. The planner resumes it or drops it |
 | A branch stays ready after a local merge | The base branch changed the same lines again; drop it with a reason that says where the work went |
-| Every command stops | The record is unreadable or from a newer tmb. `tmb doctor` still runs and names the cause |

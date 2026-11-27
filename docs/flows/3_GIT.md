@@ -1,6 +1,6 @@
 # Git workflow
 
-Where the work sits in git at each step of a task, what the engine does there, what the push gate lets leave the machine, and how a multi-repo workspace decides which repo a step belongs to. [FLOWS.md](FLOWS.md) shows the task chain this serves.
+Where the work sits in git at each step of a task, in time order: what the engine does there, what the push gate lets leave the machine, and which repo a step belongs to in a multi-repo workspace. [FLOWS.md](FLOWS.md) shows the task chain this serves.
 
 ```mermaid
 flowchart LR
@@ -13,22 +13,31 @@ flowchart LR
 
 ## Local is canonical, origin is downstream
 
-The local branch is the source of truth at every step. Work reaches origin only through a push the engine makes: no worker or reviewer pushes.
+**The local branch is the source of truth at every step. Work reaches origin only through a push the engine makes.**
 
-- **Example.** A worker commits in its task's worktree, and nothing leaves the machine. The Human can inspect, rebase or drop anything before it reaches origin.
-- **The engine does every git step,** so each one is recorded ([ENGINE.md](../architecture/ENGINE.md#containment)).
+- **Example 1.** A worker commits in its task's worktree. Nothing leaves the machine, so the Human can inspect, rebase or drop anything before it reaches origin.
+- **Example 2.** No worker or reviewer pushes. The engine does every git step, so each one is recorded ([ENGINE.md](../architecture/ENGINE.md#containment)).
+- **Edge case.** A project has no remote. Nothing is pushed, and the local branch is all there is ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)).
 
-## Git guards
+## tmb has no git guards
 
-tmb has none. It reads no shell command to find a commit, a merge, a checkout or a push, and it blocks no direct commit: a list of every way to write a git command has no end. It judges what leaves the machine, at [the push gate](#the-push-gate-at-gits-own-hook). The other checkpoints are in [ENGINE.md](../architecture/ENGINE.md#containment).
+**tmb blocks no git command. It judges what leaves the machine, at [the push gate](#the-push-gate-at-gits-own-hook).**
+
+- **Example 1.** Someone commits directly. tmb does not block the commit.
+- **Example 2.** tmb reads no shell command to find a commit, a merge, a checkout or a push. A list of every way to write a git command has no end.
+- **Edge case.** A push typed in an unusual shell form still meets the gate, because git itself runs the hook.
+
+The other checkpoints are in [ENGINE.md](../architecture/ENGINE.md#containment).
 
 ## Where the work sits at each stage
 
-Each actor has one place, and the main folder never changes branch.
+**Each actor has one place, and the main folder never changes branch.**
 
-- **The Human and the planner** work in the project's main folder, which stays on its branch for the whole task.
-- **A worker** works only in the task's worktree, on the task's branch.
-- **Origin** is the remote. The base branch is the branch pull requests merge into.
+| Actor | Place |
+|---|---|
+| The Human and the planner | The project's main folder, which stays on its branch for the whole task |
+| A worker | Only the task's worktree, on the task's branch |
+| Origin | The remote. The base branch is the branch pull requests merge into |
 
 Agile mode, the recommended one:
 
@@ -39,13 +48,15 @@ Agile mode, the recommended one:
 | **Feature branch** | cut from the base branch | unchanged | unchanged | moved to the task's commit | base branch merged in, then reviewed | kept; recorded as merged |
 | **Origin** | base branch | same | same | feature branch pushed as a backup | reviewed tip pushed; one pull request | base branch advanced |
 
-- **Truest mode has no feature branch.** The task branch is cut from the base branch, waits in review at its commit with its worktree kept, and is pushed only for its own pull request, after a pass or a waiver.
-- **Why one checkout.** A branch can be checked out in only one worktree at a time. The task's worktree owns the task branch and the main folder stays where it is, so there is never a second checkout to reconcile.
-- **Every case of both modes** is in [3_WORKFLOW.md](3_WORKFLOW.md).
+- **Example 1.** An agile task closes. The feature branch moves to the task's commit, the engine pushes the feature branch as a backup, and the main folder has not moved.
+- **Example 2.** Truest mode has no feature branch. The task branch is cut from the base branch and waits in review at its commit, with its worktree kept. The engine pushes it only for its own pull request, after a pass or a waiver.
+- **Edge case.** git lets a branch be checked out in only one worktree at a time. The task's worktree owns the task branch and the main folder stays where it is, so there is never a second checkout to reconcile.
+
+Every case of both modes is in [3_WORKFLOW.md](3_WORKFLOW.md).
 
 ## Keeping the base fresh
 
-The engine fetches the base branch from origin before it cuts a branch from it, so new work starts from the newest base.
+**The engine fetches the base branch from origin before it cuts a branch from it, so new work starts from the newest base.**
 
 | What is cut | Cut from |
 |---|---|
@@ -55,193 +66,227 @@ The engine fetches the base branch from origin before it cuts a branch from it, 
 | A truest task | Fetched the same way; origin's base branch, the local one only with no origin |
 | An agile task | The feature branch's tip |
 
-When the base branch moves later:
+- **Edge case.** A new branch never reuses a name. The engine refuses a feature branch whose name already exists.
 
-| Mode | What happens |
-|---|---|
-| Agile | On the planner's request the engine merges it into the feature branch before the review: a merge commit and never a rebase, since the branch is already pushed |
-| Truest | The engine rebases the reviewed task before its first push ([below](#rebasing-a-reviewed-task)) |
+**When the base branch moves later, an agile feature branch merges it in and a truest task is rebased onto it.**
 
-- **A conflict in that merge changes nothing and names the files.** The planner settles it in a task on the branch, or raises it to the Human.
-- **A new branch never reuses a name.** A feature branch whose name already exists is refused.
-- **The code graph follows the branches** ([2_CODE_GRAPH.md](2_CODE_GRAPH.md)).
+- **Example 1.** Agile: on the planner's request the engine merges the base branch into the feature branch before the review. It is a merge commit and never a rebase, since the branch is already pushed.
+- **Example 2.** Truest: the engine rebases the reviewed task before its first push ([below](#rebasing-a-reviewed-task)).
+- **Edge case.** The merge conflicts. Nothing changes and the engine names the files. The planner settles it in a task on the branch, or raises it to the Human.
+
+The code graph follows the branches ([2_CODE_GRAPH.md](2_CODE_GRAPH.md)).
 
 ## Starting a task
 
-Starting a task cuts its branch and adds its worktree in one step.
+**Starting a task cuts its branch and adds its worktree in one step.**
 
-- **A failed start leaves nothing.** When git cannot add the worktree, nothing is recorded and what was made is removed.
-- **A worker's own folder is adopted.** A host may start each worker in a worktree of the host's making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([ADAPTERS.md](../architecture/ADAPTERS.md)).
+- **Example 1.** The planner starts an agile task. The engine cuts the task branch from the feature branch's tip and adds the task's worktree on it.
+- **Example 2.** Claude Code may start a worker in a worktree of its own making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([ADAPTERS.md](../architecture/ADAPTERS.md)).
+- **Edge case.** git cannot add the worktree. Nothing is recorded, and the engine removes what was made.
 
 ## Closing a task
 
-There is no planner-side merge. A fold moves the feature branch to the task's commit, and the close then removes the task's worktree and branch.
+**There is no planner-side merge. A fold moves the feature branch to the task's commit, and the close then removes the task's worktree and branch.**
 
-- **Another task folded first.** The engine rebases the later task onto the new tip and runs every check again ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)).
-- **What keeps a worktree and its branch.** Uncommitted changes, untracked files git does not ignore, or a lock set by the host. The close names them. Files git ignores go with the worktree.
-- **A kept worktree is tried again** at the planner's session start, when no task is open or in review.
-- **Branches that stay.** A truest task's branch stays for its pull request.
-- **A dropped task.** Its worktree goes unless it holds uncommitted work, and its branch stays while it holds commits.
-- **tmb deletes no feature branch.**
+- **Example 1.** Another task folded first. The engine rebases the later task onto the new tip and runs every check again ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)).
+- **Example 2.** The worktree holds uncommitted changes. The close keeps the worktree and its branch and names what holds them. The engine tries again at the planner's session start, when no task is open or in review.
+- **Edge case.** The worktree holds only files git ignores. They go with the worktree.
+
+What stays after a close or a drop:
+
+| Thing | Stays when |
+|---|---|
+| A task's worktree and its branch | The worktree holds uncommitted changes, untracked files git does not ignore, or a lock Claude Code set |
+| A truest task's branch | Always, for its pull request |
+| A dropped task's worktree | It holds uncommitted work |
+| A dropped task's branch | It holds commits |
+| A feature branch | Always: tmb deletes no feature branch |
 
 ## Rebasing a reviewed task
 
-Truest mode only. The engine rebases a reviewed task onto the newest base before the first push, in the task's own worktree.
+**Truest mode only. The engine rebases a reviewed task onto the newest base before the first push, in the task's own worktree.**
 
 ```mermaid
 flowchart TD
-    A[A pass or a waiver covers the task; the planner asks for its pull request] --> B{Base branch moved since the task was cut?}
-    B -- no --> P[Engine pushes the task branch and opens its pull request]
-    B -- yes --> R[Engine rebases the reviewed commit onto the newest base]
-    R -- conflict --> X[Rebase undone; the task reopens for its worker]
-    R -- "the base already holds the change" --> N[Task closed with no pull request]
+    A["A pass or a waiver covers the task; the planner asks for its pull request"] --> B{"Base branch moved since the task was cut?"}
+    B -- no --> P["Engine pushes the task branch and opens its pull request"]
+    B -- yes --> R["Engine rebases the reviewed commit onto the newest base"]
+    R -- conflict --> X["Rebase undone; the task reopens for its worker"]
+    R -- "the base already holds the change" --> N["Task closed with no pull request"]
     R --> C{"The checks pass on the rebased commit?"}
     C -- no --> X
-    C -- yes --> S{Same change as the reviewed one?}
-    S -- yes --> K[The pass carries over, recorded as a review carried from the old commit]
+    C -- yes --> S{"Same change as the reviewed one?"}
+    S -- yes --> K["The pass carries over, recorded as a review carried from the old commit"]
     K --> P
-    S -- no --> V[Task stays in review at the rebased commit: a fresh review]
+    S -- no --> V["Task stays in review at the rebased commit: a fresh review"]
 ```
 
 - **Example 1.** The base moved, and the rebased commit is the same change. It keeps its pass, the way Gerrit carries a vote across a trivial rebase.
 - **Example 2.** The rebased commit is a different change. Like any other new commit, it needs a fresh review.
-- **Edge case: a failed rebase.** The worktree is left as it was.
-- **Edge case: no remote.** The task is rebased onto the local base branch the same way, then recorded ready: its worktree goes, its branch stays, and the Human merges it locally ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)).
+- **Example 3.** The rebase fails. The engine leaves the worktree as it was.
+- **Edge case.** The project has no remote. The engine rebases the task onto the local base branch the same way, then records it ready: its worktree goes, its branch stays, and the Human merges it locally ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)).
 
 ## The push gate at git's own hook
 
-git hands its pre-push hook the exact refs and commits of a push, so the gate reads no command text and no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
+**git runs the repo's pre-push hook on every push and hands it the exact refs and commits. The gate judges those.** It reads no command text, so no shell form can hide a push from it. The hook runs inside the repo being pushed, so the policy is that repo's.
 
 ```mermaid
 flowchart TD
-    A[Any push, in any shell form, by an agent or by hand] --> B["git runs the repo's pre-push hook with the refs it sends"]
+    A["Any push, in any shell form, by an agent or by hand"] --> B["git runs the repo's pre-push hook with the refs it sends"]
     B --> C{"The project's record?"}
-    C -- none --> N1[Allowed, and the hook says so in one line]
-    C -- "damaged or unreadable" --> X0[Denied]
-    C -- readable --> D{Repo registered and not exempt?}
-    D -- no --> N2[Allowed: tmb has no policy for it]
+    C -- none --> N1["Allowed, and the hook says so in one line"]
+    C -- "damaged or unreadable" --> X0["Denied"]
+    C -- readable --> D{"Repo registered and not exempt?"}
+    D -- no --> N2["Allowed: tmb has no policy for it"]
     D -- yes --> E{"A ref deletes the base branch?"}
-    E -- yes --> X1[Denied]
+    E -- yes --> X1["Denied"]
     E -- no --> M{"The repo's review mode?"}
-    M -- agile --> G{A ref pushes to the base branch?}
+    M -- agile --> G{"A ref pushes to the base branch?"}
     G -- no --> OK1["Allowed: feature backups and the Human's own branches go freely"]
     G -- yes --> I{"Every commit it brings is held by a covered tip?"}
     M -- truest --> H{"A ref to the base brings an uncovered commit, or any ref brings a task's uncovered commit?"}
-    H -- no --> OK2[Allowed]
-    H -- yes --> X2[Denied, naming the commits and the next step]
-    I -- yes --> OK3[Allowed]
+    H -- no --> OK2["Allowed"]
+    H -- yes --> X2["Denied, naming the commits and the next step"]
+    I -- yes --> OK3["Allowed"]
     I -- no --> X2
 ```
 
-- **Example 1.** In an agile repo the engine pushes a feature branch as a backup. No ref goes to the base branch: allowed.
-- **Example 2.** In an agile repo the Human types a push to the base branch that brings a commit no covered tip holds. Denied, naming the commits and the next step.
-- **Edge case.** The record file is there but empty. That counts as damaged, so the push is denied ([ENGINE.md](../architecture/ENGINE.md#gates-fail-closed)).
+- **Example 1.** In an agile repo the engine pushes a feature branch as a backup. No ref goes to the base branch, so the gate allows it.
+- **Example 2.** In an agile repo the Human types a push to the base branch that brings a commit no covered tip holds. The gate denies it and names the commits and the next step.
+- **Edge case.** The record file is there but empty. That counts as damaged, so the gate denies the push ([ENGINE.md](../architecture/ENGINE.md#gates-fail-closed)).
 
 ### What the gate counts
 
-- **Covered** means a pass or a Human waiver on that exact commit: a feature branch's tip in agile mode, a task's commit in truest mode, or a commit a pass was carried to by a rebase.
-- **Only what the remote says it holds counts as already there.** A local ref can hold commits that never reached the remote.
-- **Merge commits are left out.** They bring no change of their own.
-- **With no base branch set, no push is judged.**
+**A commit is covered when a pass or a Human waiver sits on that exact commit.** That commit is a feature branch's tip in agile mode, a task's commit in truest mode, or a commit a pass was carried to by a rebase.
+
+- **Example 1.** A pushed range holds a merge commit. The gate leaves it out: a merge commit brings no change of its own.
+- **Example 2.** A local ref holds commits that never reached the remote. The gate counts as already there only what the remote says it holds.
+- **Edge case.** No base branch is set. The gate judges no push.
 
 ### Whom the gate judges
 
-- **The Human's push is judged too.** In truest mode a commit of no task goes to a branch other than the base freely, so the Human's own branches need no waiver.
-- **Every decision is recorded,** with who pushed. A push the engine makes for an agent names that agent; a push with no name is the Human's.
-- **Linked worktrees share the hook.** A push from a task's worktree is judged as one from the repo it was cut from.
+**The gate judges every push, the Human's too, and records each decision with who pushed.**
+
+- **Example 1.** The engine pushes for an agent. The record names that agent. A push with no name is the Human's.
+- **Example 2.** In truest mode the Human pushes a commit of no task to a branch other than the base. It goes freely, so the Human's own branches need no waiver.
+- **Edge case.** A push comes from a task's worktree. Linked worktrees share the hook, so the gate judges it as a push from the repo the worktree was cut from.
 
 ### The hook file
 
-- **The hook names its project.** Setup writes the project's folder into the hook, relative to the repo's top, so the gate never searches for it. A project may be one package of a monorepo, below the top where git runs the hook.
-- **One repo holds one tmb project.** Setup refuses a second one and says why.
-- **A hook that is another tool's is left alone,** as husky and lefthook write. The gate is off there, and setup, every session start and the health check say so until the gate is on or the repo is exempt.
-- **With the Human's yes, tmb adds one line first in that hook,** so the gate sees every pushed ref before the rest runs. The line is safe to commit: it calls the program by name, does nothing where the program is not installed, and hands the same refs on.
-- **Only a hook written for a shell is changed.** For one in another language tmb says how to call the gate by hand.
-- **A tool that rewrites its hook on every install drops the line,** and the next session start says the gate is off again.
-- **Removing tmb deletes the hook it wrote,** or takes out its one line. A hook that is not tmb's stays.
+**Setup writes the hook, and it never replaces a hook that is another tool's.**
+
+| Case | What tmb does |
+|---|---|
+| Setup writes its own hook | The hook names its project: setup writes the project's folder into it, relative to the repo's top, so the gate never searches for it |
+| The hook is another tool's, as husky and lefthook write | tmb leaves it alone. The gate is off there, and setup, every session start and the health check say so until the gate is on or the repo is exempt |
+| The Human says yes to adding the gate | tmb adds one line first in that hook, so the gate sees every pushed ref before the rest runs. The line is safe to commit: it calls the program by name, does nothing where the program is not installed, and hands the same refs on |
+| That hook is not written for a shell | tmb does not change it, and says how to call the gate by hand |
+| The repo already holds a tmb project | Setup refuses a second one and says why: one repo holds one tmb project |
+| tmb is removed | tmb deletes the hook it wrote, or takes out its one line. A hook that is not tmb's stays |
+
+- **Example.** A project is one package of a monorepo, below the top where git runs the hook. The hook names the package's folder, relative to the repo's top.
+- **Edge case.** A tool rewrites its hook on every install and drops tmb's line. The next session start says the gate is off again.
 
 ### Beyond the local hook
 
-A local hook can be skipped, so the gate also has a place on the server.
+**A local hook can be skipped, so the gate also has a place on the server.**
 
-- **A mark on GitHub.** Each verdict or waiver sets a commit status named tmb/review on that exact commit: success for a pass or a waiver, failure for a fail. The repo's branch protection can require it before a merge.
-- **The protection settings are the Human's.** tmb says whether the base branch requires the mark and how to turn that on, and never changes the settings.
-- **A mark that could not be sent** is recorded, sent at the next review, waiver or pull request, and never fails the review.
-- **How it is sent.** With the Human's own GitHub command line, only when origin is a GitHub repo. It is a convention among people who can write to the repo, not proof.
-- **The remote host is the last line of defence.** tmb's hook does not replace the branch rules the Human sets there.
-- **The health check counts the commits on each base branch that went around tmb.** Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
+- **Example 1.** Each verdict or waiver sets a commit status named tmb/review on that exact commit: success for a pass or a waiver, failure for a fail. The repo's branch protection can require it before a merge.
+- **Example 2.** The protection settings are the Human's. tmb says whether the base branch requires the mark and how to turn that on, and never changes the settings. The remote host is the last line of defence: tmb's hook does not replace the branch rules the Human sets there.
+- **Example 3.** tmb sends the mark with the Human's own GitHub command line, and only when origin is a GitHub repo. The mark is a convention among people who can write to the repo, not proof.
+- **Edge case.** A mark could not be sent. tmb records that and sends it at the next review, waiver or pull request. It never fails the review.
 
-## When the base moves after the PR is open
+The health check counts the commits on each base branch that went around tmb. Planned: a gate that was skipped is found by the sync with the remote and recorded as a finding (trustmybot/tmb#70).
 
-An open pull request is never rebased, because that would rewrite what was pushed.
+## When the base moves after the pull request is open
+
+**An open pull request is never rebased, because that would rewrite what was pushed. Nothing is force-pushed.**
 
 ```mermaid
 flowchart TD
-    A["The base moves while a pull request is open"] --> B{Mode?}
-    B -- truest --> C[The task branch is left alone]
-    B -- agile --> D[Planner has the engine merge the base into the local feature branch]
-    D -- conflict --> E[Nothing changes; settled in a task, or raised to the Human]
-    D --> F[Not pushed while the pull request is open]
-    F --> G[The new tip is reviewed or waived]
-    G --> H[The pull request step pushes it to the same pull request]
+    A["The base moves while a pull request is open"] --> B{"Mode?"}
+    B -- truest --> C["The task branch is left alone"]
+    B -- agile --> D["Planner has the engine merge the base into the local feature branch"]
+    D -- conflict --> E["Nothing changes; settled in a task, or raised to the Human"]
+    D --> F["Not pushed while the pull request is open"]
+    F --> G["The new tip is reviewed or waived"]
+    G --> H["The pull request step pushes it to the same pull request"]
 ```
 
-- **The pull request is kept.** tmb opens no second one, so the review thread and history stay in one place.
-- **Nothing is force-pushed.**
+- **Example 1.** Truest: the task branch is left alone.
+- **Example 2.** Agile: the engine merges the base into the local feature branch and does not push it while the pull request is open. Once the new tip is reviewed or waived, the pull request step pushes it to the same pull request.
+- **Edge case.** tmb opens no second pull request, so the review thread and the history stay in one place.
 
 ## Multi-repo workspaces
 
-A project is a set of repos sharing one record. Its workspace is the folder where the Human ran `tmb init`, and the record is kept there.
+**A project is a set of repos sharing one record.** Its workspace is the folder where the Human ran `tmb init`, and the record is kept there.
 
 ### Setup decides the workspace's shape
 
+**The folder setup runs in decides the shape: one repo, or several repos that share one record.**
+
 ```mermaid
 flowchart TD
-    A[Setup runs in a folder] --> B{In a git work tree?}
-    B -- yes --> ONE[A workspace of one repo: the folder itself]
-    B -- no --> C{Holds git repos, up to two folders down?}
-    C -- no --> GI[Setup makes the folder a git repo and says so]
+    A["Setup runs in a folder"] --> B{"In a git work tree?"}
+    B -- yes --> ONE["A workspace of one repo: the folder itself"]
+    B -- no --> C{"Holds git repos, up to two folders down?"}
+    C -- no --> GI["Setup makes the folder a git repo and says so"]
     GI --> ONE
-    C -- yes --> WS[A multi-repo workspace: its repos share one record in that folder]
-    WS --> F{Each top-level folder}
+    C -- yes --> WS["A multi-repo workspace: its repos share one record in that folder"]
+    WS --> F{"Each top-level folder"}
     F -- "a repo" --> R["Recorded with its own policy: base branch and checks"]
-    F -- "no repo, and holds none" --> NR[Recorded as not a repo; left alone]
-    R --> EX{Exempt?}
-    EX -- yes --> LA[Listed and left untouched]
-    EX -- no --> MG[Managed: push hook written, code graph indexed]
+    F -- "no repo, and holds none" --> NR["Recorded as not a repo; left alone"]
+    R --> EX{"Exempt?"}
+    EX -- yes --> LA["Listed and left untouched"]
+    EX -- no --> MG["Managed: push hook written, code graph indexed"]
 ```
 
-- **What counts as a repo.** A folder whose git folder is a real folder. A linked worktree or a submodule is never one, so a task's worktree is not taken for a repo. Setup does not look inside a repo it found, a dot-folder or a dependency folder.
-- **The record keeps the set,** so no later step scans or guesses. Running setup again adds what appeared and drops what is gone, with a line for each.
+- **Example 1.** Setup runs in a folder that holds no repo. Setup makes the folder a git repo and says so: a workspace of one repo.
+- **Example 2.** Setup runs in a plain folder that holds git repos. They become a multi-repo workspace and share one record in that folder.
 - **Edge case.** A workspace inside a git work tree is a project of one repo, even when it holds nested repos.
+
+**A repo is a folder whose git folder is a real folder.**
+
+- **Example.** A linked worktree or a submodule is never a repo, so setup does not take a task's worktree for one.
+- **Edge case.** Setup does not look inside a repo it found, a dot-folder or a dependency folder.
+
+**The record keeps the set of repos, so no later step scans or guesses.**
+
+- **Example.** The Human runs setup again. It adds what appeared and drops what is gone, with a line for each.
 
 ### The work names its repo
 
-tmb resolves "which repo does this step belong to" from the work, never from the folder a session runs in.
+**tmb finds the repo a step belongs to from the work, never from the folder a session runs in.** A feature branch or a task records its repo.
 
-- **A feature branch or a task records its repo.** With one managed repo it may be left out. With several, a start that names none is refused with the list. An agile task works in its feature branch's repo.
-- **Every later step runs there:** the cut, the worktree, the checks, the fold, the backup push and the pull request.
-- **Why no default repo.** A default would force one repo to be "the" repo, and it breaks as soon as a second joins. Recording the repo on the work lets sibling repos sit side by side.
+- **Example 1.** The workspace has one managed repo. A start may leave the repo out.
+- **Example 2.** The workspace has several managed repos. The engine refuses a start that names none, and lists them.
+- **Example 3.** An agile task works in its feature branch's repo. Every later step runs there: the cut, the worktree, the checks, the fold, the backup push and the pull request.
+- **Edge case.** There is no default repo. A default would force one repo to be "the" repo, and it breaks as soon as a second joins. Recording the repo on the work lets sibling repos sit side by side.
 
 ### What is per repo, and what is shared
+
+**Each repo has its own policy, origin, hook, code graph and mode. The record is one.**
 
 | Thing | Rule |
 |---|---|
 | Policy | Each repo has its own base branch and checks, taken from its own git at setup: origin's default branch, else the current branch. A policy set before is kept. The project-wide base branch and checks are not read in a multi-repo workspace ([CONFIG.md](../architecture/CONFIG.md)) |
 | Origin | Each repo pushes to its own origin and opens pull requests on its own remote repo |
 | The record | One. Task worktrees stay under the workspace, so a worker finds the shared record. Feature names are unique in the record. Issues live in the record and name no repo |
-| The gate | Setup writes the pre-push hook into every managed repo. The hook names the workspace's folder: the gate reads the record there and judges the push against that repo's base branch and mode. A push from a repo the record does not register, or registers as exempt, is allowed, and the recorded reason says why |
-| The code graph | One per repo, built from its own base branch, with paths relative to that repo. A repo that cannot be indexed yet says why, and the others go on |
-| Mode | One per repo, below |
+| The gate | Setup writes the pre-push hook into every managed repo. The hook names the workspace's folder: the gate reads the record there and judges the push against that repo's base branch and mode |
+| The code graph | One per repo, built from its own base branch, with paths relative to that repo |
+| Mode | One per repo, [below](#each-repo-has-a-mode) |
+
+- **Example 1.** A push comes from a repo the record does not register, or registers as exempt. The gate allows it, and the recorded reason says why.
+- **Edge case.** A repo cannot be indexed yet. It says why, and the other repos go on.
 
 ### Each repo has a mode
 
-A repo is agile, truest or exempt. Agile and truest are the review modes ([3_WORKFLOW.md](3_WORKFLOW.md#where-the-review-mode-is-set)); a repo that names none follows the workspace's.
+**A repo is agile, truest or exempt.** Agile and truest are the review modes ([3_WORKFLOW.md](3_WORKFLOW.md#where-the-review-mode-is-set)).
 
-- **Exempt.** The repo is listed in the record and left untouched: no task, no hook, no code graph, no push gate. It is for a repo tmb does no work in, such as fixtures that never ship.
-- **Everything that reads the mode reads the repo's:** starting work, the push gate, the session start and the health check.
-- **Only the Human chooses a repo's mode,** as for the workspace's. In unattended mode a repo's mode is not changed.
-- **Its mode shows.** The settings and the planner's session start list each repo with its base branch and its mode.
+- **Example 1.** A repo names no mode. It follows the workspace's.
+- **Example 2.** A repo holds fixtures that never ship, and tmb does no work in it. The Human marks it exempt: it is listed in the record and left untouched, with no task, no hook, no code graph and no push gate.
+- **Example 3.** Everything that reads the mode reads the repo's: starting work, the push gate, the session start and the health check. The settings and the planner's session start list each repo with its base branch and its mode.
+- **Edge case.** Only the Human chooses a repo's mode, as for the workspace's. In unattended mode a repo's mode is not changed.
 
 ## Open, for the Human
 

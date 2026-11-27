@@ -1,6 +1,6 @@
 # First contact
 
-Every case of flows 2.1 and 2.3 in [FLOWS.md](FLOWS.md): how tmb learns a project's shape, its policy and [its checks](#the-repos-checks). It takes two steps: a terminal step that asks nothing, and the planner's onboarding at the first session.
+Flows 2.1 and 2.3 in [FLOWS.md](FLOWS.md): how tmb learns a project's shape, its policy and [its checks](#the-repos-checks). Init comes first and asks nothing. The planner's onboarding follows at the first session.
 
 ```mermaid
 flowchart TD
@@ -23,16 +23,18 @@ flowchart TD
     J --> K[Session starts say nothing more about settings]
 ```
 
-`tmb onboard` sets the same settings from a terminal, and can be run again at any time. No task starts until the review mode is set.
+`tmb onboard` sets the same settings from a terminal and can run again at any time.
 
 ## Steps
+
+Each step, who takes it and what it leaves in the record.
 
 | Step | What happens | Who | Leaves |
 |---|---|---|---|
 | The project | No question. The record is the nearest one in the folder or above it. `tmb doctor` shows other records above or below. Init refuses a second project in a repo whose push hook already names another. | init | nothing |
-| The remote | No question. tmb reads each repo's remote when it needs it: with none, nothing is pushed and no pull request opens ([3_GIT.md](3_GIT.md)). | engine | nothing |
+| The remote | No question. tmb reads each repo's remote when it needs it. With none, nothing is pushed and no pull request opens ([3_GIT.md](3_GIT.md)). | engine | nothing |
 | The base branch | Per repo: origin's default branch, else the current branch, else `main`. The review mode decides the branches ([3_WORKFLOW.md](3_WORKFLOW.md)). | init in a multi-repo workspace, else the planner; or `tmb onboard` | each repo's base branch |
-| The host's role | Planner unless the Human names the reviewer; one role per host ([ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task)). | init, or `tmb onboard` | the host and its role |
+| The host's role | Planner unless the Human names the reviewer ([ADAPTERS.md](../architecture/ADAPTERS.md)). | init, or `tmb onboard` | the host and its role |
 | Bug reports | The feedback program ([1_INSTALL.md](1_INSTALL.md#bug-reports)): on with a notice on dev and rc; on stable the planner asks once per machine. | init's last lines, or the planner | the person's setting, per machine and channel |
 | The review mode | Agile or truest, [the Human's choice](#the-review-mode-is-the-humans-choice). In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own. | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
 | The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it. A repo marked exempt gets none ([3_GIT.md](3_GIT.md)). | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
@@ -43,30 +45,37 @@ flowchart TD
 
 ## Init asks nothing
 
-Init never waits for input, on a terminal or not. It sets the host and its role. Every other setting stays empty.
+**Init never waits for input, on a terminal or not. It sets the host and its role and leaves every other setting empty.**
 
-- **Example.** In a multi-repo workspace init also sets each repo's base branch and the checks found in it.
-- **Repos come from init.** Init records every top-level folder of a workspace, repo or not, and finds repos up to two folders down. Later steps never scan or guess ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
+- **Example 1.** The Human runs init in a repo. Init creates the record, wires the host, adds the push hook and indexes the code graph. Its last lines say how the empty settings get filled.
+- **Example 2.** The folder is not a git work tree and holds repos. It becomes a multi-repo workspace: init records every top-level folder, repo or not, and finds repos up to two folders down. Here init also sets each repo's base branch and the checks found in it. Later steps never scan or guess ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
+- **Example 3.** The folder is not a git work tree and holds no repo. Init runs `git init`, and the folder is a project of one repo.
 - **Edge case.** No host is installed. Init stops and changes nothing.
 
 ## The planner onboards by itself
 
-When a planner's session starts and the base branch, the review mode or the checks is empty, the engine says so, with what it found. The planner applies what it recommends before other work and shows it.
+**When a planner's session starts and the base branch, the review mode or the checks is empty, the engine says so, with what it found. The planner applies what it recommends before other work and shows it.**
 
-- **Example.** The planner reminds the Human that `tmb onboard` can be run again, and that it can change a value when asked.
-- **Edge case: an unattended run.** The planner applies its recommendations and names each value in its answer. It never sets the review mode.
+- **Example 1.** The base branch and the checks are empty. The planner works both out, applies them and shows them. It asks nothing.
+- **Example 2.** The review mode is empty too. The planner asks the Human and stores the answer. Then it proposes the project's areas, and the Human keeps some.
+- **Example 3.** The planner reminds the Human that `tmb onboard` can be run again, and that it can change a value when asked.
+- **Example 4.** Every setting is stored. Later session starts say nothing more about settings.
+- **Edge case.** The run is unattended. The planner applies its recommendations and names each value in its answer. It never sets the review mode.
 
 ## The review mode is the Human's choice
 
-The review mode decides how many tokens a project uses, so only the Human may set it ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)). tmb recommends agile and never picks. No task starts until it is set.
+**The review mode decides how many tokens a project uses, so only the Human may set it ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)). tmb recommends agile and never picks. No task starts until it is set.**
 
-- **Three ways set it:** the planner's question, `tmb onboard` on a terminal, or its review-mode flag with a typed yes. The record keeps which.
+- **Example 1.** The Human answers the planner's question.
+- **Example 2.** The Human answers `tmb onboard` on a terminal.
+- **Example 3.** The Human passes `tmb onboard` its review-mode flag and types yes. These are the three ways, and the record keeps which one set the mode.
 - **Edge case.** An unattended run leaves the mode unset. The first task is refused, and the refusal names `tmb onboard`.
-- **Details.** What each mode does, where the mode is kept and the one case where a run with no terminal may set it are in [3_WORKFLOW.md](3_WORKFLOW.md).
+
+What each mode does, where the mode is kept and the one case where a run with no terminal may set it are in [3_WORKFLOW.md](3_WORKFLOW.md).
 
 ## The repo's checks
 
-The checks are the commands that must pass before a task closes. tmb hardcodes no toolset: it finds a repo's checks at onboarding and stores them as a setting.
+**The checks are the commands that must pass before a task closes. tmb hardcodes no toolset: it finds a repo's checks at onboarding and stores them as a setting.**
 
 ```mermaid
 flowchart TD
@@ -82,23 +91,23 @@ flowchart TD
     S -. the Human or the planner changes them at any time .-> S
 ```
 
-| Rule | Detail |
+| Rule | Example |
 |---|---|
-| Detect runs nothing | It reads the files a stack leaves behind and suggests commands: a package manifest's lint, typecheck and test scripts, run with the tool its lockfile names, and the usual test command of a Python, Rust or Go project. It reads the repo's top folder only. The list is in the [reference](../reference/README.md#onboard). |
-| A suggestion, never the rule | The planner works out what it recommends from the suggestion and the project. The Human confirms or replaces it. |
-| The repo is the source of truth | Teammates, CI and editors enforce the same rules without tmb, so tmb suggests only commands the repo already defines. |
-| A stored list is never overwritten by a new detection | The checks change only when the Human or the planner changes them. A repo that changed keeps its stored checks until then. |
-| One list per repo | A project of one repo has one list. In a multi-repo workspace each repo has its own, and the project-wide list is not read ([3_GIT.md](3_GIT.md#multi-repo-workspaces)). |
-| A task adds its own | A task's spec can name more checks. At close the stored checks run first, then the task's, each with a time limit, in the task's worktree. What a close refuses is in [3_TASKS.md](3_TASKS.md). |
+| **Detect runs nothing.** It reads the files a stack leaves behind, in the repo's top folder only, and suggests commands. | A package manifest has lint, typecheck and test scripts. Detect suggests them, run with the tool the lockfile names. A Python, Rust or Go project gets its usual test command. The list is in the [reference](../reference/README.md#onboard). |
+| **A suggestion, never the rule.** | The planner works out what it recommends from the suggestion and the project. The Human confirms or replaces it. |
+| **The repo is the source of truth.** tmb suggests only commands the repo already defines. | Teammates, CI and editors enforce the same rules without tmb. |
+| **A new detection never overwrites a stored list.** The checks change only when the Human or the planner changes them. | A repo's stack changed. It keeps its stored checks until someone changes them. |
+| **One list per repo.** | A project of one repo has one list. In a multi-repo workspace each repo has its own, and the project-wide list is not read ([3_GIT.md](3_GIT.md#multi-repo-workspaces)). |
+| **A task adds its own.** A task's spec can name more checks. | At close the stored checks run first, then the task's, each with a time limit, in the task's worktree. What a close refuses is in [3_TASKS.md](3_TASKS.md). |
 
 ## How a card is written
 
-The planner asks through its host's question tool. A person who has never used tmb must be able to answer from the card alone.
+**The planner asks through the host's question tool, and only when the Human must choose. A person who has never used tmb must be able to answer from the card alone.**
 
-- **A card only when the Human must choose.** It asks for the review mode, the areas to keep and, on stable, the feedback program. The base branch and the checks get no card.
-- **One option is recommended, with its cost.** For the review mode: one option per mode with what it costs, agile marked as recommended.
+- **Example 1.** The review mode gets a card: one option per mode with what it costs, agile marked as recommended.
+- **Example 2.** The areas to keep get a card, and so does the feedback program on stable. The base branch and the checks get none.
+- **Example 3.** Repo modes are asked only in a multi-repo workspace. A project of one repo takes the project's mode.
 - **Edge case.** A card that asks for consent recommends nothing.
-- **Repo modes are asked only in a multi-repo workspace.** A project of one repo takes the project's mode.
 
 Planned (trustmybot/tmb#441):
 
@@ -111,11 +120,13 @@ Planned (trustmybot/tmb#441):
 
 ## Settings live in the record
 
-Nothing lands in the repo's working tree beyond the ignore lines, so there is no file for the Human to commit. How the record keeps a setting is in [CONFIG.md](../architecture/CONFIG.md).
+**Onboarding writes its settings to the record. Nothing lands in the repo's working tree beyond the ignore lines.** How the record keeps a setting is in [CONFIG.md](../architecture/CONFIG.md).
+
+- **Example.** The checks are a setting, not a file in the repo, so there is no file for the Human to commit.
 
 ## Re-runs keep what stands
 
-`tmb onboard` and init can both run again. Neither changes a setting the Human did not change.
+**`tmb onboard` and init can both run again. Neither changes a setting the Human did not change.**
 
 - **Example 1.** `tmb onboard` offers each stored value first and changes a setting only when the Human gives a new one.
 - **Example 2.** Init run again keeps every stored setting and, in a multi-repo workspace, each repo's policy. It adds repos that appeared and drops those that are gone, one line each.

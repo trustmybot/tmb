@@ -16,7 +16,7 @@ flowchart LR
 
 ## Pages
 
-[FLOWS.md](FLOWS.md) is the high-level page the Human reviews: every flow in one line, with its state and a link. Start there. Each other page holds the steps of one flow group, and its name starts with the group's number.
+**Start at [FLOWS.md](FLOWS.md): it lists every flow in one line, with its state and a link.** Each other page holds the steps of one flow group, and its name starts with the group's number.
 
 | Group | Page | Details |
 |---|---|---|
@@ -28,17 +28,16 @@ flowchart LR
 | 3. Agent task handling | [3_GIT.md](3_GIT.md) | Where the work sits in git at each step, and in which repo |
 | 4. Extending the team | [4_EXTENDING.md](4_EXTENDING.md) | Agents, skills and cheatcodes a project adds |
 
-A page with no number is not a flow page. Three flows are detailed in architecture pages, because a part owns them more than a sequence does: parallel lanes in [ROLES.md](../architecture/ROLES.md#parallel-lanes), the unattended run in [ENGINE.md](../architecture/ENGINE.md#unattended-mode), and several hosts in [ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task).
+- **Edge case.** A page with no number is not a flow page. Two flows have their steps in an architecture page, because a part owns them more than a sequence does: parallel lanes in [ROLES.md](../architecture/ROLES.md#parallel-lanes) and the unattended run in [ENGINE.md](../architecture/ENGINE.md#unattended-mode).
 
 ## How the two folders cite each other
 
-A fact lives in one folder, and the other links to it.
+**A fact lives in one folder, and the other folder links to it. A flow page says when; an architecture page says who and what.**
 
-- **A flow page says when; an architecture page says who and what.**
-- **A flow step links to the part that owns it.** Example: a gate's rules are in the architecture page; the flow shows where the gate sits in the sequence.
-- **An architecture page links to the flows a part serves,** by flow number.
-- **A flow page names no function, file or table of the code.** The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
-- **Where two pages disagree, the question goes to the Human,** and both are changed to agree ([docs/README.md](../README.md#when-two-things-disagree)).
+- **Example 1.** A gate's rules are in its architecture page. The flow page shows where the gate sits in the sequence, and links to those rules.
+- **Example 2.** An architecture page links to the flows a part serves, by flow number.
+- **Example 3.** A flow page names no function, file or table of the code: the code graph says what enforces a step. A flow page may name what the Human types, a `tmb ...` terminal command.
+- **Edge case.** Two pages disagree. The question goes to the Human, and both pages are changed to agree ([docs/README.md](../README.md#when-two-things-disagree)).
 
 ## Decisions
 
@@ -72,4 +71,4 @@ The words for the steps. The first column names the page a word comes from. The 
 | [3_GIT](3_GIT.md) | Base branch | The branch a pull request merges into. |
 | [3_GIT](3_GIT.md) | Feature branch | A long-lived branch that collects a milestone's tasks. |
 | [4_EXTENDING](4_EXTENDING.md) | Skill | Planned (trustmybot/tmb#436). Guidance tmb ships for a role, loaded on demand. |
-| [4_EXTENDING](4_EXTENDING.md) | Cheatcode | Planned (trustmybot/tmb#112). A published skill, tool server or host plugin that the planner finds, vets and installs after the Human's yes. A skill is given to a role once, for every host in that role. |
+| [4_EXTENDING](4_EXTENDING.md) | Cheatcode | Planned (trustmybot/tmb#112). A published skill, tool server or host plugin that the planner finds, vets and installs after the Human's yes. |
