@@ -121,4 +121,5 @@ Planned (trustmybot/tmb#305). The project settings move out of the record into o
 - **Writes still go through tmb,** which records each change as a setting change in the record (trustmybot/tmb#408).
 - **A Human-only key stays fenced.** tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal.
 - **For a repo shared with others** (trustmybot/tmb#411): the user's account on the remote, and which remote repository issues come from, such as the upstream of a fork. The record reads both and stores neither.
+- **The project's issue labels** (trustmybot/tmb#417): the groups, each label with a description, how many of a group one issue may carry, and the mapping from labels the project already has. tmb ships a default list ([ISSUES.md](ISSUES.md#the-list-is-a-setting)). The record holds which labels each issue carries, never the list.
 - **Open, for the Human:** whether the file is committed to git, so a team shares it.

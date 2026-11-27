@@ -795,7 +795,7 @@ Planned (trustmybot/tmb#70). **Every record the remote also holds carries the re
 |---|---|---|
 | Priority, a built-in field | `issues.priority`, the same four values | The planner orders work by it. On the remote it is the field, not a label (trustmybot/tmb#403) |
 | Type | `issues.type` | One fact per issue, so a column. On the remote it is GitHub's issue type, not a `type/` label (trustmybot/tmb#403) |
-| Labels | `issues.labels` | Free words a project chooses |
+| Labels | `issues.labels` | Free words a project chooses. The project's list of them is a setting, not in the record ([ISSUES.md](ISSUES.md#the-list-is-a-setting)) |
 | Milestone | A `milestones` row, named by `issues.milestone_id` | The syncer mirrors its state, and a misspelt name cannot make a second one |
 | Relationships: parent, blocked by, duplicate | `issue_links` | The order of work depends on them |
 | Assignees | `issues.assignees` | On a shared repo the planner does not take work assigned to someone else |

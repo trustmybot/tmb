@@ -95,7 +95,7 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 | What does an agent see at the start of a turn? | [MEMORY.md](MEMORY.md) |
 | What is recorded, and how is work resumed from it? | [TRAJECTORY.md](TRAJECTORY.md) |
 | What does the record store? | [the schema in `TRAJECTORY.md`](TRAJECTORY.md#schema) |
-| How are issues labelled, and how do I find what waits on me? | [ISSUES.md](ISSUES.md) |
+| What do an issue's fields and labels say, and how do I find what waits on me? | [ISSUES.md](ISSUES.md) |
 | How does the planner know where code lives? | [CODE_GRAPH.md](CODE_GRAPH.md) |
 | What does the code graph store? | [CODE_GRAPH.md](CODE_GRAPH.md#schema) |
 | Which project settings exist, and where are they kept? | [`CONFIG.md`](CONFIG.md) |
@@ -112,7 +112,7 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 - [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold storage in the record, hot session context, and pinned prompts, with the cost of each tier.
 - [TRAJECTORY.md](TRAJECTORY.md) — The record: what is kept of sessions, agent runs and checks, how a hang or a dead run is found from it, and its schema.
 - [CODE_GRAPH.md](CODE_GRAPH.md) — The code graph: what it holds, how links are proven, areas and concepts, who reads it, and its schema.
-- [ISSUES.md](ISSUES.md) — The groups of issue labels, the rules for each, and how a project makes the scheme its own.
+- [ISSUES.md](ISSUES.md) — An issue's type and priority as fields, the groups of labels, and the list of labels as a project setting.
 - [CONFIG.md](CONFIG.md) — Where settings live, and every project setting tmb reads, with its default and what it changes.
 
 ## Decisions

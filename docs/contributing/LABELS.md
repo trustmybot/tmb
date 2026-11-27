@@ -1,6 +1,6 @@
 # Labels
 
-This page lists the issue labels on the trustmybot/tmb GitHub board, which is tmb's own board. They fall in six groups written in lower case with a slash: `type/`, `priority/`, `area/`, `status/`, `decision/` and `theme/`. [ISSUES.md](../architecture/ISSUES.md) holds the design.
+This page lists the issue labels on the trustmybot/tmb GitHub board, which is tmb's own board. They are written in lower case with a slash: `type/`, `priority/`, `area/`, `status/`, `decision/` and `theme/`. Type and priority are leaving the labels for GitHub's own fields (trustmybot/tmb#403). [ISSUES.md](../architecture/ISSUES.md) holds the design.
 
 **This page lists the labels on GitHub** (`gh label list --repo trustmybot/tmb`). Planned: one labels file in the repo that this page and the board are both made from.
 
