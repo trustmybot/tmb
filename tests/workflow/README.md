@@ -7,12 +7,12 @@ A whole flow as a scripted sequence of tool calls through the tool server, with 
 | Test | What it proves |
 |---|---|
 | [task-close.test.ts](task-close.test.ts) | The project's check fails until the fix lands, so the close waits for it, and a closed task never closes twice. |
-| [flow-02-simple-task.test.ts](flow-02-simple-task.test.ts) | The planner records the issue, starts a feature branch and a task, a worker commits the work and closes it, and the close folds it into the feature branch. The worker is refused the planner's steps. |
-| [flow-03-difficult-task.test.ts](flow-03-difficult-task.test.ts) | A difficult task, with a question and its answer recorded as notes. |
-| [flow-09-cold-restart.test.ts](flow-09-cold-restart.test.ts) | A new session's start lists the open issue and the open task from the record, and asks for no init or onboarding; the settings onboard stored are still in force. |
-| [flow-11-concurrent-siblings.test.ts](flow-11-concurrent-siblings.test.ts) | Two open tasks on one feature branch, each in its own worktree: closing the first folds it and leaves the second open; closing the second rebases it onto the moved feature branch, runs the checks again and folds it. |
+| [simple-task.test.ts](simple-task.test.ts) | The planner records the issue, starts a feature branch and a task, a worker commits the work and closes it, and the close folds it into the feature branch. The worker is refused the planner's steps. |
+| [difficult-task.test.ts](difficult-task.test.ts) | A difficult task, with a question and its answer recorded as notes. |
+| [cold-restart.test.ts](cold-restart.test.ts) | A new session's start lists the open issue and the open task from the record, and asks for no init or onboarding; the settings onboard stored are still in force. |
+| [concurrent-siblings.test.ts](concurrent-siblings.test.ts) | Two open tasks on one feature branch, each in its own worktree: closing the first folds it and leaves the second open; closing the second rebases it onto the moved feature branch, runs the checks again and folds it. |
 | [shared-files.test.ts](shared-files.test.ts) | Two open tasks may share a file: changes to different lines fold, and the later close on the same lines stops. |
-| [flow-13-issue-update.test.ts](flow-13-issue-update.test.ts) | The planner moves an issue to another milestone and rewrites its title and body; history shows each change with who made it. An update naming no field is refused, and one that changes nothing records nothing. |
+| [issue-update.test.ts](issue-update.test.ts) | The planner moves an issue to another milestone and rewrites its title and body; history shows each change with who made it. An update naming no field is refused, and one that changes nothing records nothing. |
 | [docs-task-check.test.ts](docs-task-check.test.ts) | A docs task whose change touches a source file cannot close, and the refusal names the file; once its change touches only docs, markup and data it closes; a code task is never checked this way. |
 | [close-checks.test.ts](close-checks.test.ts) | A commit outside the task's files closes, and the close names those files and leaves the spec as written; a file added, changed or deleted in the main folder during the task is named at close with a command that puts it back, and one left there before the task is not; the host's worktree is adopted as the task's on the worker's first call and removed at close, and a worker in the main folder or the task's own worktree changes nothing. |
 

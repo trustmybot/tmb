@@ -1,4 +1,4 @@
-// Workflow simulation, ported from the plugin's flow 03 (difficult task): before any task, the
+// Workflow simulation of a difficult task: before any task, the
 // planner records its open questions as notes, the Human answers each on the record, and the
 // planner records the decision they reach; the issue reads back in that order, with the decision
 // in force, and only then does the task start. Scripted as tool calls through the tool server and
@@ -12,10 +12,10 @@ setDefaultTimeout(30_000);
 const PLANNER = { kind: "agent", role: "planner", host: "test" };
 const HUMAN = { kind: "human" };
 
-const { tmb, setUpProject, connect, cleanup } = tmbProcesses("tmb-flow-03-");
+const { tmb, setUpProject, connect, cleanup } = tmbProcesses("tmb-difficult-task-");
 afterAll(cleanup);
 
-describe("flow 03: a difficult task", () => {
+describe("a difficult task: its questions, answers and decision are on the record before it starts", () => {
   test("questions and answers recorded as notes, then a decision, read back in order from the issue before the task starts", async () => {
     const project = setUpProject("true");
     const client = await connect(project);
