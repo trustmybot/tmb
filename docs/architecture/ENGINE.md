@@ -170,7 +170,7 @@ flowchart TD
 
 ### A file tmb wrote, at an update
 
-**Planned (trustmybot/tmb#461). tmb keeps the checksum of each project file it writes. An update replaces a file only while the checksum still matches. An edited file is the Human's.**
+**Planned (trustmybot/tmb#461). Each build carries the checksum of every version of each file tmb has shipped. A file on disk that matches one is unchanged, and an update replaces it. Any other is edited, and is the Human's.** tmb keeps no list of checksums in the project.
 
 | The file | An update, a refresh, or init run again |
 |---|---|

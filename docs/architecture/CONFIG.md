@@ -24,7 +24,7 @@ flowchart LR
 
 ## Project settings live in a config file
 
-**Planned (trustmybot/tmb#305). The six project keys live in one text file in tmb's folder in the workspace. tmb reads a setting from that file and never from the record. The record is for trajectory only.**
+**Planned (trustmybot/tmb#305). The six project keys live in one TOML file, `.tmb/config.toml`, in the workspace. tmb reads a setting from that file and never from the record. The record is for trajectory only.**
 
 ```mermaid
 flowchart LR
@@ -42,8 +42,8 @@ The planner reads them with `settings_get`. Hooks only read them.
 - **Example 2.** The planner sets `base_branch` to the value already in force. Nothing is written or recorded.
 - **Example 3.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
 - **Example 4.** Every write goes through tmb, which also records it as a setting change. That history says who changed what. No reader takes a value from it.
-- **Example 5.** The file is local. It is in tmb's folder, which git ignores, so each person's workspace has its own.
-- **Example 6.** The file's first line says who may edit it: the Human, or an agent with the Human's approval. That line is the whole fence. No guard watches the file.
+- **Example 5.** The file is local. git ignores tmb's folder, so the file is never committed.
+- **Example 6.** The file's first line is a comment that says who may edit it: the Human, or an agent with the Human's approval. That line is the whole fence. No guard watches the file.
 - **Edge case.** The Human edits the file by hand. tmb reads the new value. That edit has no history, and no check compares the file with the record.
 
 ## Keys
@@ -54,7 +54,7 @@ The planner reads them with `settings_get`. Hooks only read them.
 |---|---|---|---|---|
 | `host` | string: a host id | unset until `tmb init`, which stores the host it wired | `tmb init` | The host the project is set up for: Claude Code. |
 | `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a multi-repo workspace, where each repo has its own in `repos`. |
-| `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its push. No task starts while it is unset. |
+| `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its pull request. No task starts while it is unset. |
 | `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a multi-repo workspace. |
 | `graph_links` | string: `built-in` \| `language-tool` | `language-tool` | the planner via `settings_set` | Which way makes the code graph's links ([CODE_GRAPH.md](CODE_GRAPH.md#two-ways-to-make-links)). A language with no tool uses `built-in`, and the answer says so. |
 | `repos` | object: `{"<repo path>": policy}` | unset in a single-repo project. In a multi-repo workspace `tmb init` fills it with the repos it finds | `tmb init`; the planner via `settings_set`; `tmb onboard --repo <name>` | One policy per folder of a workspace, by its path from the workspace folder. |
@@ -74,24 +74,30 @@ A repo is named by its path inside the workspace, relative and with forward slas
 
 ## Unset means not set
 
-Every key is null until it is first set. Readers treat null as "not set", never as a silent default.
+**Every key is null until it is first set. Readers treat null as "not set", never as a silent default.**
 
 - **Example 1.** `review_mode` is null. No task starts, and tmb does not pick `agile` for the Human.
 - **Example 2.** A session starts as the planner and `base_branch`, `review_mode` or `checks` is empty. The session start says so, and the planner applies the base branch and checks it recommends ([`2_ONBOARD.md`](../flows/2_ONBOARD.md)).
 
 ## The way a review mode was chosen is recorded
 
-The setting change that sets a review mode also holds the way the Human chose it: `init` (kept for old records), `onboard` or `planner`. This holds for the workspace's mode and for one repo's own.
+**The setting change that sets a review mode also holds the way the Human chose it.** This holds for the workspace's mode and for one repo's own.
+
+- **Example 1.** The Human answers the planner's question at the first session. The change says `planner`.
+- **Example 2.** The Human runs `tmb onboard --review-mode truest` and types yes. The change says `onboard`.
+- **Edge case.** An old record holds `init`. It is kept as it is.
 
 ## Branch policy is per repo in a multi-repo workspace
 
-A single-repo project keeps its branch policy in the two project keys, `base_branch` and `checks`. A multi-repo workspace keeps each repo's in `repos`, and refuses a write to the two project keys.
+**A single-repo project keeps its branch policy in the two project keys, `base_branch` and `checks`. A multi-repo workspace keeps each repo's in `repos`.**
 
-- **No branching model key.** A repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
+- **Example 1.** A workspace holds `api` and `web`. Each has its own base branch and checks under `repos`.
+- **Example 2.** In that workspace the planner sets the project key `base_branch`. tmb refuses the write.
+- **Edge case.** There is no key for a branching model. A repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
 
 ## Kept per machine, not in the record
 
-One setting belongs to the person, not the project. It is kept in each channel's program state folder, such as `~/.local/state/tmb-dev`.
+**One setting belongs to the person, not the project.** It is kept in each channel's program state folder, such as `~/.local/state/tmb-dev`.
 
 | Setting | Values | Default | Set by | Effect |
 |---|---|---|---|---|

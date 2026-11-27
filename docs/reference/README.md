@@ -108,6 +108,7 @@ At the first session the planner fills the settings init left empty ([Onboarding
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
 - The review mode has no default. `--review-mode` is a [step only you may take](#steps-only-you-may-take): it asks you to type yes on the terminal, also when `--yes` is given. Without a terminal it is refused, unless unattended mode is on for the run (`TMB_UNATTENDED=1`), as in CI, and no review mode is set yet: unattended mode sets one, never changes one. Without the flag and with no terminal, the review mode stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
+- `--add-push-gate` adds tmb's one line to a pre-push hook another tool owns. Without it tmb leaves that hook alone, and the push gate is off in that repo.
 
 ### One repo or a workspace of several
 
