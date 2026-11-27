@@ -12,7 +12,7 @@ import { SYMBOL_KINDS, type SymbolKind } from "./languages/contract.ts";
 import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 12;
+export const GRAPH_SCHEMA_VERSION = 13;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -202,6 +202,13 @@ const SCHEMA_11_TO_12 = [
 ];
 
 /**
+ * Schema 13 records, for a tool tmb builds a helper for, the helper a way B layer was built with:
+ * its key, its source and the tool that built it (trustmybot/tmb#394). A record made before it
+ * names no helper, so it is dropped: the layer is stale and the next read rebuilds it, as for 11.
+ */
+const SCHEMA_12_TO_13 = ["UPDATE layers SET built_with = NULL"];
+
+/**
  * Schema 11 records, for each tool a way B layer was built with, whose copy it was and where it is
  * (trustmybot/tmb#392). A record made before it names no copy, so it is dropped: the layer is stale
  * and the next read rebuilds it, as one built before schema 9.
@@ -301,6 +308,7 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         const hasLang = (db.query("SELECT 1 FROM pragma_table_info('symbols') WHERE name = 'lang'").get() ?? null) !== null;
         if (version >= 1 && version <= 11 && !hasLang) db.run(SCHEMA_11_TO_12_COLUMN);
         if (version >= 1 && version <= 11) for (const statement of SCHEMA_11_TO_12) db.run(statement);
+        if (version >= 1 && version <= 12) for (const statement of SCHEMA_12_TO_13) db.run(statement);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();

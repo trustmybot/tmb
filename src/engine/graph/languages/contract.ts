@@ -348,10 +348,19 @@ export interface LanguageTool {
   // installed packages, as its answer gave them (OpenedTool), [] when it did not run. It reads only
   // what says what is installed, never the packages' code, and runs no code of the repo.
   builtWith(repoDir: string, places: readonly string[], found: FoundCopy): BuiltWith;
+  // The program tmb builds, from source it carries, to run the tool with the copy found, kept in the
+  // tools folder of the state folder given (CODE_GRAPH.md, "Go's helper is built once"); absent for
+  // a tool that needs none, null when the copy does not say what it would build. It builds nothing.
+  helper?(found: FoundCopy, stateDir: string): BuiltHelper | null;
 }
 
 // The repo's installed packages a tool's answers rest on, at the places it read them, as one text.
 export type BuiltWith = { packages: string };
+
+// A program tmb builds from source it carries to run a tool: its name; its key, a digest of all its
+// build rests on, which a new key builds again; its source's digest; the tool, as it names its own
+// version, that builds it; where it is kept; and whether it is built there yet.
+export type BuiltHelper = { name: string; key: string; source: string; builtBy: string; path: string; built: boolean };
 
 /**
  * Whose copy of a tool is used (CODE_GRAPH.md, "Where a language's tool comes from"): the one a

@@ -252,14 +252,27 @@ const NO_TOOL_LINKS: ToolLinks = { answers: new Map(), note: null, builtWith: nu
  * missing), a digest of the installed packages it read, and the places it read them from, which a
  * later read reads again.
  */
-export type BuiltWithRecord = Record<string, { whose: Whose | "missing"; path: string | null; tool: string; packages: string; places: string[] }>;
+export type BuiltWithRecord = Record<
+  string,
+  { whose: Whose | "missing"; path: string | null; tool: string; packages: string; places: string[]; helper?: { key: string; source: string; builtBy: string } }
+>;
 
-/** One tool's entry of a BuiltWithRecord, made now, with the copy the find order found. */
+/**
+ * One tool's entry of a BuiltWithRecord, made now, with the copy the find order found; with the
+ * helper tmb builds to run it, when it needs one (CODE_GRAPH.md, "Go's helper is built once"): its
+ * key, its source and the tool that builds it.
+ */
 function builtWithEntry(tool: LanguageTool, repoDir: string, places: readonly string[], found: CopySearch): BuiltWithRecord[string] {
   const sorted = [...new Set(places)].sort();
   const copy = "missing" in found ? { whose: "missing" as const, path: null, tool: `missing: ${found.missing}` } : { whose: found.whose, path: found.path, tool: found.version };
   const packages = "missing" in found ? "" : tool.builtWith(repoDir, sorted, found).packages;
-  return { ...copy, packages: createHash("sha256").update(packages).digest("hex"), places: sorted };
+  const helper = "missing" in found ? null : (tool.helper?.(found, machinePlaces().stateDir) ?? null);
+  return {
+    ...copy,
+    packages: createHash("sha256").update(packages).digest("hex"),
+    places: sorted,
+    ...(helper === null ? {} : { helper: { key: helper.key, source: helper.source, builtBy: helper.builtBy } }),
+  };
 }
 
 /** The record as stored: its tools in the order of their names, so one record is one text. */
@@ -267,8 +280,8 @@ const recordText = (record: BuiltWithRecord): string => JSON.stringify(Object.fr
 
 /**
  * Whether what a way B layer was built with is what it would be built with now: each tool it
- * records is the same copy, found by the same order, reporting the same version, and finds the
- * same installed packages at the same places. A
+ * records is the same copy, found by the same order, reporting the same version, with the same
+ * helper, and finds the same installed packages at the same places. A
  * layer that records nothing, as one built before it was recorded, is not; nor is one that names a
  * tool tmb no longer has.
  */
@@ -286,6 +299,7 @@ export function stillBuiltWith(repoDir: string, recorded: string | null): boolea
     if (tool === undefined) return false;
     const now = builtWithEntry(tool, repoDir, entry.places, findCopy(tool.copy, machinePlaces()));
     if (now.whose !== entry.whose || now.path !== entry.path || now.tool !== entry.tool || now.packages !== entry.packages) return false;
+    if (JSON.stringify(now.helper ?? null) !== JSON.stringify(entry.helper ?? null)) return false;
   }
   return true;
 }
