@@ -106,7 +106,7 @@ tmb records outcomes at checkpoints. It does not record each tool call or each s
 | Check run | The checks run on a commit, each command and its result: start and end |
 | Review | A reviewer's verdict on a commit or a feature branch, its findings, and the run that wrote it |
 | Guard decision | Each allow and deny the gate gave at a checkpoint, and why |
-| Audit entry | Every change to configuration and every Human waiver. **Planned** (trustmybot/tmb#408): the catch-all goes, and a waiver, a review mark and a setting change are each their own record |
+| Waiver, review mark, setting change | Each Human waiver, each mark sent to the remote and each change to a setting is its own record, as are a feedback report and an import |
 | Doc | **Planned** (trustmybot/tmb#302). One design document: where it lives, in a repo or outside it such as a wiki, what it is for, and its repo |
 | Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
 | Pull request | **Planned** (trustmybot/tmb#405). One pull request, what it carries and its state on the remote |
@@ -318,7 +318,7 @@ The file sits inside the project's folder and is left out of git. The engine cre
 | Did the worker finish? | Its run's outcome: finished or stopped |
 | Why did the close fail? | The task's newest check run: each command and its result |
 | Why did the gate let this push through? | The guard decision: covered by a pass or waiver, or an exempt repo. With no record in the project nothing is recorded, and the hook says so in one line |
-| Who waived this review? | The audit trail |
+| Who waived this review? | The waiver, with its reason and its commit |
 | What did this task cost? | The cost on its runs, in tokens per model |
 | Why three re-runs of this task? | The task's events in order, with its runs and reviews ([3_TASKS.md](../flows/3_TASKS.md#task-lifecycle)) |
 | Why does this session never end? | Planned, with the session record |
@@ -332,7 +332,7 @@ The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and
 The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
-- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `audit`. Planned: `sessions`, `pull_requests`, `milestones`, `issue_links`, `docs`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`.
+- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`. Planned: `sessions`, `pull_requests`, `milestones`, `issue_links`, `docs`.
 - **Search** — `search`, one full-text index.
 - **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned), where each poll of the remote stopped.
 
@@ -386,13 +386,13 @@ erDiagram
     runs |o..o{ runs : "resumed from"
     runs |o..o{ guard_decisions : "about"
     docs |o..o{ tasks : "implemented by"
-    tasks |o..o{ waivers : "waived"
-    features |o..o{ waivers : "waived"
-    features |o..o{ review_marks : "marked"
-    tasks |o..o{ review_marks : "marked"
-    waivers |o..o{ waivers : "carried from"
+    tasks |o--o{ waivers : "waived"
+    features |o--o{ waivers : "waived"
+    features |o--o{ review_marks : "marked"
+    tasks |o--o{ review_marks : "marked"
+    waivers |o--o{ waivers : "carried from"
     sessions |o..o{ freezes : "asked in"
-    issues |o..o{ feedback_reports : "filed as"
+    issues |o--o{ feedback_reports : "filed as"
 ```
 
 ### Tables
@@ -404,7 +404,7 @@ In each table an empty last cell means built.
 | Column | Type | Null | Holds and constraints | Planned |
 |---|---|---|---|---|
 | `id` | TEXT | PK | A ULID |  |
-| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `audit`, `feature`, checked by the engine | Gains one kind per planned projection. `audit` takes no new write; its old events stay and the fold skips them (trustmybot/tmb#408) |
+| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `feature`, `waiver`, `review_mark`, `setting_change`, `freeze`, `feedback_report`, `import`, checked by the engine | Gains one kind per planned projection. Old `audit` events stay and the fold skips them |
 | `record_id` | TEXT | NOT NULL |  |  |
 | `type` | TEXT | NOT NULL | `created` or `updated` |  |
 | `data` | TEXT | NOT NULL | CHECK `json_valid(data)` |  |
@@ -531,7 +531,7 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `name` | TEXT | NOT NULL | UNIQUE; CHECK `length(trim(name)) > 0` |  |
 | `base_branch` | TEXT | NOT NULL |  |  |
 | `base_commit` | TEXT | NOT NULL | The commit the branch was cut from. It never changes |  |
-| `base_merged_commit` | TEXT | nullable | The base branch's commit last brought into the branch | trustmybot/tmb#408 |
+| `base_merged_commit` | TEXT | nullable | The base branch's commit last brought into the branch |  |
 | `state` | TEXT | NOT NULL | Default `'open'` |  |
 | `repo` | TEXT | nullable | NULL is the project folder itself |  |
 | `drop_reason` | TEXT | nullable |  |  |
@@ -640,7 +640,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `run_id` | TEXT | nullable | FK → `runs.id`. The run that wrote it |  |
 | `feature_id` | TEXT | nullable | FK → `features.id` | Exactly one of `feature_id` and `task_id` is set (trustmybot/tmb#406) |
 | `task_id` | TEXT | nullable | FK → `tasks.id`, for a review of one task | trustmybot/tmb#406 |
-| `carried_from` | TEXT | nullable | FK → `reviews.id`. The review a rebase carried over | trustmybot/tmb#408 |
+| `carried_from` | TEXT | nullable | FK → `reviews.id`. The review a rebase carried over |  |
 | `commit_sha` | TEXT | nullable | The commit it judged | Becomes NOT NULL (trustmybot/tmb#406) |
 | `verdict` | TEXT | NOT NULL |  |  |
 | `findings` | TEXT | NOT NULL | Default `'[]'`; CHECK `json_valid(findings)` |  |
@@ -667,27 +667,20 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 - **Example.** "Why did this worker never start?" is one lookup: the guard decisions of its session.
 - **Edge case.** A push typed by hand has no session and no run. Its guard decision names neither.
 
-#### `audit` and the six tables that replace it
+#### The six tables for single kinds of entry
 
-`audit` is built, and it goes (trustmybot/tmb#408). **Each kind of entry becomes its own record, with its own columns.** No catch-all table stays.
-
-| Column of `audit` | Type | Null | Holds and constraints |
-|---|---|---|---|
-| `id` | TEXT | PK |  |
-| `what` | TEXT | NOT NULL | The kind of entry. CHECK `length(trim(what)) > 0` |
-| `detail` | TEXT | NOT NULL | Default `''` |
-| `created_by`, `created_at` | TEXT | NOT NULL |  |
+**Each kind of entry is its own record, with its own columns.** There is no catch-all table.
 
 - **Example 1.** The Human waives a branch's review. The gate finds one `waivers` row for that branch and commit; it parses no text.
 - **Example 2.** A setting changes. One `setting_changes` row says who changed it, from what and to what.
-- **Edge case.** An upgrade writes each old `audit` entry again as an event of its new kind, made by tmb. The old events are never rewritten, and no entry is lost.
+- **Edge case.** A record made before these tables kept every such entry in one catch-all table. The upgrade writes each old entry again as an event of its new kind, made by tmb. The old events are never rewritten, and no entry is lost.
 - **Edge case.** An old entry on how a review mode was chosen has no setting change beside it. It becomes its own row for the key `review_mode`, with no values.
 - **Edge case.** tmb moved to a new program. That alone changes no value: its row repeats the tie in force, and the wiring refresh that follows writes the new tie.
 - **Edge case.** An old review mark names a commit that no review and no waiver covers, so its parent cannot be found. It gets no row; its old event stays in `events`.
 - **Edge case.** An old entry holds a detail that has no column, such as a feedback report's title. The new event's data keeps it; the row takes only its columns.
 - **Edge case.** The config file is not built yet (trustmybot/tmb#305). Until it is, the newest `setting_changes` row for a key is the value in force.
 
-| Today, an `audit` entry for | Becomes |
+| An entry for | Is |
 |---|---|
 | A Human waiver, of a task or a feature branch | A `waivers` row |
 | A review mark sent to the remote, and a mark sent late | A `review_marks` row |
@@ -696,11 +689,11 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | How a review mode was chosen | The `how` of that review mode's `setting_changes` row |
 | Which tmb program the project is tied to, tmb moved, and tmb's wiring redone after an update | A `setting_changes` row with the key `program`. Each holds the whole tie, so the newest row is the tie in force |
 | A base branch brought into a feature branch | An `updated` event on the feature branch, which sets `base_merged_commit` |
-| A freeze of every session's work, and its lifting (trustmybot/tmb#64) | A `freezes` row |
+| A freeze of every session's work, and its lifting | A `freezes` row. The table is built; freezing is Planned (trustmybot/tmb#64) |
 | A feedback report filed or its form opened | A `feedback_reports` row |
 | A migration from the plugin | An `imports` row |
 
-Each new table also has `id` (PK), `created_by` and `created_at`. Each is a projection, and its record kind is its name in the singular.
+Each of the six tables also has `id` (PK), `created_by` and `created_at`. Each is a projection, and its record kind is its name in the singular.
 
 | Table | Column | Type | Null | Holds and constraints |
 |---|---|---|---|---|
@@ -858,14 +851,14 @@ Planned, with each table above: one index per new foreign key column, in the sam
 - A discussion belongs to one issue. Planned: or to one pull request.
 - A run links to what it worked on: a task, or a feature branch for a branch review. A review names the commit it judged, the run that wrote it, and its feature branch. Planned: or its task.
 - A feature branch and a task record the repo they were cut in; NULL is the project folder itself.
-- Settings are not a table: each change to a setting is an `audit` row, and the newest row is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305, trustmybot/tmb#408): the values move to a config file, and the record keeps only the trail, in `setting_changes`.
+- Settings are not a table of values: each change to a setting is a `setting_changes` row, and the newest row that sets a value is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305): the values move to a config file, and the record keeps only the trail.
 - A few references are soft: `reviews.target`, `tasks.branch`, every commit column and every remote account hold a name or a SHA with no declared foreign key.
 
 ### Rules the data keeps
 
 - **Events are append-only.** Two triggers refuse any UPDATE or DELETE on `events`.
 - **Current state is a fold.** The live write path and the rebuild apply the same function to each event, so a rebuilt projection matches the live one.
-- **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions` and `audit` rows never change. Planned: a mirrored comment is the one discussion that may.
+- **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions`, `waivers`, `setting_changes`, `feedback_reports` and `imports` rows never change. Planned: a mirrored comment is the one discussion that may.
 - **Every write has an actor.** The Human, or an agent named by its role and host. A human actor carries no role or host; an agent actor carries both. Or tmb, named by its source.
 - **The remote is the truth for what it holds.** Planned (trustmybot/tmb#70). A mirrored row changes only by an event the syncer wrote, or by a write tmb first made on the remote at the Human's word.
 - **Verdicts are append-only.** A new review adds a row. A review names the exact commit it judged, so a later commit is never taken as reviewed.

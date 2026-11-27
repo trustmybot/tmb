@@ -44,7 +44,7 @@ tmb is one compiled program per platform, not a plugin of any host. The installe
 **A project runs the program that initialised it.** Its host events, its tool server and git's push hook call that program.
 
 - **Example 1.** Every printed command names the running program: a project set up by `tmb-dev` is told to run `tmb-dev init`. A test builds tmb as `tmb-dev` and fails on any printed `tmb <command>`.
-- **Edge case.** Running another program's `init` moves the project, in either direction, whenever that program can read the record. The record's audit trail keeps every move.
+- **Edge case.** Running another program's `init` moves the project, in either direction, whenever that program can read the record. The record keeps every move.
 
 **Releases are plain downloads.** Release files go to one public repo, separate from the source repo. Each release carries a `VERSION` file and its checksums.
 
@@ -174,7 +174,7 @@ When another version of the same program last wired the project, tmb redoes init
 - **What it changes.** Only what tmb wrote. It asks nothing and changes no setting. An older version refreshes as a newer one does, so the files match the program that runs.
 - **When it waits.** Never while a task is open.
 - **Where it does not run.** Not for a project tied to another channel's program: moving a project stays the Human's `init`.
-- **It is recorded.** The record keeps each refresh as an audit entry: the program, from which version to which, the hosts and what changed.
+- **It is recorded.** The record keeps each refresh as a change of the program tie: the program, from which version to which, the hosts and what changed.
 - **Edge case.** A refresh fails. It never stops the session: the line says what failed and names `init`.
 
 ### Switch channels

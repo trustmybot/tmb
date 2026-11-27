@@ -112,7 +112,7 @@ flowchart TD
     R --> C{"The checks pass on the rebased commit?"}
     C -- no --> X
     C -- yes --> S{Same change as the reviewed one?}
-    S -- yes --> K[The pass carries over, recorded in the audit trail]
+    S -- yes --> K[The pass carries over, recorded as a review carried from the old commit]
     K --> P
     S -- no --> V[Task stays in review at the rebased commit: a fresh review]
 ```

@@ -22,16 +22,16 @@ flowchart LR
 - **Machine settings** belong to the person, not the project ([Kept per machine](#kept-per-machine-not-in-the-record)).
 - **Environment variables** hold for one run ([Environment variables](#environment-variables)).
 
-## A project setting is an audit entry
+## A project setting is its newest change
 
-The project settings are a fixed list of six keys, kept in the record. There is no settings table: each change is one entry in the record's audit trail, named `setting:<key>`, and the newest entry is the value in force.
+The project settings are a fixed list of six keys, kept in the record. There is no table of values: each change is one setting change in the record, and the newest one that sets a value is the value in force.
 
 ```mermaid
 flowchart LR
-    I["tmb init"] --> A["audit entry, one per change"]
+    I["tmb init"] --> A["setting change, one per change"]
     O["tmb onboard"] --> A
     P["planner: settings_set"] --> A
-    A -->|"newest entry wins"| V["value in force"]
+    A -->|"newest change wins"| V["value in force"]
     V --> R["settings_get, tmb config, session start, hooks"]
 ```
 
@@ -77,12 +77,7 @@ Every key is null until it is first set. Readers treat null as "not set", never 
 
 ## The way a review mode was chosen is recorded
 
-Two more audit entries sit beside the setting itself and record how a review mode was chosen:
-
-| Entry | Holds |
-|---|---|
-| `review_mode_chosen` | Which way the Human chose the workspace's mode: `init` (kept for old records), `onboard` or `planner`. |
-| `repo_review_mode_chosen` | The same for one repo's own mode: the repo, its mode and the way. |
+The setting change that sets a review mode also holds the way the Human chose it: `init` (kept for old records), `onboard` or `planner`. This holds for the workspace's mode and for one repo's own.
 
 ## Branch policy is per repo in a multi-repo workspace
 
@@ -118,7 +113,7 @@ One setting belongs to the person, not the project. It is kept in each channel's
 Planned (trustmybot/tmb#305). The project settings move out of the record into one text file in the workspace, with a table per purpose.
 
 - **Why.** A text file needs no reader and can be read when the database cannot. The record is then for trajectory only.
-- **Writes still go through tmb,** which records each change as a setting change in the record (trustmybot/tmb#408).
+- **Writes still go through tmb,** which records each change as a setting change in the record.
 - **A Human-only key stays fenced.** tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal.
 - **For a repo shared with others** (trustmybot/tmb#411): the user's account on the remote, and which remote repository issues come from, such as the upstream of a fork. The record reads both and stores neither.
 - **The project's issue labels** (trustmybot/tmb#417): the groups, each label with a description, how many of a group one issue may carry, and the mapping from labels the project already has. tmb ships a default list ([ISSUES.md](ISSUES.md#the-list-is-a-setting)). The record holds which labels each issue carries, never the list.

@@ -308,7 +308,7 @@ stateDiagram-v2
 - **Ready is for a repo with no remote**. Nothing is pushed and no pull request opens; the Human merges locally with the command tmb gives. tmb counts the work as merged when the local base branch holds the tip, or when merging it would change nothing, as after a squash by hand. A ready task the Human will not merge is dropped.
 - **Dropping keeps what holds work.** The worktree goes unless it holds uncommitted work, and the branch stays while it holds commits.
 - **Agile review state is on the branch, not the task.** An agile task closes unreviewed, with its mode recorded. The pass or waiver is recorded for the feature branch's tip ([3_WORKFLOW.md](3_WORKFLOW.md)).
-- **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the audit trail. The planner never waives.
+- **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner never waives.
 - **A rebase with the same change keeps its pass.** The checks run again; a change that differs needs a fresh review. An open pull request is never rebased.
 - **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
 - **Planned:** each move names a cause from a fixed list and the record it rests on, and the record refuses a move without it.

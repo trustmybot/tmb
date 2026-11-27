@@ -12,7 +12,7 @@ A vocabulary is owned in one of three places:
 
 - **By the engine, for the record.** The record's schema has no `CHECK` on a list of values ([`TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema)). Its lists are in `src/engine/store/values.ts`, with the actor's lists in `src/engine/store/actor.ts`, and each record's fold checks them (`src/engine/store/projections.ts`).
 - **By a `CHECK` in the schema, for the code graph** (`src/engine/graph/db.ts`).
-- **By the code that writes it**, for the rest. `tasks.state`, `features.state`, `reviews.verdict`, `runs.outcome` and `audit.what` are such columns. Each table below names its source.
+- **By the code that writes it**, for the rest. `tasks.state`, `features.state`, `reviews.verdict`, and `runs.outcome` are such columns. Each table below names its source.
 
 ---
 
@@ -30,7 +30,12 @@ A vocabulary is owned in one of three places:
 | `check_run` | `check_runs` |
 | `review` | `reviews` |
 | `guard_decision` | `guard_decisions` |
-| `audit` | `audit` |
+| `waiver` | `waivers` |
+| `review_mark` | `review_marks` |
+| `setting_change` | `setting_changes` |
+| `freeze` | `freezes` |
+| `feedback_report` | `feedback_reports` |
+| `import` | `imports` |
 
 The engine checks it.
 
@@ -39,7 +44,7 @@ The engine checks it.
 | Value | Meaning |
 |---|---|
 | `created` | The record's first event; it makes the projection row |
-| `updated` | A change to the columns the record kind allows to change. `discussion`, `review`, `guard_decision` and `audit` have none |
+| `updated` | A change to the columns the record kind allows to change. `discussion`, `review`, `guard_decision`, `waiver`, `setting_change`, `feedback_report` and `import` have none |
 
 Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 
@@ -189,26 +194,9 @@ The engine checks it.
 
 The event's `role` is a role above, `main-agent` for the host's main agent, or `unnamed-agent` when the host does not say which agent is starting.
 
-### `audit.what` — audit entries
+### `review_marks.kind` and `review_marks.state` — review marks
 
-Owned by the code that writes each entry; the schema only refuses a blank value.
-
-| Value | Written when |
-|---|---|
-| `setting:host`, `setting:host_roles`, `setting:base_branch`, `setting:review_mode`, `setting:checks`, `setting:repos` | A setting changed; `detail` is the new value ([`CONFIG.md`](../architecture/CONFIG.md)) |
-| `review_mode_chosen` | The Human chose the review mode; `detail` is the way: `init`, `onboard` or `planner` |
-| `repo_review_mode_chosen` | The Human chose one repo's own review mode |
-| `program` | The project was tied to the program whose init wired it |
-| `host-refresh` | A session start redid init's wiring after an update |
-| `tmb-moved` | A running session moved to a newer build |
-| `migration.plugin` | `tmb migrate` copied a plugin project's records |
-| `feedback` | A bug report was filed (`route: issue`) or its form opened (`route: form`) |
-| `waiver` | The Human waived a feature branch's review at a commit |
-| `task_waiver` | The Human waived one task's review |
-| `review_carry` | A rebase that left the patch unchanged carried a task's review to the rebased commit |
-| `review_mark` | A commit status was set, or recorded as not sent, for a verdict or a waiver |
-| `review_mark_sent` | A mark recorded as not sent was sent later |
-| `feature_update` | The base branch was brought into a feature branch |
+The engine checks both.
 
 A review mark's kind is `pass`, `fail` or `waiver`, and its state on GitHub is `success` or `failure`, under the status check `tmb/review`.
 

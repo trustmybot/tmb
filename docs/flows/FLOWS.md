@@ -31,7 +31,7 @@ Flows are grouped by when they run, and numbered within their group.
 | Group | # | Flow | Trigger | Agents | State it leaves |
 |---|---|---|---|---|---|
 | 1. Install | 1.1 | [Install and session start](#11-install-and-session-start) | One-step install, `tmb init` once per project, then every session start | — (tmb itself) | the project's record, the host's files, git's pre-push hook, the code graph |
-| 1. Install | 1.2 | [Updates and channels](#12-updates-and-channels) | A session start, or `tmb update` | — (tmb itself) | a newer build, and an audit entry for each refresh of a project's wiring |
+| 1. Install | 1.2 | [Updates and channels](#12-updates-and-channels) | A session start, or `tmb update` | — (tmb itself) | a newer build, and a recorded change for each refresh of a project's wiring |
 | 1. Install | 1.3 | [Move a plugin project](#13-move-a-plugin-project) | `tmb migrate` | — (the Human) | the plugin's records, copied into tmb's record |
 | 2. Cold start | 2.1 | [First contact](#21-first-contact) | A session start in a project whose settings are empty | planner | the base branch, the checks and the review mode, and who chose the mode |
 | 2. Cold start | 2.2 | [Index and code-graph refresh](#22-index-and-code-graph-refresh) | `tmb init`, `tmb index`, or any lookup that finds the graph behind its base branch | — (the engine) | a code graph per repo |
@@ -84,7 +84,7 @@ flowchart LR
     B --> C["Download in the background, verify, keep"]
     C --> D["Install at the session's end, or on tmb update"]
     D --> E["A running session moves at its next tool call, once no task is open"]
-    E --> F["Next session start with no task open: the project's wiring is refreshed and audited"]
+    E --> F["Next session start with no task open: the project's wiring is refreshed and the refresh recorded"]
 ```
 
 - **Example.** A newer build arrives while a task is open. The running session keeps the build it started with, so a task never meets a new build half way.

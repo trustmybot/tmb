@@ -54,7 +54,7 @@ Who sets it, and where it is kept:
 - **Repo.** In a multi-repo workspace, a repo can name its own mode. One that names none follows the workspace's, and follows it when it changes. Onboarding asks for the workspace's mode once, then asks once whether any repo takes its own ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
 - **The task keeps it.** A task records the mode it was started in. A later change of mode applies to tasks started after it.
 - **A fence keeps the choice the Human's.** On the command line the mode is set only on a terminal, after a typed yes. One exception: a run with no one to ask, such as CI, may set a mode where none is set, and never changes one.
-- **tmb keeps it.** The mode lives in tmb's record, and every change is in the audit trail.
+- **tmb keeps it.** The mode lives in tmb's record, and every change is kept as a setting change.
 
 ## Switching review modes
 
@@ -234,7 +234,7 @@ flowchart TD
 ```
 
 - **The push gate backs it.** A push that brings onto the base branch a commit no covered tip holds is refused, whoever typed it ([3_GIT.md](3_GIT.md#the-push-gate-at-gits-own-hook)).
-- **Waivers.** Only the Human waives a review: on a terminal, after a typed yes, with a reason. The waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The audit trail keeps it, and the commit's mark on GitHub says the review was waived.
+- **Waivers.** Only the Human waives a review: on a terminal, after a typed yes, with a reason. The waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The record keeps it as a waiver, and the commit's mark on GitHub says the review was waived.
 - **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line: at the planner's session start, when the branches are listed, and for the dashboard. A read that fails changes nothing. The session start names each pull request that ended since the last session.
 - **Dropped work.** The planner or the Human drops a branch nobody will merge, with a reason. Dropped is final, and the branch is kept in git.
 - **A drop is refused** while a task on the branch is open or in review, and while its pull request is open: the Human closes the pull request first.

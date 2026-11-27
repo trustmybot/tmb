@@ -116,7 +116,7 @@ Planned:
 
 ## Settings live in the record
 
-Nothing lands in the repo's working tree beyond the ignore lines, so there is no file for the Human to commit. Each change to a setting is an entry in the record's audit trail, and the newest entry is the value in force.
+Nothing lands in the repo's working tree beyond the ignore lines, so there is no file for the Human to commit. Each change to a setting is kept in the record as a setting change, and the newest one that sets a value is the value in force.
 
 ## Re-runs keep what stands
 
