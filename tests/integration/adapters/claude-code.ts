@@ -15,13 +15,20 @@ function readJson<T>(file: string): T {
   return JSON.parse(readFileSync(file, "utf8")) as T;
 }
 
-/** The tmb command setup wired for the Claude Code hook event. */
-function wiredCommand(project: string, hookEvent: string): string {
+/** The tmb commands setup wired for the Claude Code hook event, in order. */
+function wiredCommands(project: string, hookEvent: string): string[] {
   const settings = readJson<Settings>(path.join(project, SETTINGS));
   const commands = (settings.hooks?.[hookEvent] ?? []).flatMap((group) => (group.hooks ?? []).map((hook) => hook.command));
-  const command = commands.find((candidate) => isTmbHookCommand(candidate));
-  if (typeof command !== "string") throw new Error(`setup wired no tmb hook for ${hookEvent}`);
-  return command;
+  const wired = commands.filter((candidate): candidate is string => typeof candidate === "string" && isTmbHookCommand(candidate));
+  if (wired.length === 0) throw new Error(`setup wired no tmb hook for ${hookEvent}`);
+  return wired;
+}
+
+/** One shell command that runs each tmb hook wired for the event on the same input, as Claude Code runs them all; each prints its answer on a line of its own. */
+function wiredCommand(project: string, hookEvent: string): string {
+  const commands = wiredCommands(project, hookEvent);
+  if (commands.length === 1) return commands[0]!;
+  return `input=$(cat); ${commands.map((command) => `printf '%s' "$input" | ${command}`).join("; ")}`;
 }
 
 /** Claude Code names the agent type inside a subagent and nothing in the main agent's session. */
@@ -97,12 +104,14 @@ export const claudeCodeHarness: HostHarness = {
   },
 
   readAnswer(_event, stdout) {
-    if (stdout.trim() === "") return { deny: null, context: null };
-    const output = JSON.parse(stdout).hookSpecificOutput ?? {};
-    return {
-      deny: output.permissionDecision === "deny" ? String(output.permissionDecisionReason) : null,
-      context: typeof output.additionalContext === "string" ? output.additionalContext : null,
-    };
+    // Several hooks on one event answer a line each; Claude Code gives the model every text.
+    const outputs = stdout
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => (JSON.parse(line).hookSpecificOutput ?? {}) as { permissionDecision?: unknown; permissionDecisionReason?: unknown; additionalContext?: unknown });
+    const denied = outputs.find((output) => output.permissionDecision === "deny");
+    const contexts = outputs.map((output) => output.additionalContext).filter((context): context is string => typeof context === "string");
+    return { deny: denied === undefined ? null : String(denied.permissionDecisionReason), context: contexts.length === 0 ? null : contexts.join("\n\n") };
   },
 
   toolServer(project) {

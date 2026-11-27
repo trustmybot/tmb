@@ -19,8 +19,13 @@ export const TASK_NAMING_TOOLS = [`mcp__${SERVER_KEY}__task_brief`, `mcp__${SERV
  */
 export const GUARDED_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Task", "Bash", ...TASK_NAMING_TOOLS] as const;
 
-/** Each Claude Code hook tmb wires: the hook event, its matcher, and the `tmb hook` name it runs. */
+/**
+ * Each Claude Code hook tmb wires: the hook event, its matcher, and the `tmb hook` name it runs.
+ * A session start is two hooks, so the role and the project's state are two texts, each under
+ * Claude Code's cap on one hook's text (trustmybot/tmb#295).
+ */
 export const TMB_HOOKS = [
+  { hookEvent: "SessionStart", name: "session-start-role" },
   { hookEvent: "SessionStart", name: "session-start" },
   { hookEvent: "PreToolUse", name: "pre-tool-use", matcher: GUARDED_TOOLS.join("|") },
   { hookEvent: "PostToolUseFailure", name: "post-tool-use-failure", matcher: "Agent|Task" },
@@ -169,6 +174,18 @@ function removeStrayHooks(settings: JsonObject): string[] {
   return changed;
 }
 
+/** Whether the project's settings wire one of tmb's hooks, from any tmb, under its event. Reads only; false when the file cannot be read. */
+export function wiresHook(projectDir: string, name: HookName): boolean {
+  try {
+    const hooks = readJsonObject(settingsPath(projectDir)).hooks;
+    const event = TMB_HOOKS.find((hook) => hook.name === name)!.hookEvent;
+    const groups = isObject(hooks) && Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
+    return groups.some((group) => hooksOf(group).some(isTmbHookOf(name)));
+  } catch {
+    return false;
+  }
+}
+
 /** `hooksAdded` and `hooksRemoved` name the Claude Code hook events tmb changed, in wiring order. */
 export type SetupResult = { settingsFile: string; hooksAdded: string[]; hooksRemoved: string[]; serverEnabled: boolean; gitignoreChanged: boolean };
 
@@ -178,7 +195,7 @@ export function install(projectDir: string, tmbCommand: readonly string[]): Setu
   const enabled = enabledServers(settings, file);
 
   const hooksRemoved = removeStrayHooks(settings);
-  const hooksAdded = TMB_HOOKS.filter((hook) => addHook(settings, hook, hookCommand(tmbCommand, hook.name))).map((hook) => hook.hookEvent);
+  const hooksAdded = [...new Set(TMB_HOOKS.filter((hook) => addHook(settings, hook, hookCommand(tmbCommand, hook.name))).map((hook) => hook.hookEvent))];
   const serverEnabled = !enabled.includes(SERVER_KEY);
   if (serverEnabled) settings[ENABLED_SERVERS_KEY] = [...enabled, SERVER_KEY];
   if (hooksAdded.length > 0 || hooksRemoved.length > 0 || serverEnabled) writeJsonObject(file, settings);
@@ -221,10 +238,14 @@ export function settingsGaps(projectDir: string, tmbCommand: readonly string[]):
     const settings = readJsonObject(file);
     const gaps: string[] = [];
     const hooks = isObject(settings.hooks) ? settings.hooks : {};
-    const missing = TMB_HOOKS.filter((hook) => {
-      const groups = Array.isArray(hooks[hook.hookEvent]) ? (hooks[hook.hookEvent] as unknown[]) : [];
-      return !isWired(groups, hook, hookCommand(tmbCommand, hook.name));
-    }).map((hook) => hook.hookEvent);
+    const missing = [
+      ...new Set(
+        TMB_HOOKS.filter((hook) => {
+          const groups = Array.isArray(hooks[hook.hookEvent]) ? (hooks[hook.hookEvent] as unknown[]) : [];
+          return !isWired(groups, hook, hookCommand(tmbCommand, hook.name));
+        }).map((hook) => hook.hookEvent),
+      ),
+    ];
     if (missing.length > 0) gaps.push(`${shown} lacks tmb's current ${missing.join(", ")} hook${missing.length === 1 ? "" : "s"}`);
     const stray = removeStrayHooks(structuredClone(settings));
     if (stray.length > 0) gaps.push(`${shown} holds tmb hooks this version no longer wires under ${stray.join(", ")}`);

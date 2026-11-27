@@ -154,7 +154,7 @@ describe("init and remove", () => {
     const settings = readJson(settingsFile);
     expect(settings.permissions).toEqual(originalSettings.permissions);
     expect(settings.enabledMcpjsonServers).toEqual(["other", "tmb"]);
-    expect(settings.hooks.SessionStart).toEqual([{ hooks: [{ type: "command", command: `"${process.execPath}" "${CLI}" hook session-start` }] }]);
+    expect(settings.hooks.SessionStart).toEqual(["session-start-role", "session-start"].map((name) => ({ hooks: [{ type: "command", command: `"${process.execPath}" "${CLI}" hook ${name}` }] })));
     // The Human made .mcp.json, so it stays tracked; tmb's own files are ignored.
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe(".tmb/\n.claude/settings.local.json\n");
 
@@ -324,11 +324,14 @@ describe("session start", () => {
     const created = tmbJson(["issue", "create", "Resume this next session"], project);
     tmb(["note", created.id, "Start with the doors", "--decision"], project);
 
-    const result = run(["hook", "session-start"], scratch, JSON.stringify({ hook_event_name: "SessionStart", source: "startup", cwd: project }));
-    expect(result.status).toBe(0);
-    const context: string = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
-    expect(context).toMatch(/^# You are bro\b/);
-    const work = context.slice(context.indexOf("## Open work in the record"));
+    // init wires two hooks to the session start, so the role and the project's state are two texts.
+    const [role, work] = ["session-start-role", "session-start"].map((name) => {
+      const result = run(["hook", name], scratch, JSON.stringify({ hook_event_name: "SessionStart", source: "startup", cwd: project }));
+      expect(result.status).toBe(0);
+      return JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
+    }) as [string, string];
+    expect(role).toMatch(/^# You are bro\b/);
+    expect(work).toStartWith("## Open work in the record");
     expect(work).toContain(`${created.id} Resume this next session`);
     expect(work).toContain("Start with the doors");
   });

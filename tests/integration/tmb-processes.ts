@@ -102,12 +102,18 @@ export function tmbProcesses(prefix: string) {
     return git(worktree, "rev-parse", "HEAD");
   }
 
-  /** What a new host session in the project is told: its session start event, answered by `tmb hook session-start`. */
+  /**
+   * What a new host session in the project is told: its session start event, answered by each
+   * `tmb hook` the project's settings wire to it, role first, as one text.
+   */
   function sessionStart(project: string): string {
     const event = JSON.stringify({ session_id: "workflow", hook_event_name: "SessionStart", source: "startup", cwd: project });
-    const result = spawnSync(process.execPath, [CLI, "hook", "session-start"], { cwd: project, env, input: event, encoding: "utf8", timeout: 30_000 });
-    if (result.status !== 0 || result.stderr !== "") throw new Error(`tmb hook session-start exited ${result.status}: ${result.stderr}`);
-    return (JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    const texts = ["session-start-role", "session-start"].map((name) => {
+      const result = spawnSync(process.execPath, [CLI, "hook", name], { cwd: project, env, input: event, encoding: "utf8", timeout: 30_000 });
+      if (result.status !== 0 || result.stderr !== "") throw new Error(`tmb hook ${name} exited ${result.status}: ${result.stderr}`);
+      return result.stdout.trim() === "" ? "" : (JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
+    });
+    return texts.filter((text) => text !== "").join("\n\n");
   }
 
   /** Runs a host hook as the host would, with `input` as its JSON event; the hook's stdout, empty for an allow. */

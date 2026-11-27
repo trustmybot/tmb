@@ -31,40 +31,40 @@ export const PROJECT_MAP_MAX_DIRS = 40;
 const PROJECT_MAP_DEPTH = 2;
 const MAP_SUMMARY_MAX = 120;
 
-function openWork(store: Store): string {
-  return `${OPEN_WORK_HEADING}\n\n${openIssues(store)}${openTasks(store)}${inReviewTasks(store)}`;
+function openWork(store: Store, max: number): string {
+  return `${OPEN_WORK_HEADING}\n\n${openIssues(store, max)}${openTasks(store, max)}${inReviewTasks(store, max)}`;
 }
 
-function openIssues(store: Store): string {
+function openIssues(store: Store, max: number): string {
   // Ids sort in time order, so the newest issues come last in the store's list.
   const open = store.listIssues({ state: "open" }).reverse();
   if (open.length === 0) return "No open issues.";
-  const lines = open.slice(0, OPEN_WORK_MAX).map((issue) => {
+  const lines = open.slice(0, max).map((issue) => {
     const decision = store.newestDecision(issue.id);
     return `- ${issue.id} ${issue.title}${decision ? ` (decision: ${clip(decision.body)})` : ""}`;
   });
-  if (open.length > OPEN_WORK_MAX) lines.push(`- …and ${open.length - OPEN_WORK_MAX} older open issues; issue_list shows them all.`);
+  if (open.length > max) lines.push(`- …and ${open.length - max} older open issues; issue_list shows them all.`);
   return `Newest first:\n\n${lines.join("\n")}`;
 }
 
 /** The open tasks, oldest first, so a session resumes a task a worker left open; empty when none is. */
-function openTasks(store: Store): string {
+function openTasks(store: Store, max: number): string {
   const open = store.listTasks("open");
   if (open.length === 0) return "";
-  const lines = open.slice(0, OPEN_WORK_MAX).map((task) => {
+  const lines = open.slice(0, max).map((task) => {
     const feature = task.featureId === null ? null : store.getFeature(task.featureId)?.name;
     return `- ${task.id} ${task.title} (issue ${task.issueId}${feature ? `, feature branch ${feature}` : ""}, worktree ${task.worktree ?? "none"})`;
   });
-  if (open.length > OPEN_WORK_MAX) lines.push(`- …and ${open.length - OPEN_WORK_MAX} newer open tasks; task_list shows them all.`);
+  if (open.length > max) lines.push(`- …and ${open.length - max} newer open tasks; task_list shows them all.`);
   return `\n\nOpen tasks, oldest first:\n\n${lines.join("\n")}`;
 }
 
 /** Truest tasks waiting on their review or their pull request, oldest first; empty when none is. */
-function inReviewTasks(store: Store): string {
+function inReviewTasks(store: Store, max: number): string {
   const waiting = store.listTasks("in_review");
   if (waiting.length === 0) return "";
-  const lines = waiting.slice(0, OPEN_WORK_MAX).map((task) => `- ${task.id} ${task.title} (issue ${task.issueId}, at ${task.commitSha?.slice(0, 12) ?? "no commit"})`);
-  if (waiting.length > OPEN_WORK_MAX) lines.push(`- …and ${waiting.length - OPEN_WORK_MAX} newer tasks in review; task_list shows them all.`);
+  const lines = waiting.slice(0, max).map((task) => `- ${task.id} ${task.title} (issue ${task.issueId}, at ${task.commitSha?.slice(0, 12) ?? "no commit"})`);
+  if (waiting.length > max) lines.push(`- …and ${waiting.length - max} newer tasks in review; task_list shows them all.`);
   return `\n\nTasks in review, oldest first (task_brief shows whether a review covers each; task_pr opens a covered one's pull request):\n\n${lines.join("\n")}`;
 }
 
@@ -77,7 +77,7 @@ const shorten = (text: string): string => (text.length <= MAP_SUMMARY_MAX ? text
  * session start must stay fast, and graph_map answers from the newest commit. Empty when the
  * project has no graph yet or it cannot be read.
  */
-function projectMapSection(projectDir: string, store: Store): string {
+function projectMapSection(projectDir: string, store: Store, maxDirs: number): string {
   const repos = workspaceRepos(store);
   if (repos !== null) return workspaceSection(projectDir, repos, readSettings(store).review_mode);
   if (!existsSync(graphDbPath(projectDir))) return "";
@@ -88,7 +88,7 @@ function projectMapSection(projectDir: string, store: Store): string {
       if (layer === null) return "";
       const dirs = db
         .query("SELECT path, summary, file_count FROM dirs WHERE layer = ? AND depth <= ? ORDER BY depth, path LIMIT ?")
-        .all(BASE_LAYER, PROJECT_MAP_DEPTH, PROJECT_MAP_MAX_DIRS) as { path: string; summary: string; file_count: number }[];
+        .all(BASE_LAYER, PROJECT_MAP_DEPTH, maxDirs) as { path: string; summary: string; file_count: number }[];
       const total = (db.query("SELECT count(*) AS n FROM dirs WHERE layer = ?").get(BASE_LAYER) as { n: number }).n;
       const lines = dirs.map((dir) => {
         const summary = dir.summary ? `: ${shorten(oneLineText(dir.summary))}` : "";
@@ -189,10 +189,6 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
   return `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ${parts.join(" ")}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`;
 }
 
-function withRole(section: string): string {
-  return `${namingProgram(plannerRole).trimEnd()}\n\n${section}\n`;
-}
-
 function oneLine(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
 }
@@ -225,17 +221,17 @@ function awaitingReview(store: Store, projectDir: string): string {
   return `${AWAITING_REVIEW_HEADING}\n\nThis host is set up as the project's reviewer: another agent plans and writes, and you judge its work through the record. Take each branch below as your prompt's \`feature=<name>\` line. Report your verdict to the Human, who passes it on to the planner.\n\n${list}`;
 }
 
-/** The reviewer host's context; opens its run, so the verdict it records has one. Never throws. */
-function reviewerContext(projectDir: string, host: string): string {
+/** The reviewer host's state: the branches waiting for review. Opens its run, so the verdict it records has one. Never throws. */
+function reviewerState(projectDir: string, host: string): string {
   const opened = openProjectStore(projectDir, { create: false });
-  if (!opened.ok) return `${namingProgram(reviewerRole).trimEnd()}\n\ntmb could not read the record: ${oneLine(opened.error)}\n`;
+  if (!opened.ok) return `tmb could not read the record: ${oneLine(opened.error)}`;
   try {
-    const context = `${namingProgram(reviewerRole).trimEnd()}\n\n${awaitingReview(opened.store, projectDir)}\n`;
+    const state = awaitingReview(opened.store, projectDir);
     // A host may raise a session start again on resume, clear or compact: one run per session.
     ensureHostReviewerRun(opened.store, host);
-    return context;
+    return state;
   } catch (error) {
-    return `${namingProgram(reviewerRole).trimEnd()}\n\ntmb could not read the record: ${oneLine(error)}\n`;
+    return `tmb could not read the record: ${oneLine(error)}`;
   } finally {
     opened.store.close();
   }
@@ -256,52 +252,98 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
 }
 
 /**
- * The role and its work: for the planner the open work, for a host set up as the reviewer the
- * branches waiting for review. When `unattended` says no one can answer in this run, the
- * instruction for it comes first, so it is in the head a host shows of a long answer
- * (trustmybot/tmb#281). Nothing about the mode is stored in the project.
+ * How the host takes the session start. `withRole` puts the role in the same text as the state;
+ * without it the host takes the role apart, from `sessionRole`. `budget` is the most characters
+ * the state's text may have, below the host's cap on one text: tmb shortens its own lists to fit,
+ * so the host never cuts it. The adapter names both; with no budget nothing is cut.
  */
-export function sessionStartContext(projectDir: string, unattended: boolean, host?: string, feedback?: FeedbackEnv, refreshed: string | null = null, doctor?: (projectDir: string) => string | null): string {
-  if (reviewsHere(projectDir, host)) {
-    const context = withHostFiles(reviewerContext(projectDir, host!), refreshed, unattended);
-    return unattended ? withUnattended(context) : context;
-  }
-  const context = withDoctor(withHostFiles(plannerContext(projectDir, unattended, host), refreshed, unattended), projectDir, doctor, unattended);
-  if (unattended) return withUnattended(context);
-  // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
-  const told = feedback === undefined ? "" : feedbackSection(feedback);
-  return told === "" ? context : `${context.trimEnd()}\n\n${told}\n`;
+export type SessionStartTexts = { withRole: boolean; budget?: number };
+
+/** The role a session in the project takes: the reviewer's on a host set up as the reviewer, else the planner's. Reads only; never throws. */
+export function sessionRole(projectDir: string, host?: string): string {
+  return namingProgram(reviewsHere(projectDir, host) ? reviewerRole : plannerRole);
 }
 
-/** The unattended instruction, then the context. */
-function withUnattended(context: string): string {
-  return `${UNATTENDED_INSTRUCTION}\n\n${context}`;
+/**
+ * The state of the project, and the role too when `texts.withRole` says so: for the planner the
+ * open work, settings, map and findings; for a host set up as the reviewer the branches waiting
+ * for review. When `unattended` says no one can answer in this run, the instruction for it comes
+ * first, so it is in the head a host shows of a long answer (trustmybot/tmb#281). Nothing about the
+ * mode is stored in the project.
+ */
+export function sessionStartContext(
+  projectDir: string,
+  unattended: boolean,
+  host?: string,
+  feedback?: FeedbackEnv,
+  refreshed: string | null = null,
+  doctor?: (projectDir: string) => string | null,
+  texts: SessionStartTexts = { withRole: true },
+): string {
+  const reviewer = reviewsHere(projectDir, host);
+  const head = unattended ? UNATTENDED_INSTRUCTION : "";
+  const budget = texts.budget === undefined ? undefined : texts.budget - (head === "" ? 0 : head.length + 2);
+  const state = reviewer
+    ? fitted([joined([reviewerState(projectDir, host!), hostFilesSection(refreshed, unattended)])], budget)
+    : plannerState(projectDir, unattended, host, feedback, refreshed, doctor, budget);
+  const role = texts.withRole ? namingProgram(reviewer ? reviewerRole : plannerRole) : "";
+  return joined([head, role, state]);
+}
+
+/** The parts that have text, a blank line between each, ending in one newline; empty when none has. */
+function joined(parts: readonly string[]): string {
+  const kept = parts.map((part) => part.trim()).filter((part) => part !== "");
+  return kept.length === 0 ? "" : `${kept.join("\n\n")}\n`;
+}
+
+/** How many items each list shows: the open work's lists, and the map's directories. */
+type ListSizes = { work: number; dirs: number };
+
+/** The sizes tried, longest first, each half the one before, down to none. */
+function listSizes(): ListSizes[] {
+  const sizes: ListSizes[] = [{ work: OPEN_WORK_MAX, dirs: PROJECT_MAP_MAX_DIRS }];
+  for (let last = sizes[0]!; last.work > 0 || last.dirs > 0; ) {
+    last = { work: Math.floor(last.work / 2), dirs: Math.floor(last.dirs / 2) };
+    sizes.push(last);
+  }
+  return sizes;
+}
+
+/**
+ * The first text, longest first, within the budget. When even the shortest is over, tmb cuts it
+ * at the budget and says so, so the host never cuts it and the agent knows which tools list the rest.
+ */
+function fitted(texts: readonly string[], budget: number | undefined): string {
+  const fit = budget === undefined ? texts[0] : texts.find((text) => text.length <= budget);
+  if (fit !== undefined || budget === undefined) return fit ?? "";
+  const note = `\n\n…cut to fit tmb's budget of ${budget} characters for this text; issue_list, task_list, settings_get and graph_map show the rest.\n`;
+  return `${texts[0]!.slice(0, Math.max(0, budget - note.length)).trimEnd()}${note}`;
 }
 
 /**
  * The one line on refreshing the project's host files after an update (trustmybot/tmb#128),
  * which the role tells the Human, or names in its answer when no one can answer.
  */
-function withHostFiles(context: string, refreshed: string | null, unattended: boolean): string {
-  if (refreshed === null) return context;
+function hostFilesSection(refreshed: string | null, unattended: boolean): string {
+  if (refreshed === null) return "";
   const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
-  return `${context.trimEnd()}\n\n${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tell}\n`;
+  return `${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tell}`;
 }
 
 /**
  * The planner's one line on what \`tmb doctor\` finds (trustmybot/tmb#160), run after the session
  * start's own clean-up so it counts only what is left. Never throws.
  */
-function withDoctor(context: string, projectDir: string, doctor: ((projectDir: string) => string | null) | undefined, unattended: boolean): string {
+function doctorSection(projectDir: string, doctor: ((projectDir: string) => string | null) | undefined, unattended: boolean): string {
   let line: string | null = null;
   try {
     line = doctor?.(projectDir) ?? null;
   } catch {
     line = null;
   }
-  if (line === null) return context;
+  if (line === null) return "";
   const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
-  return `${context.trimEnd()}\n\n${DOCTOR_HEADING}\n\n${oneLine(line)} ${tell}\n`;
+  return `${DOCTOR_HEADING}\n\n${oneLine(line)} ${tell}`;
 }
 
 /** The feedback program's first-run section; never throws, as a session start must not fail. */
@@ -339,18 +381,41 @@ function endedPullRequests(store: Store, projectDir: string, host?: string): str
   return moved.length === 0 ? "" : `\n\n${PULL_REQUESTS_ENDED_HEADING}\n\n${moved.map((line) => `- ${line}`).join("\n")}`;
 }
 
-/** Never throws: a missing record gives the role alone, a bad one the role and a line naming the problem. */
-function plannerContext(projectDir: string, unattended: boolean, host?: string): string {
+/**
+ * The planner's state, fitted to the budget: the open work, the pull requests that ended, empty
+ * settings and the map, at each list size, then the findings. Each step with an effect runs once.
+ * Never throws: a missing record gives no state, a bad one a line naming the problem.
+ */
+function plannerState(
+  projectDir: string,
+  unattended: boolean,
+  host: string | undefined,
+  feedback: FeedbackEnv | undefined,
+  refreshed: string | null,
+  doctor: ((projectDir: string) => string | null) | undefined,
+  budget: number | undefined,
+): string {
+  const record = recordStates(projectDir, unattended, host, budget === undefined ? [listSizes()[0]!] : listSizes());
+  const findings = [hostFilesSection(refreshed, unattended), doctorSection(projectDir, doctor, unattended)];
+  // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
+  const told = unattended || feedback === undefined ? "" : feedbackSection(feedback);
+  return fitted(
+    record.map((state) => joined([state, ...findings, told])),
+    budget,
+  );
+}
+
+/** The record's part of the planner's state at each list size; one line naming the problem when it cannot be read, none when there is no record. */
+function recordStates(projectDir: string, unattended: boolean, host: string | undefined, sizes: readonly ListSizes[]): string[] {
   const opened = openProjectStore(projectDir, { create: false });
-  if (!opened.ok) {
-    return opened.error.failure === "missing" ? namingProgram(plannerRole) : withRole(`tmb could not read the record: ${oneLine(opened.error)}`);
-  }
+  if (!opened.ok) return [opened.error.failure === "missing" ? "" : `tmb could not read the record: ${oneLine(opened.error)}`];
   try {
     tidyClosedTasks(opened.store, projectDir);
     const ended = endedPullRequests(opened.store, projectDir, host);
-    return withRole(`${openWork(opened.store)}${ended}${emptySettingsSection(opened.store, projectDir, unattended)}${projectMapSection(projectDir, opened.store)}`);
+    const settings = emptySettingsSection(opened.store, projectDir, unattended);
+    return sizes.map((size) => `${openWork(opened.store, size.work)}${ended}${settings}${projectMapSection(projectDir, opened.store, size.dirs)}`);
   } catch (error) {
-    return withRole(`tmb could not read the record: ${oneLine(error)}`);
+    return [`tmb could not read the record: ${oneLine(error)}`];
   } finally {
     opened.store.close();
   }

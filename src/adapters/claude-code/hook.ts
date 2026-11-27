@@ -3,7 +3,7 @@ import type { HookRun } from "../host-adapter.ts";
 import { isObject, type JsonObject } from "../common/json-file.ts";
 import { HOST_ID } from "./mcp-json.ts";
 import { usageOfTranscriptFile } from "./usage.ts";
-import { type HookName, TASK_NAMING_TOOLS } from "./settings.ts";
+import { type HookName, TASK_NAMING_TOOLS, wiresHook } from "./settings.ts";
 
 /** The subagent Claude Code starts when the call names no subagent_type. */
 const DEFAULT_SUBAGENT = "general-purpose";
@@ -46,11 +46,35 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
   return { type, projectDir: projectDirOf(input), host: HOST_ID, role, action };
 }
 
+/**
+ * Claude Code's cap on one text a hook gives it, in characters. Over it, the model sees a path and
+ * the first 2,000 characters only; the cap is per text, and cannot be raised.
+ */
+export const HOOK_TEXT_CAP = 10_000;
+/** The most each session-start text may have: below the cap, so a text tmb fits is never cut by Claude Code. */
+export const SESSION_TEXT_BUDGET = 8_000;
+
+/** Claude Code's answer adding one text to the session; empty when there is no text. */
+function sessionText(context: string): string {
+  return context === "" ? "" : JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } });
+}
+
+/**
+ * The project's state, fitted to its budget. Settings an older tmb wired have no role hook yet:
+ * the role then comes in this text too, until the refresh below wires it for the next session.
+ */
 function sessionStart(input: JsonObject, run: HookRun): string {
   const projectDir = projectDirOf(input);
+  const withRole = !wiresHook(projectDir, "session-start-role");
   const refreshed = run.refresh?.(projectDir) ?? null;
-  const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed, doctor: run.doctor });
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: answer.context } });
+  const texts = { withRole, budget: SESSION_TEXT_BUDGET };
+  const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed, doctor: run.doctor, texts });
+  return sessionText(answer.context);
+}
+
+/** The role, its own text. Claude Code runs it beside the state's hook, so it only reads. */
+function sessionStartRole(input: JsonObject): string {
+  return sessionText(handleEvent({ type: "session-role", projectDir: projectDirOf(input), host: HOST_ID }).context);
 }
 
 /**
@@ -121,6 +145,7 @@ function sessionEnd(input: JsonObject): string {
 }
 
 const ANSWERS: Record<HookName, (input: JsonObject, run: HookRun) => string> = {
+  "session-start-role": sessionStartRole,
   "session-start": sessionStart,
   "pre-tool-use": preToolUse,
   "post-tool-use-failure": postToolUseFailure,

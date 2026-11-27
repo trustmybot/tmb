@@ -3,12 +3,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { answerHook } from "../../src/adapters/claude-code/hook.ts";
+import { answerHook, HOOK_TEXT_CAP, SESSION_TEXT_BUDGET } from "../../src/adapters/claude-code/hook.ts";
 import { adapter } from "../../src/adapters/claude-code/index.ts";
 import { mcpJsonPath, registerServer, serverEntry, unregisterServer } from "../../src/adapters/claude-code/mcp-json.ts";
 import { setUpRecord } from "../../src/adapters/common/record.ts";
-import { hookCommand, install, isTmbHookCommand, remove, settingsPath } from "../../src/adapters/claude-code/settings.ts";
-import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath } from "../../src/engine/index.ts";
+import { hookCommand, install, isTmbHookCommand, remove, settingsGaps, settingsPath } from "../../src/adapters/claude-code/settings.ts";
+import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath, reviewerRole, UNATTENDED_INSTRUCTION } from "../../src/engine/index.ts";
+import { namingProgram } from "../../src/program.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -53,7 +54,10 @@ function gitInit(dir: string): void {
 
 const GUARDED_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close";
 const tmbHooks = (tmbCommand: readonly string[]) => ({
-  SessionStart: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start") }] }],
+  SessionStart: [
+    { hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start-role") }] },
+    { hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start") }] },
+  ],
   PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: hookCommand(tmbCommand, "pre-tool-use") }] }],
   PostToolUseFailure: [{ matcher: "Agent|Task", hooks: [{ type: "command", command: hookCommand(tmbCommand, "post-tool-use-failure") }] }],
   SubagentStop: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "subagent-stop") }] }],
@@ -145,7 +149,7 @@ describe("settings: setup", () => {
     install(project, [winExe]);
     expect(readJson(settingsPath(project))).toMatchObject({
       hooks: {
-        SessionStart: [{ hooks: [{ type: "command", command: `"${winExe}" hook session-start` }] }],
+        SessionStart: [{ hooks: [{ type: "command", command: `"${winExe}" hook session-start-role` }] }, { hooks: [{ type: "command", command: `"${winExe}" hook session-start` }] }],
         PreToolUse: [{ hooks: [{ type: "command", command: `"${winExe}" hook pre-tool-use` }] }],
         SubagentStop: [{ hooks: [{ type: "command", command: `"${winExe}" hook subagent-stop` }] }],
       },
@@ -389,6 +393,63 @@ describe("hook session-start", () => {
     process.env.CLAUDE_PROJECT_DIR = sub;
     const fromEnv = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: tmpdir() }), ATTENDED));
     expect(fromEnv.hookSpecificOutput.additionalContext).toContain("Resume me");
+  });
+
+  const textOf = (event: string, run = ATTENDED) => {
+    const answer = answerHook(event, JSON.stringify({ hook_event_name: "SessionStart", cwd: project }), run);
+    return answer === "" ? "" : (JSON.parse(answer).hookSpecificOutput.additionalContext as string);
+  };
+
+  test("with both hooks wired, the role and the project's state are two texts", () => {
+    install(project, BINARY);
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    opened.store.createIssue({ kind: "human" }, { title: "Resume me" });
+    opened.store.close();
+
+    expect(textOf("session-start-role")).toBe(plannerRole);
+    const state = textOf("session-start");
+    expect(state).toContain("Resume me");
+    expect(state).not.toContain("# You are bro");
+    expect(textOf("session-start", { unattended: true })).toStartWith(UNATTENDED_INSTRUCTION);
+  });
+
+  test("settings an older tmb wired, with no role hook, get the role in the state's text, and doctor and init agree on the gap", () => {
+    const old = tmbHooks(BINARY);
+    old.SessionStart = old.SessionStart.filter((group) => !group.hooks[0]!.command.endsWith("session-start-role"));
+    mkdirSync(path.dirname(settingsPath(project)), { recursive: true });
+    writeFileSync(settingsPath(project), JSON.stringify({ hooks: old, enabledMcpjsonServers: ["tmb"] }));
+
+    expect(textOf("session-start")).toStartWith("# You are bro, the planner");
+    expect(settingsGaps(project, BINARY)).toEqual([".claude/settings.local.json lacks tmb's current SessionStart hook"]);
+    expect(install(project, BINARY).hooksAdded).toEqual(["SessionStart"]);
+    expect(settingsGaps(project, BINARY)).toEqual([]);
+    expect(textOf("session-start")).not.toContain("# You are bro");
+  });
+
+  test("tmb cuts the state to its budget, below Claude Code's cap, listing the newest and naming the tool for the rest", () => {
+    expect(SESSION_TEXT_BUDGET).toBeLessThan(HOOK_TEXT_CAP);
+    install(project, BINARY);
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    for (let i = 1; i <= 30; i++) opened.store.createIssue({ kind: "human" }, { title: `Issue ${i} ${"long words ".repeat(50)}` });
+    opened.store.close();
+
+    for (const run of [ATTENDED, { unattended: true }]) {
+      const state = textOf("session-start", run);
+      expect(state.length).toBeLessThanOrEqual(SESSION_TEXT_BUDGET);
+      expect(state).toContain("Issue 30 ");
+      expect(state).not.toContain("Issue 1 ");
+      expect(state).toMatch(/…and \d+ older open issues; issue_list shows them all\./);
+    }
+  });
+
+  test("the reviewer's role fits its session-start text's budget", () => {
+    expect(namingProgram(reviewerRole).length).toBeLessThanOrEqual(SESSION_TEXT_BUDGET);
+  });
+
+  test("the planner's role fits its session-start text's budget", () => {
+    expect(namingProgram(plannerRole).length).toBeLessThanOrEqual(SESSION_TEXT_BUDGET);
   });
 
   test("rejects an unknown event", () => {
