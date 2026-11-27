@@ -8,10 +8,11 @@ The engine, the role prompts and the planner decide what to do from these values
 
 ## Where a vocabulary is enforced
 
-A vocabulary is owned in one of two places:
+A vocabulary is owned in one of three places:
 
-- **By a `CHECK` in the schema**, shown per column in [the schema in `TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema). The record's schema is `src/engine/store/schema.ts`; the code graph's is `src/engine/graph/db.ts`.
-- **By the code that writes it**, when the column has no `CHECK`. `tasks.state`, `features.state`, `reviews.verdict`, `runs.outcome` and `audit.what` are such columns. Each table below names its source.
+- **By the engine, for the record.** The record's schema has no `CHECK` on a list of values ([`TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema)). Its lists are in `src/engine/store/values.ts`, with the actor's lists in `src/engine/store/actor.ts`, and each record's fold checks them (`src/engine/store/projections.ts`).
+- **By a `CHECK` in the schema, for the code graph** (`src/engine/graph/db.ts`).
+- **By the code that writes it**, for the rest. `tasks.state`, `features.state`, `reviews.verdict`, `runs.outcome` and `audit.what` are such columns. Each table below names its source.
 
 ---
 
@@ -31,7 +32,7 @@ A vocabulary is owned in one of two places:
 | `guard_decision` | `guard_decisions` |
 | `audit` | `audit` |
 
-Schema enforces via `CHECK`. `feature` was added at schema version 3.
+The engine checks it.
 
 ### `events.type` — event type
 
@@ -48,11 +49,12 @@ Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 |---|---|---|
 | `actor_kind` | `human` | The Human. Carries no role and no host |
 | `actor_kind` | `agent` | An agent. Carries a role and a host |
+| `actor_kind` | `tmb` | tmb itself, for a write no person or agent made. Carries a source, and no role or host |
 | `actor_role` | `planner` | The host's main agent, addressed as bro |
 | `actor_role` | `worker` | The subagent that carries out one task |
 | `actor_role` | `reviewer` | The agent that judges a branch or a task it did not write |
 
-Schema enforces via `CHECK`. `runs.role` takes the same three roles. A host's main agent takes one of two, `planner` or `reviewer` (the `host_roles` setting, [`CONFIG.md`](../architecture/CONFIG.md)).
+The engine checks it. `runs.role` takes the same three roles. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`. A host's main agent takes one of two, `planner` or `reviewer` (the `host_roles` setting, [`CONFIG.md`](../architecture/CONFIG.md)).
 
 ### `issues.state` — issue lifecycle
 
@@ -61,7 +63,7 @@ Schema enforces via `CHECK`. `runs.role` takes the same three roles. A host's ma
 | `open` | GitHub | Newly created, not yet closed |
 | `closed` | GitHub | Resolved |
 
-These two states deliberately match GitHub's issue states. Schema enforces via `CHECK (state IN ('open','closed'))`.
+These two states deliberately match GitHub's issue states. The engine checks it.
 
 ### `discussions.kind` — narrative kind in issue discussions
 
@@ -70,7 +72,7 @@ These two states deliberately match GitHub's issue states. Schema enforces via `
 | `note` | tmb | Running narrative on an issue |
 | `decision` | tmb | A decision and its reason |
 
-Schema enforces via `CHECK (kind IN ('note','decision'))`. `tmb migrate` leaves a plugin discussion of any other kind behind.
+The engine checks it. `tmb migrate` leaves a plugin discussion of any other kind behind.
 
 ### `tasks.state` — task lifecycle
 
@@ -141,7 +143,7 @@ Owned by the code (`src/engine/handlers/reviews.ts`). There is no `escalate`. Ea
 | `commit` | One commit |
 | `branch` | A branch at its tip |
 
-Schema enforces via `CHECK`.
+The engine checks it.
 
 ### `runs.outcome` — how a run ended
 
@@ -169,7 +171,7 @@ Owned by the code (`src/engine/checks.ts`). Each entry of `check_runs.commands` 
 | `allow` | The event goes through |
 | `deny` | The event is refused; `reason` says why |
 
-Schema enforces via `CHECK`.
+The engine checks it.
 
 ### `guard_decisions.event` — host events
 
@@ -275,7 +277,7 @@ Symbol and edge kinds are the one contract every language of the code graph meet
 
 1. Open a PR that adds the value to the schema or code that consumes it, and to this page.
 2. Add a test that covers the new value's path.
-3. A value in a `CHECK` needs a new schema step: SQLite cannot change a `CHECK` in place ([`TRAJECTORY.md`](../architecture/TRAJECTORY.md#schema-migration-policy)).
+3. A value in a `CHECK`, which only the code graph has, needs a new schema step: SQLite cannot change a `CHECK` in place.
 
 ---
 

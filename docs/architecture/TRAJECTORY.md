@@ -140,7 +140,7 @@ A run and a check run each write their start before any work. The end is a secon
 
 ## 3. Every record names what it belongs to and who made it
 
-Each record points at its parent, so the work forms a tree. Each record also names its maker: the Human, or the role and host that acted. Planned: the session that acted (trustmybot/tmb#63), and tmb itself as a maker for what it only learned from the remote (trustmybot/tmb#404).
+Each record points at its parent, so the work forms a tree. Each record also names its maker: the Human, or the role and host that acted. tmb itself is the maker of a write no person or agent made, such as an upgrade. Planned: the session that acted (trustmybot/tmb#63).
 
 | Record | Names |
 |---|---|
@@ -310,7 +310,7 @@ The file sits inside the project's folder and is left out of git. The engine cre
 
 ## Schema
 
-The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and left out of git. Its schema is `src/engine/store/schema.ts`, at `SCHEMA_VERSION = 11` (`PRAGMA user_version`). The code graph has its own file and schema ([CODE_GRAPH.md](CODE_GRAPH.md#schema)); no foreign key crosses between the two.
+The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and left out of git. Its schema is `src/engine/store/schema.ts`, at `SCHEMA_VERSION = 12` (`PRAGMA user_version`). The code graph has its own file and schema ([CODE_GRAPH.md](CODE_GRAPH.md#schema)); no foreign key crosses between the two.
 
 **This section is the one schema the record is built to.** A table or column marked Planned, with its issue, is not built yet; one marked "goes" is built and will be removed. Everything unmarked is built. A schema change updates this section in the same pull request. Planned: a generator with a freshness test that fails when it drifts.
 
@@ -336,7 +336,7 @@ Every table, and every change to one, meets these requirements.
 
 - **Trajectory.** The record exists to keep the trajectory of work. Every table either records a step in it (a fact) or describes something that takes part in it (a dimension). Anything else does not belong in it: a setting's value is in the config, and a choice is never a column.
 - **Consistency.** A projection table is plural and its record kind is the singular: `tasks` → `task`, `check_runs` → `check_run`. Every projection row carries its id, `created_by` (the JSON actor of its first event) and `created_at` (that event's time). Ids are ULIDs, never autoincrement.
-- **Room to grow.** Planned (trustmybot/tmb#404). A new session, host, vendor, role, remote or record kind is new rows, never a reshaped table. The schema checks shape only: valid JSON, a text that is not blank, which columns are set together. Every list of values is checked by the engine ([ENUMS.md](../contributing/ENUMS.md)), so every CHECK on a list goes.
+- **Room to grow.** A new session, host, vendor, role, remote or record kind is new rows, never a reshaped table. The schema checks shape only: valid JSON, a text that is not blank, which columns are set together. Every list of values is checked by the engine ([ENUMS.md](../contributing/ENUMS.md)), so no list of values is a CHECK.
 - **Local first.** No table needs a remote. Every column that describes the remote is nullable, and a row with no `remote_id` is local.
 
 ### Diagram
@@ -385,23 +385,24 @@ In each table an empty last cell means built.
 | Column | Type | Null | Holds and constraints | Planned |
 |---|---|---|---|---|
 | `id` | TEXT | PK | A ULID |  |
-| `record_kind` | TEXT | NOT NULL | Built: CHECK, one of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `audit`, `feature` | The CHECK goes and the engine checks the list. It gains one kind per planned projection. `audit` takes no new write; its old events stay and the fold skips them (trustmybot/tmb#404, trustmybot/tmb#408) |
+| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `audit`, `feature`, checked by the engine | Gains one kind per planned projection. `audit` takes no new write; its old events stay and the fold skips them (trustmybot/tmb#408) |
 | `record_id` | TEXT | NOT NULL |  |  |
 | `type` | TEXT | NOT NULL | `created` or `updated` |  |
 | `data` | TEXT | NOT NULL | CHECK `json_valid(data)` |  |
-| `actor_kind` | TEXT | NOT NULL | Built: CHECK, `human` or `agent` | The CHECK goes. Gains `tmb`, for a write no person or agent made (trustmybot/tmb#404) |
-| `actor_role` | TEXT | nullable | Built: CHECK, one of `planner`, `worker`, `reviewer` | The CHECK goes and the engine checks it, so a role a project creates is a new value (trustmybot/tmb#404) |
+| `actor_kind` | TEXT | NOT NULL | `human`, `agent`, or `tmb` for a write no person or agent made |  |
+| `actor_role` | TEXT | nullable | `planner`, `worker` or `reviewer`, checked by the engine, so a role a project creates is a new value |  |
 | `actor_host` | TEXT | nullable |  |  |
-| `actor_source` | TEXT | nullable | Which part of tmb wrote it: `syncer` or `upgrade`. Set only for a `tmb` actor | trustmybot/tmb#404 |
+| `actor_source` | TEXT | nullable | Which part of tmb wrote it: `syncer` or `upgrade`. Set only for a `tmb` actor |  |
 | `actor_session` | TEXT | nullable | The session that acted. NULL for the Human at a terminal and for tmb | trustmybot/tmb#63 |
 | `actor_remote` | TEXT | nullable | On an event the syncer wrote, the remote account that made the change | trustmybot/tmb#70 |
 | `at` | TEXT | NOT NULL |  |  |
 
-Table constraint: a `human` actor has no role and no host; an `agent` actor has both. Planned: a `tmb` actor has no role and no host, and has a source.
+Table constraint: a `human` actor has no role and no host; an `agent` actor has both; a `tmb` actor has no role and no host, and has a source. A NULL host on an agent, or a NULL source on tmb, is refused.
 
-- **Example.** A pull request is merged in the browser. The syncer writes one `updated` event: actor `tmb`, source the syncer, `actor_remote` the account that merged it.
+- **Example.** An upgrade moves a fact to a new record. It writes the event as `tmb`, source `upgrade`.
+- **Example, Planned.** A pull request is merged in the browser. The syncer writes one `updated` event: actor `tmb`, source `syncer`, `actor_remote` the account that merged it.
 - **Edge case.** A write with an unknown record kind or role is still refused, by the engine.
-- **Edge case.** A tool call or a hook names itself as tmb. The engine refuses it: only the engine's own code writes as tmb.
+- **Edge case.** A tool call or a hook names itself as tmb. The engine refuses it: only the engine's own code writes as tmb. A push hook that names tmb is taken as the Human's.
 
 #### `issues`
 
@@ -410,7 +411,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `id` | TEXT | PK |  |  |
 | `title` | TEXT | NOT NULL | CHECK `length(trim(title)) > 0` |  |
 | `body` | TEXT | NOT NULL | Default `''` |  |
-| `state` | TEXT | NOT NULL | Default `'open'`. Built: CHECK, `open` or `closed` | The CHECK goes (trustmybot/tmb#404) |
+| `state` | TEXT | NOT NULL | Default `'open'`. `open` or `closed` |  |
 | `milestone` | TEXT | nullable | The milestone's name | Goes, for `milestone_id` (trustmybot/tmb#70) |
 | `milestone_id` | TEXT | nullable | FK → `milestones.id` | trustmybot/tmb#70 |
 | `priority` | TEXT | nullable | `urgent`, `high`, `medium` or `low` | trustmybot/tmb#402 |
@@ -467,7 +468,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | `id` | TEXT | PK |  |  |
 | `issue_id` | TEXT | NOT NULL | FK → `issues.id` | Becomes nullable: exactly one of `issue_id` and `pull_request_id` is set (trustmybot/tmb#411) |
 | `pull_request_id` | TEXT | nullable | FK → `pull_requests.id` | trustmybot/tmb#411 |
-| `kind` | TEXT | NOT NULL | Built: CHECK, `note` or `decision` | The CHECK goes (trustmybot/tmb#404). Gains `comment`, for one mirrored from the remote (trustmybot/tmb#70) |
+| `kind` | TEXT | NOT NULL | `note` or `decision` | Gains `comment`, for one mirrored from the remote (trustmybot/tmb#70) |
 | `body` | TEXT | NOT NULL | CHECK `length(trim(body)) > 0`. A note and a decision never change | A comment's body follows the remote's (trustmybot/tmb#70) |
 | `remote_author` | TEXT | nullable | The remote account that wrote a comment | trustmybot/tmb#70 |
 | `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision | trustmybot/tmb#70 |
@@ -577,7 +578,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `feature_id` | TEXT | nullable | FK → `features.id`, for a branch review |  |
 | `session_id` | TEXT | nullable | FK → `sessions.id`. The session that started the run. NULL only on a run older than the session record | trustmybot/tmb#63 |
 | `resumed_from` | TEXT | nullable | FK → `runs.id` | trustmybot/tmb#256 |
-| `role` | TEXT | NOT NULL | Built: CHECK, one of `planner`, `worker`, `reviewer` | The CHECK goes and the engine checks it (trustmybot/tmb#404) |
+| `role` | TEXT | NOT NULL | `planner`, `worker` or `reviewer`, checked by the engine |  |
 | `host` | TEXT | nullable | The host that ran the agent. It can differ from the host of the session that started it | trustmybot/tmb#256 |
 | `model`, `runner` | TEXT | nullable | The model that ran, and the name of the configured agent that ran it. Which agent serves which role is a setting; which one ran is a fact of the run | trustmybot/tmb#411 |
 | `effort` | TEXT | nullable | The effort it was given | trustmybot/tmb#256 |
@@ -622,7 +623,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `commit_sha` | TEXT | nullable | The commit it judged | Becomes NOT NULL (trustmybot/tmb#406) |
 | `verdict` | TEXT | NOT NULL |  |  |
 | `findings` | TEXT | NOT NULL | Default `'[]'`; CHECK `json_valid(findings)` |  |
-| `target_kind` | TEXT | NOT NULL | CHECK, `commit` or `branch` | Goes (trustmybot/tmb#406) |
+| `target_kind` | TEXT | NOT NULL | `commit` or `branch` | Goes (trustmybot/tmb#406) |
 | `target` | TEXT | NOT NULL | A name or a SHA, as text | Goes (trustmybot/tmb#406) |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
@@ -635,7 +636,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 |---|---|---|---|---|
 | `id` | TEXT | PK |  |  |
 | `event` | TEXT | NOT NULL |  |  |
-| `decision` | TEXT | NOT NULL | Built: CHECK, `allow` or `deny` | The CHECK goes (trustmybot/tmb#404) |
+| `decision` | TEXT | NOT NULL | `allow` or `deny` |  |
 | `reason` | TEXT | NOT NULL |  |  |
 | `session_id` | TEXT | nullable | FK → `sessions.id` | trustmybot/tmb#406 |
 | `run_id` | TEXT | nullable | FK → `runs.id` | trustmybot/tmb#406 |
@@ -838,7 +839,7 @@ Planned, with each table above: one index per new foreign key column, in the sam
 - **Events are append-only.** Two triggers refuse any UPDATE or DELETE on `events`.
 - **Current state is a fold.** The live write path and the rebuild apply the same function to each event, so a rebuilt projection matches the live one.
 - **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions` and `audit` rows never change. Planned: a mirrored comment is the one discussion that may.
-- **Every write has an actor.** The Human, or an agent named by its role and host. A human actor carries no role or host; an agent actor carries both. Planned: or tmb, named by its source.
+- **Every write has an actor.** The Human, or an agent named by its role and host. A human actor carries no role or host; an agent actor carries both. Or tmb, named by its source.
 - **The remote is the truth for what it holds.** Planned (trustmybot/tmb#70). A mirrored row changes only by an event the syncer wrote, or by a write tmb first made on the remote at the Human's word.
 - **Verdicts are append-only.** A new review adds a row. A review names the exact commit it judged, so a later commit is never taken as reviewed.
 - **Checks are recorded, not re-run.** Each run of a task's checks is a `check_runs` row with each command it ran and the commit it ran at.
