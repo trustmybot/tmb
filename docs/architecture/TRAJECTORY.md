@@ -12,6 +12,20 @@ flowchart LR
     F --> P["Listed for the planner, who decides"]
 ```
 
+## What the record is for
+
+**The record does three jobs, and every table serves one of them.**
+
+| Job | What it means |
+|---|---|
+| Keep the trajectory | What was asked, decided, done and judged on this machine, as events |
+| Bridge local and remote | It ties the user's local work to the remote's issues, comments and pull requests, as the code graph ties the design to the code |
+| Leave room | A new host, role, remote, kind of record or field on the remote is a new value or a new row, never a rewrite |
+
+- **Example 1.** A teammate's comment on the remote and the worker's run that answered it are found from the same issue row.
+- **Example 2.** The remote adds a field to its issues. The syncer keeps it in the event's data that day, and a column can be folded from those events later.
+- **Edge case.** The project has no remote. The bridge has nothing to tie, and the trajectory is whole without it.
+
 ## The record is local first
 
 **The record works with no remote. A remote adds what teammates see, and replaces nothing in the record.**
@@ -45,6 +59,7 @@ flowchart LR
 
 - **The syncer only reads.** It never writes to the remote, and it never changes a local issue.
 - **A row with no remote id is local.** Publishing an issue gives it one (Planned, trustmybot/tmb#409).
+- **Teammates see only what is on the remote.** A note or a decision is local. Planned (trustmybot/tmb#409): the Human may publish one as a comment, as the Human publishes an issue.
 
 ### Every kind of repo
 
@@ -337,6 +352,8 @@ Every table, and every change to one, meets these requirements.
 - **Trajectory.** The record exists to keep the trajectory of work. Every table either records a step in it (a fact) or describes something that takes part in it (a dimension). Anything else does not belong in it: a setting's value is in the config, and a choice is never a column.
 - **Consistency.** A projection table is plural and its record kind is the singular: `tasks` → `task`, `check_runs` → `check_run`. Every projection row carries its id, `created_by` (the JSON actor of its first event) and `created_at` (that event's time). Ids are ULIDs, never autoincrement.
 - **Room to grow.** A new session, host, vendor, role, remote or record kind is new rows, never a reshaped table. The schema checks shape only: valid JSON, a text that is not blank, which columns are set together. Every list of values is checked by the engine ([ENUMS.md](../contributing/ENUMS.md)), so no list of values is a CHECK.
+- **Nothing lost for want of a column.** A fact with no column stays in its event's data. A column added later is folded from the events already kept, so the schema can start small.
+- **Fits the remote, names no vendor.** A mirrored row keeps the remote's own id, state and words as text. No column or table is named after a vendor, and which remote a row came from is on the row.
 - **Local first.** No table needs a remote. Every column that describes the remote is nullable, and a row with no `remote_id` is local.
 
 ### Diagram
@@ -414,15 +431,16 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `title` | TEXT | NOT NULL | CHECK `length(trim(title)) > 0` |  |
 | `body` | TEXT | NOT NULL | Default `''` |  |
 | `state` | TEXT | NOT NULL | Default `'open'`. `open` or `closed` |  |
+| `state_reason` | TEXT | nullable | Why it closed, in the remote's words, such as completed, not planned or duplicate | trustmybot/tmb#70 |
 | `milestone` | TEXT | nullable | The milestone's name | Goes, for `milestone_id` (trustmybot/tmb#70) |
 | `milestone_id` | TEXT | nullable | FK → `milestones.id` | trustmybot/tmb#70 |
-| `priority` | TEXT | nullable | `urgent`, `high`, `medium` or `low` | trustmybot/tmb#402 |
+| `priority` | TEXT | nullable | `urgent`, `high`, `medium` or `low`. A remote's value outside the list is kept as it is and ordered last | trustmybot/tmb#402 |
 | `type` | TEXT | nullable | The kind of work, such as bug or feature | trustmybot/tmb#402 |
 | `labels` | TEXT | NOT NULL | A JSON list of free labels. Default `'[]'` | trustmybot/tmb#402 |
 | `assignees` | TEXT | NOT NULL | A JSON list of remote accounts. Default `'[]'` | trustmybot/tmb#409 |
 | `repo` | TEXT | nullable | The repo it belongs to, named as `tasks.repo` names its own | trustmybot/tmb#402 |
 | `remote_url` | TEXT | nullable | Its address on the remote. UNIQUE | trustmybot/tmb#402 |
-| `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a local issue | trustmybot/tmb#70 |
+| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a local issue | trustmybot/tmb#70 |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
 | `updated_at` | TEXT | NOT NULL |  |  |
@@ -457,7 +475,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | `description` | TEXT | NOT NULL | Default `''` |
 | `state` | TEXT | NOT NULL | `open` or `closed` |
 | `repo` | TEXT | nullable | Named as `tasks.repo` names its own |
-| `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
+| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
 - **No due date.** The record holds no schedule.
@@ -473,7 +491,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | `kind` | TEXT | NOT NULL | `note` or `decision` | Gains `comment`, for one mirrored from the remote (trustmybot/tmb#70) |
 | `body` | TEXT | NOT NULL | CHECK `length(trim(body)) > 0`. A note and a decision never change | A comment's body follows the remote's (trustmybot/tmb#70) |
 | `remote_author` | TEXT | nullable | The remote account that wrote a comment | trustmybot/tmb#70 |
-| `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision | trustmybot/tmb#70 |
+| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision that was not published | trustmybot/tmb#70 |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
 | `updated_at` | TEXT | nullable | When a comment last changed | trustmybot/tmb#70 |
@@ -496,9 +514,10 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `closes` | TEXT | NOT NULL | A JSON list of the issues it closes. Default `'[]'` |
 | `base_remote`, `head_remote` | TEXT | nullable | The remote repository it merges into, and the one its branch is in. They differ for a fork |
 | `state` | TEXT | NOT NULL | `open`, `merged` or `closed` |
+| `draft` | INTEGER | NOT NULL | 1 while it is a draft. Default 0 |
 | `head_commit` | TEXT | nullable | The commit at its tip when last seen |
 | `review_decision`, `checks` | TEXT | nullable | The remote's review decision and the result of its checks, when last seen |
-| `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
+| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
 - **Example.** tmb opens a pull request: a row made by the planner. The Human merges it in the browser: an update made by tmb, from the syncer.
@@ -760,13 +779,14 @@ Planned (trustmybot/tmb#70). **Every record the remote also holds carries the re
 
 | Column | Holds |
 |---|---|
-| `remote_id` | The remote's own id for the item, which a rename or a transfer does not change. UNIQUE. NULL for a local row, which the syncer leaves alone |
+| `remote` | The remote repository the row is mirrored from, named as `sync_state` names it. For a fork it is the upstream |
+| `remote_id` | The remote's own id for the item, which a rename does not change. UNIQUE with `remote`. NULL for a local row, which the syncer leaves alone |
 | `remote_updated_at` | The remote's time of last change, so an unchanged item is skipped |
 | `remote_gone_at` | When the syncer found it deleted or out of reach. NULL while it is there |
 
 - **Example 1.** An issue is closed in the browser. The syncer finds its row by `remote_id` and writes one `updated` event, made by tmb, naming the account that closed it.
 - **Example 2.** Nothing changed since the last poll. The syncer sends back the tag it kept in `sync_state`, the remote answers "not modified", and no event is written.
-- **Edge case.** An issue is transferred to another repo. Its address changes and its `remote_id` does not, so the row is kept and its address updated.
+- **Edge case.** An issue is transferred to another repo. Where the remote keeps its id, the row is kept and its `remote` and address updated. Where it does not, the old row is marked gone and the new one links to it as a duplicate.
 - **Edge case.** An issue is deleted on the remote. The full pass sets `remote_gone_at`; the row and its history stay.
 
 ### What the record takes from a GitHub issue
