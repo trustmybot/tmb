@@ -16,7 +16,7 @@ It has two purposes, and the second stands on the first.
 | Purpose | What it means | State |
 |---|---|---|
 | 1. Cover the codebase | An agent still reads code, but only the code that matters. The graph narrows the scope, so a task costs fewer tokens and fits a smaller context. A text search returns unrelated hits and misses real ones; the graph returns proven links. So it must hold close to 100% of the code's relationships | Built in part; measured in [Benchmark](#benchmark) |
-| 2. Bridge design and code | Design and code drift apart in every real project. The graph ties a design to the code that carries it out, so the project's picture stays fresh and drift is seen | Open, for the Human. [Concepts](#concepts) and [Areas](#areas) are its first parts |
+| 2. Bridge design and code | Design and code drift apart in every real project. The graph ties a design to the code that carries it out, so the project's picture stays fresh and drift is seen | Planned (trustmybot/tmb#471). [Concepts](#concepts) and [Areas](#areas) are its first parts |
 
 - **Example 1.** A worker is about to change `Cart.total`. A text search for "total" returns every use of the word. The graph returns the callers of that one method, and the worker reads only those.
 - **Example 2.** A bridge on a graph that misses half the calls would tie a design to half the code. So coverage comes first.
@@ -69,7 +69,7 @@ The code graph is not part of the record. It lives in its own file beside it, on
 - **It can always be rebuilt.** Everything except concepts and areas is derived from git. A rebuild throws the rest away, builds it again, keeps the concepts and areas and re-checks each against the new graph. One whose code is gone is marked broken, never dropped.
 - **One step per write.** An index reads and parses first, then applies the whole layer at once. A reader sees the old graph or the new one, never a mix.
 - **The commit and the graph are written together.** The commit a repo is indexed at, and the indexer version it was built with, are stored with the graph in one step. So an absent or emptied file always reads as never indexed.
-- **Issues and decisions are not in the graph.** The record already ties a commit to its task and its issue. Planned (trustmybot/tmb#470): a code answer also names the issues that changed that code, joined from the record at read time. Open, for the Human: whether a concept links to a design page.
+- **Issues and decisions are not in the graph.** The record already ties a commit to its task and its issue. Planned (trustmybot/tmb#470): a code answer also names the issues that changed that code, joined from the record at read time. Planned (trustmybot/tmb#471): a concept may name the design page it carries out.
 - **Indexing is not trajectory.** The record holds no entry for an index run. The graph file keeps, for each repo, the commit it was built at, when, and what it holds.
 - **It works offline.** Indexing needs no network. Search is by name and by the words in a name; search by meaning is left out ([MEMORY.md](MEMORY.md#search)).
 - **Edge case.** A newer tmb made the graph file. The graph is refused, and the refusal says to update tmb.
@@ -276,7 +276,7 @@ A concept is a flow or a rule, written by an agent. It is the bridge from a desi
 - **Example 1.** The design says "an order is charged before it is saved". The planner asks for the concept "Checkout" and gets the four functions in that order, without searching.
 - **Example 2.** A worker changes `chargeCard`. The concept shows it is step two of "Checkout", so the reviewer knows which flow to probe.
 - **Area or concept.** An area answers "which part of the project is this code in". A concept answers "which code carries out this flow or rule, and in what order". One concept may cross several areas.
-- **Agents write concepts**, through one tool, with at least one anchor. Every anchor must be in the base branch's graph. Writing a name that exists replaces that concept. Any role may write one. Open, for the Human: whether only the planner writes concepts, at each close, and a worker only proposes them.
+- **Agents write concepts**, through one tool, with at least one anchor. Every anchor must be in the base branch's graph. Writing a name that exists replaces that concept. Any role may write one. Planned (trustmybot/tmb#471): only the planner writes a concept, and a worker proposes one in its report.
 - **Every index of the base branch re-checks them.** A rebuild keeps and re-checks them too ([Substrate](#substrate)).
 - **Anchors are stable keys.** An anchor stores the path and the qualified name, not a row id.
   - **Example.** A file is parsed again. No anchor is orphaned.
