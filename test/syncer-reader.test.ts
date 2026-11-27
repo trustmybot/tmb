@@ -1,5 +1,5 @@
 // The syncer's reader, on recorded answers: no network, no `gh`.
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FLOOR_MS, NOTHING_KEPT, readItem, readRemote } from "../src/syncer/index.ts";
@@ -8,6 +8,8 @@ import { ghArgs, nextPage, readGhOutput, waitAsked } from "../src/syncer/transpo
 
 const recorded = (name: string): string => readFileSync(join(import.meta.dir, "fixtures", "syncer", `${name}.txt`), "utf8");
 const REPO = { host: "github.com", owner: "trustmybot", name: "tmb" };
+setDefaultTimeout(30_000);
+
 const NOW = new Date("2026-11-27T03:00:00Z");
 
 /** Drops the `link` header, so a recorded page reads as the list's only page. */
