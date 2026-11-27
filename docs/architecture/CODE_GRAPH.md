@@ -719,7 +719,7 @@ The repos, the scoring rules and the judging rules of the [Benchmark](#benchmark
 - **A language with no module is not scored.** It joins the benchmark when its module does (trustmybot/tmb#141).
 - **The repos are named only in the benchmark.** No code of the graph names one ([Two ways to make links](#two-ways-to-make-links)).
 - **Every link is judged, in the same file or across files.**
-- **Way B needs a second judge.** In each language the reference is also way B's source: the compiler for TypeScript, pyright for Python. So the reference judges way A's links and how many links way B finds, and way B's links right is judged on samples checked by hand. Open, for the Human: whether a second Python tool judges way B.
+- **Way B needs a second judge.** In each language the reference is also way B's source: the compiler for TypeScript, pyright for Python. So the reference judges way A's links and how many links way B finds, and way B's links right is judged on samples checked by hand. Planned (trustmybot/tmb#427): more Python tools are run over the same repos, so Python has a judge that is not pyright, and the tool that makes Python's links is chosen by the scores.
 - **A link the compiler places outside the repo is wrong.** The graph links only the repo's own code, so a link to a repo symbol for a name the compiler declares only outside the repo fails the test.
 - **When a link is right.** It names a declaration the compiler gives for that name. A missing link is no failure. A link the compiler cannot answer for is counted and not judged.
 - **Why way A misses links.** It leaves a call unlinked when proving it needs the type of the thing it is called on ([Links on proof](#links-on-proof)).
@@ -1139,3 +1139,4 @@ All are FTS5 virtual tables.
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
 | The planner keeps concepts and areas written: a rule for when it writes them, and a view of the code not yet placed | trustmybot/tmb#310 |
+| More Python tools in the benchmark: a judge that is not pyright, and Python's link source chosen by the scores | trustmybot/tmb#427 |
