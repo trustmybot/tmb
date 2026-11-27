@@ -128,8 +128,8 @@ describe("the worker gate", () => {
     });
   }
 
-  function workerStart(prompt: string, startFolder?: string): Decision {
-    return decide(event({ type: "before-agent-start", role: "worker", action: prompt, ...(startFolder === undefined ? {} : { startFolder }) }));
+  function workerStart(prompt: string): Decision {
+    return decide(event({ type: "before-agent-start", role: "worker", action: prompt }));
   }
 
   function gitInit(dir: string): void {
@@ -277,38 +277,14 @@ describe("the worker gate", () => {
     expect(decide(event({ type: "agent-start-failed", role: "explorer", action: "look" }))).toEqual({ decision: "allow" });
   });
 
-  test("a worker start made outside its task's repo is denied before any run opens, naming the folder to start from (trustmybot/tmb#285)", () => {
+  test("a worker start reads its repo from the task, so it opens its run whatever folder the session is in (trustmybot/tmb#463)", () => {
     createRecord();
-    // A workspace: the project folder is no git repo; the repo api is.
-    const repoDir = path.join(project, "api");
-    gitInit(repoDir);
-    const taskId = openTask("open", "api");
-
-    for (const from of [project, path.join(project, "wt-elsewhere")]) {
-      mkdirSync(from, { recursive: true });
-      const answer = workerStart(`task_id=${taskId}`, from);
-      expect(answer.decision).toBe("deny");
-      expect(answer.reason).toContain(`Change into ${repoDir}`);
-      expect(answer.reason).toContain(`made from ${from}`);
-    }
-    withStore((store) => expect(store.openRuns("worker")).toEqual([]));
-
-    // From the repo, or a folder inside it, the start opens its run.
-    mkdirSync(path.join(repoDir, "src"));
-    expect(workerStart(`task_id=${taskId}`, path.join(repoDir, "src")).decision).toBe("allow");
-    withStore((store) => expect(store.openRuns("worker").map((run) => run.taskId)).toEqual([taskId]));
-  });
-
-  test("a start from a git project, for a task with no repo, opens its run; a task with no repo in a workspace is denied", () => {
-    createRecord();
-    const legacy = openTask("open", null);
-    const denied = workerStart(`task_id=${legacy}`, project);
-    expect(denied.decision).toBe("deny");
-    expect(denied.reason).toContain("names no repo");
-    withStore((store) => expect(store.openRuns("worker")).toEqual([]));
-
-    gitInit(project);
-    expect(workerStart(`task_id=${legacy}`, realpathSync(project)).decision).toBe("allow");
+    // A workspace: the project folder is no git repo, and the task works in its repo api.
+    gitInit(path.join(project, "api"));
+    const inRepo = openTask("open", "api");
+    const noRepo = openTask("open", null);
+    for (const taskId of [inRepo, noRepo]) expect(workerStart(`task_id=${taskId}`).decision).toBe("allow");
+    withStore((store) => expect(store.openRuns("worker").map((run) => run.taskId).sort()).toEqual([inRepo, noRepo].sort()));
   });
 
   test("allows a worker start in a project with no record", () => {

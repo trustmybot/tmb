@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -154,6 +155,8 @@ describe("adapter setup and remove with roles", () => {
   });
 
   test("setup with the engine's list writes the worker in a worktree of its own and the reviewer denied the file-editing tools", () => {
+    // Claude Code cuts a subagent's worktree only from a git work tree.
+    expect(spawnSync("git", ["init", "-q"], { cwd: project, timeout: 10_000 }).status).toBe(0);
     const helper = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
     adapter.setup(project, BINARY);
     expect(readdirSync(agentsDir(project)).sort()).toEqual(["helper.md", "reviewer.md", "worker.md"]);
@@ -182,5 +185,19 @@ describe("adapter setup and remove with roles", () => {
     );
     expect(readdirSync(agentsDir(project))).toEqual(["helper.md"]);
     expect(readFileSync(helper, "utf8")).toBe("---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
+  });
+
+  test("in a workspace folder that is no git work tree the worker starts without the host's worktree, and doctor finds no gap (trustmybot/tmb#463)", () => {
+    adapter.setup(project, BINARY);
+    const worker = readFileSync(roleFilePath(project, "worker"), "utf8");
+    expect(worker).toContain('name: "worker"');
+    expect(worker).not.toContain("isolation");
+    expect(adapter.wiringGaps!(project, BINARY).filter((gap) => gap.includes("role"))).toEqual([]);
+
+    // Once the folder is a git work tree, the worker's file asks for the host's worktree again.
+    expect(spawnSync("git", ["init", "-q"], { cwd: project, timeout: 10_000 }).status).toBe(0);
+    expect(adapter.wiringGaps!(project, BINARY)).toContain(`${path.join(".claude", "agents", "worker.md")} is not this version's worker role`);
+    adapter.setup(project, BINARY);
+    expect(readFileSync(roleFilePath(project, "worker"), "utf8")).toMatch(/^isolation: "worktree"$/m);
   });
 });
