@@ -7,7 +7,7 @@ import path from "node:path";
 setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const SCANNED = ["src", "roles"];
+const SCANNED = ["src", "roles", "skills"];
 const ALLOWED = ["src/adapters/claude-code/", "src/adapters/codex/", "src/adapters/index.ts"];
 const HOST_NAME = /claude[ -]?code|\.claude\b|CLAUDE_|codex/i;
 
@@ -28,7 +28,7 @@ const scanned = SCANNED.flatMap(filesUnder);
 const isAllowed = (file: string) => ALLOWED.some((allowed) => (allowed.endsWith("/") ? file.startsWith(allowed) : file === allowed));
 
 describe("host-neutral boundary", () => {
-  test("no file under src/ or roles/ outside the adapter and the registry names Claude Code", () => {
+  test("no file under src/, roles/ or skills/ outside the adapter and the registry names Claude Code", () => {
     const mentions = scanned.filter((file) => !isAllowed(file)).flatMap(hostMentions);
     expect(mentions).toEqual([]);
   });
@@ -36,6 +36,7 @@ describe("host-neutral boundary", () => {
   test("the scan sees the files it guards and catches a mention", () => {
     expect(scanned).toContain("src/cli.ts");
     expect(scanned).toContain("roles/planner.md");
+    expect(scanned).toContain("skills/tmb-spec.md");
     expect(scanned.filter((file) => file.startsWith("src/adapters/claude-code/")).flatMap(hostMentions).length).toBeGreaterThan(0);
   });
 });

@@ -39,6 +39,7 @@ export function handleEvent(event: EngineEvent): EngineAnswer {
 
 export { type Decision, decide, MAIN_AGENT, UNNAMED_AGENT, TMB_EVENT_TYPES, type TmbEvent, type TmbEventType } from "./decide.ts";
 export { CAPABILITIES, type Capability, SUBAGENT_ROLES, type SubagentRole } from "./roles.ts";
+export { type Skill, SKILLS } from "./skills.ts";
 export { OPERATIONS } from "./handlers/index.ts";
 export { installPushGate, installPushGates, judgePush, pushGateGaps, parsePushRefs, type PushRef, removePushGate, removePushGates } from "./push-gate.ts";
 export {

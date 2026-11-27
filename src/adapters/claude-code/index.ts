@@ -1,4 +1,4 @@
-import { SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
+import { type Skill, SKILLS, SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
 import { keptRecordLine, listed, setUpRecord, shown } from "../common/record.ts";
 import type { HostAdapter } from "../host-adapter.ts";
 import { detect } from "./detect.ts";
@@ -6,6 +6,7 @@ import { answerHook } from "./hook.ts";
 import { HOST_ID, registerServer, serverGap, unregisterServer } from "./mcp-json.ts";
 import { removeRoleFiles, roleFileGaps, roleFilePath, writeRoleFiles } from "./role-files.ts";
 import { install, remove, settingsGaps } from "./settings.ts";
+import { removeSkillFiles, skillFileGaps, skillFilePath, writeSkillFiles } from "./skill-files.ts";
 
 function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): string[] {
   const result = writeRoleFiles(projectDir, roles);
@@ -15,6 +16,17 @@ function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): str
     ...result.current.map((name) => `${file(name)} already holds the ${name} role; nothing to change.`),
     ...result.notOurs.map((name) => `${file(name)} is not tmb's, so it was kept as it is and the ${name} role was not written.`),
     ...result.removed.map((removed) => `Removed tmb's role file ${shown(projectDir, removed)}, for a role this version no longer has.`),
+  ];
+}
+
+function setUpSkillFiles(projectDir: string, skills: readonly Skill[]): string[] {
+  const result = writeSkillFiles(projectDir, skills);
+  const file = (name: string) => shown(projectDir, skillFilePath(projectDir, name));
+  return [
+    ...result.written.map((name) => `Wrote the ${name} skill to ${file(name)}.`),
+    ...result.current.map((name) => `${file(name)} already holds the ${name} skill; nothing to change.`),
+    ...result.notOurs.map((name) => `${file(name)} is not tmb's, so it was kept as it is and the ${name} skill was not written.`),
+    ...result.removed.map((removed) => `Removed tmb's skill file ${shown(projectDir, removed)}, for a skill this version no longer has.`),
   ];
 }
 
@@ -58,7 +70,7 @@ export const adapter: HostAdapter = {
     if (settings.hooksRemoved.length > 0) lines.push(`Removed tmb's hooks this version no longer wires under ${listed(settings.hooksRemoved)} from ${file}.`);
     if (settings.gitignoreChanged) lines.push(`Added ${file} to .gitignore.`);
 
-    lines.push(...setUpRoleFiles(projectDir, roles));
+    lines.push(...setUpRoleFiles(projectDir, roles), ...setUpSkillFiles(projectDir, SKILLS));
     return lines;
   },
 
@@ -70,8 +82,9 @@ export const adapter: HostAdapter = {
     if (!server.removed) lines.push(`No tmb tool server found in ${mcpFile}; nothing to remove.`);
     else lines.push(server.fileDeleted ? `Removed the tmb tool server and the now-empty ${mcpFile}.` : `Removed the tmb tool server from ${mcpFile}.`);
 
-    // Role files go first, so the settings file's removal can drop a folder they leave empty.
+    // Role and skill files go first, so the settings file's removal can drop a folder they leave empty.
     for (const roleFile of removeRoleFiles(projectDir)) lines.push(`Removed tmb's role file ${shown(projectDir, roleFile)}.`);
+    for (const skillFile of removeSkillFiles(projectDir)) lines.push(`Removed tmb's skill file ${shown(projectDir, skillFile)}.`);
 
     const settings = remove(projectDir);
     const file = shown(projectDir, settings.settingsFile);
@@ -89,7 +102,7 @@ export const adapter: HostAdapter = {
 
   wiringGaps(projectDir, tmbCommand) {
     const server = serverGap(projectDir, tmbCommand);
-    return [...(server === null ? [] : [server]), ...settingsGaps(projectDir, tmbCommand), ...roleFileGaps(projectDir, SUBAGENT_ROLES)];
+    return [...(server === null ? [] : [server]), ...settingsGaps(projectDir, tmbCommand), ...roleFileGaps(projectDir, SUBAGENT_ROLES), ...skillFileGaps(projectDir, SKILLS)];
   },
 
   answerHook,
