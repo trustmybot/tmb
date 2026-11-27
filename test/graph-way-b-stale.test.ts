@@ -298,6 +298,21 @@ describe.skipIf(!HAS_GO)("Go: the user's go, and the module cache", () => {
     expect(second.toolChanged).toBe(true);
   });
 
+  test("a layer recorded with another helper is stale: the helper's key changed", async () => {
+    commit(CODE);
+    const first = await read();
+    const db = openGraphDb(project, null);
+    const recorded = JSON.parse(layerRow(db, BASE_LAYER)!.built_with!) as Record<string, { helper?: { key: string } }>;
+    expect(recorded["Go's type checker (go/types)"]?.helper?.key).toMatch(/^[0-9a-f]{64}$/);
+    recorded["Go's type checker (go/types)"]!.helper!.key = "0".repeat(64);
+    db.run("UPDATE layers SET built_with = ? WHERE layer = ?", [JSON.stringify(recorded), BASE_LAYER]);
+    db.close();
+    await tick();
+    const second = await read();
+    expect(second.builtAt).not.toBe(first.builtAt);
+    expect(second.toolChanged).toBe(true);
+  });
+
   test("a module go.sum does not name arrives in the cache: the layer is still fresh", async () => {
     commit(CODE);
     const first = await read();
@@ -542,6 +557,23 @@ describe("the graph's store", () => {
     expect(GRAPH_SCHEMA_VERSION).toBeGreaterThan(8);
     expect(layerRow(db, "base")).toMatchObject({ links: "language-tool", built_with: null });
     db.close();
+  });
+
+  test("a schema-12 graph drops what its layers were built with, which names no helper, so a way B layer is rebuilt", () => {
+    const db = openGraphDb(project, null);
+    db.run("INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, links, built_with) VALUES ('base', 'abc', 1, 'then', 0, 0, 0, 0, 'language-tool', ?)", [
+      JSON.stringify({ "Go's type checker (go/types)": { whose: "user", path: "/usr/bin/go", tool: "go version go1.27.4 darwin/arm64", packages: "", places: [] } }),
+    ]);
+    db.run("PRAGMA user_version = 12");
+    db.close();
+    const upgraded = openGraphDb(project, null);
+    try {
+      expect(upgraded.query("PRAGMA user_version").get()).toEqual({ user_version: GRAPH_SCHEMA_VERSION });
+      expect(GRAPH_SCHEMA_VERSION).toBeGreaterThan(12);
+      expect(layerRow(upgraded, "base")).toMatchObject({ links: "language-tool", built_with: null });
+    } finally {
+      upgraded.close();
+    }
   });
 
   test("a way B layer that records nothing it was built with is stale and rebuilt", async () => {
