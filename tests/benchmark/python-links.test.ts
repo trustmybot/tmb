@@ -9,6 +9,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
+import { installPinnedTools } from "../lib/pinned-tools.ts";
 import { checkerAnswers, judgeLink, LINK_CAUSES, measurePython, pythonReference, referenceLinks } from "./python.ts";
 import { isRatio } from "./score.ts";
 
@@ -57,6 +58,9 @@ const FILES = new Map([
 ]);
 
 const hasPython = spawnSync("python3", ["-I", "-c", "pass"]).status === 0;
+
+// The reference and way B load pyright from tmb's tools folder; the setup installs tmb's pinned copy.
+beforeAll(installPinnedTools);
 
 let repo: string;
 let commit: string;

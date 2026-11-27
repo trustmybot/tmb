@@ -1,7 +1,7 @@
 // The benchmark's measure of a Python repo (trustmybot/tmb#244): each way's graph against Python's
 // own parser for the functions and the calls, and against a type checker, pyright, for the links
 // (trustmybot/tmb#399): its answer where it gives one; a call it gives no answer for is counted and
-// not judged. Way B is pyright too, the version tmb carries (trustmybot/tmb#347), built as the
+// not judged. Way B is pyright too, tmb's pinned copy (trustmybot/tmb#347), built as the
 // program builds it; the reference asks pyright itself (python_checker.ts), not way B's graph.
 import type { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
@@ -20,7 +20,7 @@ const LANGUAGES: ReadonlySet<SourceLanguage> = new Set(["python"]);
 /** Way B's links are made by the very tool that judges them: links right is shown, and it is no proof of way B. */
 export const SAME_TOOL = "same tool as the reference";
 
-/** How each way builds the graph, as the program builds it: way B uses the pyright tmb carries. */
+/** How each way builds the graph, as the program builds it: way B uses tmb's pinned copy of pyright. */
 const BUILD: Record<Way, BuildOptions> = {
   A: { links: "built-in" },
   B: { links: "language-tool" },

@@ -1,24 +1,37 @@
 // The benchmark's type checker for Python's links (trustmybot/tmb#399): pyright, asked through its
 // own language server for the declarations of the name written at a place, the question an editor
-// asks with "go to definition". It is pyright from the project's packages, at the version way B
-// pins, and it is loaded by this file alone: nothing of the graph's way B is used, so the reference
-// is pyright's own answer, not tmb's reading of it.
+// asks with "go to definition". It is tmb's pinned copy of pyright, the one way B loads, installed
+// into the tools folder by the test setup (tests/lib/pinned-tools.ts) and found by the find order;
+// this file runs that copy's own language server. Nothing of the graph's way B is used, so the
+// reference is pyright's own answer, not tmb's reading of it.
 //
 // The server reads the repo's files as this file opens them, from the commit, and the project's
 // config from the working tree, which is at the commit. It is set up as way B sets pyright up: it
 // looks for a `src` layout, and it runs no Python, so with no environment named it reads no
 // installed package and a call into one has no answer. A place it gives no declaration for has no
 // answer, and is never guessed.
-import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { PYRIGHT_PIN, pyright } from "../../src/engine/graph/languages/python/tool.ts";
+import { findCopy, machinePlaces } from "../../src/engine/graph/tool-copy.ts";
+import { installPinnedTools } from "../lib/pinned-tools.ts";
 
-const require = createRequire(import.meta.url);
+/** The version of pyright the reference asks: tmb's pin. */
+export const CHECKER_VERSION: string = PYRIGHT_PIN.version;
+/** The language server's entry file, in pyright's package. */
+const SERVER_ENTRY = "langserver.index.js";
 
-/** The pyright the reference asks: the project's own package. */
-const PACKAGE = path.dirname(require.resolve("pyright/package.json"));
-export const CHECKER_VERSION: string = (require("pyright/package.json") as { version: string }).version;
-const SERVER = path.join(PACKAGE, "langserver.index.js");
+/** The language server of tmb's pinned copy of pyright, installed first if the tools folder has none. */
+async function server(): Promise<string> {
+  await installPinnedTools();
+  const found = findCopy(pyright.copy, machinePlaces());
+  if ("missing" in found) throw new Error(`the Python reference has no pyright: ${found.missing}`);
+  if (found.version !== CHECKER_VERSION) throw new Error(`the Python reference found pyright ${found.version}, not ${CHECKER_VERSION}`);
+  const entry = path.join(found.path, SERVER_ENTRY);
+  if (!existsSync(entry)) throw new Error(`the Python reference's pyright at ${found.path} has no ${SERVER_ENTRY}`);
+  return entry;
+}
 
 /** A place in a file as the language server counts it: a line from 0 and a character, in UTF-16 units, from 0. */
 export type LspPosition = { line: number; character: number };
@@ -52,8 +65,8 @@ class Client {
   private readonly stdin: import("bun").FileSink;
   private exited = false;
 
-  constructor(cwd: string) {
-    this.proc = Bun.spawn([process.execPath, SERVER, "--stdio"], { cwd, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+  constructor(serverEntry: string, cwd: string) {
+    this.proc = Bun.spawn([process.execPath, serverEntry, "--stdio"], { cwd, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
     this.stdin = this.proc.stdin as import("bun").FileSink;
     void this.read();
     void this.proc.exited.then(() => {
@@ -141,7 +154,7 @@ type LocationLink = { targetUri: string; targetSelectionRange: { start: LspPosit
  */
 export async function checkerDeclarations(root: string, files: ReadonlyMap<string, string>, asked: readonly { file: string; at: LspPosition }[]): Promise<(Declaration[] | null)[]> {
   const rootDir = path.resolve(root);
-  const client = new Client(rootDir);
+  const client = new Client(await server(), rootDir);
   const uriOf = (file: string) => pathToFileURL(path.join(rootDir, file)).href;
   try {
     const rootUri = pathToFileURL(rootDir).href;
