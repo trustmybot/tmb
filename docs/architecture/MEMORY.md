@@ -87,7 +87,7 @@ The roles are in [ROLES.md](ROLES.md).
 
 | An agent asks about | It uses | Details |
 |---|---|---|
-| The work: issues, notes, decisions | Ranked word search over the record | [TRAJECTORY.md](TRAJECTORY.md#search) |
+| The work: issues, notes, decisions | Ranked word search over the record | [TRAJECTORY_SCHEMA.md](TRAJECTORY_SCHEMA.md#search) |
 | The code | The code graph: find by name, path or words, then follow callers and tests | [CODE_GRAPH.md](CODE_GRAPH.md) |
 
 - **Example.** No hit. The agent asks again with other words before it reads files by hand.

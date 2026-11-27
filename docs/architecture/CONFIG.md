@@ -5,7 +5,7 @@ tmb's settings: where each one lives, who may set it and what it does. The user'
 ```mermaid
 flowchart LR
     subgraph P["Per project, in the workspace"]
-        S["The six keys"]
+        S["The seven keys"]
     end
     subgraph M["Per machine, in the home folder"]
         F["The feedback program"]
@@ -24,7 +24,7 @@ flowchart LR
 
 ## A project setting is its newest change
 
-The project settings are a fixed list of six keys, kept in the record. There is no table of values: each change is one setting change in the record, and the newest one that sets a value is the value in force.
+The project settings are a fixed list of seven keys, kept in the record. There is no table of values: each change is one setting change in the record, and the newest one that sets a value is the value in force.
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ flowchart LR
     V --> R["settings_get, tmb config, session start, hooks"]
 ```
 
-The planner reads them with `settings_get` and writes them with `settings_set`. `tmb init` and `tmb onboard` write them from the terminal, and `tmb config` shows them. Hooks only read them.
+The planner reads them with `settings_get`. Hooks only read them.
 
 - **Example 1.** The planner sets `base_branch` to the value already in force. Nothing is recorded.
 - **Example 2.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
@@ -81,9 +81,8 @@ The setting change that sets a review mode also holds the way the Human chose it
 
 ## Branch policy is per repo in a multi-repo workspace
 
-A single-repo project keeps its branch policy in the two project keys, `base_branch` and `checks`. A multi-repo workspace does not use them: each repo has its own in `repos`.
+A single-repo project keeps its branch policy in the two project keys, `base_branch` and `checks`. A multi-repo workspace keeps each repo's in `repos`, and refuses a write to the two project keys.
 
-- **Example.** In a multi-repo workspace the planner calls `settings_set` for `base_branch`. tmb refuses the project key there.
 - **No branching model key.** A repo has one base branch, and feature branches are cut from it ([`3_GIT.md`](../flows/3_GIT.md)).
 
 ## Kept per machine, not in the record

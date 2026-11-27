@@ -16,37 +16,19 @@ flowchart LR
 
 ## Pages
 
-[FLOWS.md](FLOWS.md) is the high-level page the Human reviews: every flow, with one chart of its ideal case. Each other page is the detail under one flow group, and its name starts with the group's number.
+[FLOWS.md](FLOWS.md) is the high-level page the Human reviews: every flow in one line, with its state and a link. Start there. Each other page holds the steps of one flow group, and its name starts with the group's number.
 
 | Group | Page | Details |
 |---|---|---|
-| 1. Install | [1_INSTALL.md](1_INSTALL.md) | Install, channels, updates, session start |
-| 2. Cold start | [2_ONBOARD.md](2_ONBOARD.md) | First contact and a repo's checks |
+| 1. Install | [1_INSTALL.md](1_INSTALL.md) | Install, channels, updates, session start, removal, the health check, bug reports |
+| 2. Cold start | [2_ONBOARD.md](2_ONBOARD.md) | First contact: what it asks, what it records, and a repo's checks |
 | 2. Cold start | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) | Building and refreshing the code graph |
-| 3. Agent task handling | [3_TASKS.md](3_TASKS.md) | A task from ask to merge, the push gate, retries |
+| 3. Agent task handling | [3_TASKS.md](3_TASKS.md) | A task from ask to merge, who owns each check, the push gate, retries, a stuck task |
 | 3. Agent task handling | [3_WORKFLOW.md](3_WORKFLOW.md) | The workflow modes: agile and truest |
-| 3. Agent task handling | [3_GIT.md](3_GIT.md) | Where the work sits in git at each step |
+| 3. Agent task handling | [3_GIT.md](3_GIT.md) | Where the work sits in git at each step, and in which repo |
 | 4. Extending the team | [4_EXTENDING.md](4_EXTENDING.md) | Agents, skills and cheatcodes a project adds |
 
 A page with no number is not a flow page. Three flows are detailed in architecture pages, because a part owns them more than a sequence does: parallel lanes in [ROLES.md](../architecture/ROLES.md#parallel-lanes), the unattended run in [ENGINE.md](../architecture/ENGINE.md#unattended-mode), and several hosts in [ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task).
-
-## Reading guide
-
-Start with [FLOWS.md](FLOWS.md), then open the detail page of the flow you need.
-
-| Question | Read |
-|---|---|
-| What happens when the Human asks for Y? | [FLOWS.md](FLOWS.md) |
-| How is tmb installed and updated, and what do I check when it is missing or degraded? | [1_INSTALL.md](1_INSTALL.md) |
-| What does first contact ask, and what does it record? | [2_ONBOARD.md](2_ONBOARD.md) |
-| How does the planner learn a repo's checks? | [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) |
-| How is the code graph built and kept fresh? | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) |
-| Who owns which quality check? | [3_TASKS.md](3_TASKS.md#quality-layers) |
-| Why is my task stuck? | [3_TASKS.md](3_TASKS.md) |
-| What does agile review mode skip, and when is the skipped review done? | [3_WORKFLOW.md](3_WORKFLOW.md) |
-| Which branch is the work on, and which repo? | [3_GIT.md](3_GIT.md) |
-| How does a project gain an agent, a skill or a second opinion? | [4_EXTENDING.md](4_EXTENDING.md) |
-| How will the planner add a published skill? | [4_EXTENDING.md](4_EXTENDING.md#cheatcodes) |
 
 ## How the two folders cite each other
 
@@ -55,7 +37,7 @@ A fact lives in one folder, and the other links to it.
 - **A flow page says when; an architecture page says who and what.**
 - **A flow step links to the part that owns it.** Example: a gate's rules are in the architecture page; the flow shows where the gate sits in the sequence.
 - **An architecture page links to the flows a part serves,** by flow number.
-- **A flow page names no function, file or table of the code.** The code graph answers what enforces a step.
+- **A flow page names no function, file or table of the code.** The code graph says what enforces a step, and the code holds the logic. A flow may name what the Human types: a `tmb ...` terminal command.
 - **Where two pages disagree, the question goes to the Human,** and both are changed to agree ([docs/README.md](../README.md#when-two-things-disagree)).
 
 ## Decisions

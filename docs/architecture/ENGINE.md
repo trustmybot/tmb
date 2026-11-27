@@ -1,6 +1,6 @@
 # The engine
 
-The engine is tmb itself: the record, the code graph, the workflow and the gate. This page says how it is reached, where it judges an outcome, and what it writes. How a host is wired to it is in [ADAPTERS.md](ADAPTERS.md).
+The engine is tmb itself: the record, the code graph, the workflow and the gate. This page says how it is reached, where it judges an outcome, and what it writes. A point where it judges an outcome is a checkpoint: an agent's start, a task's close, the review, a push. How a host is wired to it is in [ADAPTERS.md](ADAPTERS.md).
 
 Everything before [Containment](#containment) is the design. Containment is detail for building and debugging.
 
@@ -8,32 +8,22 @@ Everything before [Containment](#containment) is the design. Containment is deta
 
 Every way in calls the same engine.
 
-```mermaid
-flowchart LR
-    AG["Agents in a host"] -- tool server --> EN["The engine"]
-    HO["The host, at a checkpoint"] -- host events --> AD["Host adapter"] --> EN
-    GI["git, at a push"] -- "pre-push hook" --> EN
-    HU["The Human"] -- command line --> EN
-    HU -- dashboard --> EN
-    EN --> RC["The record"]
-```
-
 | Way in | Used by | Why |
 |---|---|---|
 | Tool server | Agents in a host | They read briefs and the code graph, and record their work. |
-| Host events | The host, at a checkpoint | The engine can refuse an action no agent asked it about. |
+| Host events, through the host adapter | The host, at a checkpoint | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push is checked even when typed by hand. |
-| Command line | The Human | Init and onboard, settings, indexing, update, remove, migration from the plugin, feedback, and `tmb doctor`, the health check. The list is in the [reference](../reference/README.md). |
+| Command line | The Human | Every step the Human runs by hand, such as init, onboard and `tmb doctor`, the health check. The list is in the [reference](../reference/README.md). |
 | Dashboard | The Human | A local web page over the record. |
-| Desktop program | The Human | Planned (trustmybot/tmb#79). |
+| Desktop program | The Human | Planned (trustmybot/tmb#79), with the dashboard built in. |
 
 tmb has no slash commands: each action is a terminal command or a tool the planner calls.
 
-**A step only the Human may take is fenced at the command line**. The command line records every caller as the Human, so it runs such a step only on a terminal, after the Human types yes. With no terminal it refuses and changes nothing.
+**A step only the Human may take is fenced at the command line**. The command line records every caller as the Human, so it runs such a step only on a terminal, after the Human types yes. With no terminal, as in an agent's shell, it refuses and changes nothing.
 
 - **The steps.** Waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
 - **One exception, for a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode where none is set, for the workspace or for one repo. It never changes a mode that is set, so an agent that turns unattended mode on for its own command cannot undo the Human's choice. Nothing else passes.
-- **What the fence is not.** It stops an agent that takes the plain path. It is not proof: an agent that writes a script which opens its own terminal can pass it. tmb builds no stronger fence: deliberate evasion is outside what it guards against, and the host's own permission prompt shows the Human a command before an agent runs it.
+- **What the fence is not.** It is not proof: an agent that writes a script which opens its own terminal can pass it. tmb builds no stronger fence, and the host's own permission prompt shows the Human a command before an agent runs it.
 
 ## Unattended mode
 
@@ -56,7 +46,7 @@ tmb keeps a project's data inside the project, keeps its own program and state i
 
 ### Checkpoints, not a guard on every write
 
-tmb checks what is delivered, like CI. It builds no per-write guard, no shell parser and no sandbox.
+tmb checks what is delivered, like CI ([PRINCIPLES.md](PRINCIPLES.md)). It builds no per-write guard, no shell parser and no sandbox.
 
 - **Why.** Judging every file write and parsing every shell command to predict what it writes cannot be done in general: it denies good commands and misses real writes.
 - **The host's sandbox.** Whether it is on is the Human's own setting.
@@ -75,9 +65,9 @@ flowchart LR
 | A worker writes outside its worktree | Its host keeps a worker's edits in a folder of its own, where the host can. The close names anything that changed in the main folder since the task started, with the command that puts it back. tmb puts nothing back: the list can hold the Human's own edits. |
 | A task changes files outside its spec | The close names each file. It refuses only on its checks. |
 | A docs task changes code | The close refuses, and names the file |
-| The reviewer edits what it judges | Its role has no editing tool. Planned (trustmybot/tmb#303): a verdict is taken only when git shows the tree unchanged since the reviewer's run started. |
+| The reviewer edits what it judges | Its role has no editing tool ([ROLES.md](ROLES.md#reviewer)) |
 | Unreviewed commits leave the machine | git's pre-push hook, whoever typed the push |
-| An agent takes a step that is the Human's alone | The command line: it runs the step only on a terminal, after a typed yes ([Ways into the engine](#ways-into-the-engine)) |
+| An agent takes a step that is the Human's alone | The command line's fence ([Ways into the engine](#ways-into-the-engine)) |
 | Two tasks change the same file | No lock. git settles it when the work is merged, and a clash holds back the later task's close. |
 
 - **The engine does the git steps itself.** It, not an agent, cuts branches and worktrees, folds, pushes and opens pull requests, so every step is recorded.
@@ -104,7 +94,7 @@ tmb has few hooks. Each is one tmb event, whatever raised it.
 
 - **An event carries the same fields whatever raised it:** the role, the host, the task and what is about to happen.
   - **Example.** A push tmb makes for an agent carries that agent's role and host. A push typed by hand is the Human's.
-- **A push is judged by git's pre-push hook**, not by reading an agent's command, so it holds on every host and for a push typed by hand.
+- **A push is judged by git's pre-push hook**, not by reading an agent's command.
 - **A task's start and close are not events.** The engine checks them itself when it is asked, and a refusal there goes to the caller without a recorded decision.
 - **tmb ships its own rules only.** Users cannot add rules of their own on these events.
 
@@ -116,7 +106,7 @@ Several things could answer for one project: two channels' programs, an old buil
 2. **One build per session.** While a session runs, every tmb call in its project runs the build the session started with. The host files are refreshed only at a session start with no task open ([1_INSTALL.md](../flows/1_INSTALL.md#upgrade)).
 3. **One engine.** Every way in asks the same engine.
 
-One host event, answered:
+One host event, answered ([Gates fail closed](#gates-fail-closed) has every case):
 
 ```mermaid
 flowchart TD

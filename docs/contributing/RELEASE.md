@@ -1,6 +1,6 @@
 # Releasing
 
-This page is for maintainers only. It covers the three channels, dev builds, the checks a tag runs, and how to cut rc (release candidate) and stable releases. It states only what the workflows in `.github/workflows` do. Contributors need none of this; see [`README.md`](README.md).
+For maintainers: the three channels, dev builds, the checks a tag runs, and how to cut an rc (release candidate) and a stable release. It states only what the workflows in `.github/workflows` do. Contributors need none of this; see [`README.md`](README.md).
 
 ## Channels
 
@@ -23,7 +23,7 @@ flowchart TD
     RW --> SC["stable channel"]
 ```
 
-Release files go to one public repo, `trustmybot/tmb-releases`, separate from the source repo, so an install or an update is a plain download that needs no login. Nothing publishes on a merge to any branch but `dev`; an rc or a stable release is published only by its tag. The channels install side by side, and each updates only itself ([1_INSTALL.md](../flows/1_INSTALL.md)).
+Release files go to one public repo, `trustmybot/tmb-releases`, separate from the source repo. Nothing publishes on a merge to any branch but `dev`; an rc or a stable release is published only by its tag. How a channel installs and updates is in [1_INSTALL.md](../flows/1_INSTALL.md).
 
 ## Dev builds
 
@@ -39,16 +39,7 @@ Every push to `dev` runs `.github/workflows/dev-release.yml`; it can also be sta
 
 ## What a release run does
 
-The dev run and the tag run (`.github/workflows/release.yml`) do the same steps.
-
-```mermaid
-flowchart TD
-    V["name the version"] --> B["build: bun test, then compile"]
-    B --> P["publish to the release repo"]
-    P --> I["install test, 3 systems"]
-    P --> U["update test, 3 systems"]
-    P --> M["fill package-manager manifests"]
-```
+The dev run and the tag run (`.github/workflows/release.yml`) do the same steps. The last three run side by side once the release is published.
 
 | Step | What it does |
 |---|---|
@@ -59,7 +50,7 @@ flowchart TD
 | Update test | Checks an install updating itself on the same three systems. |
 | Package managers | Fills the Homebrew cask, the Scoop manifest and the winget manifests from `SHA256SUMS`, only when the release is the newest on its channel. It skips cleanly while the tap, the bucket or their token is missing; the winget manifests are kept with the run. |
 
-A Homebrew install on macOS installs and then does not run, because the programs are signed ad hoc, so the installer script is the only route there. Planned (trustmybot/tmb#91): signing the macOS programs with a Developer ID and notarizing them.
+Why the installer script is the only route on macOS, and the package-manager routes, are in [1_INSTALL.md](../flows/1_INSTALL.md). Planned (trustmybot/tmb#91): signing the macOS programs with a Developer ID and notarizing them.
 
 ## Release gate
 

@@ -34,28 +34,25 @@ Each layer owns one level of quality, and no layer repeats another's check. [3_T
 
 ## Which agents a project has
 
-- **Workflow backbone, always available.** Init writes the worker and the reviewer into the project in the host's own format. Removal deletes exactly those files.
-- **Edge case.** A role file of the same name is not tmb's. tmb leaves it alone: it replaces only role files it wrote.
-- **The host starts them.** tmb starts no agent, runs no model and never reads a login. The work runs as ordinary use of the host by its own user ([ADAPTERS.md](ADAPTERS.md)).
+- **Workflow backbone, always available.** Init writes the worker and the reviewer into the project in the host's own format. It replaces and removes only role files it wrote ([ENGINE.md](ENGINE.md#what-tmb-writes-and-where)).
+- **The host starts them.** tmb starts no agent, runs no model and never reads a login ([ADAPTERS.md](ADAPTERS.md)).
 - **Identity and context.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned.
-- **Agents the project creates.** Planned: recorded and harnessed like the worker and the reviewer ([Agents a project creates](#agents-a-project-creates)).
+- **Agents the project creates.** Planned ([Agents a project creates](#agents-a-project-creates)).
 
 ## Planner (bro)
 
-The planner's persona is not a role file. The engine gives it to the host's main agent at every session start, with the rules and the open work from the record. In an unattended run the engine puts one instruction first: apply your defaults and name each one.
+The planner's persona is not a role file. The engine gives it to the host's main agent at every session start, with the rules and the open work from the record. A run with no one to answer is in [ENGINE.md](ENGINE.md#unattended-mode).
 
 | The planner | Rule |
 |---|---|
 | **Plans and routes** | Records the goal as an issue, scopes the work from the code graph, names the feature branch, writes the task spec, and asks the engine to start the task. |
 | **Judges, re-checks nothing** | After the review passes it judges only whether the change fits the design, and whether the files changed outside the spec should have been touched. It runs no check again and reviews no diff again. |
 | **Asks for the pull request** | Reads the verdict from the record, never from reply text, and asks the engine to push and open the pull request. It never pushes or opens one by hand. |
-| **Writes only docs tasks** | A change to docs or prompts that changes no behaviour is a docs task. The planner writes it itself, in that task's worktree ([3_TASKS.md](../flows/3_TASKS.md#32-non-code-task)). |
+| **Writes only docs tasks** | A change to docs or prompts that changes no behaviour is a docs task. The planner writes it itself, in that task's worktree. The close refuses one that touches a file that is not a docs type ([3_TASKS.md](../flows/3_TASKS.md#32-non-code-task)). |
 | **Keeps the code graph's knowledge** | Records the flows and rules that span files, and proposes the project's areas to the Human. Only the planner writes or removes an area. |
 | **Talks to the Human** | Only the planner asks the Human questions and reports to them. It raises main-folder changes as a report and never puts a file back itself. |
 | **Never takes the Human's steps** | Setting the review mode, waiving a review and removing tmb are the Human's alone. The planner stores the Human's answer and never picks one. |
 | **Runs parallel sessions** | With its prompt and tools ([Parallel lanes](#parallel-lanes)). |
-
-- **Edge case.** A docs task's commit touches a file that is not a docs type. Nothing stops the edit on the way. The close refuses the task. The reviewer sees a docs task with the rest.
 
 ## Worker
 
@@ -69,7 +66,6 @@ The planner's persona is not a role file. The engine gives it to the host's main
 | **Stops and reports instead of guessing** | On a contradictory spec, a missing fact, or three failed attempts at one approach. |
 | **Hands back** | Planned: when the work will not fit its turns, it commits a checkpoint so the next run resumes. |
 
-- **Edge case.** The host gives each worker a folder of its own. The engine adopts that folder as the task's worktree when the worker first reads its brief.
 - **Edge case.** The gate denies an action. That is a hard stop on that action: the worker reaches that effect no other way.
 
 ## Reviewer
@@ -102,7 +98,7 @@ flowchart TD
 ```
 
 - **A role file takes away only what the role must never use.** The reviewer is given no tool that edits a file. The worker loses nothing. Every other tool, a project's own included, stays.
-- **The adapter holds no rules.** It turns the neutral role into the host's format, and a host event into the engine's question. An adapter that grows a rule is a defect.
+- **The adapter holds no rules** ([ADAPTERS.md](ADAPTERS.md#the-engine-never-names-a-host)).
 - **The engine's tools check the role too.** The Human may always call.
 
 | Tool call | Role that may make it |
@@ -113,32 +109,16 @@ flowchart TD
 
 - **The role is the one the caller gives.** A subagent passes its own role. The main agent defaults to the role its host was set up in: the planner, unless init or onboarding named another.
 - **Edge case.** tmb cannot prove which agent called. So a verdict also needs an open reviewer run on that host.
-- **The reviewer edits nothing, on any host.** Its role file gives it no tool that edits a file, and tmb watches no file write. The Planned git check (trustmybot/tmb#303, under [Reviewer](#reviewer)) covers a write from its shell, and a host that does not name the agent on a call.
-- **A model per role.** The adapter writes a role's model and effort into its role file when one is set. The host runs it.
-- **The Human's steps have one fence.** The command line runs one only on a terminal, after a typed yes. An agent's shell has no terminal, so the step is refused there. The fence stops an agent on the plain path. It is not proof ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
-- **Edge case.** A host cannot deny an action. The engine's own layers still hold: checks at close and git's pre-push hook.
+- **The reviewer edits nothing, on any host.** tmb watches no file write. The Planned git check (trustmybot/tmb#303, under [Reviewer](#reviewer)) covers a write from its shell, and a host that does not name the agent on a call.
+- **A model per role** is written into the role file by the adapter ([ADAPTERS.md](ADAPTERS.md#different-models-on-one-task)).
+- **The Human's steps have one fence,** at the command line ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
+- **Edge case.** A host cannot deny an action. A later checkpoint still holds ([ADAPTERS.md](ADAPTERS.md#what-each-host-can-deny)).
 
 ## Parallel lanes
 
-Flow 3.8 in [FLOWS.md](../flows/FLOWS.md): several sessions working in one project at once. A lane is one such session with the work it took.
+Flow 3.8, charted in [FLOWS.md](../flows/FLOWS.md): several sessions working in one project at once. A lane is one such session with the work it took.
 
 tmb keeps no lane record and manages no lanes. The host starts sessions, carries messages between them and lists them. tmb gives every session the same record, and its tools tell the planner what it needs to stay out of another session's way.
-
-```mermaid
-flowchart TD
-    A["Human asks for parallel work"] --> B["The host starts the sessions; tmb starts none"]
-    B --> C["Each session start: the planner's role and the open work from the one record"]
-    C --> D["Planner checks the open feature branches, then starts a task"]
-    D --> F["Engine names the open tasks whose spec shares a file with it"]
-    F --> G["Each task gets its own branch and worktree; the main folder never switches"]
-    G --> H["Task closes on its checks"]
-    H --> I{"Another task folded into the feature branch first?"}
-    I -- no --> J["Fold"]
-    I -- yes --> K["Engine rebases the later task and runs its checks again"]
-    K -- pass --> J
-    K -- clash --> L["Close held back until the clash is settled"]
-    J --> M["The same review and push gate as any other work"]
-```
 
 ### What the planner's prompt and tools give
 
@@ -148,7 +128,7 @@ flowchart TD
 | **The open work at session start** | Whichever session started it: open issues with their newest decision, open tasks with their issue, feature branch and worktree, truest tasks in review, and pull requests that ended since the last session. |
 | **A check of the feature branches first** | The planner's prompt has it add to an open feature branch rather than cut a second one for the same work. Feature names are unique in the record. |
 | **Shared files named at task start** | When a file in the new task's spec is also in another open task's spec, the task still starts and the answer names those tasks. It is information, never a refusal. Only tasks in the same repo are compared. |
-| **No lock, and no lost fold** | Two tasks may change the same file. A fold is refused when the feature branch moved under it, and the later task is rebased first. So git settles the overlap, and a clash holds back only the later task's close. |
+| **No lock, and no lost fold** | Each task has its own branch and worktree, so two tasks may change the same file. A fold is refused when the feature branch moved under it: the engine rebases the later task and runs its checks again first. So git settles the overlap, and a clash holds back only the later task's close. |
 | **A main folder no session switches under another** | The engine cuts and moves branches without checking them out. |
 | **A report of the main folder at close** | The close lists what changed there since the task started. With several sessions that can be another session's edit or the Human's own, so tmb puts nothing back and the planner raises the list to the Human. |
 | **A health check that finds what stalled** | An open task no agent run is on, a run that never ended, and a worktree the host's files do not wire. The planner's session start names the count in one line. |
@@ -172,22 +152,14 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 
 ### Planned for lanes
 
-- **Session start says which session started each open task.**
+- **Session start says which session started each open task** (trustmybot/tmb#63).
 - **The planner's prompt guides parallel work.** The planner proposes a split and never starts sessions unasked. It reads each issue's likely files from the code graph and keeps issues that touch the same files in one session. It tells the Human which overlaps it could not remove, and the Human approves the split.
 
 ## Agents a project creates
 
-**Planned.** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer. A consultant is one kind. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md).
+**Planned.** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer: its file is written per host, its runs are recorded, its tool calls are role-checked, and its work passes the same checkpoints. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
 
-| For a created agent | Rule |
-|---|---|
-| **Recorded** | Creating an agent is an entry in the record. |
-| **Written per host** | The adapter writes the agent's file in each host's own format. |
-| **Runs recorded** | Each of its runs is in the record, like a worker's or a reviewer's. |
-| **Tool calls role-checked** | The engine's tools check its role as they check the others. |
-| **Same checkpoints** | Its work passes the checks at close, the review and the push gate. |
-
-A consultant-kind agent keeps three rules:
+A consultant is one kind of created agent. It keeps three rules:
 
 - **Cannot write workflow state.** Its issue, task, status and verdict writes are refused.
 - **Writes analyses** as discussion notes.

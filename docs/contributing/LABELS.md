@@ -1,8 +1,8 @@
 # Labels
 
-This page lists the issue labels on the trustmybot/tmb GitHub board, which is tmb's own board. They are written in lower case with a slash: `type/`, `priority/`, `area/`, `status/`, `decision/` and `theme/`. Type and priority are leaving the labels for GitHub's own fields (trustmybot/tmb#403). [ISSUES.md](../architecture/ISSUES.md) holds the design.
+The issue labels on trustmybot/tmb, tmb's own board, as GitHub holds them (`gh label list --repo trustmybot/tmb`), and how a contributor uses them. The design of fields and labels is in [ISSUES.md](../architecture/ISSUES.md).
 
-**This page lists the labels on GitHub** (`gh label list --repo trustmybot/tmb`). Planned: one labels file in the repo that this page and the board are both made from.
+Planned (trustmybot/tmb#403): type and priority leave the labels for GitHub's own fields.
 
 ## Rule: one type, one priority, one area
 
@@ -90,17 +90,13 @@ Planned (trustmybot/tmb#403): priority moves to GitHub's built-in Priority field
 | `.github/ISSUE_TEMPLATE/` | Bug, Improvement, Feature and Research forms. Each sets its `type/` label and `status/needs-triage`. Blank issues are disabled; a security problem goes to the security policy, never an issue. |
 | The bug form's Area answer | Optional, and a guess: Workflow, Record, Code graph, Roles, Host setup, Dashboard, Install and update. The maintainer sets the `area/` label. |
 | `.github/workflows/feedback-labels.yml` | On an issue opened with the marker `tmb feedback` leaves in its body, adds the labels of the form the marker names. A report filed through GitHub's CLI carries no labels of its own. |
-| A labels file, a sync to GitHub, a generated list | Planned. |
+| One labels file in the repo that this page and the board are both made from, with a sync to GitHub | Planned. |
 | A workflow that turns the form's Area and Impact answers into labels, and adds or removes `status/needs-triage` by itself | Planned. |
 | Tests that compare the forms and this page with the labels | Planned. |
 
 ## Filing with labels
 
-Whoever files an issue, a contributor or an agent working on tmb, applies one type, one priority and one area from the list above. When no label fits, propose a new one in a pull request to this page; never make up a label on the spot.
+Whoever files an issue, a contributor or an agent working on tmb, applies one type, one priority and one area from the list above ([README.md](README.md#issues) has the forms).
 
-No label marks an issue as stale. Such a label would only repeat the issue's last-update time, so search by that time instead (`gh issue list --state open --search 'updated:<YYYY-MM-DD>'`).
-
-## Related
-
-- [`ENUMS.md`](ENUMS.md) — same rule for the DB vocabularies: adopt an established convention, invent only where none applies
-- [`README.md`](README.md#issues) — filing an issue
+- **No label fits.** Propose a new one in a pull request to this page; never make up a label on the spot.
+- **Edge case.** No label marks an issue as stale: it would only repeat the issue's last-update time. Search by that time instead (`gh issue list --state open --search 'updated:<YYYY-MM-DD>'`).

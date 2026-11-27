@@ -44,21 +44,13 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 | Mid-level relationships | The code graph | What lives where and what depends on what, derived from the code so it cannot drift from it. |
 | Low-level logic | The code | How a step is done, in self-explaining names and tests. |
 
-- **Example 1.** A rule that a check can enforce goes in code.
-- **Example 2.** A relationship that the code graph can derive goes in the code graph.
-- **Example 3.** Only the design and its reasons stay in these docs.
+- **Example.** A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay in these docs.
 - **Edge case.** A page here starts naming symbols. The detail has drifted into the wrong layer: move it down, do not copy it.
-- **Exception 1.** A generated page guarded by a freshness test: the schema sections of [TRAJECTORY.md](TRAJECTORY.md#schema) and [CODE_GRAPH.md](CODE_GRAPH.md#schema), and the keys in [CONFIG.md](CONFIG.md#keys).
+- **Exception 1.** A generated page guarded by a freshness test: the schema tables in [TRAJECTORY_SCHEMA.md](TRAJECTORY_SCHEMA.md) and [CODE_GRAPH_DETAILS.md](CODE_GRAPH_DETAILS.md), and the keys in [CONFIG.md](CONFIG.md#keys).
 - **Exception 2.** The install and debugging sections of a detail page may name what a user types or sees: commands, settings, environment variables, messages and file locations. They never name internal functions or tables.
 - **Where the rule comes from.** Our experience of design and code drifting apart, not research evidence that it prevents that drift.
 
-**In a user's project** tmb offers the same three layers. The code graph and the code are always there. The top layer depends on where the project keeps its design, so onboarding asks. Planned (trustmybot/tmb#302):
-
-| The project | Onboarding asks | The design is kept |
-|---|---|---|
-| Has code and design docs | Where the high-level design is | Where it is: a folder in the repo, or a link outside it such as a wiki |
-| Has code and no design docs | Where to keep the design | In a folder in the repo, or in the record |
-| Is empty | Where to keep the design | In a folder in the repo, or in the record |
+**In a user's project** tmb offers the same three layers. The code graph and the code are always there. Where the top layer is kept, onboarding asks: Planned (trustmybot/tmb#302), in [2_ONBOARD.md](../flows/2_ONBOARD.md#steps).
 
 - **Edge case.** A project wants no docs in its code. It keeps the design in the record, and the planner reads and writes it there.
 
@@ -70,73 +62,39 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 | **Low-level design** | Every other page | The detail under a high-level page: every other case, failures, and how to debug them. For building and debugging tmb. |
 
 - **Two folders.** `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. [`docs/flows/`](../flows/README.md) holds the design in time: the steps tmb takes.
-- **The docs are the ground truth, and nothing overrules them silently.** When two pages disagree, or code, a spec or an issue disagrees with a page, the question goes to the Human. No side wins by rank. After the Human's answer both sides are changed to agree. The rule covers every folder of these docs ([docs/README.md](../README.md#when-two-things-disagree)).
-- **No schedule here.** Versions, milestones and the state of the work live on the GitHub board and in the record. These pages hold the design only, so they do not go stale when work moves.
+- **The docs are the ground truth.** A disagreement goes to the Human ([docs/README.md](../README.md#when-two-things-disagree)).
+- **No schedule here.** Versions, milestones and the state of the work live on the GitHub board and in the record.
 
 ## Reading guide
 
 New to tmb? Read in this order:
 
 1. [PRINCIPLES.md](PRINCIPLES.md) — why tmb is built the way it is.
-2. [ROLES.md](ROLES.md) — who does each step.
-3. [ADAPTERS.md](ADAPTERS.md) and [ENGINE.md](ENGINE.md) — how tmb works with any host through an adapter, and how the engine is reached and where it judges.
-4. [MEMORY.md](MEMORY.md) and [TRAJECTORY.md](TRAJECTORY.md) — what agents remember and what is recorded.
-5. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from.
-
-What happens step by step is in [the flows folder](../flows/README.md), with its own reading guide.
+2. [ROLES.md](ROLES.md) — what each role is for, what it may do, and how several sessions work in parallel.
+3. [ADAPTERS.md](ADAPTERS.md) — how tmb works with a host without being built for it.
+4. [ENGINE.md](ENGINE.md) — how the engine is reached, where it judges, and what tmb writes and where.
+5. [MEMORY.md](MEMORY.md) — what an agent loads, keeps and writes back, and what each costs.
+6. [TRAJECTORY.md](TRAJECTORY.md) — what is recorded, and how work is resumed from it. Its tables are in [TRAJECTORY_SCHEMA.md](TRAJECTORY_SCHEMA.md).
+7. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from. Its cases and tables are in [CODE_GRAPH_DETAILS.md](CODE_GRAPH_DETAILS.md).
+8. [ISSUES.md](ISSUES.md) — an issue's fields and labels.
+9. [CONFIG.md](CONFIG.md) — every setting, where it lives and who may set it.
 
 | Question | Read |
 |---|---|
-| Why does tmb do X at all? | [PRINCIPLES.md](PRINCIPLES.md) |
-| Which agent may do Z? | [ROLES.md](ROLES.md) |
-| How do several sessions work in parallel? | [ROLES.md](ROLES.md#parallel-lanes) |
-| How does tmb work with a host such as Claude Code without being built for it? | [ADAPTERS.md](ADAPTERS.md) |
-| May tmb write to this path? | [ENGINE.md](ENGINE.md#containment) |
-| What does an agent see at the start of a turn? | [MEMORY.md](MEMORY.md) |
-| What is recorded, and how is work resumed from it? | [TRAJECTORY.md](TRAJECTORY.md) |
-| What does the record store? | [the schema in `TRAJECTORY.md`](TRAJECTORY.md#schema) |
-| What do an issue's fields and labels say, and how do I find what waits on me? | [ISSUES.md](ISSUES.md) |
-| How does the planner know where code lives? | [CODE_GRAPH.md](CODE_GRAPH.md) |
-| What does the code graph store? | [CODE_GRAPH.md](CODE_GRAPH.md#schema) |
-| Which project settings exist, and where are they kept? | [`CONFIG.md`](CONFIG.md) |
-| What happens when the Human asks for Y? | [The flows folder](../flows/README.md) |
+| What happens when the Human asks for Y? | [The flows folder](../flows/README.md), with its own reading guide |
 | What do I type? | [The reference](../reference/README.md) |
 | Where does function X live? | Not here: ask the code graph |
 
-## Index
-
-- [PRINCIPLES.md](PRINCIPLES.md) — The principles behind the design: how an idea becomes tasks, the dev-vs-user-runtime boundary, one owner per quality check, code over prompts for enforcement, clean removal, hot and cold memory, any host, gating the outcome, and git before a new wheel.
-- [ROLES.md](ROLES.md) — What each shipped role is for, what it may and may not do, and why the roles are split this way.
-- [ADAPTERS.md](ADAPTERS.md) — How tmb works with an agent program without being built for one: the adapter, how subagents start, what each host can and cannot do, and several hosts on one record.
-- [ENGINE.md](ENGINE.md) — The engine: the ways into it, the Human's fence, unattended mode, its events and checkpoints, and containment (what tmb writes and where, and how its gates fail).
-- [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold, hot and pinned memory, what each costs, and what the engine enforces against what it can only advise.
-- [TRAJECTORY.md](TRAJECTORY.md) — The record: what is kept of sessions, agent runs and checks, how a hang or a dead run is found from it, and its schema.
-- [CODE_GRAPH.md](CODE_GRAPH.md) — The code graph: what it holds, how links are proven, areas and concepts, who reads it, and its schema.
-- [ISSUES.md](ISSUES.md) — An issue's type and priority as fields, the groups of labels, and the list of labels as a project setting.
-- [CONFIG.md](CONFIG.md) — Where settings live, and every project setting tmb reads, with its default and what it changes.
-
 ## Decisions
 
-The decisions about tmb's parts. The first column names the page that holds the detail; "This page" means no other page does. Decisions about the steps are in [the flows folder](../flows/README.md#decisions).
+Each page holds the decisions about its own part. This table holds the ones no other page does. Decisions about the steps are in [the flows folder](../flows/README.md#decisions).
 
-| From | Topic | Decision |
-|---|---|---|
-| [PRINCIPLES](PRINCIPLES.md) | Form | A standalone program. It is not a plugin of any agent. |
-| This page | Language | TypeScript, shipped as one compiled file per platform. Nothing else, Node included, has to be installed first. |
-| [PRINCIPLES](PRINCIPLES.md) | Gate | tmb gates the outcome at task close, review and push. It puts no guard on each edit. |
-| [ROLES](ROLES.md) | Roles | The host's main agent is the planner. The worker, the reviewer and any agent a project adds are subagents the host starts. The engine briefs, records and gates them. |
-| [ADAPTERS](ADAPTERS.md) | Hosts | Claude Code, in its command line and its desktop app. No host is hardcoded: each is an adapter. |
-| [ADAPTERS](ADAPTERS.md) | Login | The Human's subscription to the host. No API key is needed. |
-| [ADAPTERS](ADAPTERS.md) | Role prompts | Written once, host-neutral. The adapter turns them into each host's format. |
-| [ENGINE](ENGINE.md) | Commands | Every function is a `tmb ...` terminal command or an agent tool, the same on every host. |
-| [ADAPTERS](ADAPTERS.md) | Different models | Each role can use a different model. Agents from different vendors work on one task by connecting their hosts to the same record. |
-| [ADAPTERS](ADAPTERS.md) | What tmb does not do | Start agents, run models, manage parallel sessions or set up a sandbox. The host does. |
-| [TRAJECTORY](TRAJECTORY.md) | Records | Shareable from the first schema: history is kept as events, every record names the role and host that made it, and ids never collide across machines. |
-| [MEMORY](MEMORY.md) | Search | Ranked word search plus the code graph. No embedding model. Agent search comes first: a skill teaches the planner to search with several word queries and follow the graph (Planned). Embeddings only if measured misses are real. |
-| This page | Network | The engine works with no internet access. Running fully offline with local models needs a host that supports them. |
-| This page | Dashboard | A local web page that reads the engine's record. A desktop program with the dashboard built in is Planned (trustmybot/tmb#79). |
-| This page | Remote | GitHub only. |
-| This page | License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
+| Topic | Decision |
+|---|---|
+| Language | TypeScript, shipped as one compiled file per platform. Nothing else, Node included, has to be installed first. |
+| Network | The engine works with no internet access. Running fully offline with local models needs a host that supports them. |
+| Remote | GitHub only. |
+| License | Functional Source License 1.1 with Apache 2.0 as the future license. Free for any use, including inside a company, except a competing commercial product or service. |
 
 ## Glossary
 
@@ -147,6 +105,7 @@ The words for tmb's parts. tmb prefers the name a developer already knows. The p
 | This page | Harness | The workflow and the gate that enforces it, inside the engine. It briefs the agents and gates the outcome. It is not the program that runs the model; that is the host. |
 | This page | Engine | tmb without its adapters: the harness, the trajectory and the code graph. |
 | [PRINCIPLES](PRINCIPLES.md) | Gate | What stops a step that the workflow does not allow. |
+| [ENGINE](ENGINE.md) | Checkpoint | A point where the engine judges an outcome: an agent's start, a task's close, the review, a push. |
 | [ROLES](ROLES.md) | The Human | The developer tmb works for. |
 | [ROLES](ROLES.md) | Planner | The role that plans, writes the spec and talks to the Human: the host's main agent. It is addressed as bro in conversation. |
 | [ROLES](ROLES.md) | Worker | The role that carries out one task, of any kind. |

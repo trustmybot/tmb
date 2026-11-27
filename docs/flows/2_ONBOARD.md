@@ -27,8 +27,6 @@ flowchart TD
 
 ## Steps
 
-What first contact settles, and who settles it.
-
 | Step | What happens | Who | Leaves |
 |---|---|---|---|
 | The project | No question. The record is the nearest one in the folder or above it. `tmb doctor` shows other records above or below. Init refuses a second project in a repo whose push hook already names another. | init | nothing |
@@ -36,8 +34,8 @@ What first contact settles, and who settles it.
 | The base branch | Per repo: origin's default branch, else the current branch, else `main`. The review mode decides the branches ([3_WORKFLOW.md](3_WORKFLOW.md)). | init in a multi-repo workspace, else the planner; or `tmb onboard` | each repo's base branch |
 | The host's role | Planner unless the Human names the reviewer; one role per host ([ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task)). | init, or `tmb onboard` | the host and its role |
 | Bug reports | The feedback program ([1_INSTALL.md](1_INSTALL.md#bug-reports)): on with a notice on dev and rc; on stable the planner asks once per machine. | init's last lines, or the planner | the person's setting, per machine and channel |
-| The review mode | Agile or truest, the Human's choice. tmb recommends agile and never picks. In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own. | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
-| The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it. A repo marked exempt gets none. | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
+| The review mode | Agile or truest, [the Human's choice](#the-review-mode-is-the-humans-choice). In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own. | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
+| The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it. A repo marked exempt gets none ([3_GIT.md](3_GIT.md)). | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
 | The checks | Found in the project and stored as a setting, not as a file in the repo ([The repo's checks](#the-repos-checks)). | the planner, or `tmb onboard` | the checks, per repo in a multi-repo workspace |
 | The areas | Once the code graph is built, the planner proposes named parts of the project, one line each, and writes those the Human keeps ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
@@ -60,11 +58,11 @@ When a planner's session starts and the base branch, the review mode or the chec
 
 ## The review mode is the Human's choice
 
-The review mode decides how many tokens a project uses, so only the Human may set it ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)). No task starts until it is set.
+The review mode decides how many tokens a project uses, so only the Human may set it ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)). tmb recommends agile and never picks. No task starts until it is set.
 
 - **Three ways set it:** the planner's question, `tmb onboard` on a terminal, or its review-mode flag with a typed yes. The record keeps which.
-- **Edge case 1.** An unattended run leaves the mode unset. The first task is refused, and the refusal names `tmb onboard`.
-- **Edge case 2.** One exception: a run with no terminal may set a mode where none is set, never change one.
+- **Edge case.** An unattended run leaves the mode unset. The first task is refused, and the refusal names `tmb onboard`.
+- **Details.** What each mode does, where the mode is kept and the one case where a run with no terminal may set it are in [3_WORKFLOW.md](3_WORKFLOW.md).
 
 ## The repo's checks
 
@@ -81,9 +79,6 @@ flowchart TD
     E --> S
     F --> S
     S --> T["A task closes: the stored checks run, then the task's own"]
-    T --> U{All pass?}
-    U -- yes --> V[The task closes]
-    U -- no --> W[The close is refused and names the command]
     S -. the Human or the planner changes them at any time .-> S
 ```
 
@@ -94,13 +89,13 @@ flowchart TD
 | The repo is the source of truth | Teammates, CI and editors enforce the same rules without tmb, so tmb suggests only commands the repo already defines. |
 | A stored list is never overwritten by a new detection | The checks change only when the Human or the planner changes them. A repo that changed keeps its stored checks until then. |
 | One list per repo | A project of one repo has one list. In a multi-repo workspace each repo has its own, and the project-wide list is not read ([3_GIT.md](3_GIT.md#multi-repo-workspaces)). |
-| A task adds its own | A task's spec can name more checks. At close the stored checks run first, then the task's, each with a time limit, in the task's worktree. A task with no checks at all never closes ([3_TASKS.md](3_TASKS.md)). |
+| A task adds its own | A task's spec can name more checks. At close the stored checks run first, then the task's, each with a time limit, in the task's worktree. What a close refuses is in [3_TASKS.md](3_TASKS.md). |
 
 ## How a card is written
 
 The planner asks through its host's question tool. A person who has never used tmb must be able to answer from the card alone.
 
-- **A card only when the Human must choose.** The planner applies the base branch and the checks without a card and shows them. It asks for the review mode, the areas to keep and, on stable, the feedback program.
+- **A card only when the Human must choose.** It asks for the review mode, the areas to keep and, on stable, the feedback program. The base branch and the checks get no card.
 - **One option is recommended, with its cost.** For the review mode: one option per mode with what it costs, agile marked as recommended.
 - **Edge case.** A card that asks for consent recommends nothing.
 - **Repo modes are asked only in a multi-repo workspace.** A project of one repo takes the project's mode.
@@ -116,7 +111,7 @@ Planned:
 
 ## Settings live in the record
 
-Nothing lands in the repo's working tree beyond the ignore lines, so there is no file for the Human to commit. Each change to a setting is kept in the record as a setting change, and the newest one that sets a value is the value in force.
+Nothing lands in the repo's working tree beyond the ignore lines, so there is no file for the Human to commit. How the record keeps a setting is in [CONFIG.md](../architecture/CONFIG.md).
 
 ## Re-runs keep what stands
 

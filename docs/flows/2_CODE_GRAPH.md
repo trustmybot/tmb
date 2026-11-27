@@ -18,16 +18,16 @@ flowchart TD
 
 ## Index
 
-tmb calls the scan an index. The chart above holds every case of flow 2.2.
+tmb calls the scan an index.
 
 - **A failed index changes nothing.** The old graph stays, because the new one is applied in one step.
 - **Edge case.** Two processes build the same commit. The second keeps the first's graph.
 
 ## Refresh at a read
 
-The graph keeps itself fresh. A read that finds the graph behind its base branch brings it forward before it answers.
+A read that finds the graph behind its base branch brings it forward before it answers.
 
-- **Example 1.** The base branch moved since the last index. The next lookup parses only the changed files, then answers. A parse is kept by the file's content, so a file is parsed once per content: bringing a layer forward costs what the diff costs, not what the repo costs.
+- **Example 1.** The base branch moved since the last index. The next lookup parses only the changed files, then answers. A parse is kept by the file's content, so bringing a layer forward costs what the diff costs, not what the repo costs.
 - **Example 2.** A session starts. Session start does not index: the planner's first page shows the directories as last indexed, so the start stays fast. Its first lookup brings the graph forward.
 - **Edge case.** A newer tmb reads code differently. The graph is rebuilt, and the answer says so.
 
@@ -76,7 +76,6 @@ In the order a task meets them:
 
 For every layer:
 
-- **Built at the read, from git.** The first read that names a layer builds it or brings it forward, from the task's commit or the branch's tip, so it is indexed from git like everything else.
-- **Sized by the diff.** Only files whose content changed are parsed again.
+- **Built at the read, from git.** The first read that names a layer builds it or brings it forward, from the task's commit or the branch's tip. Only files whose content changed are parsed again.
 - **Concepts and areas belong to the base.** An anchor or a pattern must match the base branch's graph.
 - **It is cache.** A layer holds no link into the record and can be rebuilt from its commit.

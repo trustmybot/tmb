@@ -23,24 +23,13 @@ flowchart LR
     Host -- "a few hooks: may this run?" --> A
     A -- "allow, or deny with the reason" --> Host
     GH["git's pre-push hook"] --> E
-    E --> C1["Checkpoint: agent start"]
-    C1 --> C2["Checkpoint: task close, the checks run"]
-    C2 --> C3["Checkpoint: review"]
-    C3 --> C4["Checkpoint: push"]
 ```
 
-## Terms
-
-- **Host.** The agent program the Human talks to, such as Claude Code. The host's main agent is the planner.
-- **Engine.** tmb itself: the record, the code graph, the workflow and the gate.
-- **Host adapter.** The one part of tmb that knows a host: its file formats, its events and its limits.
-- **Checkpoint.** A point where the engine judges an outcome: an agent's start, a task's close, the review, a push.
+The words host, engine, host adapter and checkpoint are in [the glossary](README.md#glossary).
 
 ## The engine never names a host
 
-The top-level rule of the design: the engine knows nothing about any host, and everything a host needs is in its adapter.
-
-Three rules follow from it:
+The top-level rule of the design: the engine knows nothing about any host, and everything a host needs is in its adapter. Three rules follow from it:
 
 | Rule | What it means |
 |---|---|
@@ -87,45 +76,28 @@ Why this way:
 - **It uses what the host already does well:** parallel subagents, a model and effort per role, isolation, and permission prompts shown to the Human.
 - **It works wherever the host runs.** Claude Code fires the same events in its command line and in its desktop app. Planned: tmb's own desktop program (trustmybot/tmb#79).
 
-**Several workers at once** is the host's parallel subagents plus git. Each worker has its own task, branch and worktree.
-
-- **Example.** Two open tasks change the same file. Both may. The engine tells the planner which open tasks share a file, as information.
-- **Edge case.** Their changes clash when the work is merged. git settles it: the clash refuses the later task's close until it is resolved.
+**Several workers at once** is the host's parallel subagents plus git. Each worker has its own task, branch and worktree ([ROLES.md](ROLES.md#parallel-lanes)).
 
 ## Cold start
 
-A plain host agent does not work out that it is the planner. tmb tells it at the start of every session, through what `tmb init` wired once.
-
-```mermaid
-flowchart TD
-    S["Once: the Human runs tmb init"] --> W["The adapter writes the tool registration, the role files and the event wiring into the project"]
-    W --> O["The Human opens the host in the project"]
-    O --> SS["The host raises its session start event"]
-    SS --> E["The engine answers: you are the planner, with the rules and the open work from the record"]
-    E --> P["The agent works as the planner: plans, calls tmb's tools, starts workers"]
-    P --> C["At each checkpoint the host asks the engine"]
-    C --> D["Allow, or deny with the reason"]
-```
+A plain host agent does not work out that it is the planner. tmb tells it at the start of every session, through what `tmb init` wired once: the host raises its session start event, and the engine answers with the role, the rules and the open work ([1_INSTALL.md](../flows/1_INSTALL.md#session-start)).
 
 | Part | What it does | Can an agent skip it? |
 |---|---|---|
 | The role prompts guide | They tell the planner to plan, write a spec and ask the engine to start a task. | Yes. An agent can ignore a prompt. |
 | The gate holds | The host itself asks the engine at a checkpoint, and the engine answers from the record. | No. |
 
-- **The answer carries more than the role:** the open work, what onboarding left empty ([2_ONBOARD.md](../flows/2_ONBOARD.md)), and a map of the project from the code graph.
-- **A session resumes from the record.** A new session needs nothing from the conversation before it.
-
 ## Different models on one task
 
 | Case | How |
 |---|---|
-| **One vendor, several models** | The host already runs a different model per subagent. The adapter writes a role's model into the host's role definitions when the role names one. No role tmb ships names a model, so each runs on the host's default. |
+| **One vendor, several models** | The host already runs a different model per subagent. The adapter writes a role's model and effort into the host's role definitions when the role names one. No role tmb ships names a model, so each runs on the host's default. |
 | **Several vendors** | Each host connects to the same record in the same project and takes a role: one host plans and writes, and another, opened in the same project, reviews. Both read the same brief and pass the same checks and gate. |
 | **Local models** | They arrive through a host that supports them. The adapter writes a role's model as given, and the model's provider is the host's own setup. |
 
 With several vendors:
 
-- **Agents of different vendors talk through the record.** They never message each other. Each writes its work to the trajectory database and reads what the others wrote there ([TRAJECTORY.md](TRAJECTORY.md)), so a mixed team needs no channel of its own. Who starts the second host is the Human's or the first host's business, not tmb's.
+- **Agents of different vendors talk through the record** ([TRAJECTORY.md](TRAJECTORY.md)). They never message each other, so a mixed team needs no channel of its own. Who starts the second host is the Human's or the first host's business, not tmb's.
 - **A role per host.** Setup records the role each host takes in the project, the planner by default. Session start briefs a host in its role.
   - **Example.** A host set up as the reviewer is told which feature branches wait for a review. That includes a branch whose pull request is open and whose new tip is not reviewed.
   - **Edge case.** Two hosts may both be planners, as two sessions of one host may. Open, for the Human: whether two planner hosts stay allowed.

@@ -1,6 +1,6 @@
 # Install, upgrade and session start
 
-Every case of flow 1.1 in [FLOWS.md](FLOWS.md): how tmb gets onto a machine and into a project, what each session start does, how an update lands, and how to tell what broke. The commands a user types are in the [reference](../reference/README.md).
+Every case of flows 1.1 to 1.3, 3.7 and 5.1 in [FLOWS.md](FLOWS.md): how tmb gets onto a machine and into a project, what each session start does, how an update lands, and how to tell what broke. The commands a user types are in the [reference](../reference/README.md).
 
 ```mermaid
 flowchart TD
@@ -24,7 +24,7 @@ flowchart TD
 
 tmb is one compiled program per platform, not a plugin of any host. The installer script is the only supported way to install it.
 
-- **What the program holds.** The engine, the command line, the tool server, the dashboard's pages and every host adapter ([ADAPTERS.md](../architecture/ADAPTERS.md)). Nothing else has to be installed first: no Node, no package install.
+- **What the program holds.** The engine, the command line, the tool server, the dashboard's pages and every host adapter. Nothing else has to be installed first: no Node, no package install.
 - **One program for the whole machine.** Only the record and the host wiring are per project.
 - **The installer script** needs no login. It checks the download against the published checksums and refuses on a mismatch.
 - **The packaging test comes first.** One compiled file must run on all three platforms with no network, open the record, parse code and answer a tool call from a host.
@@ -43,13 +43,10 @@ tmb is one compiled program per platform, not a plugin of any host. The installe
 
 **A project runs the program that initialised it.** Its host events, its tool server and git's push hook call that program.
 
-- **Example 1.** Every printed command names the running program: a project set up by `tmb-dev` is told to run `tmb-dev init`. A test builds tmb as `tmb-dev` and fails on any printed `tmb <command>`.
+- **Example.** Every printed command names the running program: a project set up by `tmb-dev` is told to run `tmb-dev init`. A test builds tmb as `tmb-dev` and fails on any printed `tmb <command>`.
 - **Edge case.** Running another program's `init` moves the project, in either direction, whenever that program can read the record. The record keeps every move.
 
-**Releases are plain downloads.** Release files go to one public repo, separate from the source repo. Each release carries a `VERSION` file and its checksums.
-
-- dev is published on every push to the base branch; rc and stable only when their tag is pushed.
-- The source repo's README offers stable only and links to the release repo for rc and dev.
+**Releases are plain downloads** from one public repo, separate from the source repo. What publishes each channel is in [RELEASE.md](../contributing/RELEASE.md). The source repo's README offers stable only and links to the release repo for rc and dev.
 
 ## Operating systems
 
@@ -61,7 +58,7 @@ tmb is one compiled program per platform, not a plugin of any host. The installe
 
 After each release, CI runs the published installer on all three.
 
-- **macOS signing.** The macOS files are signed ad hoc. Homebrew marks what it downloads as quarantined, and macOS refuses to run a quarantined program that is only signed ad hoc: a Homebrew install on macOS installs, then does not run. So the installer script is the only route on macOS, and the tap says so. The script works because curl does not quarantine. Planned (trustmybot/tmb#91): the release workflow signs the macOS files with a Developer ID and has Apple notarize them.
+- **macOS signing.** Homebrew marks what it downloads as quarantined, and macOS refuses to run a quarantined program that is only signed ad hoc: a Homebrew install on macOS installs, then does not run. So the installer script is the only route on macOS, and the tap says so. The script works because curl does not quarantine. Planned (trustmybot/tmb#91): the release workflow signs the macOS files with a Developer ID and has Apple notarize them.
 - **Offline.** The engine, the record, the code graph and the dashboard need no network. Whether the agents run offline depends on the host and its models.
 
 ## Package managers
@@ -81,23 +78,21 @@ tmb's own installer and updater come first. The installer scripts stay; package 
 
 ## What init writes
 
-`tmb init` prepares a project and asks nothing: it never waits for input, on a terminal or not. It finds the installed host and has its adapter wire tmb in.
+`tmb init` prepares a project and asks nothing ([2_ONBOARD.md](2_ONBOARD.md#init-asks-nothing)). It finds the installed host and has its adapter wire tmb in ([ADAPTERS.md](../architecture/ADAPTERS.md)).
 
-| Init writes | Where |
-|---|---|
-| The record | `.tmb/` in the project |
-| The tool server's registration, the event wiring and the role files | The host's own project files, through its adapter ([ADAPTERS.md](../architecture/ADAPTERS.md)) |
-| git's pre-push hook | Each repo tmb works in |
-| The code graph | `.tmb/`, one graph per repo |
-| Ignore lines for the above | `.gitignore` |
+Init creates the record and one code graph per repo in `.tmb/`, writes the host's project files, adds git's pre-push hook to each repo tmb works in, and adds ignore lines to `.gitignore`. The limits on each are in [ENGINE.md](../architecture/ENGINE.md).
 
 - **Settings stay empty.** Init ends by saying so and how they get filled ([2_ONBOARD.md](2_ONBOARD.md)).
 - **No host installed.** Init stops, names the hosts it supports and changes nothing.
 - **Run again, init replaces only what tmb wrote.** It takes out what this version does not wire: role files for roles it does not have, and hooks under an event it does not use. The Human's own entries stay.
 - **Files marked as written by `tmb setup` are recognised as tmb's**.
-- **The push gate.** Init installs git's pre-push hook; session start does not. There is no switch that turns it off; a repo marked exempt gets none.
-  - **Edge case.** A repo whose pre-push hook is another tool's keeps that hook. The gate is off there until the Human says yes to tmb's one line in it. Init, every session start and `tmb doctor` name the repo until then.
-- **A plugin project's records are carried over by `tmb migrate`**, a one-way copy that leaves the plugin's database unchanged. A plugin project of several repos goes into one workspace record, each repo to the workspace repo of the same name or one the Human names. tmb never guesses a repo.
+- **The push gate.** Init installs git's pre-push hook; session start does not. A repo marked exempt gets none, and a hook that is another tool's is kept ([3_GIT.md](3_GIT.md)).
+
+## Move a plugin project
+
+Flow 1.3. `tmb migrate` carries a plugin project's records over: a one-way copy that leaves the plugin's database unchanged. How to use it is in the [reference](../reference/README.md#move-a-plugin-project).
+
+- **Edge case.** A plugin project of several repos goes into one workspace record, each repo to the workspace repo of the same name or one the Human names. tmb never guesses a repo.
 
 ## Session start
 
@@ -211,11 +206,12 @@ flowchart TD
 ```
 
 - **On by default on dev and rc, asked about on stable**, once, at the first run. The setting belongs to the person: it is kept with the machine-wide state of each channel's program.
-- **A report is an issue on the source repo, from the user's own GitHub account.** A link is kept under 7,500 characters; a longer report is saved to a file to attach.
+- **A report is a public issue on the source repo, from the user's own GitHub account.** A link is kept under 7,500 characters; a longer report is saved to a file to attach.
 - **A report follows the repo's bug form** as it stands on the default branch, so the version, the labels and the questions are always current ([contributing](../contributing/README.md#issues)). With no network it uses a built-in copy, which the build takes from the same form file.
 - **Labels come from the form on both routes.** GitHub drops the labels of an issue filed through its API by someone who cannot write to the repo. So a report filed through the CLI carries one hidden line, `<!-- tmb-feedback form=bug.yml -->`, and a workflow on the repo adds that form's labels.
 - **A report holds no source code, file contents, prompts, agent messages or environment variables.**
 - **Edge case.** For an opened form the record cannot know whether the user pressed submit.
+- **Planned.** A check for an earlier or matching report before a new one is offered.
 
 ## Debugging
 
@@ -224,6 +220,7 @@ flowchart TD
 - **It runs with a broken record.** Every check that does not need the record still runs, and the others say why they were skipped.
 - **It never touches a file tmb did not write,** and deletes nothing without the Human's yes.
 - **Edge case.** A check that fails by itself looks like tmb's own bug. Its line says so and names the bug report command.
+- **Leftovers (flow 3.7).** It lists what tmb left on disk: old builds no session uses, entries of ended sessions, and worktrees and branches of closed and dropped tasks. `--fix` removes each on the Human's yes. A worktree holding work nobody committed stays. A tracked repo file is deleted through a task, like any other change.
 
 | Symptom | Cause | Fix |
 |---|---|---|
