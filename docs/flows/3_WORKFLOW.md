@@ -95,7 +95,7 @@ flowchart TD
     P --> Z["Human merges; tmb records the branch as merged"]
 ```
 
-- **No approval.** The planner names the branch and starts it without asking. The Human can ask for another name.
+- **No approval.** The planner names the branch and starts it without asking.
 - **Pushed only as a backup.** No pull request opens before the review, so no CI runs on the branch.
 - **The base branch is brought in before the review.** The planner asks the engine for it at the milestone, and earlier whenever the base moved ([3_GIT.md](3_GIT.md#keeping-the-base-fresh)).
 - **How it ends.** Merged, closed or dropped ([Merge gate](#merge-gate)). tmb never deletes the branch.
@@ -268,6 +268,6 @@ flowchart TD
 
 The gates are the same as in agile mode ([Merge gate](#merge-gate)). Every failure path is in [3_TASKS.md](3_TASKS.md#retry-and-escalation).
 
-**Planned (trustmybot/tmb#458).** The task stays in review while its pull request is open and closes when it merges. A fix reopens the same task on the same branch, and its new commit is reviewed before the pull request is updated.
+**Planned (trustmybot/tmb#458).** The task stays in review while its pull request is open and closes when it merges: the sync with the remote (trustmybot/tmb#70) records the merge and who made it. A fix reopens the same task on the same branch, and its new commit is reviewed before the pull request is updated.
 
 **Planned (trustmybot/tmb#442).** The review queue: the tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel.
