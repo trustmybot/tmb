@@ -199,7 +199,7 @@ stateDiagram-v2
 - **Edge case.** A run whose usage cannot be read has no cost, and that is not an error.
 - **tmb records no price.** Prices change, and a subscription has none per run.
 
-**Planned:** a fixed list of causes on a stopped run (failed, out of turns, killed), and a resumed run that names the run it resumes.
+**Planned** (trustmybot/tmb#256): a stopped run names its cause from a fixed list (failed, out of turns, killed, escalated, stuck, never started), and a resumed run names the run it resumes.
 
 ## 6. A check run is one execution of a task's checks on one commit
 
@@ -336,7 +336,7 @@ Every table, and every change to one, meets these requirements.
 
 - **Trajectory.** The record exists to keep the trajectory of work. Every table either records a step in it (a fact) or describes something that takes part in it (a dimension). Anything else does not belong in it: a setting's value is in the config, and a choice is never a column.
 - **Consistency.** A projection table is plural and its record kind is the singular: `tasks` → `task`, `check_runs` → `check_run`. Every projection row carries its id, `created_by` (the JSON actor of its first event) and `created_at` (that event's time). Ids are ULIDs, never autoincrement.
-- **Room to grow.** Planned (trustmybot/tmb#404). A new session, host, vendor, role, remote or record kind is new rows, never a reshaped table. The schema checks shape only, and lists of values are checked by the engine ([ENUMS.md](../contributing/ENUMS.md)).
+- **Room to grow.** Planned (trustmybot/tmb#404). A new session, host, vendor, role, remote or record kind is new rows, never a reshaped table. The schema checks shape only: valid JSON, a text that is not blank, which columns are set together. Every list of values is checked by the engine ([ENUMS.md](../contributing/ENUMS.md)), so every CHECK on a list goes.
 - **Local first.** No table needs a remote. Every column that describes the remote is nullable, and a row with no `remote_id` is local.
 
 ### Diagram
@@ -389,10 +389,10 @@ In each table an empty last cell means built.
 | `record_id` | TEXT | NOT NULL |  |  |
 | `type` | TEXT | NOT NULL | `created` or `updated` |  |
 | `data` | TEXT | NOT NULL | CHECK `json_valid(data)` |  |
-| `actor_kind` | TEXT | NOT NULL | CHECK, `human` or `agent` | Gains `tmb`, for a write no person or agent made (trustmybot/tmb#404) |
+| `actor_kind` | TEXT | NOT NULL | Built: CHECK, `human` or `agent` | The CHECK goes. Gains `tmb`, for a write no person or agent made (trustmybot/tmb#404) |
 | `actor_role` | TEXT | nullable | Built: CHECK, one of `planner`, `worker`, `reviewer` | The CHECK goes and the engine checks it, so a role a project creates is a new value (trustmybot/tmb#404) |
 | `actor_host` | TEXT | nullable |  |  |
-| `actor_source` | TEXT | nullable | Which part of tmb wrote it, such as the syncer or an upgrade. Set only for a `tmb` actor | trustmybot/tmb#404 |
+| `actor_source` | TEXT | nullable | Which part of tmb wrote it: `syncer` or `upgrade`. Set only for a `tmb` actor | trustmybot/tmb#404 |
 | `actor_session` | TEXT | nullable | The session that acted. NULL for the Human at a terminal and for tmb | trustmybot/tmb#63 |
 | `actor_remote` | TEXT | nullable | On an event the syncer wrote, the remote account that made the change | trustmybot/tmb#70 |
 | `at` | TEXT | NOT NULL |  |  |
@@ -401,6 +401,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 
 - **Example.** A pull request is merged in the browser. The syncer writes one `updated` event: actor `tmb`, source the syncer, `actor_remote` the account that merged it.
 - **Edge case.** A write with an unknown record kind or role is still refused, by the engine.
+- **Edge case.** A tool call or a hook names itself as tmb. The engine refuses it: only the engine's own code writes as tmb.
 
 #### `issues`
 
@@ -409,7 +410,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `id` | TEXT | PK |  |  |
 | `title` | TEXT | NOT NULL | CHECK `length(trim(title)) > 0` |  |
 | `body` | TEXT | NOT NULL | Default `''` |  |
-| `state` | TEXT | NOT NULL | Default `'open'`; CHECK, `open` or `closed` |  |
+| `state` | TEXT | NOT NULL | Default `'open'`. Built: CHECK, `open` or `closed` | The CHECK goes (trustmybot/tmb#404) |
 | `milestone` | TEXT | nullable | The milestone's name | Goes, for `milestone_id` (trustmybot/tmb#70) |
 | `milestone_id` | TEXT | nullable | FK → `milestones.id` | trustmybot/tmb#70 |
 | `priority` | TEXT | nullable | `urgent`, `high`, `medium` or `low` | trustmybot/tmb#402 |
@@ -466,7 +467,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | `id` | TEXT | PK |  |  |
 | `issue_id` | TEXT | NOT NULL | FK → `issues.id` | Becomes nullable: exactly one of `issue_id` and `pull_request_id` is set (trustmybot/tmb#411) |
 | `pull_request_id` | TEXT | nullable | FK → `pull_requests.id` | trustmybot/tmb#411 |
-| `kind` | TEXT | NOT NULL | CHECK, `note` or `decision` | Gains `comment`, for one mirrored from the remote (trustmybot/tmb#70) |
+| `kind` | TEXT | NOT NULL | Built: CHECK, `note` or `decision` | The CHECK goes (trustmybot/tmb#404). Gains `comment`, for one mirrored from the remote (trustmybot/tmb#70) |
 | `body` | TEXT | NOT NULL | CHECK `length(trim(body)) > 0`. A note and a decision never change | A comment's body follows the remote's (trustmybot/tmb#70) |
 | `remote_author` | TEXT | nullable | The remote account that wrote a comment | trustmybot/tmb#70 |
 | `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision | trustmybot/tmb#70 |
@@ -507,7 +508,8 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `id` | TEXT | PK |  |  |
 | `name` | TEXT | NOT NULL | UNIQUE; CHECK `length(trim(name)) > 0` |  |
 | `base_branch` | TEXT | NOT NULL |  |  |
-| `base_commit` | TEXT | NOT NULL |  |  |
+| `base_commit` | TEXT | NOT NULL | The commit the branch was cut from. It never changes |  |
+| `base_merged_commit` | TEXT | nullable | The base branch's commit last brought into the branch | trustmybot/tmb#408 |
 | `state` | TEXT | NOT NULL | Default `'open'` |  |
 | `repo` | TEXT | nullable | NULL is the project folder itself |  |
 | `drop_reason` | TEXT | nullable |  |  |
@@ -581,8 +583,9 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `effort` | TEXT | nullable | The effort it was given | trustmybot/tmb#256 |
 | `started_at` | TEXT | NOT NULL |  |  |
 | `ended_at` | TEXT | nullable |  |  |
-| `outcome` | TEXT | nullable | Finished or stopped | Gains the fixed causes: completed, failed, escalated, ended as stuck (trustmybot/tmb#256) |
-| `stop_cause`, `stop_detail` | TEXT | nullable | Why a run stopped early | trustmybot/tmb#256 |
+| `outcome` | TEXT | nullable | `finished` or `stopped` |  |
+| `stop_cause` | TEXT | nullable | Set only on a stopped run: `failed`, `out_of_turns`, `killed`, `escalated`, `stuck` or `not_started` | trustmybot/tmb#256 |
+| `stop_detail` | TEXT | nullable | The cause in words | trustmybot/tmb#256 |
 | `cost` | TEXT | nullable | Tokens per model. CHECK `cost IS NULL OR json_valid(cost)` |  |
 | `usage_source` | TEXT | nullable | Where the token count came from, "not measured" included | trustmybot/tmb#256 |
 | `tool_calls` | INTEGER | nullable | Its number of tool calls | trustmybot/tmb#256 |
@@ -632,7 +635,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 |---|---|---|---|---|
 | `id` | TEXT | PK |  |  |
 | `event` | TEXT | NOT NULL |  |  |
-| `decision` | TEXT | NOT NULL | CHECK, `allow` or `deny` |  |
+| `decision` | TEXT | NOT NULL | Built: CHECK, `allow` or `deny` | The CHECK goes (trustmybot/tmb#404) |
 | `reason` | TEXT | NOT NULL |  |  |
 | `session_id` | TEXT | nullable | FK → `sessions.id` | trustmybot/tmb#406 |
 | `run_id` | TEXT | nullable | FK → `runs.id` | trustmybot/tmb#406 |
@@ -656,6 +659,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 - **Example 1.** The Human waives a branch's review. The gate finds one `waivers` row for that branch and commit; it parses no text.
 - **Example 2.** A setting changes. One `setting_changes` row says who changed it, from what and to what.
 - **Edge case.** An upgrade writes each old `audit` entry again as an event of its new kind, made by tmb. The old events are never rewritten, and no entry is lost.
+- **Edge case.** An old entry on how a review mode was chosen has no setting change beside it. It becomes its own row for the key `review_mode`, with no values.
 - **Edge case.** The config file is not built yet (trustmybot/tmb#305). Until it is, the newest `setting_changes` row for a key is the value in force.
 
 | Today, an `audit` entry for | Becomes |
@@ -663,8 +667,10 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | A Human waiver, of a task or a feature branch | A `waivers` row |
 | A review mark sent to the remote, and a mark sent late | A `review_marks` row |
 | A review carried over a rebase | A `reviews` row with `carried_from` |
-| A setting change, how a review mode was chosen, which tmb program the project is tied to, tmb moved or removed | A `setting_changes` row |
-| A base branch brought into a feature branch | An `updated` event on the feature branch, with the base commit |
+| A setting change | A `setting_changes` row for its key |
+| How a review mode was chosen | The `how` of that review mode's `setting_changes` row |
+| Which tmb program the project is tied to, and tmb moved | A `setting_changes` row with the key `program` |
+| A base branch brought into a feature branch | An `updated` event on the feature branch, which sets `base_merged_commit` |
 | A freeze of every session's work, and its lifting (trustmybot/tmb#64) | A `freezes` row |
 | A feedback report filed or its form opened | A `feedback_reports` row |
 | A migration from the plugin | An `imports` row |
@@ -679,12 +685,13 @@ Each new table also has `id` (PK), `created_by` and `created_at`. Each is a proj
 | | `reason` | TEXT | NOT NULL | Only the Human writes a waiver |
 | `review_marks` | `feature_id` | TEXT | NOT NULL | FK → `features.id` |
 | | `commit_sha` | TEXT | NOT NULL |  |
-| | `state` | TEXT | NOT NULL | The mark sent |
+| | `kind` | TEXT | NOT NULL | `pass`, `fail` or `waiver` |
+| | `state` | TEXT | NOT NULL | What the remote is told: `success` or `failure` |
 | | `sent_at` | TEXT | nullable | NULL until the remote has it |
 | `setting_changes` | `key` | TEXT | NOT NULL |  |
 | | `repo` | TEXT | nullable | For one repo's own setting |
 | | `old_value`, `new_value` | TEXT | nullable | JSON |
-| | `how` | TEXT | NOT NULL | `asked`, `default` or `set` |
+| | `how` | TEXT | nullable | The way the Human chose a review mode: `init`, `onboard` or `planner`. NULL for every other key |
 | `freezes` | `reason` | TEXT | NOT NULL | Only the Human's request writes a freeze |
 | | `session_id` | TEXT | nullable | FK → `sessions.id`. The session it was asked in |
 | | `lifted_by` | TEXT | nullable | The JSON actor that lifted it |
