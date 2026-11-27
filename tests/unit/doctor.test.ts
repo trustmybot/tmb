@@ -355,6 +355,26 @@ describe("the project", () => {
     expect(work!.fix!.apply).toBeUndefined();
   });
 
+  test("an open docs task with no run is not listed: the planner writes it (trustmybot/tmb#460)", () => {
+    withStore(project, (store) => {
+      const issue = store.createIssue(PLANNER, { title: "x" });
+      store.appendTask(PLANNER, { issueId: issue, title: "docs by the planner", state: "open", kind: "docs" });
+      store.appendTask(PLANNER, { issueId: issue, title: "code nobody runs", state: "open", kind: "code" });
+    });
+    const [work] = of(runChecks(env()), "unfinished work");
+    expect(work!.details!.some((line) => line.includes("docs by the planner"))).toBe(false);
+    expect(work!.details!.some((line) => line.includes('"code nobody runs" is open and no agent run is on it'))).toBe(true);
+  });
+
+  test("only open docs tasks leave the unfinished work check ok", () => {
+    withStore(project, (store) => {
+      const issue = store.createIssue(PLANNER, { title: "x" });
+      store.appendTask(PLANNER, { issueId: issue, title: "docs by the planner", state: "open", kind: "docs" });
+    });
+    const [work] = of(runChecks(env()), "unfinished work");
+    expect(work!.status).toBe("ok");
+  });
+
   test("a closed task's worktree and branch are removed after a yes", async () => {
     const worktree = path.join(root, "wt");
     git(project, "worktree", "add", "-q", "-b", "task/1", worktree);
