@@ -380,8 +380,9 @@ export type FoundCopy = { whose: Whose; path: string | null; version: string; no
  * - else a program the find order looks for: its file's name; how a reader names it; the arguments
  *   that make it report its version, and the environment it runs in; its report from its output;
  *   the lowest version tmb supports, for a reader, and whether a report is at or above it; the
- *   folders besides PATH where the language's own installer puts the user's copy; and whether tmb
- *   keeps a copy of it in its tools folder, which it never does for a language's own command.
+ *   folders besides PATH where the language's own installer puts the user's copy; whether tmb
+ *   keeps a copy of it in its tools folder, which it never does for a language's own command; and
+ *   the pinned release tmb installs that copy from.
  */
 export type ToolCopy =
   | { carried: string }
@@ -395,7 +396,23 @@ export type ToolCopy =
       supported(report: string): boolean;
       userPlaces?(): string[];
       tmbInstalls: boolean;
+      release?: ToolRelease;
     };
+
+/**
+ * The release of a tool tmb installs (CODE_GRAPH.md, "An install is asked for, checked, and never
+ * part of a read"), pinned in its language's module: its version; the tool's own release page; and,
+ * by machine (`<os>-<arch>`, as the running program names them), the asset's address there, its
+ * sha256, which tmb carries, and how the program is laid out in it.
+ */
+export type ToolRelease = { version: string; page: string; assets: Partial<Record<string, ReleaseAsset>> };
+
+/**
+ * One asset of a release. `gzip`: the program itself, compressed. `zip`: a folder; every file under
+ * `from` in the archive goes under `to` in the tool's own folder, so the files the program reads
+ * beside it keep the places the release gives them.
+ */
+export type ReleaseAsset = { url: string; sha256: string; archive: { format: 'gzip' } | { format: 'zip'; from: string; to: string } };
 
 // A tool that runs may still tell the reader something its answers rest on, such as a setting of
 // the repo it could not follow: `note` adds it to the answer's freshness. `readFrom` names the

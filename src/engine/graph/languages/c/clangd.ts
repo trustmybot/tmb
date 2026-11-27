@@ -37,7 +37,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { atLeast, versionNumbers } from "../../tool-copy.ts";
-import type { BuiltWith, LanguageTool, OpenedTool, ToolAnswer, ToolInput } from "../contract.ts";
+import type { BuiltWith, LanguageTool, OpenedTool, ToolAnswer, ToolInput, ToolRelease } from "../contract.ts";
 
 const NOT_KNOWN: ToolAnswer = { state: "not_known" };
 const OUTSIDE: ToolAnswer = { state: "outside" };
@@ -156,6 +156,30 @@ export const CLANGD = "clangd";
  * flags (CLANGD_FLAGS) are all in clangd 9.
  */
 export const LOWEST_CLANGD = "16";
+
+/**
+ * The clangd tmb installs when a machine has none it supports: a release of clangd's own, from its
+ * release page, at or above LOWEST_CLANGD. Each asset is a zip of one folder, `clangd_<version>/`,
+ * which holds `bin/clangd` and, in `lib/clang/<major>/`, clang's resource headers, which clangd
+ * finds beside itself; the folder becomes tmb's copy as it is. The macOS asset serves Apple silicon
+ * and Intel alike. clangd publishes no build for Linux on arm64 or for Windows on arm64. The project
+ * publishes no checksum file; each sha256 is of the asset as its release page serves it.
+ */
+export const CLANGD_RELEASE = "23.1.0";
+const RELEASE_PAGE = "https://github.com/clangd/clangd/releases";
+const asset = (system: string): string => `${RELEASE_PAGE}/download/${CLANGD_RELEASE}/clangd-${system}-${CLANGD_RELEASE}.zip`;
+const FOLDER = { format: "zip", from: `clangd_${CLANGD_RELEASE}/`, to: "" } as const;
+const MAC = { url: asset("mac"), sha256: "1082e6638223b785ca2daf0939f13afcd0bb95c84ee9a4bbaff4745365159253", archive: FOLDER };
+export const CLANGD_PIN: ToolRelease = {
+  version: CLANGD_RELEASE,
+  page: RELEASE_PAGE,
+  assets: {
+    "darwin-arm64": MAC,
+    "darwin-x64": MAC,
+    "linux-x64": { url: asset("linux"), sha256: "e53b1a96196095faedb7642cf64964f7fb9ad4a0c1f00dd2c172a3d9dcbafdfd", archive: FOLDER },
+    "win32-x64": { url: asset("windows"), sha256: "23412a240756a162e7b98a282f36aa2a23a88db5ce16a0cbc4fef7253768c810", archive: FOLDER },
+  },
+};
 
 /** `clangd --version`'s first line: `[<vendor> ]clangd version <version>[ …]`. */
 const VERSION_LINE = /\bclangd version (\d+(?:\.\d+)*)/;
@@ -446,6 +470,7 @@ export const clangdTool: LanguageTool = {
     lowest: `clangd ${LOWEST_CLANGD}`,
     supported: supportedClangd,
     tmbInstalls: true,
+    release: CLANGD_PIN,
   },
   open(repoDir: string, found): OpenedTool {
     const database = findDatabase(repoDir);
