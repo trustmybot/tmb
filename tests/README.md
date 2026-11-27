@@ -13,7 +13,7 @@ Ordered by when they run, cheapest first.
 | Layer | Folder | What it runs | Catches |
 |---|---|---|---|
 | Lint | [tests/lint](lint/README.md) | Static checks on code, docs and prompts. | Type errors, broken links, a test file with no timeout. |
-| Unit | [test](../test/README.md) | One engine rule at a time, called directly. | A wrong rule, a wrong record shape. |
+| Unit | [tests/unit](unit/README.md) | One engine rule at a time, called directly. | A wrong rule, a wrong record shape. |
 | Integration | [tests/integration](integration/README.md) | The real engine process through a real door: the tool server, the command line, a host event passed through the adapter. | A rule that is right but unreachable: a tool the host cannot call, an event the adapter mistranslates. |
 | Workflow simulation | [tests/workflow](workflow/README.md) | A whole flow as a scripted sequence of tool calls, with no model. | A workflow step that can be skipped or done out of order. |
 | Install | [tests/install](install/README.md) | The published compiled file, downloaded and started on a clean machine of each platform. | A file that does not download, start or update. |
