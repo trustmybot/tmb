@@ -46,7 +46,8 @@ export const TRUEST = "truest";
 export const TASK_BRANCH_PREFIX = "tmb/";
 
 /** Refuses an agent whose role is not one of `roles`; the Human may always call. */
-export function requireRole(actor: Actor, operation: string, roles: readonly Role[]): void {
+export function requireRole(actor: Actor, operation: string, roles: readonly Role[]): asserts actor is Exclude<Actor, { kind: "tmb" }> {
+  if (actor.kind === "tmb") throw new HandlerError("refused", `${operation} is for the ${roles.join(" or ")}, not tmb`);
   if (actor.kind === "agent" && !roles.includes(actor.role)) {
     throw new HandlerError("refused", `${operation} is for the ${roles.join(" or ")}, not the ${actor.role}`);
   }

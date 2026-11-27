@@ -4,7 +4,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createIdFactory, idTime, isId, newId } from "../src/engine/ids.ts";
-import { type Actor, ActorError, SCHEMA_VERSION, SNIPPET_MAX, type Store, openStore } from "../src/engine/store/index.ts";
+import { type Actor, ActorError, SCHEMA_VERSION, SNIPPET_MAX, type Store, ValueError, openStore } from "../src/engine/store/index.ts";
+import { assertActor } from "../src/engine/store/actor.ts";
 import { PROJECTION_TABLES, SCHEMA_STEPS } from "../src/engine/store/schema.ts";
 import { upgradeAdvice } from "../src/program.ts";
 
@@ -57,9 +58,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(11);
+    expect(SCHEMA_VERSION).toBe(12);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 11 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 12 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -593,5 +594,160 @@ describe("the other records", () => {
       expect(db.query("SELECT decision, reason FROM guard_decisions").get()).toEqual({ decision: "allow", reason: "in scope" });
       expect(db.query("SELECT what, detail FROM audit").get()).toEqual({ what: "config", detail: "mode=agile" });
     });
+  });
+});
+
+describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", () => {
+  const TMB: Actor = { kind: "tmb", source: "upgrade" };
+  const at = "2026-11-01T00:00:00.000Z";
+
+  /**
+   * Leaves a version-11 database with one record of every kind whose table had a CHECK on a list,
+   * each as its event and its row, as tmb at version 11 wrote them.
+   */
+  function version11Database(): void {
+    const old = new Database(dbPath, { create: true });
+    for (const step of SCHEMA_STEPS.slice(0, 11)) old.run(step);
+    old.run("PRAGMA user_version = 11");
+    const human = JSON.stringify(HUMAN);
+    const planner = JSON.stringify(PLANNER);
+    const event = (kind: string, id: string, actor: Actor, data: Record<string, unknown>) => {
+      const agent = actor.kind === "agent" ? actor : null;
+      old
+        .query("INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at) VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)")
+        .run(newId(), kind, id, JSON.stringify(data), actor.kind, agent?.role ?? null, agent?.host ?? null, at);
+    };
+    const [issue, note, feature, task, run, review, guard, audit] = Array.from({ length: 8 }, () => newId());
+    event("issue", issue, HUMAN, { title: "goal", body: "", milestone: "M1" });
+    old.query("INSERT INTO issues (id, title, body, milestone, created_by, created_at, updated_at) VALUES (?, 'goal', '', 'M1', ?, ?, ?)").run(issue, human, at, at);
+    old.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('issue', ?, ?, 'goal', '')").run(issue, issue);
+    event("discussion", note, PLANNER, { issue_id: issue, kind: "note", body: "a note" });
+    old.query("INSERT INTO discussions (id, issue_id, kind, body, created_by, created_at) VALUES (?, ?, 'note', 'a note', ?, ?)").run(note, issue, planner, at);
+    old.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('discussion', ?, ?, '', 'a note')").run(note, issue);
+    event("feature", feature, PLANNER, { name: "feat/old", base_branch: "main", base_commit: "abc1234", repo: null });
+    old
+      .query("INSERT INTO features (id, name, base_branch, base_commit, state, created_by, created_at, updated_at) VALUES (?, 'feat/old', 'main', 'abc1234', 'open', ?, ?, ?)")
+      .run(feature, planner, at, at);
+    event("task", task, PLANNER, { issue_id: issue, title: "t", spec: "", state: "open", feature_id: feature });
+    old.query("INSERT INTO tasks (id, issue_id, title, spec, state, feature_id, created_by, created_at, updated_at) VALUES (?, ?, 't', '', 'open', ?, ?, ?, ?)").run(task, issue, feature, planner, at, at);
+    event("run", run, PLANNER, { task_id: task, role: "reviewer", started_at: at, cost: [{ model: "m" }], feature_id: feature });
+    old.query("INSERT INTO runs (id, task_id, role, started_at, cost, feature_id, created_by, created_at) VALUES (?, ?, 'reviewer', ?, ?, ?, ?, ?)").run(run, task, at, '[{"model":"m"}]', feature, planner, at);
+    event("review", review, PLANNER, { target_kind: "branch", target: "feat/old", verdict: "pass", findings: [], feature_id: feature, commit_sha: "abc1234", run_id: run });
+    old
+      .query("INSERT INTO reviews (id, target_kind, target, verdict, findings, feature_id, commit_sha, run_id, created_by, created_at) VALUES (?, 'branch', 'feat/old', 'pass', '[]', ?, 'abc1234', ?, ?, ?)")
+      .run(review, feature, run, planner, at);
+    event("guard_decision", guard, PLANNER, { event: "{}", decision: "deny", reason: "no" });
+    old.query("INSERT INTO guard_decisions (id, event, decision, reason, created_by, created_at) VALUES (?, '{}', 'deny', 'no', ?, ?)").run(guard, planner, at);
+    event("audit", audit, HUMAN, { what: "waiver", detail: "{}" });
+    old.query("INSERT INTO audit (id, what, detail, created_by, created_at) VALUES (?, 'waiver', '{}', ?, ?)").run(audit, human, at);
+    old.close();
+  }
+
+  function everything(db: Database): Record<string, unknown[]> {
+    return { ...snapshot(db), events: db.query("SELECT id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at FROM events ORDER BY id").all() };
+  }
+
+  test("an upgrade from version 11 keeps every event and every row, links included, and ends with a new database's shape", () => {
+    version11Database();
+    const before = peek(everything);
+    const result = openStore(dbPath, { create: false });
+    if (!result.ok) throw result.error;
+    store = result.store;
+    expect(peek(everything)).toEqual(before);
+    peek((db) => {
+      expect(db.query("SELECT DISTINCT actor_source FROM events").all()).toEqual([{ actor_source: null }]);
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+    store.rebuildProjections();
+    expect(peek(everything)).toEqual(before);
+
+    const fresh = openStore(path.join(dir, "fresh.db"), { create: true });
+    if (!fresh.ok) throw fresh.error;
+    fresh.store.close();
+    const shape = (file: string) => {
+      const db = new Database(file, { readonly: true });
+      try {
+        return db.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all();
+      } finally {
+        db.close();
+      }
+    };
+    expect(shape(dbPath)).toEqual(shape(path.join(dir, "fresh.db")));
+  });
+
+  test("the links still hold after the upgrade: a row that points at nothing is refused", () => {
+    version11Database();
+    const result = openStore(dbPath, { create: false });
+    if (!result.ok) throw result.error;
+    store = result.store;
+    expect(() => store!.appendDiscussion(HUMAN, { issueId: newId(), kind: "note", body: "orphan" })).toThrow(/FOREIGN KEY/);
+  });
+
+  test("the schema checks shape only: a value off today's lists is a row, not a reshaped table", () => {
+    open();
+    const db = new Database(dbPath);
+    try {
+      db.run("PRAGMA foreign_keys = ON");
+      const by = JSON.stringify(HUMAN);
+      db.query("INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at) VALUES (?, 'milestone', ?, 'created', '{}', 'agent', 'architect', 'h', ?)").run(newId(), newId(), at);
+      const issue = newId();
+      db.query("INSERT INTO issues (id, title, state, created_by, created_at, updated_at) VALUES (?, 't', 'triaged', ?, ?, ?)").run(issue, by, at, at);
+      db.query("INSERT INTO discussions (id, issue_id, kind, body, created_by, created_at) VALUES (?, ?, 'comment', 'b', ?, ?)").run(newId(), issue, by, at);
+      db.query("INSERT INTO runs (id, role, started_at, created_by, created_at) VALUES (?, 'architect', ?, ?, ?)").run(newId(), at, by, at);
+      db.query("INSERT INTO guard_decisions (id, event, decision, reason, created_by, created_at) VALUES (?, '{}', 'ask', 'r', ?, ?)").run(newId(), by, at);
+      // Shape still holds: which actor columns go together, JSON, and text that is not blank.
+      const actorRow = (kind: string, role: string | null, host: string | null, source: string | null) =>
+        db.query("INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, actor_source, at) VALUES (?, 'issue', ?, 'created', '{}', ?, ?, ?, ?, ?)").run(newId(), newId(), kind, role, host, source, at);
+      expect(() => actorRow("tmb", null, null, null)).toThrow(/CHECK/);
+      expect(() => actorRow("tmb", null, "h", "syncer")).toThrow(/CHECK/);
+      expect(() => actorRow("human", null, null, "syncer")).toThrow(/CHECK/);
+      expect(() => actorRow("agent", "worker", "h", "syncer")).toThrow(/CHECK/);
+      expect(() => actorRow("agent", "worker", null, null)).toThrow(/CHECK/);
+      expect(() => actorRow("robot", null, null, null)).toThrow(/CHECK/);
+      expect(() => db.query("INSERT INTO issues (id, title, created_by, created_at, updated_at) VALUES (?, ' ', ?, ?, ?)").run(newId(), by, at, at)).toThrow(/CHECK/);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("the engine refuses a value that is not on its list, and stores nothing", () => {
+    const s = open();
+    const issueId = s.createIssue(HUMAN, { title: "goal" });
+    const events = () => peek((db) => db.query("SELECT count(*) AS n FROM events").get());
+    const before = events();
+    expect(() => s.updateIssue(HUMAN, issueId, { state: "triaged" as never })).toThrow(ValueError);
+    expect(() => s.appendDiscussion(HUMAN, { issueId, kind: "comment" as never, body: "b" })).toThrow(ValueError);
+    expect(() => s.appendRun(PLANNER, { role: "architect" as never })).toThrow(ValueError);
+    expect(() => s.appendReview(PLANNER, { target: { kind: "tag" as never, ref: "v1" }, verdict: "pass" })).toThrow(ValueError);
+    expect(() => s.appendGuardDecision(PLANNER, { event: "{}", decision: "ask" as never, reason: "r" })).toThrow(ValueError);
+    expect(() => s.createIssue({ kind: "agent", role: "architect", host: "h" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
+    expect(events()).toEqual(before);
+  });
+
+  test("tmb writes as itself, named by its source, and its actor survives a rebuild", () => {
+    const s = open();
+    const issueId = s.createIssue(TMB, { title: "made by an upgrade" });
+    s.updateIssue({ kind: "tmb", source: "syncer" }, issueId, { state: "closed" });
+    expect(s.history(issueId).map((event) => event.actor)).toEqual([TMB, { kind: "tmb", source: "syncer" }]);
+    expect(s.getIssue(issueId)?.createdBy).toEqual(TMB);
+    peek((db) => {
+      expect(db.query("SELECT actor_kind, actor_role, actor_host, actor_source FROM events ORDER BY id").all()).toEqual([
+        { actor_kind: "tmb", actor_role: null, actor_host: null, actor_source: "upgrade" },
+        { actor_kind: "tmb", actor_role: null, actor_host: null, actor_source: "syncer" },
+      ]);
+    });
+    const before = peek(snapshot);
+    s.rebuildProjections();
+    expect(peek(snapshot)).toEqual(before);
+  });
+
+  test("a tmb actor with no source, an unknown one, or a role is refused; one from outside the engine always is", () => {
+    const s = open();
+    expect(() => s.createIssue({ kind: "tmb" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
+    expect(() => s.createIssue({ kind: "tmb", source: "cron" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
+    expect(() => s.createIssue({ kind: "tmb", source: "syncer", role: "worker" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
+    expect(() => s.createIssue({ kind: "human", source: "syncer" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
+    expect(() => assertActor({ kind: "tmb", source: "syncer" })).toThrow(/only tmb's own code/);
+    expect(peek((db) => db.query("SELECT count(*) AS n FROM events").get())).toEqual({ n: 0 });
   });
 });

@@ -10,9 +10,9 @@ const RECENT_RUNS = 10;
 export const LIST_LIMIT_MAX = 1000;
 const LIST_LIMIT_DEFAULT = 300;
 
-/** The Human, or the agent's role; the host stays in `created_by`. */
+/** The Human, the agent's role, or tmb; the host and source stay in `created_by`. */
 export function authorOf(actor: Actor): string {
-  return actor.kind === "human" ? "human" : actor.role;
+  return actor.kind === "agent" ? actor.role : actor.kind;
 }
 
 function parseJson(text: unknown, fallback: unknown): unknown {

@@ -95,6 +95,10 @@ function upgrade(db: Database, writer: ShapeWriter): void {
     const { user_version: from } = db.query("PRAGMA user_version").get() as { user_version: number };
     if (from >= SCHEMA_VERSION) return;
     for (const step of SCHEMA_STEPS.slice(from)) db.run(step);
+    // A step may copy a table that others point at, so the upgrade runs with foreign keys off
+    // and refuses to commit a record whose links it broke.
+    const broken = db.query("PRAGMA foreign_key_check").all();
+    if (broken.length > 0) throw new Error(`the upgrade to schema version ${SCHEMA_VERSION} would break ${broken.length} links between records`);
     // The shape is signed by the tmb that wrote it, so an older one that meets it can say which.
     db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(SHAPE_WRITER_KEY, JSON.stringify({ ...writer, shape: SCHEMA_VERSION }));
     db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -152,8 +156,9 @@ export function openStore(dbPath: string, options: { create: boolean; writer?: S
     }
 
     useWal(db);
-    db.run("PRAGMA foreign_keys = ON");
+    // Foreign keys go on after the upgrade: SQLite cannot turn them off inside its transaction.
     if (header.version < SCHEMA_VERSION) upgrade(db, options.writer ?? currentWriter());
+    db.run("PRAGMA foreign_keys = ON");
     return { ok: true, store: new Store(db) };
   } catch (error) {
     db.close();
