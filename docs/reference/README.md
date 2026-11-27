@@ -1,6 +1,6 @@
 # Reference
 
-Install, upgrade and configuration.
+What a user types and what comes back: install, setup and every command. The design behind them is in [architecture/](../architecture/README.md) and [flows/](../flows/README.md).
 
 ## Install
 
@@ -18,7 +18,14 @@ Windows, in PowerShell:
 irm https://github.com/trustmybot/tmb-releases/releases/download/dev/install.ps1 | iex
 ```
 
-The script downloads the file for your platform, checks it against the published checksums, refuses to install on a mismatch, and puts the program in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`) under its channel's name ([Channels and updates](#channels-and-updates)), the folder Claude Code also installs to. If that folder is not on your PATH, the script adds it to your shell profile (Windows: your user PATH) and says where; open a new terminal afterwards. Set `TMB_NO_MODIFY_PATH=1` to skip that and have it print the line to add instead. Run the same command again to upgrade.
+The script:
+
+- Downloads the file for your platform, checks it against the published checksums and refuses to install on a mismatch.
+- Puts the program in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`), the folder Claude Code also installs to, under its channel's name ([Channels and updates](#channels-and-updates)).
+- Adds that folder to your shell profile (Windows: your user PATH) when it is not on your PATH, and says where; open a new terminal afterwards. With `TMB_NO_MODIFY_PATH=1` it prints the line to add instead.
+- Removes a copy it finds in `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`), and names the program to run `init` with again, such as `tmb-dev`, in any project set up with that copy.
+
+Run the same command again to upgrade.
 
 ## Channels and updates
 
@@ -33,28 +40,26 @@ Each channel installs as a program of its own name, so channels and versions liv
 
 On Windows, set `$env:TMB_CHANNEL` or `$env:TMB_INSTALL_VERSION` before running the PowerShell command, with `install.ps1` in place of `install.sh`.
 
-The examples on this page say `tmb`; use the name of the program you installed. A project runs the program that initialised it: its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it. A program refuses a project whose record a newer tmb has reshaped, and names the program that did; run that one there, or update this program with its `update` command (a program pinned to one release names the installer command instead).
+The examples on this page say `tmb`; use the name of the program you installed.
 
-Before the channels had their own names, every channel installed as `tmb`. Such a `tmb` keeps following the channel it was on, and the installer points it out when it installs the channel's new name.
-
-Each program keeps itself up to date on its own channel. When a session starts, tmb looks for a newer build there, at most once an hour, downloads it in the background, checks it against the published checksums and keeps it. `tmb update`, or the end of any session, installs it at once; with no network tmb simply runs the version it has.
-
-A session that is running keeps the build it started with, and so does its project: while it runs, every tmb call there (its hooks, its tool server, git's push hook, a command you type) runs that build, the record keeps its shape and the host files are left as they are. The session moves to the new build by itself at its next tool call once no task is open in the project, and says so in one line; you do nothing, and the conversation is kept. If the move fails, the session keeps its build and says how to restart tmb's tool server (in Claude Code: `/mcp`, then Reconnect on tmb). `tmb update` names each session still on an old build by its folder, title and start time, and why. The replaced build is kept; tmb says how many old builds no session uses and their size, and never deletes one by itself.
-
-A project whose record a newer tmb reshaped never holds an update back: this program can do nothing there.
+- **A project runs the program that initialised it.** Its hooks, its tool server and git's push hook call that program, so a project initialised with `tmb-dev` always runs dev. To move a project to another program, run that program's `init` in it.
+- **A program refuses a project whose record a newer tmb has reshaped,** and names the program that did. Run that one there, or update this program with its `update` command; a program pinned to one release names the installer command instead.
+- **A `tmb` whose version names dev or rc keeps following that channel.** The installer points it out when it installs the channel's own name.
 
 | Command | Does |
 |---|---|
-| `tmb update` | Look for a newer build now and install it at once. It names each session still on an old build, and why |
+| `tmb update` | Look for a newer build now and install it at once. It names each session still on an old build by its folder, title and start time, and why |
 | `tmb update --check` | Only say whether a newer build is out |
+| `tmb --version` | Print the program's name, its version, the source commit it was built from and the channel it follows. A dev build's version is `X.Y.Z-dev.<n>.gh<PR>`: `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit |
 
-Set `TMB_NO_UPDATE=1` to turn updates off. Each program keeps the kept build, the time of the last look and its session markers in a folder of its own name, such as `~/.local/state/tmb-dev` (`$XDG_STATE_HOME/tmb-dev` when that is set; Windows: `%LOCALAPPDATA%\tmb-dev`), so one never swaps another. A tmb run from source never updates itself.
+Each program keeps itself up to date on its own channel ([1_INSTALL.md](../flows/1_INSTALL.md) has the steps):
 
-Earlier builds installed to `~/.tmb/bin` (Windows: `%LOCALAPPDATA%\tmb\bin`). The script removes that old copy and names the program to run `init` with again, such as `tmb-dev`, in any project you set up with it.
-
-`tmb --version` prints the program's name, its version, the source commit it was built from and the channel it follows. Dev builds print a version of the form `X.Y.Z-dev.<n>.gh<PR>`, where `<n>` counts the commits since the last stable release and `<PR>` is the pull request that brought in the build's commit.
-
-After an update, each project catches up by itself. Its database is upgraded the first time tmb opens it. The files `tmb init` wrote are refreshed at the next session start, when no task is open, and the session says so in one line; your agent program reads those files when a session starts, so the new ones apply from the session after. A project you set up with another channel's program is left alone: run that program's `init` to move it. If a refresh fails, the session goes on and the line names `tmb init`.
+- **A look at session start,** at most once an hour. A newer build is downloaded in the background and checked against the published checksums. `tmb update`, or the end of any session, installs it at once. With no network tmb runs the version it has.
+- **A running session keeps its build** until its next tool call with no task open in the project. It then moves by itself and says so in one line; the conversation is kept. If the move fails, it says how to restart tmb's tool server (in Claude Code: `/mcp`, then Reconnect on tmb).
+- **Old builds are kept.** tmb says how many no session uses and their size; [`tmb doctor`](#check-this-machine-and-project) deletes them on your yes.
+- **Each project catches up by itself.** Its record is upgraded the first time tmb opens it. The files `tmb init` wrote are refreshed at the next session start with no task open, the session says so in one line, and they apply from the session after. If a refresh fails, the session goes on and the line names `tmb init`. A project set up with another channel's program is left alone.
+- **`TMB_NO_UPDATE=1` turns updates off.** A tmb run from source never updates itself.
+- **Each program has a state folder of its own name,** such as `~/.local/state/tmb-dev` (`$XDG_STATE_HOME/tmb-dev` when that is set; Windows: `%LOCALAPPDATA%\tmb-dev`), so one never swaps another.
 
 ## Set up a project
 
@@ -72,58 +77,81 @@ tmb is set up for Claude Code. Next:
   2. Send `@bro`.
 ```
 
-Init asks nothing. At the first session the planner asks you for the review mode among its onboarding questions, with what each mode costs; it is your choice, since it decides how many tokens the project uses, and no task starts until it is set ([The review mode is yours](#the-review-mode-is-yours)). The planner applies the other settings it recommends ([Onboarding by itself](#onboarding-by-itself)); `tmb onboard` sets them yourself instead.
-
 | Command | Does | Asks questions |
 |---|---|---|
 | `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | None |
-| `tmb onboard` | Sets tmb's settings for the project: a host's role, the base branch, the review mode and the checks; in a workspace, each repo's base branch and checks. Run it again at any time. | Yes |
+| `tmb onboard` | Sets tmb's settings for the project: the base branch, the review mode and the checks; in a multi-repo workspace, each repo's base branch and checks. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
+
+At the first session the planner fills the settings init left empty ([Onboarding by itself](#onboarding-by-itself)) and asks you for the review mode ([The review mode is yours](#the-review-mode-is-yours)). `tmb onboard` sets them yourself instead.
 
 ### init
 
-`tmb init` first looks for the hosts tmb supports, today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With only Codex installed it sets Codex up and warns that Codex is not supported yet. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
+`tmb init` asks nothing and never waits for input, on a terminal or not.
 
-It then wires tmb into that host, as listed below, and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty. It ends by printing the settings and the next steps: the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
-
-Run again, init replaces what an earlier tmb wrote and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
-
-It asks nothing and never waits for input, on a terminal or not. With no review mode stored, it ends by saying that none is chosen, how to choose it, and that no task starts until it is.
+- **It looks for Claude Code.** Without it, init stops, says it needs Claude Code and changes nothing.
+- **It wires tmb into Claude Code** ([Settings](#settings) lists what it writes) and stores the host. It takes no flag and sets no other setting: a setting stored before is kept, and the rest stay empty.
+- **It ends by printing the settings and the next steps:** the command that starts Claude Code in this folder and what to send first. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. With no review mode stored, it says that none is chosen, how to choose it, and that no task starts until it is. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
+- **Run again, it replaces what an earlier tmb wrote** and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
 
 ### onboard
 
-`tmb onboard` asks four questions, each offering the value stored now:
+`tmb onboard` asks three questions, each offering the value stored now:
 
 | Question | Default | Flag |
 |---|---|---|
-| The role of the host's main agent | `planner`; `reviewer` makes the host the project's reviewer. | `--role planner\|reviewer` |
 | The base branch, the branch pull requests merge into | The branch origin names as its default, else the current branch, else `main`. Outside a git repository there is no default. | `--base <branch>` |
 | The review mode | `agile` or `truest`. | `--review-mode <mode>` |
 | The checks, the shell commands that must pass before a task closes | The commands it finds in the project: the `lint`, `typecheck` and `test` scripts of `package.json`, run with bun, npm, pnpm or yarn as the lockfile shows; `pytest` for a Python project; `cargo test` for Rust; `go test ./...` for Go. | `--check <command>`, once per command; the commands given replace the list |
 
-- The host is the one init stored; `--host <id>` names another host init wired.
 - A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
 - The review mode has no default. `--review-mode` is a [step only you may take](#steps-only-you-may-take): it asks you to type yes on the terminal, also when `--yes` is given. Without a terminal it is refused, unless unattended mode is on for the run (`TMB_UNATTENDED=1`), as in CI, and no review mode is set yet: unattended mode sets one, never changes one. Without the flag and with no terminal, the review mode stays as it is and onboard says so.
 - In a project where `tmb init` has not run, it says so and changes nothing.
+- `--add-push-gate` adds tmb's one line to a pre-push hook another tool owns. Without it tmb leaves that hook alone, and the push gate is off in that repo.
 
 ### One repo or a workspace of several
 
-When the folder you run `tmb init` in is a git work tree, or inside one, the project is one repo, the folder itself, named `.`. When it is in no git work tree and holds no git repo below it, init runs `git init` in it and says so. It does so before it writes anything, so `.gitignore` gets init's lines on the first run. When it is not a git work tree but holds git repos, tmb sets it up as a workspace: its repos share one record in that folder ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)). init then also:
+The folder you run `tmb init` in decides the project's shape ([One record, one or several repos](../flows/3_GIT.md#multi-repo-workspaces)):
+
+| The folder | The project |
+|---|---|
+| Is a git work tree, or inside one | One repo, the folder itself, named `.` |
+| Is in no git work tree and holds no git repo | One repo: init runs `git init` in it and says so, before it writes anything, so `.gitignore` gets init's lines on the first run |
+| Is not a git work tree but holds git repos | A workspace: its repos share one record in that folder |
+
+In a workspace init also:
 
 - Finds the repos up to two folders down and stores them in the `repos` setting, each with the base branch its own git points at and the checks found in it. It records each top-level folder that is not a repo as `{"git": false}`, and leaves it alone. It prints a line for each repo or folder it added, with where a base branch came from, and for each one it dropped because it is gone. A repo's policy set before is kept.
-- Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each.
+- Writes git's pre-push hook into each repo that is not exempt, and `tmb remove` deletes each. The hook is shared by every worktree of that repo, so a session already working there meets the gate at its next push.
 - Indexes each repo's code graph from its own base branch.
 
-A project set up by a build from before workspaces names no repos, though its folder holds several. Run `tmb init` there again: it finds and stores them as above. Until then `tmb onboard --repo` is refused, `tmb index` is refused and names the repos it found, and no push is gated. `tmb doctor` says so: the push gate is off, the repos are not set and no code graph can be built, each naming the repos and init run again as the fix; the planner's session start says the gate is off (trustmybot/tmb#258). The push hook init writes is shared by every worktree of that repo, so a session already working there meets the gate at its next push.
+**A record that names no repos, in a folder that holds several.** Run `tmb init` there again: it finds and stores them as above. Until then `tmb onboard --repo` is refused, `tmb index` is refused and names the repos it found, and no push is gated. `tmb doctor` and the planner's session start say that the gate is off.
 
-`tmb onboard --repo <name>` sets one repo: `--base <branch>` and `--check <command>` set its base branch and checks, `--exempt` makes tmb do no work in it, and `--review-mode <mode>` gives it a review mode of its own; `--review-mode workspace` takes that away, so the repo follows the workspace's mode again. A repo's review mode is a [step only you may take](#steps-only-you-may-take), as the workspace's is. With one repo tmb works in, `--repo` may be left out. On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. It asks for the workspace's review mode once, then asks once whether any repo takes its own, and asks each repo only on a yes. The planner sets the same with `settings_set` and `repos`; a repo it names keeps no part of its old policy except its review mode, which stays unless the planner names one or `workspace`, and repos it does not name keep theirs. A repo's review mode is refused in unattended mode.
+A project of one repo whose folder later becomes a workspace keeps its tasks. `tmb init` run again gives each task that names no repo the one its branch or its pull request shows, and says how many it gave and left, and each one given. Proofs that name different repos give none. The task's runs and checks follow it. A task nothing points to keeps no repo, and `tmb doctor` lists it.
 
-In a workspace, `base_branch` and `checks` are not used: each repo has its own in `repos`, and `settings_set` refuses them. `tmb feature start <name> --repo <name>` and `tmb task start ... --repo <name>` name the repo; with several repos, one that names none is refused with the list. Each repo works in its own review mode: `tmb feature start` is refused in a repo in truest mode, and a task there goes into review at close. `tmb config` and the session start show each repo's mode.
+`tmb onboard --repo <name>` sets one repo:
+
+| Flag | Sets |
+|---|---|
+| `--base <branch>`, `--check <command>` | The repo's base branch and checks |
+| `--exempt` | tmb does no work in the repo |
+| `--review-mode <mode>` | A review mode of the repo's own. A [step only you may take](#steps-only-you-may-take), as the workspace's is; refused in unattended mode |
+| `--review-mode workspace` | Takes the repo's own mode away, so it follows the workspace's again |
+
+- With one repo tmb works in, `--repo` may be left out.
+- On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. It asks for the workspace's review mode once, then asks once whether any repo takes its own, and asks each repo only on a yes.
+- The planner sets the same with `settings_set` and `repos`. A repo it names keeps no part of its old policy except its review mode, which stays unless the planner names one or `workspace`. Repos it does not name keep theirs.
+- `base_branch` and `checks` are not used in a multi-repo workspace: each repo has its own in `repos`, and `settings_set` refuses them.
+- `tmb feature start <name> --repo <name>` and `tmb task start ... --repo <name>` name the repo; with several repos, one that names none is refused with the list.
+- Each repo works in its own review mode: `tmb feature start` is refused in a repo in truest mode, and a task there goes into review at close. `tmb config` and the session start show each repo's mode.
 
 ### Onboarding by itself
 
-When a session starts as the planner and the base branch, the review mode or the checks is empty, the session start tells the planner so, with what tmb found in the project: the base branch, the checks and the review modes. Before other work the planner works out the base branch and the checks it recommends, applies them with its `settings_set` tool and shows them, reminding you that `tmb onboard` can be run again at any time and that it can change a value when you ask. In an unattended run it names each value it applied. The review mode it never applies: it asks you for it among its onboarding questions, with the host's question tool (AskUserQuestion in Claude Code), showing each mode with what it costs and marking agile as recommended, and stores your answer. Once all are set, the session start says nothing about them.
+When a planner's session starts and the base branch, the review mode or the checks is empty, the planner fills them before other work ([2_ONBOARD.md](../flows/2_ONBOARD.md)):
+
+- **It applies the base branch and the checks it recommends** and shows them. It reminds you that `tmb onboard` can be run again and that it can change a value when you ask. In an unattended run it names each value it applied.
+- **It never applies the review mode.** It asks you with the host's question tool (AskUserQuestion in Claude Code), showing each mode with what it costs and marking agile as recommended, and stores your answer.
 
 `settings_get` reads the settings and what tmb found; `settings_set` is the planner's alone.
 
@@ -135,13 +163,11 @@ The review mode decides how many tokens a project uses, so tmb recommends one an
 - run `tmb onboard` on a terminal;
 - run `tmb onboard --review-mode <mode>` on a terminal and type yes.
 
-`tmb init` never asks for it.
-
 In an unattended run nobody can answer, so the task start is refused, the refusal names `tmb onboard`, and the planner cannot set or change the mode. Set it before the run. The record keeps which way the mode was chosen.
 
 ### Settings
 
-Init, onboard and `settings_set` store the settings in the record. Each change to a setting is kept in the record as a setting change, and the newest one that sets a value is the value in force. Init and onboard print the settings in force, and `tmb config` shows them later.
+The keys, and where they are kept, are in [CONFIG.md](../architecture/CONFIG.md). Init and onboard print the settings in force, and `tmb config` shows them later.
 
 `tmb init` also:
 
@@ -149,29 +175,32 @@ Init, onboard and `settings_set` store the settings in the record. Each change t
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
 - Adds five hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - A SessionStart hook runs `tmb hook session-start`, which starts each session with the role this host was set up with, the planner unless you chose the reviewer, and the open work from the record.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code writes or edits a file, starts a subagent, or reads a task's brief or closes a task through tmb's tools. It also runs before a shell command, and denies one that runs a [step only you may take](#steps-only-you-may-take); tmb reads no other shell command, and git's pre-push hook checks every push.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write and reads no shell command. **Planned (trustmybot/tmb#457):** the hook no longer runs before a file write or a shell command.
   - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
-- Never overwrites an agent file in `.claude/agents/` that tmb did not write.
+- Never overwrites an agent file in `.claude/agents/` that tmb did not write. Planned (trustmybot/tmb#461): nor one of its own that you edited.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
-- In a git work tree, writes git's pre-push hook, so every push asks tmb first; in a workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
-- Indexes the code graph of the base branch, once it has a commit; in a workspace, each repo's from its own base branch.
+- In a git work tree, writes git's pre-push hook, so every push asks tmb first, and tmb refuses only an unreviewed push to the base branch; in a multi-repo workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.
+- Indexes the code graph of the base branch, once it has a commit; in a multi-repo workspace, each repo's from its own base branch.
 
 Running init or onboard again with the same answers changes no file and records nothing.
 
 Once the project is set up:
 
-- tmb records each file write, subagent start and subagent end that the hooks report.
-- tmb refuses file writes and subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb. A record file that is there but empty counts as one it cannot read.
-- tmb refuses every file write by the reviewer, through any of Claude Code's edit tools. tmb does not read shell commands, so a file the reviewer writes from its shell is not refused; git's pre-push hook still checks its pushes.
+- tmb records each subagent start and subagent end that the hooks report.
+- tmb refuses subagent starts, saying why, while it cannot read the record or the record was made by a newer tmb. A record file that is there but empty counts as one it cannot read.
 - tmb lets a worker start only when its start prompt names an open task as `task_id=<id>` and that task's worktree exists. It records the worker's run from its start to its end.
 - When tmb allows an action it says nothing, so Claude Code still asks you for permission as it would without tmb.
 
 ## Unattended runs
 
-When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Each session it starts is told that no one can answer, so the planner applies its defaults and names each default it used. A question it has a recommended answer for counts as answered by that recommendation: it records that as a decision on the issue, names it in its answer, and goes on to start the feature branch and its first task. It stops only when no default is safe, and says why. The review mode is never one of those defaults: with none set, the run's first task is refused ([The review mode is yours](#the-review-mode-is-yours)). Only the value `1` turns this on. Nothing is stored in the project, so your next session is a normal one, and tmb allows and refuses actions exactly as in a normal session.
+When no one can answer during a run, such as in CI, a scheduled job or an agent test, start it with `TMB_UNATTENDED=1` set, for example `TMB_UNATTENDED=1 claude -p "<prompt>"`. Only the value `1` turns this on. The rules are in [ENGINE.md](../architecture/ENGINE.md).
+
+- **The planner applies its defaults and names each one it used.** A recommended answer counts as the answer: the planner records it as a decision on the issue and goes on to start the feature branch and its first task. It stops only when no default is safe, and says why.
+- **The review mode is never a default.** With none set, the run's first task is refused ([The review mode is yours](#the-review-mode-is-yours)).
+- **Nothing is stored in the project,** so your next session is a normal one. tmb allows and refuses actions exactly as in a normal session.
 
 ## Help and mistyped commands
 
@@ -217,25 +246,24 @@ For more information, try 'tmb --help'.
 | In this project | Fix |
 |---|---|
 | The record: readable, its shape's version, and which program wrote it | Repairs a damaged record on your yes, keeping the damaged file beside it; for a newer shape, the program to use |
-| The host files and git's pre-push hook match what this tmb wires | `tmb init --host <id>` |
+| The host files and git's pre-push hook match what this tmb wires | `tmb init` |
 | A project folder that is not a git repo and holds repos the record does not name: the push gate is off there, the repos are not set and no code graph can be built | `tmb init`, run again in the project folder |
 | The program the project is tied to, and any running session that keeps it on an older build | Shown only |
 | Empty settings, and the review mode not chosen | `tmb onboard` |
-| Runs and checks with a start and no end, and open tasks no agent run is on | Shown only: the planner decides |
+| Runs and checks with a start and no end, and open code tasks no agent run is on | Shown only: the planner decides |
 | Worktrees and branches of closed and dropped tasks still on disk | Removes each on your yes, by the same rules as closing a task: a worktree with work nobody committed stays |
 | The code graph behind its base branch, built by an older indexer, or with files not parsed | `tmb index` |
 | GitHub's CLI installed and signed in | `gh auth login` |
 | Other records in a folder above the project or below it | Shown only |
 | Work that went around tmb: since the record was made, the commits on each base branch that are not the record's own, as a count, a share and the newest one's date, and pull requests merged with no task where `gh` is signed in. A commit is the record's own when it, or a branch it merged, is a task's commit or a feature branch's, or it names a pull request the record opened. With no GitHub to ask it counts with git alone and says so; it reads at most 5000 commits per repo and says when it stopped | Shown only: a push typed by hand stays allowed |
-| A plugin record beside this one that holds repos no migration brought here, with what each holds | `tmb migrate --repo <name>`; in a folder whose repos are not named yet, `tmb init` again first |
-| Ended runs that carry no cost, as a count and a share; runs migrated from the plugin are included, and the line says so | Shown only |
-| Tasks that name no repo in a workspace, made before the project became one | `tmb init` again |
+| Ended runs that carry no cost, as a count and a share | Shown only |
+| Tasks that name no repo in a multi-repo workspace, made before the project became one | `tmb init` again |
 | Worktrees of the project's repos, wherever they sit, that the host's files do not wire, so a session there runs without tmb's hooks or tool server: a count and the first few. A repo's main folder and a task's worktree are left out | Shown only |
 
 - **It never deletes without your yes**, and never touches a file tmb did not write.
 - **It runs with a broken record.** Every check that does not need the record still runs, and the ones that do say why they were skipped. A record an older tmb wrote is upgraded by the next tmb command, not by doctor.
 - **A check that fails by itself looks like tmb's own bug.** Its line says so and names `tmb feedback`, which can put that error in a report.
-- **The planner's session start names what doctor finds**, in one line: "N things need a look: `tmb doctor`", so its context stays small. When the record names none of the repos in a folder of repos, the line says first that the push gate is off. It runs only the quick checks, asks git and not GitHub, and says nothing when there is nothing to say.
+- **The planner's session start names what doctor finds**, in one line: "N things need a look: `tmb doctor`". When the record names none of the repos in a folder of repos, the line says first that the push gate is off. It runs only the quick checks, asks git and not GitHub, and says nothing when there is nothing to say.
 
 ## Report a bug in tmb
 
@@ -266,7 +294,7 @@ The planner has two tools for this, `feedback_draft` and `feedback_send`. Both a
 
 ## The record from the command line
 
-The planner records work through tmb's tools. You can read and change the same record yourself, from the project folder or any folder below it, such as one repo of a workspace:
+The planner records work through tmb's tools. You can read and change the same record yourself, from the project folder or any folder below it, such as one repo of a workspace. The flows behind these commands are in [3_TASKS.md](../flows/3_TASKS.md), [3_WORKFLOW.md](../flows/3_WORKFLOW.md) and [3_GIT.md](../flows/3_GIT.md).
 
 | Command | Does |
 |---|---|
@@ -277,32 +305,57 @@ The planner records work through tmb's tools. You can read and change the same r
 | `tmb note <issue-id> <text> [--decision]` | Add a note, or a decision with `--decision` |
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
-| `tmb config` | Show the project's settings: host, each host's role, base branch, review mode, checks and, in a workspace, the repos, one per line. In a project where `tmb init` has not run, it says so. |
-| `tmb feature start <name>` | Start a feature branch: tmb fetches the base branch from `origin` and cuts the feature branch from its latest commit there, without checking it out anywhere, and records it. It uses your local base branch when that holds a commit `origin` lacks, when there is no `origin`, or when `origin` is out of reach. It refuses a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, and a project with no base branch set. In truest mode it is refused: a task there is cut from the base branch. In a workspace, `--repo <name>` names the repo. |
-| `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks. A branch whose pull request is open is checked on GitHub first, through `gh`: it shows as `merged` once the pull request merged, and as `closed` when it was closed without a merge. A `ready` branch (a repo with no remote) shows as `merged` once the local base branch holds its work: merged, squashed or rebased onto it by hand. A ready branch's line says how to end it when tmb cannot see its merge. |
-| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch, and refuses when none or several are open. `--feature` can also name a branch whose pull request is open, for a fix, a closed branch, or one ready for a local merge (a repo with no remote), which opens it again; a merged branch is refused. It also refuses when no base branch is set or no review mode is chosen. When a file is also in another open task's spec, the task still starts and tmb names the tasks that share it. In truest mode the task is cut from the base branch and `--feature` is refused. In a workspace, `--repo <name>` names the repo. |
+| `tmb config` | Show the project's settings: host, base branch, review mode, checks and, in a multi-repo workspace, the repos, one per line. In a project where `tmb init` has not run, it says so. |
+| `tmb feature start <name>` | Start a feature branch, cut from the latest commit of the base branch on `origin`, fetched first, and checked out nowhere. tmb cuts from your local base branch when that holds a commit `origin` lacks, when there is no `origin`, or when `origin` is out of reach. Refused: a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, a project with no base branch set, and truest mode, where a task is cut from the base branch. In a multi-repo workspace, `--repo <name>` names the repo. |
+| `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks. A branch whose pull request is open is checked on GitHub first, through `gh`: `merged` once the pull request merged, `closed` when it closed without a merge. A `ready` branch (a repo with no remote) shows as `merged` once the local base branch holds its work: merged, squashed or rebased onto it by hand. Its line says how to end it when tmb cannot see its merge. |
+| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch. `--feature` can also name a branch whose pull request is open, for a fix, a closed branch, or one ready for a local merge (a repo with no remote), which opens it again. Refused: no open feature branch or several with no `--feature`, a merged branch, no base branch set, no review mode chosen. When a file is also in another open task's spec, the task still starts and tmb names the tasks that share it. In truest mode the task is cut from the base branch and `--feature` is refused. In a multi-repo workspace, `--repo <name>` names the repo. `--replaces <id>` names the dropped task whose work this one takes up another way; it is refused for a task that is not dropped. |
 | `tmb task list [--state open\|in_review\|ready\|closed\|dropped\|all]` | List the open tasks, or those in review, the ready ones (waiting for the Human's local merge in a repo with no remote), the closed ones, each with the commit it closed at, the dropped ones, or all |
 | `tmb task brief <id>` | Show a task's kind, feature branch, spec, branch, worktree and the checks that run when it closes |
-| `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin`. While the feature branch's pull request is open the push is left out, and tmb says so: the new tip reaches the pull request through `tmb feature pr`, after its review. In truest mode the task is not folded: it goes into review at that commit. |
+| `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin` ([Closing a task](#closing-a-task)). While the feature branch's pull request is open the push is left out, and tmb says so: the new tip reaches the pull request through `tmb feature pr`, after its review. In truest mode the task is not folded: it goes into review at that commit. |
 | `tmb feature update <name>` | Bring the base branch into a feature branch before its review: tmb fetches the base, merges it in with a merge commit and pushes the branch as a backup. While the branch's pull request is open the push is left out, as for `tmb task close`. A conflict changes nothing and names the files. A merged branch is refused. |
 | `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
 | `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only, on a terminal: it asks you to type yes. |
 | `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review. When the pull request is already open, it pushes the reviewed tip to it and returns the same pull request. On a closed branch it opens a new one, or records the one already open from the branch. In a repo with no remote nothing is pushed: the branch is recorded ready and tmb prints the command to merge it locally, and how to end the branch with `tmb feature drop` if its work reaches the base branch in a way tmb cannot see. A merged or dropped branch is refused. |
 | `tmb feature drop <name> --reason <text>` | End a feature branch without a merge tmb saw: one nobody will merge, or one whose work reached the base branch another way (say where in the reason). An open, closed or ready branch is dropped; one whose pull request is open is refused, so close the pull request first. Refused while a task on it is open or in review. The branch is recorded as dropped with the reason and kept in git; tmb names the command that deletes it. A dropped branch takes no task and opens no pull request. The planner may drop one too. |
-| `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules below for a closed task; its branch is kept while it holds commits, and tmb names it and the command that deletes it. `tmb task start --replaces <id>` starts the task that takes up a dropped task's work another way, and is refused for a task that is not dropped. `tmb task list --state dropped` lists the dropped tasks. |
+| `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules for a closed task ([Closing a task](#closing-a-task)); its branch is kept while it holds commits, and tmb names it and the command that deletes it. |
 | `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only, on a terminal: it asks you to type yes. |
 | `tmb task pr <id> --title <text> [--body <text>]` | Open a truest task's pull request into the base branch, once the reviewer passed it or you waived the review. In a repo with no remote nothing is pushed: the task is recorded ready and tmb prints the command to merge its branch locally |
-| `tmb graph map\|find\|symbol\|scope\|concepts\|areas` | Look things up in the code graph: the project's files with their summaries, where a name lives, what calls it, a draft of a task's files, the recorded concepts, and the project's areas with the files in no area. `find` and `scope` take `--area <name>` to stay inside one area and the areas nested in it, and `--skip-area <name>`, which can be repeated, to leave areas out, such as `tests`; an unknown area is refused with the list of areas. `--task <id>` reads as that open task sees the code; a closed task's id reads its feature branch. `--feature <name>` reads a feature branch at its tip, with the work already folded into it; it is refused together with `--task`. With neither, `scope` reads the repo's only open feature branch, and the base branch when several are open. In a workspace of several repos, `--repo <name>` names the repo whose graph to read; left out, it is the repo whose folder the command runs in, and in the workspace folder itself a lookup that names none is refused with the list of repos. A task or a feature branch reads its own repo. |
+| `tmb graph map\|find\|symbol\|scope\|concepts\|areas` | Look things up in the code graph ([Code graph lookups](#code-graph-lookups)) |
 | `tmb index [--rebuild]` | Bring the code graph up to date, or build it again from nothing. It prints how many files could not be parsed and how many imports of the repo's own code link to no file |
 | `tmb dashboard [--port <n>] [--project <dir>]` | Open the dashboard, a local web page over the record |
 
 Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
 
-A task closes only when its worktree has no uncommitted changes and has at least one commit past the point it was cut from. tmb then runs the project's checks, followed by the task's own, one after another in the worktree. Each check gets 10 minutes. Every run is recorded with its start, its end, each command's exit code and the end of its output. If a check fails, the task stays open, and tmb names the command and shows the end of its output. A task with no checks at all never closes.
+### Code graph lookups
 
-When the checks pass, tmb folds the task into its feature branch. If the feature branch is still where the task was cut from, it moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit. A rebase conflict or a failing check leaves the task open, the feature branch where it was and the worktree as it was, and tmb names the conflicting paths or the failing command. If the feature branch is checked out somewhere, tmb moves it there too, and refuses the close while that checkout has uncommitted changes. The closed task records its kind, the review mode it was started in and the commit it folded. tmb then removes the task's worktree and branch, unless files are left in the worktree (see below), and pushes the feature branch to `origin`, never forced. The close reports whether the push went through, failed with git's message, or was skipped because there is no `origin`. A failed push does not reopen the task.
+`tmb graph` reads the project's files with their summaries (`map`), where a name lives (`find`), what calls it (`symbol`), a draft of a task's files (`scope`), the recorded concepts (`concepts`), and the project's areas with the files in no area (`areas`).
 
-What tmb does with a closed task's worktree depends on what is left in it (trustmybot/tmb#132):
+| Flag | Does |
+|---|---|
+| `--area <name>` | On `find` and `scope`: stay inside one area and the areas nested in it. An unknown area is refused with the list of areas |
+| `--skip-area <name>` | On `find` and `scope`: leave an area out, such as `tests`. It can be repeated |
+| `--task <id>` | Read as that open task sees the code; a closed task's id reads its feature branch |
+| `--feature <name>` | Read a feature branch at its tip, with the work already folded into it. Refused together with `--task` |
+| `--repo <name>` | In a workspace of several repos: the repo whose graph to read. Left out, it is the repo whose folder the command runs in; in the workspace folder itself a lookup that names none is refused with the list of repos. A task or a feature branch reads its own repo |
+
+With neither `--task` nor `--feature`, `scope` reads the repo's only open feature branch, and the base branch when several are open.
+
+### Closing a task
+
+`tmb task close` goes through these steps, and a refusal at any of them leaves the task open, the feature branch where it was and the worktree as it was. The design is in [3_WORKFLOW.md](../flows/3_WORKFLOW.md) and [3_GIT.md](../flows/3_GIT.md).
+
+| Step | Refused when | tmb says |
+|---|---|---|
+| The commit | The worktree has uncommitted changes, or no commit past the point it was cut from | |
+| The checks: the project's, then the task's own, one after another in the worktree, 10 minutes each | A check fails, or the task has no checks at all | The command, and the end of its output |
+| The fold: the feature branch moves to the task's commit. If another task folded in first, tmb rebases the task onto the new tip and runs every check again on the rebased commit | The rebase conflicts, a check fails, or a checkout of the feature branch has uncommitted changes | The conflicting paths, or the failing command |
+| The push of the feature branch to `origin`, never forced | Never: a failed push does not reopen the task | Whether the push went through, failed with git's message, or was skipped because there is no `origin` |
+
+- Every check run is recorded with its start, its end, each command's exit code and the end of its output.
+- If the feature branch is checked out somewhere, tmb moves it there too.
+- The closed task records its kind, the review mode it was started in and the commit it folded.
+
+What tmb does with a closed task's worktree depends on what is left in it:
 
 | Left in the worktree | tmb |
 |---|---|
@@ -319,7 +372,7 @@ What tmb does with a closed task's worktree depends on what is left in it (trust
 
 ### What a docs task may change
 
-A docs task's close is refused, naming each file, when its change touches a file whose type is not below. A type not listed counts as code, so a change to it goes in a code task (trustmybot/tmb#185).
+A docs task's close is refused, naming each file, when its change touches a file whose type is not below. A type not listed counts as code, so a change to it goes in a code task.
 
 | Kind | Types |
 |---|---|
@@ -329,23 +382,6 @@ A docs task's close is refused, naming each file, when its change touches a file
 | Files with no extension | `LICENSE` `NOTICE` `AUTHORS` `CHANGELOG` `README` `COPYING` |
 
 The extension is the file's last one and the name is matched without regard to case, so `guide.MD` and `License` are allowed. A data file can still change behaviour, such as a CI file or a setting; the reviewer catches that.
-
-## Move a plugin project
-
-A project that used the [TMB plugin](https://github.com/trustmybot/plugin) can bring its records over. In the project's folder, init first, then migrate:
-
-```sh
-tmb init
-tmb migrate
-```
-
-tmb finds the plugin's database (`.claude/tmb/trajectory.db` in the folder or one above it; `--from <path>` names another), and copies the records of one repo into the new record `tmb init` made for this project, and names that record: its issues with their notes and decisions, its tasks with their branches and commits, their reviews, check runs and agent runs. Each copied record keeps its original time. When the plugin served several repos, tmb picks the one named like this folder; `--repo <name>` names another. The plugin's database is only read and stays unchanged, so the plugin keeps working. A task the plugin left unfinished stays open, and tmb holds its own updates while any task is open; `tmb migrate` says how many it left open.
-
-In a workspace of several repos ([One record, one or several repos](../architecture/WORKFLOW.md#one-record-one-or-several-repos)), run `tmb migrate` in the workspace folder after `tmb init` there. Each plugin repo goes into the workspace's one record, to the workspace repo of the same name, and each copied task names that repo; issues name no repo. With no `--repo`, every plugin repo that maps is copied in one go, and tmb names each one it left out with the flag that maps it. `--repo <name>` copies one plugin repo, and `--repo <name> --into <workspace repo>` sends it to a repo of another name. tmb never guesses a repo, and refuses an exempt repo or a folder that is not a repo as the target. A plugin repo already migrated into the record is refused, so a re-run copies nothing twice, and the plugin's issues of no repo are copied once, with the first migration. `tmb doctor` names each plugin repo no migration brought here, with what it holds, and the step that brings it.
-
-A project of one repo whose folder later becomes a workspace keeps its tasks: `tmb init` run again gives each task that names no repo the one its migration from the plugin, its branch or its pull request shows, and says how many it gave and left, and each one given; proofs that name different repos give none; the task's runs and checks follow it. A task nothing points to keeps no repo, and `tmb doctor` lists it.
-
-The plugin's own features that tmb does not carry over stay behind: its audit log, world model, roundtables, cheatcodes, lanes, embeddings, session handoffs and pull request records. So do the plugin's discussion records of a kind tmb lacks (intent, question, answer and analysis; tmb keeps notes and decisions), and a task's plugin status beyond open or closed; tmb says how many records of each kind it left behind. tmb refuses a plugin database of another schema version than 76, and, in a single-repo project, a record that already holds issues or tasks, so it runs once. It also refuses before `tmb init` has made the project's record, and a record in a folder above a repo that the record does not serve, naming that record; it never creates a record itself.
 
 ## Remove
 
@@ -365,9 +401,8 @@ It keeps the record in `.tmb/`, because that is your data; delete the folder you
 
 ## Steps only you may take
 
-Some commands are yours alone (trustmybot/tmb#179): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, and `tmb remove`. `tmb update` is not one.
+Some commands are yours alone: `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, and `tmb remove`. `tmb update` is not one. The rule is in [ENGINE.md](../architecture/ENGINE.md).
 
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.
-- In Claude Code and Codex, tmb's hook also denies one in an agent's shell command before it runs, and tells the agent to ask you.
-- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`), only while none is set (trustmybot/tmb#223). An agent can turn unattended mode on for its own command, so a mode you chose is changed only on a terminal, where you type yes.
+- A run that is yours with no terminal, such as CI, may set the review mode with `tmb onboard --review-mode <mode> --yes` when unattended mode is on for it (`TMB_UNATTENDED=1`), only while none is set. A mode you chose is changed only on a terminal, where you type yes.

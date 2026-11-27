@@ -1,8 +1,41 @@
 # tmb
 
-tmb is a harness for coding agents: a standalone engine that adds a record, a code graph and an enforced workflow to the agent program you already use. Your agent program still runs the agents: it plans the work and starts the workers and the reviewer. tmb records every step and lets nothing be pushed until it has passed the gate.
+**Coding agents you can trust with real work.** tmb sits beside Claude Code and makes its agents follow one path: plan, write, check, review, then push. It records every step, and nothing reaches your main branch until it has passed the gate.
 
-Status: early. v1 supports one host, Claude Code; other hosts are not supported yet. Install it and set up a project with [docs/reference](docs/reference/README.md); the design lives in [docs/architecture](docs/architecture/README.md).
+Free. Runs on your Claude subscription, with no API key. Status: early, before v1.0.0.
+
+## How it works
+
+| Part | What it does |
+|---|---|
+| **The record** | Keeps every decision, task, check and review, so you can see what happened and pick up where you stopped. |
+| **The code graph** | Maps your code, so an agent finds what it needs without reading whole files. |
+| **The workflow** | One fixed path from request to merge. A gate checks each step before it runs, so the path holds even when an agent ignores its prompt. |
+
+You talk to one planner. It writes the spec, workers write the code, and a reviewer that did not write the change judges it.
+
+## What can you get
+
+- **Work you can trace.** Every task has a spec, its checks, a review and a result, all in one record on your machine.
+- **Less spent on review.** A reviewer alone is not a gate: in [our study](https://arxiv.org/abs/2611.33639), every reviewer setting still accepted at least 45% of wrong patches. So tmb puts your project's own checks first and, in agile mode (the recommended one), reviews a whole feature branch once, not every commit.
+- **Reviews that cost cents.** One review by Claude Opus 5.5 at medium effort, measured in the same study:
+
+  | | Per review |
+  |---|---|
+  | Tokens (median) | 2,244 output, 598 thinking |
+  | Cost at API list price (mean) | $0.09 |
+  | Anthropic's managed [Code Review](https://claude.com/blog/code-review) | $15–25 |
+  | Saved | over 99% |
+
+- **Fewer tokens on reading.** The planner scopes a task from the code graph, and each worker starts from a spec that names the files in scope.
+- **A heavier model plans, cheaper ones do the work.**
+- **Your code stays with you.** The engine runs on your machine and needs no internet access. macOS, Windows and Linux.
+
+## Who is tmb for
+
+- **You use Claude Code every day** and want to hand it bigger tasks without checking every line.
+- **You lead a project** and need to know what the agents did, and why.
+- **You watch the bill** and want reviews and long sessions to cost less.
 
 ## Install
 
@@ -22,30 +55,13 @@ No stable release is out yet. Until v1.0.0, install the dev channel from [tmb-re
 
 Then, inside a project: `tmb init`. The rc and dev channels are on [tmb-releases](https://github.com/trustmybot/tmb-releases#channels); updates, setup and removal are in [docs/reference](docs/reference/README.md).
 
-## Three pillars
-
-| Pillar | What it gives you |
-|---|---|
-| **Trajectory DB** | A record of every decision, task, review and result, so work can be traced and resumed. |
-| **Code Graph** | A graph of the code, so agents find what they need without reading whole files. |
-| **Workflow** | A fixed path from request to merge, in an agile mode and a truest mode, enforced by a gate: every agent action is checked before it runs, so the path holds even when an agent ignores its prompt. |
-
-## What it is for
-
-- A heavier model plans; cheaper models do the work.
-- Agents from different vendors work on one task: one plans, another writes, a third reviews.
-- It runs on your subscription to the agent program, with no API key.
-- It runs on macOS, Windows and Linux, and the engine needs no internet access.
-
-## Relation to the TMB plugin
-
-The [TMB plugin](https://github.com/trustmybot/plugin) for Claude Code is the first version of these ideas. tmb is a fresh start that is not tied to one agent program: Claude Code is supported first, through an adapter. `tmb migrate` carries a plugin project's records over, one way ([docs/reference](docs/reference/README.md#move-a-plugin-project)).
-
 ## Docs
 
 | Folder | Holds |
 |---|---|
-| [docs/architecture](docs/architecture/README.md) | The design: what the engine does and why. |
+| [docs/architecture](docs/architecture/README.md) | The design in space: the parts, what each owns and why. |
+| [docs/flows](docs/flows/README.md) | The design in time: what tmb does, step by step. |
+| [docs/prompt-engineering](docs/prompt-engineering/README.md) | The rules every prompt, role and skill follows. |
 | [docs/contributing](docs/contributing/README.md) | How work on this repo is done. See also [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). |
 | [docs/reference](docs/reference/README.md) | Install, set up and remove tmb. |
 
