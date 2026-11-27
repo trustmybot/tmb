@@ -811,16 +811,26 @@ function fileNames(root: Node): FileNames {
 
 // `import("m")` written in a type, as in `let d: import("m").T`, names the types of a module and
 // runs nothing: the TypeScript handbook's import types. The grammar writes it as a call, so it
-// is told apart by where it stands: past the member accesses on it, a type holds it.
+// is told apart by where it stands: past the member accesses on it, a type holds it, or it is the
+// type written after `as` or `satisfies` (trustmybot/tmb#426).
 function importType(call: Node): boolean {
   if (call.childForFieldName('function')?.type !== 'import') return false;
+  let top = call;
   let up = call.parent;
-  while (up?.type === 'member_expression') up = up.parent;
-  return up !== null && up.type !== 'type_assertion' && TYPE_HOLDER.test(up.type);
+  while (up?.type === 'member_expression') {
+    top = up;
+    up = up.parent;
+  }
+  if (up === null) return false;
+  if (TYPE_AFTER.has(up.type)) return up.firstNamedChild?.id !== top.id;
+  return up.type !== 'type_assertion' && TYPE_HOLDER.test(up.type);
 }
 
 /** The grammar's nodes that hold a type: each names one, such as `type_annotation`, `generic_type` or `type_query`. */
 const TYPE_HOLDER = /type/;
+
+/** The grammar's expressions that write a value, then a type after their keyword: `x as T` and `x satisfies T`. */
+const TYPE_AFTER = new Set(['as_expression', 'satisfies_expression']);
 
 /** How much of a file-level declaration's text its signature reads, and the longest a signature is kept. */
 const DATA_SIGNATURE_TEXT = 140;
