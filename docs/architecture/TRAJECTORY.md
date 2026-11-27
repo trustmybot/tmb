@@ -306,6 +306,11 @@ The file sits inside the project's folder and is left out of git. The engine cre
 | Readable | Decides normally | Run normally |
 | Unreadable, empty, or made by a newer tmb | Denies, naming the cause, and for a newer one the version that wrote it | None runs. `tmb doctor` still runs and reads the record read-only |
 
+- **The nearest record wins.** A tmb call looks in its folder, then in each folder above it. A session that moved into a subfolder still finds its project. With none found, the starting folder is the project.
+  - **Edge case.** A `.tmb` folder with no database in it is passed over.
+  - **Edge case.** A second record above or below the project is listed by the health check, never merged.
+- **A denied gate still lets the agent look.** Reading files and running shell commands go on, because tmb watches neither, so the agent can see what is wrong and tell the Human.
+- **Nothing downgrades a record.** For one made by a newer tmb, the Human runs the newer program there or updates this one.
 - **The code graph is separate.** It can be rebuilt from git at any time and lives in its own file, one per repo. Indexing is not recorded in the trajectory ([CODE_GRAPH.md](CODE_GRAPH.md)).
 - **Plugin projects.** A one-way migration carries a plugin project's records into a new tmb database and leaves the plugin's database untouched. A kind of record tmb does not have is left behind, not folded into another kind.
 

@@ -109,7 +109,7 @@ What happens step by step is in [the flows folder](../flows/README.md), with its
 - [ROLES.md](ROLES.md) — What each shipped role is for, what it may and may not do, and why the roles are split this way.
 - [ADAPTERS.md](ADAPTERS.md) — How tmb works with an agent program without being built for one: the adapter, how subagents start, what each host can and cannot do, and several hosts on one record.
 - [ENGINE.md](ENGINE.md) — The engine: the ways into it, the Human's fence, unattended mode, its events and checkpoints, and containment (what tmb writes and where, and how its gates fail).
-- [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold storage in the record, hot session context, and pinned prompts, with the cost of each tier.
+- [MEMORY.md](MEMORY.md) — The memory model every agent follows: cold, hot and pinned memory, what each costs, and what the engine enforces against what it can only advise.
 - [TRAJECTORY.md](TRAJECTORY.md) — The record: what is kept of sessions, agent runs and checks, how a hang or a dead run is found from it, and its schema.
 - [CODE_GRAPH.md](CODE_GRAPH.md) — The code graph: what it holds, how links are proven, areas and concepts, who reads it, and its schema.
 - [ISSUES.md](ISSUES.md) — An issue's type and priority as fields, the groups of labels, and the list of labels as a project setting.

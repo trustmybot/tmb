@@ -221,6 +221,10 @@ flowchart TD
 
 `tmb doctor` checks the machine and the project and names the fix for each finding. It only reads; `--fix` asks before each change.
 
+- **It runs with a broken record.** Every check that does not need the record still runs, and the others say why they were skipped.
+- **It never touches a file tmb did not write,** and deletes nothing without the Human's yes.
+- **Edge case.** A check that fails by itself looks like tmb's own bug. Its line says so and names the bug report command.
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `tmb: command not found` after install | The install folder is not on PATH in this terminal | Open a new terminal, or add the line the installer printed |
