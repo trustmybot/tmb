@@ -12,9 +12,13 @@ import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "../../ways.ts";
 import { openGraphDb } from "../../db.ts";
 import { resolveCommit } from "../../git-source.ts";
 import { type CallReport, checkLinks, checkRepo, compilerCalls, compilerLookup, type GraphLink, graphLinks, judge, type LinkReport } from "./links.ts";
+import { installPinnedTools } from "../../../../../tests/lib/pinned-tools.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
+
+// Way B loads the TypeScript compiler from tmb's tools folder; the setup installs tmb's pinned copy.
+beforeAll(installPinnedTools);
 // A whole repo's graph and the compiler's program over it: about 4s for tmb, 5s for hono.
 const REPO_TIMEOUT = 180_000;
 

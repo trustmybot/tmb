@@ -12,7 +12,7 @@
 // A project's referenced projects are read from their source, each file with its own project's
 // settings, as the compiler's editor does. The fixtures are small repos of their own; each
 // expectation is read off the rule, not off the graph's output.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -20,8 +20,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { openGraphDb } from "../src/engine/graph/db.ts";
+import { installPinnedTools } from "../tests/lib/pinned-tools.ts";
 
 setDefaultTimeout(30_000);
+
+// Way B loads the TypeScript compiler from tmb's tools folder; the setup installs tmb's pinned copy.
+beforeAll(installPinnedTools);
 
 let project: string;
 

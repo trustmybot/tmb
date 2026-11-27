@@ -1,7 +1,7 @@
 // Writes globals.ts (trustmybot/tmb#252): the global values the TypeScript compiler declares in
-// its default library, and the callable members it declares on each. It asks the compiler tmb
-// carries for way B, a dependency of tmb, and copies nothing by hand. Run it after the compiler is
-// upgraded: `bun src/engine/graph/languages/typescript/globals.gen.ts`. A test fails when
+// its default library, and the callable members it declares on each. It asks the compiler at the
+// version tmb pins for way B, a development dependency of tmb, and copies nothing by hand. Run it
+// after the pin moves: `bun src/engine/graph/languages/typescript/globals.gen.ts`. A test fails when
 // globals.ts is not what this writes.
 import { writeFileSync } from "node:fs";
 import path from "node:path";

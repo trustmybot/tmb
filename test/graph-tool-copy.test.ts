@@ -145,18 +145,14 @@ describe("the find order", () => {
     expect("missing" in found).toBe(true);
     expect((found as { missing: string }).missing).not.toContain("tools folder");
   });
-
-  test("a tool tmb carries is tmb's copy, at the version it carries", () => {
-    expect(findCopy({ carried: "9.9.9" }, places())).toEqual({ whose: "tmb", path: null, version: "9.9.9" });
-  });
 });
 
 describe("each language's tool: whose copy the page names, and the lowest version tmb supports", () => {
-  const copy = (c: ToolCopy) => c as Exclude<ToolCopy, { carried: string }>;
+  const copy = (c: ToolCopy) => c as Extract<ToolCopy, { program: string }>;
 
-  test("TypeScript and pyright: tmb carries them", () => {
-    expect("carried" in typescriptCompiler.copy).toBe(true);
-    expect("carried" in pyright.copy).toBe(true);
+  test("TypeScript and pyright: tmb's pinned copy, never the user's", () => {
+    expect("library" in typescriptCompiler.copy).toBe(true);
+    expect("library" in pyright.copy).toBe(true);
   });
 
   test("rust-analyzer: the user's from rustup or a release, else tmb's; the error lines tool.ts reads came with Rust 1.92", () => {
@@ -315,20 +311,20 @@ describe("the graph's store", () => {
 });
 
 describe("tmb tools: each language with its tool and whose copy", () => {
-  test("a language with its tool found, one with its tool missing, one tmb carries and one with no tool", () => {
+  test("a language with its tool found, one with its tool missing, one with tmb's copy not installed yet, and one with no tool", () => {
     const mine = fakeProgram(path.join(userBin, "rust-analyzer"), "--version", "rust-analyzer 1.95.0 (abc 2026-03-01)");
     const rows = toolRows(["bash", "go", "rust", "typescript"], places());
     expect(rows).toEqual([
       { language: "bash", tool: null, whose: null, version: null, path: null, note: null },
       { language: "go", tool: goTypeChecker.name, whose: "missing", version: null, path: null, note: expect.stringContaining("`go`") },
       { language: "rust", tool: rustAnalyzerTool.name, whose: "user", version: "rust-analyzer 1.95.0 (abc 2026-03-01)", path: mine, note: null },
-      { language: "typescript", tool: typescriptCompiler.name, whose: "tmb", version: expect.any(String), path: null, note: null },
+      { language: "typescript", tool: typescriptCompiler.name, whose: "missing", version: null, path: null, note: expect.stringContaining("tools install`") },
     ]);
     const lines = rows.map(toolLine);
     expect(lines[0]).toContain("no language tool");
     expect(lines[1]).toContain("missing");
     expect(lines[2]).toContain("the user's copy");
     expect(lines[2]).toContain(mine);
-    expect(lines[3]).toContain("tmb's copy");
+    expect(lines[3]).toContain("missing");
   });
 });

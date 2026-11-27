@@ -1,7 +1,7 @@
 // The coverage check of trustmybot/tmb#140: every function a second, independent parser finds
 // must be one function of the code graph, matched by file and lines, and the graph must hold
-// no other. The second parser is the TypeScript 5.9 compiler tmb carries for way B, a dependency
-// of tmb. The check runs in the tests and the benchmark, never in tmb's commands.
+// no other. The second parser is the TypeScript 5.9 compiler, at the version tmb pins for way B, a
+// development dependency of tmb. The check runs in the tests and the benchmark, never in tmb's commands.
 import ts from "typescript5";
 import { extractFile, languageOf, type SourceLanguage } from "../../extract.ts";
 import type { Parsers } from "../../loader.ts";

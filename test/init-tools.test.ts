@@ -114,7 +114,7 @@ function fakeRelease(): { install: InstallOptions; fetched: string[] } {
     fetched.push(url);
     return new Response(bytes);
   };
-  return { fetched, install: { places: { searchPath: userBin, stateDir: state }, fetch, releaseOf: (copy) => (copy.program === "rust-analyzer" ? release : undefined) } };
+  return { fetched, install: { places: { searchPath: userBin, stateDir: state }, fetch, releaseOf: (copy) => ("program" in copy && copy.program === "rust-analyzer" ? release : undefined) } };
 }
 
 const init = (ask: Ask | null, tools: InstallOptions) => runInit({ projectDir: project, tmbCommand: ["tmb"], adapters: [HOST], supportedHostIds: ["a"], flags: {}, ask, out: (line) => output.push(line), tools });

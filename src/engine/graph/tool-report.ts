@@ -15,7 +15,7 @@ export type ToolRow = {
   whose: Whose | "missing" | null;
   /** The copy's version, as it reports it. */
   version: string | null;
-  /** Where the copy is; null for a copy tmb carries in its own program, and when none is found. */
+  /** Where the copy is: its program, or a library's folder; null when none is found. */
   path: string | null;
   /** Why the tool is missing, or why the copy found is not the first place's. */
   note: string | null;
@@ -56,8 +56,7 @@ const WHOSE_WORDS: Record<Whose, string> = { setting: "the setting's copy", user
 export function toolLine(row: ToolRow): string {
   if (row.tool === null) return `${row.language}: no language tool; the built-in rules make its links`;
   if (row.whose === "missing" || row.whose === null) return `${row.language}: ${row.tool} is missing (${row.note}); the built-in rules make its links`;
-  const where = row.path === null ? "carried in tmb" : `at ${row.path}`;
-  const line = `${row.language}: ${row.tool}, ${WHOSE_WORDS[row.whose]}, ${row.version}, ${where}${row.note === null ? "" : ` (${row.note})`}`;
+  const line = `${row.language}: ${row.tool}, ${WHOSE_WORDS[row.whose]}, ${row.version}, at ${row.path}${row.note === null ? "" : ` (${row.note})`}`;
   if (row.helper === undefined) return line;
   const { name, built, builtBy, path } = row.helper;
   return built ? `${line}; its helper ${name}, built by ${builtBy}, at ${path}` : `${line}; its helper ${name} is not built yet: the first index of a ${row.language} repo builds it with ${builtBy}`;
