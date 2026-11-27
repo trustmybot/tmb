@@ -69,7 +69,7 @@ The code graph is not part of the record. It lives in its own file beside it, on
 - **It can always be rebuilt.** Everything except concepts and areas is derived from git. A rebuild throws the rest away, builds it again, keeps the concepts and areas and re-checks each against the new graph. One whose code is gone is marked broken, never dropped.
 - **One step per write.** An index reads and parses first, then applies the whole layer at once. A reader sees the old graph or the new one, never a mix.
 - **The commit and the graph are written together.** The commit a repo is indexed at, and the indexer version it was built with, are stored with the graph in one step. So an absent or emptied file always reads as never indexed.
-- **Issues and decisions are not in the graph.** The record already ties a commit to its task and its issue. Open, for the Human: whether a code answer also names the issues that changed that code, joined from the record at read time, and whether a concept links to a design page.
+- **Issues and decisions are not in the graph.** The record already ties a commit to its task and its issue. Planned (trustmybot/tmb#470): a code answer also names the issues that changed that code, joined from the record at read time. Open, for the Human: whether a concept links to a design page.
 - **Indexing is not trajectory.** The record holds no entry for an index run. The graph file keeps, for each repo, the commit it was built at, when, and what it holds.
 - **It works offline.** Indexing needs no network. Search is by name and by the words in a name; search by meaning is left out ([MEMORY.md](MEMORY.md#search)).
 - **Edge case.** A newer tmb made the graph file. The graph is refused, and the refusal says to update tmb.
@@ -261,7 +261,7 @@ The graph is a code graph, not a data graph. A data source is a leaf at its edge
 
 The examples of each rule, triggers, indexes, the SQL parser and its dialects are in [Data sources: cases](#data-sources-cases).
 
-Open, for the Human: four questions on store packages, standard-library stores and object storage, listed at the end of the same section.
+Four kinds of call give no link, listed at the end of the same section. The graph never guesses.
 
 ## Concepts
 
@@ -661,12 +661,12 @@ flowchart LR
 
   - **Edge case.** Python code imports a module, and the list names the package it was installed from. The installed package's own metadata in the working tree says which package holds the module. With no environment, the call gives no data source node.
 
-Open, for the Human:
+**The graph never guesses. Four kinds of call give no link:**
 
-- Whether a call into a store package is a read or a write. `pool.query(sql)` does not say, and the graph never guesses. Until this is answered such a call gives no link.
-- How the kind is known for a package that serves several stores.
-- Stores in a language's standard library, such as Python's `sqlite3`. The sources list packages only, so these give no store node.
-- Object storage. The sources name no object store, so no call gives that kind today.
+- A call into a store package that does not say read or write, such as `pool.query(sql)`.
+- A package that serves several stores, where the package alone does not say the kind.
+- A store in a language's standard library, such as Python's `sqlite3`. The sources list packages only.
+- Object storage. The sources name no object store.
 
 ### Areas: cases
 

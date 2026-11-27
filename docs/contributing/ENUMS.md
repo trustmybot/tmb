@@ -105,7 +105,7 @@ Owned by the code (`src/engine/handlers/tasks.ts`). NULL on a task started befor
 | Value | Meaning |
 |---|---|
 | `agile` | Reviewed with its feature branch as a whole |
-| `truest` | Reviewed on its own before its push |
+| `truest` | Reviewed on its own before its pull request |
 
 The same two values as the `review_mode` setting. A task keeps the mode of its start. NULL reads as `agile`.
 

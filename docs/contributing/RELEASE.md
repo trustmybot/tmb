@@ -119,9 +119,10 @@ flowchart LR
 - **Example 1.** The maintainer pushes `v1.2.0`. The stable channel gets `1.2.0`, marked latest when it is the highest version.
 - **Edge case.** A stable release is broken. It is already public, so the maintainer ships a fix in a new release at once.
 
-## Open, for the Human
+## 8. What a stable release must hold
 
-- **Where the version is bumped.** A tag's version comes from the tag alone. `package.json` gives only the `X.Y.Z` of dev builds, and no script or workflow changes it.
-- **What reaches `main`, and how.** `main` holds releases only ([README.md](README.md#branches)), but no workflow moves it, and none checks which branch a tag is on.
-- **Whether a stable tag must sit on the commit of a passed rc.** Nothing checks it.
-- **Whether tmb keeps a changelog.**
+**Planned (trustmybot/tmb#469). A stable tag sits on a commit that passed rc, and `main` moves to it. The version comes from the tag alone.**
+
+- **Example 1.** `v1.2.0-rc.2` passed. The maintainer tags `v1.2.0` on that same commit, and `main` moves there.
+- **Example 2.** A release's notes are the ones GitHub generates from its pull requests. tmb keeps no changelog file.
+- **Edge case.** A stable tag is pushed on a commit no rc passed. The release run refuses it.

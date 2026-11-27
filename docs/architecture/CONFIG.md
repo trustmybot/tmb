@@ -18,6 +18,8 @@ flowchart LR
 
 ## Settings live in three places
 
+**A setting lives where its owner is: the project, the person's machine, or one run.**
+
 - **Project settings** are the six [keys](#keys). They belong to the workspace and are the same for every session in it.
 - **Machine settings** belong to the person, not the project ([Kept per machine](#kept-per-machine-not-in-the-record)).
 - **Environment variables** hold for one run ([Environment variables](#environment-variables)).

@@ -212,5 +212,3 @@ Planned (trustmybot/tmb#436, trustmybot/tmb#437, trustmybot/tmb#112): the skill 
 
 - **The tests.** A damaged, empty or newer record denies. Init and remove leave the Human's entries alone, and remove takes out exactly what init added. A program updates only itself and keeps its own state. A step that is the Human's alone is refused without a terminal.
 - **The lints.** The engine never names a host outside its adapter, and every test's machine-wide state is a scratch folder.
-
-Open, for the Human: whether a lint fails on any write to the home folder.

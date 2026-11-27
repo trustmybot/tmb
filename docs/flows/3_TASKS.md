@@ -227,7 +227,6 @@ stateDiagram-v2
 - **Example 2.** An agile task closes unreviewed. Its review state is on the feature branch, not the task ([3_WORKFLOW.md](3_WORKFLOW.md#review-state)).
 - **Example 3.** The Human waives a review. A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner never waives.
 - **Edge case.** The repo has no remote, so the reviewed task is ready. The Human merges locally with the command tmb gives, and tmb then counts the work as merged ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)). A ready task the Human will not merge is dropped.
-- **Open, for the Human:** waivers wider than one task or one branch (a listed set, an issue, a session's docs tasks).
 
 **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
 

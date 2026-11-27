@@ -64,7 +64,7 @@ The words for the steps. The first column names the page a word comes from. The 
 | [3_TASKS](3_TASKS.md) | Docs task | A task that changes only docs or prompts. The planner writes it. |
 | [3_TASKS](3_TASKS.md) | Start a task | The engine cuts the task's branch and worktree, so a worker can be started on it. |
 | [3_WORKFLOW](3_WORKFLOW.md) | Agile mode | One review per feature branch. |
-| [3_WORKFLOW](3_WORKFLOW.md) | Truest mode | A review of every task before its push. |
+| [3_WORKFLOW](3_WORKFLOW.md) | Truest mode | A review of every task before its pull request. |
 | [3_WORKFLOW](3_WORKFLOW.md) | In review | A truest task whose checks passed and whose review has not passed yet. |
 | [3_GIT](3_GIT.md) | Workspace | The folder where the Human ran `tmb init`: the root of a project, holding its record. It may be a git repo itself, or hold several repos that share the record (a multi-repo workspace). |
 | [3_GIT](3_GIT.md) | Base branch | The branch a pull request merges into. |
