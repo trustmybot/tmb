@@ -1,4 +1,4 @@
-// Workflow simulation, ported from the plugin's flow 02 (simple task): the planner records the
+// Workflow simulation of a simple task: the planner records the
 // issue, starts a feature branch and a task, a worker commits the work and closes it, and the
 // close folds it into the feature branch. Along the way the worker is refused the planner's
 // steps. Scripted as tool calls through the tool server, with no model.
@@ -13,10 +13,10 @@ const FEATURE = "feat/hello";
 const FILE = "hello.txt";
 const CHECK = `test -f ${FILE}`;
 
-const { git, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-flow-02-");
+const { git, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-simple-task-");
 afterAll(cleanup);
 
-describe("flow 02: a simple task", () => {
+describe("a simple task: recorded, worked, closed and folded into its feature branch", () => {
   test("issue, feature branch, task, committed work and close fold it; a worker cannot start a feature branch or a task", async () => {
     const project = setUpProject(CHECK);
     const base = git(project, "rev-parse", "main");

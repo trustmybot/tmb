@@ -1,4 +1,4 @@
-// Workflow simulation, ported from the plugin's flow 13 (issue update): the planner moves an
+// Workflow simulation of an issue update: the planner moves an
 // issue to another milestone and rewrites its title and body through issue_update; issue_get
 // shows the new values and history shows each change with who made it. An update naming no field
 // is refused, and one that changes nothing records nothing. Scripted as tool calls through the
@@ -11,10 +11,10 @@ setDefaultTimeout(30_000);
 
 const PLANNER = { kind: "agent", role: "planner", host: "test" };
 
-const { setUpProject, connect, cleanup } = tmbProcesses("tmb-flow-13-");
+const { setUpProject, connect, cleanup } = tmbProcesses("tmb-issue-update-");
 afterAll(cleanup);
 
-describe("flow 13: an issue update", () => {
+describe("an issue update: each change is recorded with who made it", () => {
   test("a milestone move and a new title and body show in issue_get and in history", async () => {
     const project = setUpProject("true");
     const client = await connect(project);
