@@ -31,6 +31,25 @@ CI is split so that it never slows a lane down.
 - **A macOS or Windows break shows up in the dev build or at the rc tag, not on the pull request.** That is the trade-off taken for speed. `packaging-probe` can also be run by hand from the Actions tab.
 - **An rc is tagged only after the whole chain passes on a maintainer's own machine.** [RELEASE.md](RELEASE.md) holds the rule and the steps.
 
+## Testing a branch on your machine
+
+Planned (trustmybot/tmb#447). A branch is tried in a real session before it is pushed, with a program of its own, `tmb-local`.
+
+```mermaid
+flowchart LR
+    B["A local branch"] --> L["Build and install tmb-local"]
+    L --> I["tmb-local init in a test project"]
+    I --> S["A real session runs the branch's build"]
+    S --> O["Another program's init moves the project back"]
+```
+
+- **`tmb-local` is a program, not a channel.** It is built on this machine and never published, so no installer or release makes it ([RELEASE.md](RELEASE.md)).
+- **It never updates itself,** like a pinned version, and keeps its own state folder beside the other programs ([install](../flows/1_INSTALL.md#install-one-program-three-channels)).
+- **Its version names the commit:** `X.Y.Z-local.<sha>`, with `.dirty` when the tree has uncommitted changes.
+- **A project is tied to it by its `init`,** and moved back by another program's `init`, as for any [channel switch](../flows/1_INSTALL.md#switch-channels).
+  - **Edge case 1.** One `tmb-local` per machine: a new build replaces it. A session that is running keeps the build it started with.
+  - **Edge case 2.** Today a local build is named `tmb` at the package version, so it counts as the stable program and shares its state. Use it only in a throwaway project until `tmb-local` is built.
+
 ## Docs first
 
 The docs are the ground truth, and code follows them. A disagreement goes to the Human before either side is changed ([docs/README.md](../README.md#when-two-things-disagree)).
