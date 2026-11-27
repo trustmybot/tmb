@@ -1,0 +1,127 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"58187fc690cc1227bc9ffdfd1e2e3c066262cce95c6350fbadd8d7355dd7da36"
+Link: <https://api.github.com/repositories/1463423787/issues?state=all&sort=updated&direction=asc&per_page=2&since=2026-11-26T00%3A00%3A00Z&after=Y3Vyc29yOnYyOpLPAAABohUy-cDPAAAAAYpfeG0%3D&page=2>; rel="next"
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 4889
+X-Ratelimit-Reset: 1795746298
+X-Ratelimit-Resource: core
+
+[
+ {
+  "url": "https://api.github.com/repos/trustmybot/tmb/issues/304",
+  "html_url": "https://github.com/trustmybot/tmb/issues/304",
+  "id": 6616438881,
+  "node_id": "I_kwDOVzoTK88AAAABil7YYQ",
+  "number": 304,
+  "title": "\ud83d\udd27 chore: mirror docs/ to the GitHub wiki",
+  "user": {
+   "login": "Zax-TMB",
+   "id": 355055752,
+   "node_id": "U_kgDOFSm4iA",
+   "url": "https://api.github.com/users/Zax-TMB",
+   "html_url": "https://github.com/Zax-TMB",
+   "type": "User"
+  },
+  "labels": [
+   {
+    "id": 13138412995,
+    "node_id": "LA_kwDOVzoTK88AAAADDxxFww",
+    "url": "https://api.github.com/repos/trustmybot/tmb/labels/priority/low",
+    "name": "priority/low",
+    "color": "0e8a16",
+    "default": false,
+    "description": "Low priority \u2014 polish / nice-to-have",
+    "archived_at": null,
+    "archived_by": null
+   },
+   {
+    "id": 13149437873,
+    "node_id": "LA_kwDOVzoTK88AAAADD8R_sQ",
+    "url": "https://api.github.com/repos/trustmybot/tmb/labels/decision/human-reviewed",
+    "name": "decision/human-reviewed",
+    "color": "0E8A16",
+    "default": false,
+    "description": "The Human answered the decisions bro listed",
+    "archived_at": null,
+    "archived_by": null
+   }
+  ],
+  "state": "open",
+  "assignees": [],
+  "milestone": null,
+  "comments": 0,
+  "created_at": "2026-11-26T00:10:05Z",
+  "updated_at": "2026-11-26T00:10:05Z",
+  "closed_at": null,
+  "assignee": null,
+  "issue_field_values": [],
+  "type": null,
+  "status": {
+   "id": 2,
+   "name": "Backlog",
+   "category": "backlog"
+  },
+  "body": "After #299 merges, publish `docs/` to the repo's wiki as a read-only reading view. `docs/` stays the source and the only",
+  "closed_by": null,
+  "state_reason": null
+ },
+ {
+  "url": "https://api.github.com/repos/trustmybot/tmb/issues/306",
+  "html_url": "https://github.com/trustmybot/tmb/issues/306",
+  "id": 6616479853,
+  "node_id": "I_kwDOVzoTK88AAAABil94bQ",
+  "number": 306,
+  "title": "\u2728 feat: guard against hardcoded and special-cased code",
+  "user": {
+   "login": "Zax-TMB",
+   "id": 355055752,
+   "node_id": "U_kgDOFSm4iA",
+   "url": "https://api.github.com/users/Zax-TMB",
+   "html_url": "https://github.com/Zax-TMB",
+   "type": "User"
+  },
+  "labels": [
+   {
+    "id": 13138412989,
+    "node_id": "LA_kwDOVzoTK88AAAADDxxFvQ",
+    "url": "https://api.github.com/repos/trustmybot/tmb/labels/priority/medium",
+    "name": "priority/medium",
+    "color": "fbca04",
+    "default": false,
+    "description": "Medium priority \u2014 quality / UX",
+    "archived_at": null,
+    "archived_by": null
+   },
+   {
+    "id": 13149437873,
+    "node_id": "LA_kwDOVzoTK88AAAADD8R_sQ",
+    "url": "https://api.github.com/repos/trustmybot/tmb/labels/decision/human-reviewed",
+    "name": "decision/human-reviewed",
+    "color": "0E8A16",
+    "default": false,
+    "description": "The Human answered the decisions bro listed",
+    "archived_at": null,
+    "archived_by": null
+   }
+  ],
+  "state": "open",
+  "assignees": [],
+  "milestone": null,
+  "comments": 0,
+  "created_at": "2026-11-26T00:13:12Z",
+  "updated_at": "2026-11-26T00:13:12Z",
+  "closed_at": null,
+  "assignee": null,
+  "issue_field_values": [],
+  "type": null,
+  "status": {
+   "id": 2,
+   "name": "Backlog",
+   "category": "backlog"
+  },
+  "body": "Agents hardcode values and special-case tests instead of writing the general solution. A prompt line does not stop it, s",
+  "closed_by": null,
+  "state_reason": null
+ }
+]
