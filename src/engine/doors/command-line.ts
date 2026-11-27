@@ -883,11 +883,7 @@ async function runToolsInstall(positionals: string[], projectDir: string, output
       output.out(`${named} has no language tool: the built-in rules make its links, and there is nothing to install`);
       return 0;
     }
-    if ("carried" in tool.copy) {
-      output.out(`${named}: tmb carries ${tool.name} in its own program, at ${tool.copy.carried}; there is nothing to install`);
-      return 0;
-    }
-    if (!tool.copy.tmbInstalls) {
+    if ("program" in tool.copy && !tool.copy.tmbInstalls) {
       output.err(`tmb: ${named}: ${tool.copy.what} is the user's own: tmb installs a tool, never a language`);
       return 1;
     }

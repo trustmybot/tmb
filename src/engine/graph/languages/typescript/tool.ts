@@ -16,9 +16,9 @@
 // symbol is outside; else not known, as is a call with no answer. No answer is ever replaced by a
 // guess.
 //
-// tmb carries the TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"): way B needs no
-// install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one
-// answer. The program holds the compiler's code and its default library (carried.ts), loaded only
+// tmb uses only its pinned TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"), installed
+// on ask into its tools folder, never the repo's own or one on the PATH, so one tmb gives one
+// answer. The compiler's code and its default library are loaded from that copy (load.ts) only
 // when way B builds a graph; a repo's own `typescript` package is never loaded. The repo's files are read from the commit; its installed
 // packages, which git does not hold, from its `node_modules` folder when there is one, and without
 // them a call of a package is not known. A layer it built records the compiler's version and the
@@ -27,8 +27,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type TS from "typescript5";
-import { CARRIED_VERSION, loadCarried } from "./carried.ts";
-import type { BuiltWith, LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode } from "../contract.ts";
+import { COMPILER_HOLDS, loadCompiler } from "./load.ts";
+import type { BuiltWith, FoundCopy, LanguageTool, ToolAnswer, ToolCall, ToolInput, ToolNode, ToolRelease } from "../contract.ts";
+import { npmRelease } from "../npm.ts";
 import { calleeOf, type CommitFiles, isBodilessMethod, isCallNode, originalNames, type TypeScriptModule } from "./compiler.ts";
 import { projectsOf } from "./projects.ts";
 
@@ -36,18 +37,27 @@ type NotLinked = { state: "outside" | "not_known" };
 const NOT_KNOWN: NotLinked = { state: "not_known" };
 const OUTSIDE: NotLinked = { state: "outside" };
 
-/** The compiler tmb carries, with its default library, loaded on first use: way B alone needs it. */
-type Carried = { ts: TypeScriptModule; library: ReadonlyMap<string, string> };
-let carried: Carried | undefined;
+/**
+ * The compiler tmb uses, and the only one: version 5.9.3 of the `typescript` package, from the npm
+ * registry, checked against the sha512 the registry publishes for it.
+ */
+export const TYPESCRIPT_PIN: ToolRelease = npmRelease("typescript", "5.9.3", "jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==");
 
-/** The compiler tmb carries, or why it cannot be loaded. */
-function carriedCompiler(): Carried | { unavailable: string } {
-  if (carried !== undefined) return carried;
+/** A copy of the compiler, with its default library, loaded on first use: way B alone needs it. */
+type Compiler = { ts: TypeScriptModule; library: ReadonlyMap<string, string> };
+/** Each copy loaded, by its folder. */
+const loaded = new Map<string, Compiler>();
+
+/** The copy of the compiler in a folder, or why it cannot be loaded. */
+function compilerAt(folder: string): Compiler | { unavailable: string } {
+  const known = loaded.get(folder);
+  if (known !== undefined) return known;
   try {
-    carried = loadCarried();
-    return carried;
+    const copy = loadCompiler(folder);
+    loaded.set(folder, copy);
+    return copy;
   } catch (error) {
-    return { unavailable: `the compiler tmb carries did not load (${error instanceof Error ? error.message : String(error)})` };
+    return { unavailable: `the compiler at ${folder} did not load (${error instanceof Error ? error.message : String(error)})` };
   }
 }
 
@@ -100,10 +110,10 @@ const lineOf = (sf: TS.SourceFile, pos: number) => sf.getLineAndCharacterOfPosit
 const placeKey = (pos: number, name: string): string => `${pos}\u0000${name}`;
 
 /** The compiler's answers for the graph's calls, one per call, in order. */
-function answerCalls({ ts, library }: Carried, repoDir: string, input: ToolInput, readFrom: (places: readonly string[]) => void): ToolAnswer[] {
+function answerCalls({ ts, library }: Compiler, repoDir: string, input: ToolInput, readFrom: (places: readonly string[]) => void): ToolAnswer[] {
   const root = path.resolve(repoDir);
-  // The programs read the source files and the settings files of the commit, the default library
-  // tmb carries, and the installed packages of the working tree. Each file with calls is answered
+  // The programs read the source files and the settings files of the commit, the default library of
+  // tmb's copy, and the installed packages of the working tree. Each file with calls is answered
   // in the program of the project that owns it (projects.ts).
   const texts = new Map<string, string>([...input.configs, ...input.files]);
   const files: CommitFiles = { texts, installed: true, library, read: input.read, lookedIn: (dir) => readFrom([dir]) };
@@ -246,14 +256,14 @@ function installedIn(folder: string): string {
 /** The TypeScript compiler, way B's tool for TypeScript, TSX and JavaScript. */
 export const typescriptCompiler: LanguageTool = {
   name: "the TypeScript compiler",
-  // tmb carries it in its own program: tmb's copy, at the version it carries.
-  copy: { carried: CARRIED_VERSION },
-  open(repoDir: string) {
-    const compiler = carriedCompiler();
+  // tmb's pinned copy, in its tools folder, installed on ask; never the user's.
+  copy: { library: "typescript", what: "the TypeScript compiler", holds: COMPILER_HOLDS, release: TYPESCRIPT_PIN },
+  open(repoDir: string, found: FoundCopy) {
+    const compiler = compilerAt(found.path);
     if ("unavailable" in compiler) return compiler;
     return { answer: (input: ToolInput, _note: (text: string) => void, readFrom: (places: readonly string[]) => void) => answerCalls(compiler, repoDir, input, readFrom) };
   },
-  // The compiler is the one tmb carries, so the find order gives its version; the installed packages are
+  // The find order gives the compiler's copy and its version; the installed packages are
   // those of each installed packages' folder the compiler looked in.
   builtWith(_repoDir: string, places: readonly string[]): BuiltWith {
     return { packages: places.map(installedIn).join("\n") };

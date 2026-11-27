@@ -369,23 +369,25 @@ export type BuiltHelper = { name: string; key: string; source: string; builtBy: 
 export type Whose = 'setting' | 'user' | 'tmb';
 
 /**
- * The copy the find order found: whose it is, its program's path (null for one tmb carries in its
- * own program), and its version as it reports it. `note` says why the user's copy was passed over.
+ * The copy the find order found: whose it is, where it is (its program, or the folder of a package
+ * tmb loads), and its version as it reports it. `note` says why the user's copy was passed over.
  */
-export type FoundCopy = { whose: Whose; path: string | null; version: string; note?: string };
+export type FoundCopy = { whose: Whose; path: string; version: string; note?: string };
 
 /**
  * A tool's facts for the find order, kept in its language's module:
- * - carried: tmb carries the tool in its own program, at this version;
- * - else a program the find order looks for: its file's name; how a reader names it; the arguments
- *   that make it report its version, and the environment it runs in; its report from its output;
- *   the lowest version tmb supports, for a reader, and whether a report is at or above it; the
- *   folders besides PATH where the language's own installer puts the user's copy; whether tmb
- *   keeps a copy of it in its tools folder, which it never does for a language's own command; and
- *   the pinned release tmb installs that copy from.
+ * - a program the find order looks for: its file's name; how a reader names it; the arguments that
+ *   make it report its version, and the environment it runs in; its report from its output; the
+ *   lowest version tmb supports, for a reader, and whether a report is at or above it; the folders
+ *   besides PATH where the language's own installer puts the user's copy; whether tmb keeps a copy
+ *   of it in its tools folder, which it never does for a language's own command; and the pinned
+ *   release tmb installs that copy from;
+ * - a library: a package tmb loads into its own program, used only from tmb's tools folder and
+ *   only at its pin, never a copy of the user's, so one tmb gives one answer: the package's name,
+ *   which its folder in the tools folder takes; how a reader names it; the files the copy must
+ *   hold, from its folder; and the pinned release, whose version is the one tmb uses.
  */
 export type ToolCopy =
-  | { carried: string }
   | {
       program: string;
       what: string;
@@ -397,22 +399,26 @@ export type ToolCopy =
       userPlaces?(): string[];
       tmbInstalls: boolean;
       release?: ToolRelease;
-    };
+    }
+  | { library: string; what: string; holds: readonly string[]; release: ToolRelease };
 
 /**
  * The release of a tool tmb installs (CODE_GRAPH.md, "An install is asked for, checked, and never
- * part of a read"), pinned in its language's module: its version; the tool's own release page; and,
- * by machine (`<os>-<arch>`, as the running program names them), the asset's address there, its
- * sha256, which tmb carries, and how the program is laid out in it.
+ * part of a read"), pinned in its language's module: its version; the tool's own release page; by
+ * machine (`<os>-<arch>`, as the running program names them), the asset's address there, its
+ * digest, which tmb carries, and how the program is laid out in it; and the one asset for every
+ * machine, for a tool that is the same on each, such as a package of JavaScript.
  */
-export type ToolRelease = { version: string; page: string; assets: Partial<Record<string, ReleaseAsset>> };
+export type ToolRelease = { version: string; page: string; assets: Partial<Record<string, ReleaseAsset>>; everyMachine?: ReleaseAsset };
 
 /**
- * One asset of a release. `gzip`: the program itself, compressed. `zip`: a folder; every file under
- * `from` in the archive goes under `to` in the tool's own folder, so the files the program reads
- * beside it keep the places the release gives them.
+ * One asset of a release, and its digest: a sha256 in hex, or a sha512 in base64, as a package
+ * registry gives a package's integrity. `gzip`: the program itself, compressed. `zip` and `tgz` (a
+ * gzipped tar, as a package registry packs a package): a folder; every file under `from` in the
+ * archive goes under `to` in the tool's own folder, so the files the tool reads keep the places the
+ * release gives them.
  */
-export type ReleaseAsset = { url: string; sha256: string; archive: { format: 'gzip' } | { format: 'zip'; from: string; to: string } };
+export type ReleaseAsset = { url: string; archive: { format: 'gzip' } | { format: 'zip' | 'tgz'; from: string; to: string } } & ({ sha256: string } | { sha512: string });
 
 // A tool that runs may still tell the reader something its answers rest on, such as a setting of
 // the repo it could not follow: `note` adds it to the answer's freshness. `readFrom` names the

@@ -3,7 +3,7 @@
 // TypeScript compiler's own answer for the same name. A link the graph did not make is no
 // failure; a link to another file or declaration than the compiler's is, and so is a link into
 // the repo where the compiler names only a declaration outside it (trustmybot/tmb#287). The
-// compiler is the TypeScript 5.9 compiler tmb carries for way B, a dependency of tmb, given the
+// compiler is the TypeScript 5.9 compiler at the version tmb pins for way B, a development dependency of tmb, given the
 // same commit the graph reads. The check runs in the tests and the benchmark, never in tmb's
 // commands.
 import type { Database } from "bun:sqlite";

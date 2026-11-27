@@ -8,7 +8,7 @@
 // Both ways make the same nodes; each link records the way that made it. A repo whose compiler
 // cannot run is built by the built-in rules, and the layer says why. The fixtures are small
 // programs of their own; each expectation is read off the rule, not off the graph's output.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -23,8 +23,12 @@ import { baseOptions, commitProgram } from "../src/engine/graph/languages/typesc
 import { openProjectStore, writeSetting } from "../src/engine/index.ts";
 import { graphLinksOf, readSettings, validateSetting } from "../src/engine/settings.ts";
 import type { Actor, Store } from "../src/engine/store/index.ts";
+import { installPinnedTools } from "../tests/lib/pinned-tools.ts";
 
 setDefaultTimeout(30_000);
+
+// Way B loads the TypeScript compiler from tmb's tools folder; the setup installs tmb's pinned copy.
+beforeAll(installPinnedTools);
 
 const HUMAN: Actor = { kind: "human" };
 
@@ -345,8 +349,8 @@ describe("the setting", () => {
 });
 
 describe("the compiler tmb uses", () => {
-  // tmb carries the TypeScript compiler (CODE_GRAPH.md, "Two ways to make links"): way B needs no
-  // install, and tmb always uses the compiler it carries, never the repo's own. The repo's installed
+  // tmb uses its own copy of the TypeScript compiler, at its pin, in its tools folder (CODE_GRAPH.md,
+  // "Where a language's tool comes from"), never the repo's own. The repo's installed
   // packages are still read from its working tree; without them a package call is not known, never
   // guessed to be outside. Each repo here is indexed the way the program indexes it, with no
   // compiler passed in.
@@ -384,14 +388,14 @@ describe("the compiler tmb uses", () => {
     ].join("\n"),
   };
 
-  test("with no installed packages and no compiler in the repo, the compiler tmb carries makes the links", async () => {
+  test("with no installed packages and no compiler in the repo, tmb's copy of the compiler makes the links", async () => {
     commit(SHOP);
     const view = await indexed("language-tool");
     expect(view.freshness.links).toEqual({ way: "language-tool", note: null });
     const rows = edges(view.db, view.layer);
     expect(call(rows, "lib/till.ts:ring", "weigh")).toMatchObject({ dst: "lib/basket.ts:Basket.weigh", call_state: "linked", way: "language-tool" });
     expect(call(rows, "lib/till.ts:ring", "fill")).toMatchObject({ dst: "lib/basket.ts:fill", call_state: "linked", way: "language-tool" });
-    // The language's built-ins come with the compiler tmb carries.
+    // The language's built-ins come with tmb's copy of the compiler.
     expect(call(rows, "lib/till.ts:stamp", "toISOString")).toMatchObject({ dst: null, call_state: "outside", way: "language-tool" });
     view.db.close();
   });
@@ -437,11 +441,11 @@ describe("the compiler tmb uses", () => {
     view.db.close();
   });
 
-  test("a repo that installs the very compiler tmb carries reads its declarations as any installed package: its calls are outside", async () => {
+  test("a repo that installs the very compiler tmb pins reads its declarations as any installed package: its calls are outside", async () => {
     // The file is under no config, so the compiler's defaults hold: a default import of the
     // compiler's `export =` needs esModuleInterop, which they do not set, so the import is a namespace.
     commit({ "lib/parse.ts": ['import * as ts from "typescript";', "export function parse(text: string) {", '  return ts.createSourceFile("a.ts", text, ts.ScriptTarget.Latest);', "}", ""].join("\n") });
-    // The repo's own typescript is the package tmb carries, installed where the repo installs packages.
+    // The repo's own typescript is the package at tmb's pin, installed where the repo installs packages.
     mkdirSync(path.join(project, "node_modules"), { recursive: true });
     symlinkSync(path.dirname(require.resolve("typescript5/package.json")), path.join(project, "node_modules", "typescript"), "dir");
     const view = await indexed("language-tool");
@@ -582,16 +586,16 @@ describe("the default way", () => {
 });
 
 describe("the compiler's default library", () => {
-  test("a carried library is read from what is carried, never from the compiler's folder", () => {
+  test("the library it is given is read from what is given, never from the compiler's folder", () => {
     const options = baseOptions(ts5);
     const name = path.basename(ts5.getDefaultLibFilePath(options));
-    const carried = "declare function onlyCarried(): number;\n";
-    const texts = new Map([["main.ts", "export const n = onlyCarried();\n"]]);
-    const program = commitProgram(ts5, project, texts.keys(), { texts, installed: false, library: new Map([[name, carried]]) }, options);
+    const given = "declare function onlyGiven(): number;\n";
+    const texts = new Map([["main.ts", "export const n = onlyGiven();\n"]]);
+    const program = commitProgram(ts5, project, texts.keys(), { texts, installed: false, library: new Map([[name, given]]) }, options);
     const sf = program.getSourceFile(path.join(project, "main.ts"))!;
     const call = (sf.statements[0] as TS.VariableStatement).declarationList.declarations[0]!.initializer as TS.CallExpression;
     const decl = program.getTypeChecker().getSymbolAtLocation(call.expression)?.declarations?.[0];
-    expect(decl?.getSourceFile().text).toBe(carried);
+    expect(decl?.getSourceFile().text).toBe(given);
   });
 });
 

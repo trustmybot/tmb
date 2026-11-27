@@ -1,4 +1,4 @@
-// Way B for Python (trustmybot/tmb#347): pyright, which tmb carries, makes the links of a
+// Way B for Python (trustmybot/tmb#347): pyright, tmb's pinned copy in its tools folder, makes the links of a
 // repo's Python calls. It is asked and never imitated (CODE_GRAPH.md, "Two ways to make links"):
 // - linked, when the callee's declaration is exactly one node of the graph;
 // - outside, when every declaration is outside the repo: the standard library, or a package the
@@ -10,7 +10,7 @@
 // call in unreachable code or under `if TYPE_CHECKING:` is a call like any other; an answer for
 // another call is no answer; the tool's answer stands. The fixtures are small programs of their
 // own; each expectation is read off the rule, not off the graph's output.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -18,10 +18,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildLayer } from "../src/engine/graph/build.ts";
 import { openGraphDb } from "../src/engine/graph/db.ts";
-import { loadCarried } from "../src/engine/graph/languages/python/carried.ts";
+import { loadPyright } from "../src/engine/graph/languages/python/load.ts";
 import { NODE } from "../src/engine/graph/languages/python/tool.ts";
+import { machinePlaces, toolFolder } from "../src/engine/graph/tool-copy.ts";
+import { installPinnedTools } from "../tests/lib/pinned-tools.ts";
 
 setDefaultTimeout(30_000);
+
+// Way B loads pyright from tmb's tools folder; the setup installs tmb's pinned copy there.
+beforeAll(installPinnedTools);
 
 let project: string;
 
@@ -497,9 +502,9 @@ describe("the tool's answer stands", () => {
   });
 });
 
-describe("the pyright tmb carries", () => {
+describe("tmb's pinned pyright", () => {
   test("the kinds of its syntax tree tool.ts reads are the ones it numbers", () => {
-    const { exporting } = loadCarried();
+    const { exporting } = loadPyright(toolFolder(machinePlaces().stateDir, "pyright"));
     const { Parser, ParseOptions } = exporting("Parser");
     const { DiagnosticSink } = exporting("DiagnosticSink");
     const text = lines("from m import f as g", "class C:", "    def m(self):", "        return lambda: [x for x in o.p()]");

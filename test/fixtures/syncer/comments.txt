@@ -1,0 +1,29 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"e1521df7cb4938cd6f9128185c626c78ed8721fbbc64482be9a5b1e8dbe74b48"
+Link: <https://api.github.com/repositories/1463423787/issues/comments?sort=updated&direction=asc&per_page=1&since=2026-11-26T00%3A00%3A00Z&page=2>; rel="next", <https://api.github.com/repositories/1463423787/issues/comments?sort=updated&direction=asc&per_page=1&since=2026-11-26T00%3A00%3A00Z&page=27>; rel="last"
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 4888
+X-Ratelimit-Reset: 1795746298
+X-Ratelimit-Resource: core
+
+[
+ {
+  "url": "https://api.github.com/repos/trustmybot/tmb/issues/comments/7182270872",
+  "html_url": "https://github.com/trustmybot/tmb/issues/308#issuecomment-7182270872",
+  "issue_url": "https://api.github.com/repos/trustmybot/tmb/issues/308",
+  "id": 7182270872,
+  "node_id": "IC_kwDOVzoTK88AAAABrBjBmA",
+  "user": {
+   "login": "Zax-TMB",
+   "id": 355055752,
+   "node_id": "U_kgDOFSm4iA",
+   "url": "https://api.github.com/users/Zax-TMB",
+   "html_url": "https://github.com/Zax-TMB",
+   "type": "User"
+  },
+  "created_at": "2026-11-26T04:04:29Z",
+  "updated_at": "2026-11-26T04:04:29Z",
+  "body": "Decided by the Human (2026-11-25): placement is the planner's judgment. The file is the physical container, the area the"
+ }
+]
