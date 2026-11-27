@@ -50,6 +50,26 @@ flowchart TD
     G -.-> R2
 ```
 
+### Which work gets a record
+
+**Work worth keeping is an issue with its tasks. Ad hoc work in the chat leaves no record.** A task always belongs to one issue; there is no task without one.
+
+- **Example 1, synced.** A teammate assigns the user an issue on the remote. The syncer brings it into the record, the planner cuts tasks under it, and its state and comments follow the remote.
+- **Example 2, local only.** The user tries an exploratory fix. The planner opens an issue in the record only, and cuts tasks under it. Nothing reaches the remote.
+- **Example 3, no record.** The user asks the planner for a throwaway review page and updates to it. That is conversation: no issue, no task, no run.
+- **Edge case.** The exploratory fix proves worth sharing. The Human says publish, and the issue is created on the remote and tied to it. From then on it is synced.
+- **Edge case.** The planner is unsure whether a request is worth a record. It asks the Human; it never opens an issue to cover a chat.
+- **Edge case.** Ad hoc work still costs tokens. The session's own cost counts them (Planned, trustmybot/tmb#254); no task does.
+
+| Work | In the record | On the remote |
+|---|---|---|
+| A remote issue | Issue and tasks | Synced. Planned (trustmybot/tmb#70) |
+| A local issue | Issue and tasks | Nothing, until the Human publishes it. Planned (trustmybot/tmb#409) |
+| Ad hoc work in the chat | Nothing | Nothing |
+
+- **The syncer never publishes.** An issue made in the record stays local until the Human's word.
+- **Tasks, runs and reviews are never on the remote.** Only the issue, its comments, its milestone and its pull request are.
+
 ## 2. A start and an end are two events
 
 A run and a check run each write their start before any work. The end is a second event, and it carries the outcome.
@@ -647,6 +667,7 @@ One row per host session. A projection: record kind `session`.
 | `priority` | TEXT, nullable | `urgent`, `high`, `medium` or `low` |
 | `type` | TEXT, nullable | The kind of work, such as bug or feature |
 | `labels` | TEXT, NOT NULL, default `'[]'` | A JSON list of free labels, such as an area or a theme |
+| `assignees` | TEXT, NOT NULL, default `'[]'` | A JSON list of the remote accounts it is assigned to |
 | `repo` | TEXT, nullable | The repo the issue belongs to, named as `tasks.repo` names its own |
 | `milestone_id` | TEXT, nullable | FK → `milestones.id`. Replaces the `milestone` name |
 | `remote_url` | TEXT, nullable, UNIQUE | The issue's address on the remote |
@@ -675,7 +696,7 @@ What a GitHub issue has, and what the record takes:
 | Labels | `issues.labels` | Free words a project chooses |
 | Milestone | A `milestones` row, named by `issues.milestone_id` | The syncer mirrors its state, and a misspelt name cannot make a second one |
 | Relationships: parent, blocked by, duplicate | `issue_links` | The order of work depends on them |
-| Assignees | Left out | A session and a run say who works on it |
+| Assignees | `issues.assignees`, a JSON list of remote accounts | On a shared repo the planner does not take work assigned to someone else (trustmybot/tmb#409) |
 | Projects | Left out | A board is a view, and the dashboard is tmb's |
 | Status, effort, start and target dates | Left out | State comes from tasks, effort belongs to a run, and the record holds no schedule |
 | "Relates to" | Left out | It changes no order of work |
@@ -695,7 +716,7 @@ On each mirrored table, `issues`, `discussions`, `pull_requests` and `milestones
 
 | Column | Holds |
 |---|---|
-| `remote_id` | The remote's own id for the item, which a rename or a transfer does not change. UNIQUE, NULL for a record with no remote |
+| `remote_id` | The remote's own id for the item, which a rename or a transfer does not change. UNIQUE. NULL for a local issue, which the syncer leaves alone |
 | `remote_updated_at` | The remote's time of last change, so an unchanged item is skipped |
 | `remote_gone_at` | When the syncer found it deleted or out of reach. NULL while it is there |
 
