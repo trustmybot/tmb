@@ -1,8 +1,10 @@
 # packaging
 
-Templates for installing tmb through a package manager (trustmybot/tmb#89, Part 3). The design is in [1_INSTALL.md](../docs/flows/1_INSTALL.md#package-managers).
+Templates for installing tmb through a package manager. The design is in [1_INSTALL.md](../docs/flows/1_INSTALL.md#package-managers).
 
-| Template | Becomes | Pushed to |
+**Planned (trustmybot/tmb#91): no package manager installs tmb yet.** The templates and the workflow are built; the repos, the token and the submission below are not set up. Homebrew on macOS also waits for an Apple Developer account, which notarization needs. Until then, install with the installer script.
+
+| Template | Becomes | Pushed to (Planned) |
 |---|---|---|
 | [homebrew/cask.rb](homebrew/cask.rb) | `Casks/tmb.rb`, `Casks/tmb@rc.rb`, `Casks/tmb@dev.rb` | The tap, `trustmybot/homebrew-tmb` |
 | [scoop/manifest.json](scoop/manifest.json) | `bucket/tmb.json`, `bucket/tmb-rc.json`, `bucket/tmb-dev.json` | The bucket, `trustmybot/scoop-tmb` |
@@ -19,9 +21,10 @@ bun scripts/package-managers.ts render "$(curl -fsSL https://github.com/trustmyb
 
 ## What the Human sets up
 
-Until these exist, the workflow skips the push with a notice and the release still succeeds.
+None of these exists yet. Until they do, the workflow skips the push with a notice and the release still succeeds.
 
-1. A public repo `trustmybot/homebrew-tmb`, with one commit (a README is enough). Users then run `brew install --cask trustmybot/tmb/tmb` (or `tmb@rc`, `tmb@dev`).
-2. A public repo `trustmybot/scoop-tmb`, with one commit. Users then run `scoop bucket add tmb https://github.com/trustmybot/scoop-tmb` and `scoop install tmb/tmb` (or `tmb-rc`, `tmb-dev`).
-3. A secret `TMB_PACKAGING_TOKEN` on `trustmybot/tmb`: a fine-grained token with Contents read and write on those two repos only.
-4. A submission to winget's list: a pull request to `microsoft/winget-pkgs` with the manifests from a stable run's artifact, and the same for rc. Later versions can be submitted the same way.
+1. An Apple Developer account, to notarize the macOS build. The cask does not work on macOS without it.
+2. A public repo `trustmybot/homebrew-tmb`, with one commit (a README is enough). Users then run `brew install --cask trustmybot/tmb/tmb` (or `tmb@rc`, `tmb@dev`).
+3. A public repo `trustmybot/scoop-tmb`, with one commit. Users then run `scoop bucket add tmb https://github.com/trustmybot/scoop-tmb` and `scoop install tmb/tmb` (or `tmb-rc`, `tmb-dev`).
+4. A secret `TMB_PACKAGING_TOKEN` on `trustmybot/tmb`: a fine-grained token with Contents read and write on those two repos only.
+5. A submission to winget's list: a pull request to `microsoft/winget-pkgs` with the manifests from a stable run's artifact, and the same for rc. Later versions can be submitted the same way.
