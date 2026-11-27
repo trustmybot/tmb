@@ -1,7 +1,7 @@
 // Preparing a project for tmb, in two commands. `tmb init` picks the host, has its adapter wire
-// tmb into the project, adds git's push hook and indexes the code graph; on a terminal it asks
-// one question, the review mode, which is the Human's choice, and leaves the other settings
-// empty, for the planner to fill at the first session start.
+// tmb into the project, adds git's push hook and indexes the code graph. It asks nothing: it leaves
+// the settings empty, the review mode for the Human to choose and the others for the planner to
+// fill at the first session start, and names the languages whose tool is missing.
 // `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
 // again at any time. They reach a host only through the adapter interface, so they name none.
 import { createInterface } from "node:readline";
