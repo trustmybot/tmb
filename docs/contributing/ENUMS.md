@@ -10,7 +10,7 @@ The engine, the role prompts and the planner decide what to do from these values
 
 A vocabulary is owned in one of three places:
 
-- **By the engine, for the record.** The record's schema has no `CHECK` on a list of values ([`TRAJECTORY_SCHEMA.md`](../architecture/TRAJECTORY_SCHEMA.md)). Its lists are in `src/engine/store/values.ts`, with the actor's lists in `src/engine/store/actor.ts`, and each record's fold checks them (`src/engine/store/projections.ts`).
+- **By the engine, for the record.** The record's schema has no `CHECK` on a list of values ([`TRAJECTORY.md`](../architecture/TRAJECTORY.md#details-schema)). Its lists are in `src/engine/store/values.ts`, with the actor's lists in `src/engine/store/actor.ts`, and each record's fold checks them (`src/engine/store/projections.ts`).
 - **By a `CHECK` in the schema, for the code graph** (`src/engine/graph/db.ts`).
 - **By the code that writes it**, for the rest. `tasks.state`, `features.state`, `reviews.verdict`, and `runs.outcome` are such columns. Each table below names its source.
 

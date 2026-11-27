@@ -32,7 +32,7 @@ flowchart LR
 | Everything else worth a search | See [the label groups](#the-label-groups) | Labels | Labels |
 
 - **Example 1.** The planner files a bug it rates high. The issue's type is bug and its priority is high. It carries no label for either.
-- **Example 2.** The Human changes the priority in the browser. The record takes the field's new value ([TRAJECTORY_SCHEMA.md](TRAJECTORY_SCHEMA.md#what-the-record-takes-from-a-github-issue)).
+- **Example 2.** The Human changes the priority in the browser. The record takes the field's new value ([TRAJECTORY.md](TRAJECTORY.md#what-the-record-takes-from-a-github-issue)).
 - **Edge case.** The remote has no such field, such as a repo with no issue types. The record still keeps the type and the priority, and a search through tmb still uses them. tmb makes no label to stand in for the field.
 - **Edge case.** The remote's field has a value outside tmb's four priorities. The record keeps it as it is and orders it last.
 

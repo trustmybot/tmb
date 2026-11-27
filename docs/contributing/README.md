@@ -7,7 +7,7 @@ How work on this repo is done. Read this page first, then the page for the job a
 | [RELEASE.md](RELEASE.md) | The dev, rc and stable channels, and how a release is cut |
 | [LABELS.md](LABELS.md) | The issue labels and the rule for them |
 | [ENUMS.md](ENUMS.md) | Every set of allowed values in the record, the code graph and the code |
-| [`TRAJECTORY_SCHEMA.md`](../architecture/TRAJECTORY_SCHEMA.md), [`CODE_GRAPH_DETAILS.md`](../architecture/CODE_GRAPH_DETAILS.md#schema) | The tables of the record and the code graph |
+| [`TRAJECTORY.md`](../architecture/TRAJECTORY.md#details-schema), [`CODE_GRAPH.md`](../architecture/CODE_GRAPH.md#schema) | The tables of the record and the code graph |
 | [`CONFIG.md`](../architecture/CONFIG.md) | The settings keys |
 
 ## Branches

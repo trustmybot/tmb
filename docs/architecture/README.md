@@ -46,7 +46,7 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 
 - **Example.** A rule that a check can enforce goes in code. A relationship that the code graph can derive goes in the code graph. Only the design and its reasons stay in these docs.
 - **Edge case.** A page here starts naming symbols. The detail has drifted into the wrong layer: move it down, do not copy it.
-- **Exception 1.** A generated page guarded by a freshness test: the schema tables in [TRAJECTORY_SCHEMA.md](TRAJECTORY_SCHEMA.md) and [CODE_GRAPH_DETAILS.md](CODE_GRAPH_DETAILS.md), and the keys in [CONFIG.md](CONFIG.md#keys).
+- **Exception 1.** A generated page guarded by a freshness test: the schema tables in [TRAJECTORY.md](TRAJECTORY.md#details-schema) and [CODE_GRAPH.md](CODE_GRAPH.md#details), and the keys in [CONFIG.md](CONFIG.md#keys).
 - **Exception 2.** The install and debugging sections of a detail page may name what a user types or sees: commands, settings, environment variables, messages and file locations. They never name internal functions or tables.
 - **Where the rule comes from.** Our experience of design and code drifting apart, not research evidence that it prevents that drift.
 
@@ -74,8 +74,8 @@ New to tmb? Read in this order:
 3. [ADAPTERS.md](ADAPTERS.md) — how tmb works with a host without being built for it.
 4. [ENGINE.md](ENGINE.md) — how the engine is reached, where it judges, and what tmb writes and where.
 5. [MEMORY.md](MEMORY.md) — what an agent loads, keeps and writes back, and what each costs.
-6. [TRAJECTORY.md](TRAJECTORY.md) — what is recorded, and how work is resumed from it. Its tables are in [TRAJECTORY_SCHEMA.md](TRAJECTORY_SCHEMA.md).
-7. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from. Its cases and tables are in [CODE_GRAPH_DETAILS.md](CODE_GRAPH_DETAILS.md).
+6. [TRAJECTORY.md](TRAJECTORY.md) — what is recorded, and how work is resumed from it. The rules come first, the schema after.
+7. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from. The rules come first, the cases and the schema after.
 8. [ISSUES.md](ISSUES.md) — an issue's fields and labels.
 9. [CONFIG.md](CONFIG.md) — every setting, where it lives and who may set it.
 
