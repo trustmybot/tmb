@@ -299,7 +299,7 @@ flowchart LR
 | | Way A: built-in rules | Way B: the language's own tool |
 |---|---|---|
 | Makes links with | The syntax tree and tmb's lookup rules ([Links on proof](#links-on-proof)) | The language's compiler or indexer, which knows types |
-| Needs | Nothing installed | The tool, and the project set up for it. tmb carries the TypeScript compiler |
+| Needs | Nothing installed | The tool, and the project set up for it |
 | Strong at | Any repo, any commit, offline | A method call on an object, an inherited method, a worked-out type |
 | Weak at | Calls that need a type | A repo that is not set up, a language with no tool, a commit the tool did not index |
 
@@ -336,8 +336,8 @@ flowchart LR
 
 | Language | Tool | Whose copy | Needs from the user |
 |---|---|---|---|
-| TypeScript, JavaScript | The TypeScript compiler | tmb carries it | Nothing |
-| Python | pyright | tmb carries it | Nothing |
+| TypeScript, JavaScript | The TypeScript compiler | tmb's pinned copy, installed on ask | Nothing |
+| Python | pyright | tmb's pinned copy, installed on ask | Nothing |
 | Go | go/types, Go's own type checker | tmb carries a small helper | The `go` command |
 | Java | javac | The user's JDK, with a small adapter tmb carries | A JDK |
 | Rust | rust-analyzer | The user's | rust-analyzer and the Rust toolchain |
@@ -379,7 +379,7 @@ flowchart LR
   - **Edge case 2.** A method reference, `Cart::total`, is a use and no call. A constructor is named as Java names it, `Cart.Cart`.
 - **Way B for Rust reads the Cargo workspaces the repo declares.** A file in no workspace is not loaded, and its calls are not known. No build script and no macro program is run.
   - **Edge case.** `Self(x)` in a tuple struct's own code. The tool gives no answer for it, so it is not known.
-- **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
+- **tmb uses only its pinned TypeScript compiler and its pinned pyright.** It never uses the repo's own copy or one on the machine's PATH, so one tmb gives one answer. Each comes with its standard library files, which it needs to know the language's built-ins. A tool is loaded only when way B builds a graph, so no other command starts slower for it.
 - **tmb installs nothing while it builds a graph.** It never installs a project's dependencies, and it installs a tool only when asked ([where a language's tool comes from](#where-a-languages-tool-comes-from)), and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
   - **Example 2.** A Python repo with no virtual environment. Way B still links the calls inside the repo. A call into a package is not known.
@@ -389,7 +389,7 @@ flowchart LR
 
 ### Where a language's tool comes from
 
-Finding and installing a tool is built, for rust-analyzer and clangd. Planned (trustmybot/tmb#395): the TypeScript compiler and pyright leave the tmb program. Until then TypeScript and Python always use the copy tmb carries.
+Finding and installing a tool is built, for rust-analyzer and clangd. Planned (trustmybot/tmb#395): the TypeScript compiler and pyright leave the tmb program and are installed the same way, so a developer who writes neither language carries neither tool. Until then tmb carries both.
 
 **A tool is found or installed once per machine, and only for a language a repo uses.** tmb is installed once per machine, and so is each tool. Installing tmb installs no tool.
 
@@ -436,8 +436,8 @@ flowchart LR
 
 | Language | Tool | The user's copy | tmb installs |
 |---|---|---|---|
-| TypeScript, JavaScript | The TypeScript compiler | On the machine's PATH | The pinned compiler. Planned (trustmybot/tmb#395) |
-| Python | pyright | On the machine's PATH | The pinned pyright. Planned (trustmybot/tmb#395) |
+| TypeScript, JavaScript | The TypeScript compiler | Not looked for | The pinned compiler. Planned (trustmybot/tmb#395) |
+| Python | pyright | Not looked for | The pinned pyright. Planned (trustmybot/tmb#395) |
 | Go | go/types | The `go` command, needed | Nothing: tmb builds its small helper from source it carries, with the user's `go` |
 | Java | javac | A JDK, needed | Nothing: tmb carries a small adapter |
 | Rust | rust-analyzer | From rustup or on PATH; the Rust toolchain is needed | The pinned rust-analyzer |
@@ -451,7 +451,7 @@ flowchart LR
   - **The layer records** the user's `go` and the helper: its source and the `go` that built it, also when the build failed. `tmb tools` lists the helper with Go.
   - **Edge case.** The user sets Go to build for another operating system. The helper is still built for this machine.
   - **Edge case.** The helper cannot check a package at all, such as a repo or one of its dependencies that needs a newer Go than the user's. That is an error and the built-in rules are used; it is never taken as "no call is known". The helper tells these cases by Go's own signals, never by the text of a message. An ordinary type error in a file is not this case: its calls are not known, and counted.
-- **Edge case.** The repo's own copy of the TypeScript compiler in `node_modules` is not the user's copy. It differs from repo to repo, and one machine gives one answer.
+- **Edge case.** A copy of the TypeScript compiler or pyright in the repo's `node_modules` or on the PATH is never used. Their answers change from version to version, and each is a small library tmb loads, so tmb installs its pinned one and one tmb gives one answer.
 
 ## Data sources
 
