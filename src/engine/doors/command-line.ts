@@ -158,7 +158,8 @@ export function isRecordCommand(command: string | undefined): command is RecordC
 type Request = { operation: OperationName; input: Record<string, unknown>; json: boolean; format: (result: never) => string };
 
 function who(actor: Actor): string {
-  return actor.kind === "human" ? "the Human" : `${actor.role} on ${actor.host}`;
+  if (actor.kind === "human") return "the Human";
+  return actor.kind === "tmb" ? `tmb (${actor.source})` : `${actor.role} on ${actor.host}`;
 }
 
 function issueLine(issue: IssueSummary | Issue): string {

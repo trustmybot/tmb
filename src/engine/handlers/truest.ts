@@ -325,7 +325,7 @@ export const taskWaiveSchema: InputSchema = {
 
 export function taskWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskWaiveResult {
   const given = validateInput<{ id: string; reason: string }>("task_waive", taskWaiveSchema, input);
-  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.role} cannot`);
+  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
   const task = requireInReview(store, given.id, "there is no review to waive");
   const detail = { task_id: task.id, commit: task.commitSha, reason: given.reason.trim() };
   const id = store.recordAudit(actor, { what: TASK_WAIVER, detail: JSON.stringify(detail) });

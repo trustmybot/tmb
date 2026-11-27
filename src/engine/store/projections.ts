@@ -1,8 +1,9 @@
 // Current state is a fold over the events. The live write path and the rebuild both call
 // applyEvent, so a rebuilt projection matches the live one by construction.
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import type { Actor } from "./actor.ts";
+import { type Actor, ROLES } from "./actor.ts";
 import type { ProjectionTable } from "./schema.ts";
+import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, REVIEW_TARGET_KINDS, ValueError, assertOneOf } from "./values.ts";
 
 export const RECORD_KINDS = ["issue", "discussion", "task", "run", "check_run", "review", "guard_decision", "audit", "feature"] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
@@ -29,6 +30,8 @@ type RecordShape = {
   initial?: Record<string, SQLQueryBindings>;
   hasUpdatedAt: boolean;
   searchable: boolean;
+  /** Columns that take a value from a fixed list, checked on each write (trustmybot/tmb#404). */
+  lists?: Record<string, readonly string[]>;
 };
 
 const RECORDS: Record<RecordKind, RecordShape> = {
@@ -39,8 +42,16 @@ const RECORDS: Record<RecordKind, RecordShape> = {
     initial: { state: "open" },
     hasUpdatedAt: true,
     searchable: true,
+    lists: { state: ISSUE_STATES },
   },
-  discussion: { table: "discussions", columns: ["issue_id", "kind", "body"], updatable: [], hasUpdatedAt: false, searchable: true },
+  discussion: {
+    table: "discussions",
+    columns: ["issue_id", "kind", "body"],
+    updatable: [],
+    hasUpdatedAt: false,
+    searchable: true,
+    lists: { kind: DISCUSSION_KINDS },
+  },
   task: {
     table: "tasks",
     columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit", "feature_id", "kind", "main_snapshot", "repo", "replaces"],
@@ -54,6 +65,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
     updatable: ["ended_at", "outcome", "cost", "feature_id"],
     hasUpdatedAt: false,
     searchable: false,
+    lists: { role: ROLES },
   },
   check_run: {
     table: "check_runs",
@@ -68,8 +80,16 @@ const RECORDS: Record<RecordKind, RecordShape> = {
     updatable: [],
     hasUpdatedAt: false,
     searchable: false,
+    lists: { target_kind: REVIEW_TARGET_KINDS },
   },
-  guard_decision: { table: "guard_decisions", columns: ["event", "decision", "reason"], updatable: [], hasUpdatedAt: false, searchable: false },
+  guard_decision: {
+    table: "guard_decisions",
+    columns: ["event", "decision", "reason"],
+    updatable: [],
+    hasUpdatedAt: false,
+    searchable: false,
+    lists: { decision: GUARD_DECISIONS },
+  },
   audit: { table: "audit", columns: ["what", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
   feature: {
     table: "features",
@@ -84,6 +104,19 @@ const RECORDS: Record<RecordKind, RecordShape> = {
 export function tableOf(kind: RecordKind): ProjectionTable {
   return RECORDS[kind].table;
 }
+
+/**
+ * Refuses a new event whose record kind, or a value it sets, is not on its list. Checked when an
+ * event is written, never when one is replayed: a value an older tmb wrote stays in the record.
+ */
+export function assertValues(recordKind: string, data: Record<string, unknown>): void {
+  assertOneOf("record kind", RECORD_KINDS, recordKind);
+  for (const [column, list] of Object.entries(RECORDS[recordKind as RecordKind].lists ?? {})) {
+    if (column in data) assertOneOf(`a ${recordKind}'s ${column}`, list, data[column]);
+  }
+}
+
+export { ValueError };
 
 /** A JSON object or array in event data is stored in its column as JSON text. */
 function toColumnValue(value: unknown): SQLQueryBindings {

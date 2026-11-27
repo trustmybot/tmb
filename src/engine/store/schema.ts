@@ -7,8 +7,8 @@
 export const PROJECTION_TABLES = [
   "discussions",
   "check_runs",
-  "runs",
   "reviews",
+  "runs",
   "guard_decisions",
   "audit",
   "tasks",
@@ -260,7 +260,123 @@ const VERSION_11_SQL = `
 ALTER TABLE features ADD COLUMN drop_reason TEXT;
 `;
 
+// Version 12: the schema checks shape only, and every list of values is checked by the engine
+// (src/engine/store/values.ts), so a new kind, role or state is a code change, never a reshaped
+// table (trustmybot/tmb#404). SQLite cannot drop a CHECK in place, so each table that had one on a
+// list is copied into one without it, rows and ids kept; the events are copied, never rewritten.
+// tmb itself becomes an actor, for a write no person or agent made, named by the part of tmb
+// that made it. The upgrade runs with foreign keys off and checks them all before it commits.
+const VERSION_12_SQL = `
+CREATE TABLE events_v12 (
+  id           TEXT PRIMARY KEY,
+  record_kind  TEXT NOT NULL,
+  record_id    TEXT NOT NULL,
+  type         TEXT NOT NULL,
+  data         TEXT NOT NULL CHECK (json_valid(data)),
+  actor_kind   TEXT NOT NULL,
+  actor_role   TEXT,
+  actor_host   TEXT,
+  actor_source TEXT,
+  at           TEXT NOT NULL,
+  CHECK (
+    (actor_kind = 'human' AND actor_role IS NULL AND actor_host IS NULL AND actor_source IS NULL)
+    OR (actor_kind = 'agent' AND actor_role IS NOT NULL AND actor_host IS NOT NULL AND length(trim(actor_host)) > 0 AND actor_source IS NULL)
+    OR (actor_kind = 'tmb' AND actor_role IS NULL AND actor_host IS NULL AND actor_source IS NOT NULL AND length(trim(actor_source)) > 0)
+  )
+);
+INSERT INTO events_v12 (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at)
+  SELECT id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at FROM events ORDER BY id;
+DROP TABLE events;
+ALTER TABLE events_v12 RENAME TO events;
+CREATE INDEX idx_events_record ON events(record_id, id);
+CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+BEGIN SELECT RAISE(ABORT, 'events are append-only: UPDATE is refused'); END;
+CREATE TRIGGER events_no_delete BEFORE DELETE ON events
+BEGIN SELECT RAISE(ABORT, 'events are append-only: DELETE is refused'); END;
+
+CREATE TABLE issues_v12 (
+  id         TEXT PRIMARY KEY,
+  title      TEXT NOT NULL CHECK (length(trim(title)) > 0),
+  body       TEXT NOT NULL DEFAULT '',
+  state      TEXT NOT NULL DEFAULT 'open',
+  milestone  TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO issues_v12 (id, title, body, state, milestone, created_by, created_at, updated_at)
+  SELECT id, title, body, state, milestone, created_by, created_at, updated_at FROM issues;
+DROP TABLE issues;
+ALTER TABLE issues_v12 RENAME TO issues;
+CREATE INDEX idx_issues_state ON issues(state, id);
+
+CREATE TABLE discussions_v12 (
+  id         TEXT PRIMARY KEY,
+  issue_id   TEXT NOT NULL REFERENCES issues(id),
+  kind       TEXT NOT NULL,
+  body       TEXT NOT NULL CHECK (length(trim(body)) > 0),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+INSERT INTO discussions_v12 (id, issue_id, kind, body, created_by, created_at)
+  SELECT id, issue_id, kind, body, created_by, created_at FROM discussions;
+DROP TABLE discussions;
+ALTER TABLE discussions_v12 RENAME TO discussions;
+CREATE INDEX idx_discussions_issue ON discussions(issue_id, kind, id);
+
+CREATE TABLE runs_v12 (
+  id         TEXT PRIMARY KEY,
+  task_id    TEXT REFERENCES tasks(id),
+  feature_id TEXT REFERENCES features(id),
+  role       TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at   TEXT,
+  outcome    TEXT,
+  cost       TEXT CHECK (cost IS NULL OR json_valid(cost)),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+INSERT INTO runs_v12 (id, task_id, feature_id, role, started_at, ended_at, outcome, cost, created_by, created_at)
+  SELECT id, task_id, feature_id, role, started_at, ended_at, outcome, cost, created_by, created_at FROM runs;
+DROP TABLE runs;
+ALTER TABLE runs_v12 RENAME TO runs;
+CREATE INDEX idx_runs_task ON runs(task_id, id);
+CREATE INDEX idx_runs_feature ON runs(feature_id, id);
+CREATE INDEX idx_runs_open ON runs(role, ended_at, id);
+
+CREATE TABLE reviews_v12 (
+  id          TEXT PRIMARY KEY,
+  run_id      TEXT REFERENCES runs(id),
+  feature_id  TEXT REFERENCES features(id),
+  commit_sha  TEXT,
+  verdict     TEXT NOT NULL,
+  findings    TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(findings)),
+  target_kind TEXT NOT NULL,
+  target      TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+INSERT INTO reviews_v12 (id, run_id, feature_id, commit_sha, verdict, findings, target_kind, target, created_by, created_at)
+  SELECT id, run_id, feature_id, commit_sha, verdict, findings, target_kind, target, created_by, created_at FROM reviews;
+DROP TABLE reviews;
+ALTER TABLE reviews_v12 RENAME TO reviews;
+CREATE INDEX idx_reviews_feature ON reviews(feature_id, id);
+
+CREATE TABLE guard_decisions_v12 (
+  id         TEXT PRIMARY KEY,
+  event      TEXT NOT NULL,
+  decision   TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+INSERT INTO guard_decisions_v12 (id, event, decision, reason, created_by, created_at)
+  SELECT id, event, decision, reason, created_by, created_at FROM guard_decisions;
+DROP TABLE guard_decisions;
+ALTER TABLE guard_decisions_v12 RENAME TO guard_decisions;
+`;
+
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL];
+export const SCHEMA_STEPS: readonly string[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL];
 
 export const SCHEMA_VERSION = SCHEMA_STEPS.length;

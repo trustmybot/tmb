@@ -1,4 +1,5 @@
-export { type Actor, ActorError, ROLES, type Role } from "./actor.ts";
+export { type Actor, ActorError, ROLES, type Role, TMB_SOURCES, type TmbSource } from "./actor.ts";
+export { ValueError } from "./values.ts";
 export { type OpenResult, StoreOpenError, type StoreOpenFailure, currentWriter, openStore } from "./open.ts";
 export { type RecordKind, type StoredEvent } from "./projections.ts";
 export { SCHEMA_VERSION } from "./schema.ts";

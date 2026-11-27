@@ -2,8 +2,8 @@
 // the same transaction; reads come from the projections and return small pieces.
 import type { Database } from "bun:sqlite";
 import { isId, newId } from "../ids.ts";
-import { type Actor, type ActorColumns, type Role, actorColumns, actorFromColumns, assertActor } from "./actor.ts";
-import { type EventType, type RecordKind, type StoredEvent, applyEvent } from "./projections.ts";
+import { type Actor, type ActorColumns, type Role, actorColumns, actorFromColumns, assertWriter } from "./actor.ts";
+import { type EventType, type RecordKind, type StoredEvent, applyEvent, assertValues } from "./projections.ts";
 import { PROJECTION_TABLES } from "./schema.ts";
 
 export const SNIPPET_MAX = 200;
@@ -844,7 +844,9 @@ export class Store {
    * order a rebuild replays them in.
    */
   private append(actor: Actor, recordKind: RecordKind, recordId: string, type: EventType, data: Record<string, unknown>): StoredEvent {
-    assertActor(actor);
+    assertWriter(actor);
+    const stored = asStoredData(data);
+    assertValues(recordKind, stored);
     return this.db
       .transaction(() => {
         const newest = this.db.query("SELECT max(id) AS id FROM events").get() as { id: string | null };
@@ -853,17 +855,17 @@ export class Store {
           recordKind,
           recordId,
           type,
-          data: asStoredData(data),
+          data: stored,
           actor,
           at: this.clock(),
         };
         const who = actorColumns(actor);
         this.db
           .query(
-            `INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, actor_source, at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(event.id, recordKind, recordId, type, JSON.stringify(event.data), who.actor_kind, who.actor_role, who.actor_host, event.at);
+          .run(event.id, recordKind, recordId, type, JSON.stringify(event.data), who.actor_kind, who.actor_role, who.actor_host, who.actor_source, event.at);
         applyEvent(this.db, { ...event, actor: actorFromColumns(who) });
         return event;
       })

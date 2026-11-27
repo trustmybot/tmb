@@ -338,7 +338,7 @@ export const featureWaiveSchema: InputSchema = {
 
 export function featureWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): WaiveResult {
   const given = validateInput<{ feature: string; reason: string }>("feature_waive", featureWaiveSchema, input);
-  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.role} cannot`);
+  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
   const feature = requireOpenFeature(store, given.feature, "there is no review to waive");
   const dir = featureDir(store, context.projectDir, feature);
   const commit = featureTip(dir, feature);
