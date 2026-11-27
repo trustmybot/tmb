@@ -278,25 +278,31 @@ function settingsCheck(env: DoctorEnv, projectDir: string, settings: Settings): 
   return findings;
 }
 
-/** Runs, check runs and open tasks with a start and no end: what may be stuck. */
+/**
+ * Runs and check runs with a start and no end, and open code tasks no run is on: what may be
+ * stuck. A docs task has no run, as the planner writes it itself (trustmybot/tmb#460).
+ */
 export function unfinishedWork(store: Store): string[] {
   const withRuns = store.tasksWithRuns();
   const lines = [
     ...store.unendedRuns().map((run) => `run ${run.id} (${run.role}${run.taskId === null ? "" : `, task ${run.taskId}`}) started ${run.startedAt} and has no end`),
     ...store.unendedCheckRuns().map((check) => `check run ${check.id} (task ${check.taskId}) started ${check.startedAt} and has no end`),
-    ...store.listTasks("open").filter((task) => !withRuns.has(task.id)).map((task) => `task ${task.id} "${task.title}" is open and no agent run is on it`),
+    ...store
+      .listTasks("open")
+      .filter((task) => task.kind !== "docs" && !withRuns.has(task.id))
+      .map((task) => `task ${task.id} "${task.title}" is open and no agent run is on it`),
   ];
   return lines;
 }
 
 function unfinishedCheck(store: Store): Finding {
   const lines = unfinishedWork(store);
-  if (lines.length === 0) return finding("unfinished work", { status: "ok", summary: "every run has an end, and every open task has a run" });
+  if (lines.length === 0) return finding("unfinished work", { status: "ok", summary: "every run has an end, and every open code task has a run" });
   return finding("unfinished work", {
     status: "warn",
     summary: `${lines.length} run${lines.length === 1 ? " or task has" : "s or tasks have"} a start and no end: still running, or stuck`,
     details: lines,
-    fix: { say: "shown only: the planner decides whether to resume, close or leave each" },
+    fix: { say: "shown only: the planner decides whether to leave, resume or drop each" },
   });
 }
 
