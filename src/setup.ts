@@ -50,7 +50,7 @@ import { version as packageVersion } from "./version.ts";
 import { Paint } from "./engine/doors/help.ts";
 import { projectLanguages } from "./engine/doors/command-line.ts";
 import { installsOff, machinePlaces } from "./engine/graph/tool-copy.ts";
-import { type InstallOptions, installTool, missingTools } from "./engine/graph/tool-install.ts";
+import { type InstallOptions, missingTools } from "./engine/graph/tool-install.ts";
 
 /** Answers given on the command line; each one is used without asking. */
 export type SetupFlags = {
@@ -76,7 +76,7 @@ export type SetupOptions = {
   tmbCommand: readonly string[];
   adapters: readonly HostAdapter[];
   flags: SetupFlags;
-  /** Asks on the terminal; null when there is none, so every question takes its default. init asks only whether to install the tools the repo's languages miss. */
+  /** Asks on the terminal; null when there is none, so every question takes its default. init never asks, whatever is given. */
   ask: Ask | null;
   out: (line: string) => void;
   /** The ids of the hosts this release supports; init warns for any other. SUPPORTED_HOST_IDS unless given. */
@@ -87,8 +87,8 @@ export type SetupOptions = {
   colour?: boolean;
   /** The feedback program's environment: init's end on a terminal gives its notice once; the question is the planner's. Nothing is said unless given. */
   feedback?: FeedbackEnv;
-  /** Where and how init installs a tool the repo's languages miss; this machine's places and the global fetch unless given. */
-  tools?: InstallOptions;
+  /** Where init looks for the tools the repo's languages miss; this machine's places unless given. */
+  tools?: Pick<InstallOptions, "places">;
 };
 
 export class SetupError extends Error {
@@ -645,44 +645,32 @@ function howReviewModeIsChosen(role: HostRole, onboard: string): string {
 }
 
 /**
- * The tools the repo's languages miss (CODE_GRAPH.md, "An install is asked for, checked, and never
- * part of a read"): init names them and installs them on a yes. With no one to ask, or on a no,
- * nothing is downloaded and the command that installs them is named; with installs off, nothing is
- * asked. A language's own command is never offered: it is named, as tmb installs no language.
+ * The tools the repo's languages miss (CODE_GRAPH.md, "Where a language's tool comes from"): init
+ * names them and the command that installs them, whose run is the yes. It asks nothing and
+ * downloads nothing (2_ONBOARD.md). With installs off, it says so. A language's own command is
+ * never offered: it is named, as tmb installs no language.
  */
-async function offerTools(options: SetupOptions, code: (text: string) => string): Promise<void> {
+function nameMissingTools(options: SetupOptions, code: (text: string) => string): void {
   const { out } = options;
-  const install = options.tools ?? { places: machinePlaces() };
+  const places = options.tools?.places ?? machinePlaces();
   const languages = projectLanguages(options.projectDir);
   if (languages === null) return;
-  const { offers, notes } = missingTools(languages, install.places);
+  const { offers, notes } = missingTools(languages, places);
   for (const note of notes) out(note);
   if (offers.length === 0) return;
-  const command = code(`${options.program?.name ?? runningName()} tools install`);
   const named = offers.map((offer) => `${offer.tool} (for ${offer.languages.join(", ")})`);
-  if (installsOff(install.places.stateDir)) {
+  if (installsOff(places.stateDir)) {
     out(`The code graph misses ${listed(named)}, and installs are off on this machine: the built-in rules make those languages' links.`);
     return;
   }
-  let yes = false;
-  if (options.ask !== null) {
-    const answer = await options.ask(`The code graph misses ${listed(named)}. Install ${offers.length === 1 ? "it" : "them"} into tmb's tools folder, once for this machine? [y/N]: `);
-    yes = /^y(es)?$/i.test(answer?.trim() ?? "");
-  }
-  if (!yes) {
-    out(`The code graph misses ${listed(named)}: the built-in rules make those languages' links until ${command} installs ${offers.length === 1 ? "it" : "them"}.`);
-    return;
-  }
-  for (const offer of offers) {
-    const result = await installTool(offer.copy, install);
-    out("installed" in result ? `Installed ${offer.tool} at ${result.installed}.` : `${offer.tool} was not installed: ${result.failed}. ${command} tries again.`);
-  }
+  const command = code(`${options.program?.name ?? runningName()} tools install`);
+  out(`The code graph misses ${listed(named)}: the built-in rules make those languages' links until ${command} installs ${offers.length === 1 ? "it" : "them"}.`);
 }
 
 /**
- * `tmb init`. Asks nothing but whether to install the tools the repo's languages miss, and that
- * only on a terminal (trustmybot/tmb#162, trustmybot/tmb#393): the review mode is asked at
- * onboarding. Throws SetupError or SettingError, before writing anything when it can.
+ * `tmb init`. Asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162,
+ * trustmybot/tmb#414): the review mode is asked at onboarding, and a missing tool is named with the
+ * command that installs it. Throws SetupError or SettingError, before writing anything when it can.
  */
 export async function runInit(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
@@ -703,7 +691,7 @@ export async function runInit(options: SetupOptions): Promise<void> {
     out(`The settings are still empty: ${listed(empty)}; ${howEmptySettingsFill(init.role)}. To set them yourself, run ${onboard}.`);
   }
   if (reviewModeMissing(settings.review_mode, settings.repos)) out(howReviewModeIsChosen(init.role, onboard));
-  await offerTools(options, code);
+  nameMissingTools(options, code);
   // The feedback program's notice, once per program on this machine, only on a terminal; its question is the planner's.
   if (options.feedback !== undefined) firstRunAtInit(options.feedback, out);
   // Said again last, so it is not lost above init's other lines.
