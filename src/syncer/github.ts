@@ -38,6 +38,9 @@ export function firstPage(repo: Repo, list: ListName): string {
   }
 }
 
+/** A later page of a list, by its number. */
+export const laterPage = (repo: Repo, list: ListName, page: number): string => `${firstPage(repo, list)}&page=${page}`;
+
 /** The lists that take "updated since", oldest change first, so a long read can resume. */
 export function sincePage(repo: Repo, list: ListName, since: string | null): string | null {
   if (list !== "issues" && list !== "comments" && list !== "review_comments") return null;
