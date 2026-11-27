@@ -14,7 +14,7 @@ import type { SourceLanguage } from "../../src/engine/graph/extract.ts";
 import { listTree, resolveCommit } from "../../src/engine/graph/git-source.ts";
 import { graphCallCounts, graphFunctionLines, languageTexts, parsedFiles, withGraph } from "./graph.ts";
 import { CHECKER_VERSION, checkerDeclarations, type Declaration, type LspPosition } from "./python_checker.ts";
-import { JUDGE, judgeDeclarations } from "./python_judge.ts";
+import { JUDGE, judgeDeclarations, NOT_WRITTEN, type NotWritten } from "./python_judge.ts";
 import { callsAccountedFor, functionsFound, type GraphCall, linksFoundByReference, linksFoundByState, type ReferenceCall, type Way, type WayScores } from "./score.ts";
 import type { Measured } from "./typescript.ts";
 
@@ -84,9 +84,9 @@ export const LINK_CAUSES = {
 } as const;
 
 /** A declaration pyright gives that is a node of the graph: its file, its name, what it is, and the line of the node. */
-type NodeDeclaration = { file: string; name: string; kind: DeclaredKind; line: number };
+type NodeDeclaration = { file: string; name: string; kind: DeclaredKind; line: number; sameVariable?: boolean };
 /** A tool's answer at one place: none, or the declarations it gives, those that are nodes apart. */
-export type CheckerAnswer = { answered: false } | { answered: true; nodes: NodeDeclaration[]; outside: number; inRepo: number };
+export type CheckerAnswer = { answered: false; notWritten?: boolean } | { answered: true; nodes: NodeDeclaration[]; outside: number; inRepo: number };
 
 const placeKey = (file: string, pos: number) => `${file}:${pos}`;
 
@@ -106,7 +106,7 @@ function lspPosition(text: string, pos: number): { line: number; character: numb
 }
 
 /** A tool that names the declarations of the name written at each place asked: pyright, or the second judge. */
-export type Declarations = (root: string, files: ReadonlyMap<string, string>, asked: readonly { file: string; at: LspPosition }[]) => Promise<(Declaration[] | null)[]>;
+export type Declarations = (root: string, files: ReadonlyMap<string, string>, asked: readonly { file: string; at: LspPosition }[]) => Promise<(Declaration[] | null | NotWritten)[]>;
 
 /**
  * A tool's answer, pyright's unless `tool` names another, at each place of the repo at `sha`:
@@ -152,13 +152,13 @@ export async function checkerAnswers(
     const [name, kind, line] = declared;
     // The range is the name's own: a module's range is empty, and never a name's.
     if (d.end.character - d.start.character !== name.length) return null;
-    return { file, name, kind, line };
+    return { file, name, kind, line, ...(d.sameVariable === true ? { sameVariable: true } : {}) };
   };
   const out = new Map<string, CheckerAnswer>();
   asked.forEach((p, i) => {
     const decls = found[i];
-    if (decls === null || decls === undefined) {
-      out.set(placeKey(p.file, p.pos), { answered: false });
+    if (decls === null || decls === undefined || decls === NOT_WRITTEN) {
+      out.set(placeKey(p.file, p.pos), decls === NOT_WRITTEN ? { answered: false, notWritten: true } : { answered: false });
       return;
     }
     const isOwn = (d: Declaration) => {
@@ -226,17 +226,34 @@ export type NamedNodes = ReadonlyMap<string, readonly { name: string; start: num
  * and none is, those outside the repo included. Not judged when the tool gives none.
  */
 export function judgeLink(link: PythonLink, answers: ReadonlyMap<string, CheckerAnswer>, nodes: NamedNodes): "right" | "wrong" | "not judged" {
+  const v = verdictOf(link, answers, nodes);
+  return v === SAME_VARIABLE ? "right" : v;
+}
+
+/** A link right only by a declaration the second judge adds as another binding of the same variable. */
+const SAME_VARIABLE = "right by the same variable";
+
+/**
+ * Whether a right link is right only by a declaration the judge adds, not one it names: another
+ * binding of the same name in the same scope as the one it names (python_judge.py).
+ */
+export function agreedBySameVariable(link: PythonLink, answers: ReadonlyMap<string, CheckerAnswer>, nodes: NamedNodes): boolean {
+  return verdictOf(link, answers, nodes) === SAME_VARIABLE;
+}
+
+function verdictOf(link: PythonLink, answers: ReadonlyMap<string, CheckerAnswer>, nodes: NamedNodes): "right" | "wrong" | "not judged" | typeof SAME_VARIABLE {
   const a = answers.get(placeKey(link.file, link.pos));
   if (a === undefined || !a.answered) return "not judged";
   const holds = (n: { start: number; end: number }, line: number) => n.start <= line && n.end >= line;
-  const right = a.nodes.some(
+  const agreeing = a.nodes.filter(
     (d) =>
       d.file === link.dst &&
       d.name === link.dstName &&
       holds(link, d.line) &&
       !(nodes.get(link.dst) ?? []).some((n) => n.name === d.name && holds(n, d.line) && n.end - n.start < link.end - link.start),
   );
-  return right ? "right" : "wrong";
+  if (agreeing.length === 0) return "wrong";
+  return agreeing.some((d) => d.sameVariable !== true) ? "right" : SAME_VARIABLE;
 }
 
 /** Every call link of the graph from the given files: where it is, and the node it links. */
@@ -302,16 +319,22 @@ export async function measurePython(repoDir: string, sha: string, way: Way): Pro
     const judging = way === "B" ? await checkerAnswers(repoDir, sha, texts, ref, linked, { tool: judgeDeclarations, sites: false }) : answers;
     const judge = way === "B" ? JUDGE : `pyright ${CHECKER_VERSION}`;
     const nodes = namedNodes(db);
-    const verdicts = { right: 0, wrong: [] as string[], notJudged: [] as string[] };
+    const verdicts = { right: 0, sameVariable: [] as string[], wrong: [] as string[], notJudged: [] as string[], notWritten: [] as string[] };
     for (const link of linked) {
-      const v = judgeLink(link, judging, nodes);
+      const v = verdictOf(link, judging, nodes);
+      const at = `${link.file}:${link.line} \`${link.name}\``;
       if (v === "right") verdicts.right++;
-      else if (v === "not judged") verdicts.notJudged.push(`${link.file}:${link.line} \`${link.name}\``);
-      else {
+      else if (v === SAME_VARIABLE) {
+        verdicts.right++;
+        verdicts.sameVariable.push(at);
+      } else if (v === "not judged") {
+        const a = judging.get(placeKey(link.file, link.pos));
+        (a !== undefined && !a.answered && a.notWritten === true ? verdicts.notWritten : verdicts.notJudged).push(at);
+      } else {
         const said = (a: CheckerAnswer | undefined) =>
           a?.answered === true ? [...a.nodes.map((n) => `${n.file}:${n.line} ${n.name}`), ...(a.inRepo > a.nodes.length ? ["a declaration in the repo that is no node"] : []), ...(a.outside > 0 ? ["outside the repo"] : [])].join(" | ") : "no answer";
-        const at = placeKey(link.file, link.pos);
-        verdicts.wrong.push(`${link.file}:${link.line} \`${link.name}\` -> ${link.dst}:${link.start}-${link.end} ${link.dstName}; ${judge}: ${said(judging.get(at))}${way === "B" ? `; pyright: ${said(answers.get(at))}` : ""}`);
+        const key = placeKey(link.file, link.pos);
+        verdicts.wrong.push(`${at} -> ${link.dst}:${link.start}-${link.end} ${link.dstName}; ${judge}: ${said(judging.get(key))}${way === "B" ? `; pyright: ${said(answers.get(key))}` : ""}`);
       }
     }
     const reference = referenceLinks(ref, answers, scored);
@@ -326,7 +349,8 @@ export async function measurePython(repoDir: string, sha: string, way: Way): Pro
     };
     const c = reference.counts;
     const detail = [
-      `links right, by ${judge}: ${linked.length} links, ${verdicts.right} right, ${verdicts.wrong.length} wrong, ${verdicts.notJudged.length} not judged (${judge} gives no answer)${verdicts.notJudged.length > 0 ? `, such as ${verdicts.notJudged.slice(0, EXAMPLES).join(", ")}` : ""}`,
+      `links right, by ${judge}: ${linked.length} links, ${verdicts.right} right, ${verdicts.wrong.length} wrong, ${verdicts.notJudged.length} not judged (${judge} gives no answer)${verdicts.notJudged.length > 0 ? `, such as ${verdicts.notJudged.slice(0, EXAMPLES).join(", ")}` : ""}, ${verdicts.notWritten.length} not judged (${judge}'s answer is ${NOT_WRITTEN})${verdicts.notWritten.length > 0 ? `, such as ${verdicts.notWritten.slice(0, EXAMPLES).join(", ")}` : ""}`,
+      ...(way === "B" ? [`links right, agreed by same variable: ${verdicts.sameVariable.length} of the ${verdicts.right} right, by another binding of the name in the same scope as the one ${judge} names${verdicts.sameVariable.length > 0 ? `, such as ${verdicts.sameVariable.slice(0, EXAMPLES).join(", ")}` : ""}`] : []),
       `reference links: ${c.sites} calls whose callee is a name, ${reference.calls.length} declared as a node, ${c.misplaced} not where Python's parser places them (not judged), ${c.noAnswer} no answer (not judged), ${c.outside} outside the repo, ${c.noNode} declared in the repo as no node`,
       `calls: ${graph.linked + graph.outside + graph.notKnown} with a state, ${graph.linked} linked, ${graph.outside} outside, ${graph.notKnown} not known`,
       `files: ${texts.size} Python files read by the page's rules, ${read.size} parsed by the graph, ${errors.length} Python's parser cannot read`,

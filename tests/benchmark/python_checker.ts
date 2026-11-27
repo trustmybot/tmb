@@ -37,7 +37,8 @@ async function server(): Promise<string> {
 /** A place in a file as the language server counts it: a line from 0 and a character, in UTF-16 units, from 0. */
 export type LspPosition = { line: number; character: number };
 /** A declaration pyright names: its file, as an absolute path, and the range of its name. */
-export type Declaration = { file: string; start: LspPosition; end: LspPosition };
+/** A declaration: where its name is written. `sameVariable`: the second judge adds it as another binding of a variable the judge names. */
+export type Declaration = { file: string; start: LspPosition; end: LspPosition; sameVariable?: boolean };
 
 /**
  * An interpreter that is not there. pyright runs the configured Python to find its installed

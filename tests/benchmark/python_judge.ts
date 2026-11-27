@@ -11,6 +11,10 @@ import path from "node:path";
 import { installJedi, JEDI } from "../lib/pinned-tools.ts";
 import type { Declaration, LspPosition } from "./python_checker.ts";
 
+/** A place where every declaration the judge names is not where the name is written: not judged, and counted apart. */
+export const NOT_WRITTEN = "not where the name is written";
+export type NotWritten = typeof NOT_WRITTEN;
+
 /** The judge's name and version, for the scores' notes. */
 export const JUDGE = `Jedi ${JEDI.version}`;
 
@@ -30,11 +34,14 @@ export function judgeCannotRun(python = judgePython()): string | null {
 }
 
 /**
- * Jedi's declarations for the name written at each place asked, in order: null when it names none.
+ * Jedi's declarations for the name written at each place asked, in order: null when it names none,
+ * NOT_WRITTEN when every place it names is not where the name is written. A declaration Jedi does
+ * not name but the judge adds, another binding of the same variable in the same scope, is marked
+ * `sameVariable`.
  * `files` are the repo's Python files at the commit, by path from `root`, whose working tree is at
  * the commit; `asked` are the places, a file and a position.
  */
-export async function judgeDeclarations(root: string, files: ReadonlyMap<string, string>, asked: readonly { file: string; at: LspPosition }[]): Promise<(Declaration[] | null)[]> {
+export async function judgeDeclarations(root: string, files: ReadonlyMap<string, string>, asked: readonly { file: string; at: LspPosition }[]): Promise<(Declaration[] | null | NotWritten)[]> {
   const python = judgePython();
   const why = judgeCannotRun(python);
   if (why !== null) throw new Error(why);
@@ -44,6 +51,8 @@ export async function judgeDeclarations(root: string, files: ReadonlyMap<string,
   // -S: no site-packages on the path, so Jedi reads no installed package.
   const run = spawnSync(python, ["-I", "-S", SCRIPT], { input: JSON.stringify(request), encoding: "utf8", maxBuffer: 1024 * 1024 * 1024 });
   if (run.error !== undefined || run.status !== 0) throw new Error(`${python} ${SCRIPT} failed: ${run.error?.message ?? run.stderr}`);
-  const { answers } = JSON.parse(run.stdout) as { answers: ([string, number, number, number][] | null)[] };
-  return answers.map((a) => (a === null ? null : a.map(([file, line, start, end]): Declaration => ({ file, start: { line, character: start }, end: { line, character: end } }))));
+  const { answers } = JSON.parse(run.stdout) as { answers: ([string, number, number, number, number][] | null | NotWritten)[] };
+  return answers.map((a) =>
+    a === null || a === NOT_WRITTEN ? a : a.map(([file, line, start, end, same]): Declaration => ({ file, start: { line, character: start }, end: { line, character: end }, ...(same === 1 ? { sameVariable: true } : {}) })),
+  );
 }

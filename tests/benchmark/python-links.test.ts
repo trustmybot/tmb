@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveCommit } from "../../src/engine/graph/git-source.ts";
 import { installPinnedTools, JEDI } from "../lib/pinned-tools.ts";
-import { checkerAnswers, JUDGED_BY, judgeLink, LINK_CAUSES, measurePython, pythonReference, referenceLinks } from "./python.ts";
-import { judgeCannotRun, judgeDeclarations } from "./python_judge.ts";
+import { agreedBySameVariable, checkerAnswers, JUDGED_BY, judgeLink, LINK_CAUSES, measurePython, pythonReference, referenceLinks } from "./python.ts";
+import { judgeCannotRun, judgeDeclarations, NOT_WRITTEN } from "./python_judge.ts";
 import { isRatio } from "./score.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -97,7 +97,9 @@ const DYE = [
 // Names bound twice. Python binds a name at each assignment, `def` or `class`, and all the bindings of
 // a name in one scope are the one variable (the language reference, "Naming and binding"), so each
 // binding is a declaration of it. Jedi names only the binding that reaches the call; pyright, the
-// binding a node is.
+// binding a node is. A binding of the same name in another scope is another variable: a class's own
+// `glaze` is not the file's, and a method's `glaze` is the file's, since a class body is no scope of
+// its methods' names.
 const KILN = [
   "class Kiln:", // 1
   "    def fire(self):", // 2
@@ -113,7 +115,12 @@ const KILN = [
   "    glaze = Kiln", // 12: binds the file's `glaze` again, from inside a function
   "", // 13
   "def fire_all():", // 14
-  "    glaze()", // 15: Jedi names line 12
+  "    glaze()", // 15
+  "", // 16
+  "class Hearth:", // 17
+  "    glaze = lambda: Kiln()", // 18: the class's own `glaze`, a function by Kinds of symbol
+  "    def burn(self):", // 19
+  "        return glaze()", // 20: the file's `glaze`, not the class's
   "",
 ].join("\n");
 
@@ -145,6 +152,8 @@ const FIXTURE_LINKS = [
   "cup.py:5 boil -> brew.py:2",
   "kiln.py:3 heat -> kiln.py:4",
   "kiln.py:15 glaze -> kiln.py:8",
+  "kiln.py:18 Kiln -> kiln.py:1",
+  "kiln.py:20 glaze -> kiln.py:8",
   "mill.py:13 Waterwheel -> mill.py:5",
   "mill.py:14 turn -> mill.py:2",
   "mill.py:15 grind -> mill.py:9",
@@ -152,7 +161,7 @@ const FIXTURE_LINKS = [
 ].sort();
 // `missing_name()`, `w.turn()` and `hopper[0].turn()` have no answer; `len([])` and
 // `hopper.append()` and `staticmethod(heat)` are outside; `fn()` is a parameter.
-const FIXTURE_COUNTS = { sites: 23, misplaced: 0, noAnswer: 3, outside: 3, noNode: 1 };
+const FIXTURE_COUNTS = { sites: 25, misplaced: 0, noAnswer: 3, outside: 3, noNode: 1 };
 
 // The reference and way B load pyright from tmb's tools folder; the setup installs tmb's pinned copy.
 beforeAll(installPinnedTools);
@@ -332,14 +341,18 @@ describe("Jedi as the second judge of Python's links", () => {
     const link = { ...at, dst: "dye.py", dstName: "parse", start: 6, end: 8 };
     // pyright, the reference, declares the class method.
     expect(judgeLink(link, await checkerAnswers(repo, commit, FILES, ref, [at], { sites: false }), nodes)).toBe("right");
-    expect(judgeLink(link, await checkerAnswers(repo, commit, FILES, ref, [at], { tool: judgeDeclarations, sites: false }), nodes)).toBe("not judged");
+    const judged = await checkerAnswers(repo, commit, FILES, ref, [at], { tool: judgeDeclarations, sites: false });
+    expect(judgeLink(link, judged, nodes)).toBe("not judged");
+    // Counted apart from a place Jedi gives no answer for.
+    expect(judged.get(`dye.py:${at.pos}`)).toEqual({ answered: false, notWritten: true });
   });
 
-  test("each binding of a name in its scope is a declaration Jedi gives, though it names only the binding that reaches the call", async () => {
+  test("each binding of a name in the same scope is a declaration Jedi gives, though it names only the binding that reaches the call; one in another scope is not", async () => {
     const ref = pythonReference(FILES);
     const asked = [
       { file: "kiln.py", pos: offsetOf(KILN, 3, "heat") },
       { file: "kiln.py", pos: offsetOf(KILN, 15, "glaze") },
+      { file: "kiln.py", pos: offsetOf(KILN, 20, "glaze") },
     ];
     const answers = await checkerAnswers(repo, commit, FILES, ref, asked, { tool: judgeDeclarations, sites: false });
     const nodes = new Map([
@@ -352,6 +365,9 @@ describe("Jedi as the second judge of Python's links", () => {
           { name: "glaze", start: 8, end: 8 },
           { name: "load", start: 10, end: 12 },
           { name: "fire_all", start: 14, end: 15 },
+          { name: "Hearth", start: 17, end: 20 },
+          { name: "glaze", start: 18, end: 18 },
+          { name: "burn", start: 19, end: 20 },
         ],
       ],
     ]);
@@ -360,6 +376,13 @@ describe("Jedi as the second judge of Python's links", () => {
     expect(judgeLink(link(asked[0]!, "fire", 2, 3), answers, nodes)).toBe("wrong");
     expect(judgeLink(link(asked[1]!, "glaze", 8, 8), answers, nodes)).toBe("right");
     expect(judgeLink(link(asked[1]!, "load", 10, 12), answers, nodes)).toBe("wrong");
+    // Jedi names `heat = staticmethod(heat)`: the `def` above it, in the same class body, agrees only
+    // as another binding of that variable, and is counted so.
+    expect(agreedBySameVariable(link(asked[0]!, "heat", 4, 5), answers, nodes)).toBe(true);
+    // The boundary: the class's own `glaze` is the same name in another scope, so it never agrees.
+    expect(judgeLink(link(asked[2]!, "glaze", 8, 8), answers, nodes)).toBe("right");
+    expect(judgeLink(link(asked[2]!, "glaze", 18, 18), answers, nodes)).toBe("wrong");
+    expect(judgeLink(link(asked[1]!, "glaze", 18, 18), answers, nodes)).toBe("wrong");
   });
 
   test("way B's links right is judged by Jedi, not by pyright, which made them", async () => {
@@ -370,7 +393,9 @@ describe("Jedi as the second judge of Python's links", () => {
     // `Tint.parse` in dye.py too, which Jedi does not judge. Jedi answers for every other link.
     const wayBLinks = FIXTURE_LINKS.length - 1;
     if (isRatio(scores.linksRight)) expect(scores.linksRight).toMatchObject({ n: wayBLinks, of: wayBLinks });
-    expect(detail.some((d) => d.startsWith(`links right, by Jedi ${JEDI.version}: ${wayBLinks + 1} links, ${wayBLinks} right, 0 wrong, 1 not judged`))).toBe(true);
+    expect(detail.some((d) => d.startsWith(`links right, by Jedi ${JEDI.version}: ${wayBLinks + 1} links, ${wayBLinks} right, 0 wrong, 0 not judged (Jedi ${JEDI.version} gives no answer), 1 not judged (Jedi ${JEDI.version}'s answer is ${NOT_WRITTEN}), such as dye.py:11 \`parse\``))).toBe(true);
+    // The links right only by another binding of the same variable are shown apart: kiln.py's `heat`.
+    expect(detail.some((d) => d.startsWith("links right, agreed by same variable: ") && d.includes("kiln.py:3 `heat`"))).toBe(true);
     expect(reference).toContain("Jedi");
   });
 });
