@@ -58,7 +58,7 @@ tmb is a harness that is not built into the agent. The host runs the agent's loo
 | [TRAJECTORY.md](TRAJECTORY.md) | What is recorded, and how is work resumed from it? |
 | [CODE_GRAPH.md](CODE_GRAPH.md) | How is the code graph built and queried? |
 | [DISTRIBUTION.md](DISTRIBUTION.md) | How is tmb packaged, installed and updated? |
-| [tests/README.md](../../tests/README.md) | How is tmb tested, and which tests does each level add? |
+| [tests/README.md](../../tests/README.md) | How is tmb tested, and where is each layer's tests described? |
 | [GLOSSARY.md](GLOSSARY.md) | What does each word mean, and what did the plugin call it? |
 
 ## Decided
