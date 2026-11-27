@@ -38,6 +38,7 @@ The rule in one or two sentences.
 
 | Rule | Good | Bad |
 |---|---|---|
+| **One page, one area.** A page covers its own area only. Where it must touch another area, it says so in one line and links to the page that owns it. | "The record's file and its states are in TRAJECTORY.md." | A memory page that also explains where the record lives, how gates fail and what the health check does |
 | **Logic chain.** The order of the sections is the order of the design itself: each one builds on those before it, and none needs a later one to make sense. | "Idea to goal" first, because the roles and checks that follow exist to serve it | "One owner per check" first, before the reader knows what is being checked |
 | **High to low.** Inside a section, start with the rule, then the common case, then the edge cases. | Rule, Example 1, Example 2, Edge case | Opening a section with a corner case or the history |
 | **One item, one rule.** Each section states one rule in one or two sentences. | "What code can check, code checks." | A paragraph that holds four rules |
@@ -87,6 +88,7 @@ A page is as short as its design allows. Cut words before cutting rules.
 
 - **Example 1.** "In order to make sure that" becomes "so".
 - **Example 2.** A sentence that only introduces the next sentence is deleted.
+- **Example 3.** A section about another page's area becomes one line and a link.
 - **Edge case.** A page still too long after cutting is two pages: the high-level one keeps the rules and one example each, and a low-level page takes the remaining cases.
 
 ## Exceptions
@@ -102,6 +104,7 @@ A page is as short as its design allows. Cut words before cutting rules.
 | Check | Pass when |
 |---|---|
 | First screen | The purpose and the chart fit without scrolling |
+| Area | Every section belongs to this page's area; another area is one line and a link |
 | Order | The headings alone, read in order, tell the design |
 | Each section | It has one rule of one or two sentences and at least one example |
 | Wording | No sentence needs a second reading |
