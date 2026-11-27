@@ -132,7 +132,7 @@ Each language is a module of its own. Every module answers the same questions fo
 | Go | Yes | Yes |
 | Java | Yes | Yes |
 | Rust | Yes | Yes |
-| C, C++ | Yes, except a function that only a macro's expansion defines: the built-in rules expand no macro (Planned, trustmybot/tmb#431: clangd supplies these). Planned (trustmybot/tmb#387): an `#if` that cuts a construct can hide a function | Yes |
+| C, C++ | Yes, except a function that only a macro's expansion defines: the built-in rules expand no macro (Planned, trustmybot/tmb#431: clangd supplies these) | Yes |
 | bash, SQL, Perl | Planned (trustmybot/tmb#141) | No |
 
 ## Links on proof
@@ -419,6 +419,10 @@ The cases of [Kinds of symbol](#kinds-of-symbol). How two languages write each k
   - **Edge case 2.** A Python field has no declaration: `self.owner = owner` in any method creates it. The field's node is that name on the class, and each assignment is a write link.
   - **Edge case 3.** A method written outside its type's body, as Go's `func (c Cart) Total()` or a C++ `Cart::total` in another file. It is still named through its type, `Cart.Total`. It is held by the type when the same file declares the type, else by its file.
   - **Edge case 4.** A method listed in a type that has no name, as Go's `func f(x interface{ M() })`. No type node can hold it, so it is no node.
+- **A C or C++ conditional is read as the compiler reads it: one group.** The built-in rules run no preprocessor and do not know which group is live. Where an `#if` cuts a construct in two, they read its first group and skip the others, so the function around it is still a node.
+  - **Example.** A function's signature is written twice, under `#ifdef _WIN32` and `#else`, with one body after. The first signature and the body make one node.
+  - **Edge case 1.** A function defined inside a group links only from calls in the same group.
+  - **Edge case 2.** A `#define` in a skipped group still blocks a link to that name: the name may be a macro there.
 
 ### How a name is looked up
 
@@ -1135,7 +1139,6 @@ All are FTS5 virtual tables.
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
-| A C or C++ `#if` that cuts a construct hides no function | trustmybot/tmb#387 |
 | A C or C++ function that a macro's expansion defines is a node, supplied by clangd | trustmybot/tmb#431 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
