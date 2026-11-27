@@ -36,8 +36,8 @@ Each layer owns one level of quality, and no layer repeats another's check. [3_T
 
 - **Workflow backbone, always available.** Init writes the worker and the reviewer into the project in the host's own format. It replaces and removes only role files it wrote ([ENGINE.md](ENGINE.md#what-tmb-writes-and-where)).
 - **The host starts them.** tmb starts no agent, runs no model and never reads a login ([ADAPTERS.md](ADAPTERS.md)).
-- **Identity and context.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned.
-- **Agents the project creates.** Planned ([Agents a project creates](#agents-a-project-creates)).
+- **Identity and context.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned (trustmybot/tmb#436).
+- **Agents the project creates.** Planned (trustmybot/tmb#437) ([Agents a project creates](#agents-a-project-creates)).
 
 ## Planner (bro)
 
@@ -64,7 +64,7 @@ The planner's persona is not a role file. The engine gives it to the host's main
 | **Closes with the checks** | It runs the brief's checks, commits, and asks the engine to close. A refused close names what failed. The worker fixes it and closes again. |
 | **Reports against every success criterion** | With the command or output that shows it, what it did not verify, and what the planner must decide. |
 | **Stops and reports instead of guessing** | On a contradictory spec, a missing fact, or three failed attempts at one approach. |
-| **Hands back** | Planned: when the work will not fit its turns, it commits a checkpoint so the next run resumes. |
+| **Hands back** | Planned (trustmybot/tmb#438): when the work will not fit its turns, it commits a checkpoint so the next run resumes. |
 
 - **Edge case.** The gate denies an action. That is a hard stop on that action: the worker reaches that effect no other way.
 
@@ -153,11 +153,11 @@ Two sessions of one host may both be planners. Two hosts may share a project too
 ### Planned for lanes
 
 - **Session start says which session started each open task** (trustmybot/tmb#63).
-- **The planner's prompt guides parallel work.** The planner proposes a split and never starts sessions unasked. It reads each issue's likely files from the code graph and keeps issues that touch the same files in one session. It tells the Human which overlaps it could not remove, and the Human approves the split.
+- **The planner's prompt guides parallel work** (trustmybot/tmb#443). The planner proposes a split and never starts sessions unasked. It reads each issue's likely files from the code graph and keeps issues that touch the same files in one session. It tells the Human which overlaps it could not remove, and the Human approves the split.
 
 ## Agents a project creates
 
-**Planned.** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer: its file is written per host, its runs are recorded, its tool calls are role-checked, and its work passes the same checkpoints. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
+**Planned (trustmybot/tmb#437).** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer: its file is written per host, its runs are recorded, its tool calls are role-checked, and its work passes the same checkpoints. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
 
 A consultant is one kind of created agent. It keeps three rules:
 

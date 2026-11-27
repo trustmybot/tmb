@@ -2,7 +2,7 @@
 
 How a project adds to its team: skills, published capabilities (cheatcodes), created agents and consultants. This page holds every case of flows 4.1 to 4.4 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [ROLES.md](../architecture/ROLES.md).
 
-tmb ships three roles: planner, worker and reviewer. Everything else on this page is **Planned**.
+tmb ships three roles: planner, worker and reviewer. Everything else on this page is **Planned**: tmb's own skills (trustmybot/tmb#436), cheatcodes (trustmybot/tmb#112), and created agents, project skills and consultants (trustmybot/tmb#437).
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ This one rule holds for all four flows. Nothing is written without the approval.
 
 ## Skills
 
-**Planned.** Flow 4.3: a recurring pattern becomes a project skill.
+**Planned (trustmybot/tmb#437).** Flow 4.3: a recurring pattern becomes a project skill.
 
 ```mermaid
 flowchart TD
@@ -43,7 +43,7 @@ flowchart TD
 
 ### tmb's own skills
 
-**Planned.** A tmb skill holds one situational procedure of tmb's own harness. A role loads it when its trigger fires, so the role's always-loaded prompt stays short. Skills are written once, host-neutral, like the roles, and each adapter writes them in its host's format.
+**Planned (trustmybot/tmb#436).** A tmb skill holds one situational procedure of tmb's own harness. A role loads it when its trigger fires, so the role's always-loaded prompt stays short. Skills are written once, host-neutral, like the roles, and each adapter writes them in its host's format.
 
 ```mermaid
 flowchart LR
@@ -55,7 +55,7 @@ flowchart LR
 
 What goes in a role's prompt, a skill or code is decided by the placement test in [JUDGMENT_LAYER.md](../prompt-engineering/JUDGMENT_LAYER.md).
 
-The procedures in tmb's flows that a skill would hold. **The whole table is Planned, and the names are not fixed.**
+The procedures in tmb's flows that a skill would hold. **The whole table is Planned (trustmybot/tmb#436), and the names are not fixed.**
 
 | Procedure | Loaded by | When |
 |---|---|---|
@@ -192,7 +192,7 @@ Acquisition must be reversible. In one transaction, an uninstall reverses each r
 
 ## Created agents
 
-**Planned.** Flow 4.2. tmb manages a created agent the way it manages the worker and the reviewer, from its first run: its runs are recorded, its tool calls are role-checked and its work passes the same checkpoints ([ROLES.md](../architecture/ROLES.md)).
+**Planned (trustmybot/tmb#437).** Flow 4.2. tmb manages a created agent the way it manages the worker and the reviewer, from its first run: its runs are recorded, its tool calls are role-checked and its work passes the same checkpoints ([ROLES.md](../architecture/ROLES.md)).
 
 ```mermaid
 flowchart TD
@@ -224,7 +224,7 @@ flowchart TD
 
 ## Consultants
 
-**Planned.** Flow 4.4. A consultant is one kind of created agent: it advises, and never decides or writes workflow state ([ROLES.md](../architecture/ROLES.md)).
+**Planned (trustmybot/tmb#437).** Flow 4.4. A consultant is one kind of created agent: it advises, and never decides or writes workflow state ([ROLES.md](../architecture/ROLES.md)).
 
 ```mermaid
 flowchart TD

@@ -73,16 +73,16 @@ A person working with agents needs a memory that a remote has no place for: whic
 | The project is | What the record does | |
 |---|---|---|
 | A repo with no remote | Everything is local. The backup push is recorded as not run | |
-| A repo with the user's own remote, worked on alone | Mirrors the remote's issues, comments, milestones and pull requests | Planned |
-| A repo shared with teammates | The same, and each mirrored row names the account that wrote it. Work assigned to someone else is left alone | Planned |
-| A fork | Two remotes. Issues come from the upstream, the branch is pushed to the fork, and the pull request names both. Which remote is the upstream is a setting | Planned |
-| A repo that takes pull requests from other people's forks | Each is a pull request row whose branch is in another remote, with its author and no task | Planned |
-| A repo whose issues are kept in another repository | Which repository the issues come from is a setting. The issue names its own repository | Planned |
-| A repo with several remotes, such as a mirror | One remote is the one issues come from, by the same setting. The others only take pushes | Planned |
-| A multi-repo workspace | One record. Each row names its repo, and each repo is mirrored from its own remote | Planned: the mirror |
-| A remote tmb cannot read: not GitHub, or no sign-in | Works as local. Pushes still go, and the record says the remote is not read | Planned |
+| A repo with the user's own remote, worked on alone | Mirrors the remote's issues, comments, milestones and pull requests | Planned (trustmybot/tmb#70) |
+| A repo shared with teammates | The same, and each mirrored row names the account that wrote it. Work assigned to someone else is left alone | Planned (trustmybot/tmb#411) |
+| A fork | Two remotes. Issues come from the upstream, the branch is pushed to the fork, and the pull request names both. Which remote is the upstream is a setting | Planned (trustmybot/tmb#411) |
+| A repo that takes pull requests from other people's forks | Each is a pull request row whose branch is in another remote, with its author and no task | Planned (trustmybot/tmb#405) |
+| A repo whose issues are kept in another repository | Which repository the issues come from is a setting. The issue names its own repository | Planned (trustmybot/tmb#411) |
+| A repo with several remotes, such as a mirror | One remote is the one issues come from, by the same setting. The others only take pushes | Planned (trustmybot/tmb#411) |
+| A multi-repo workspace | One record. Each row names its repo, and each repo is mirrored from its own remote | Planned (trustmybot/tmb#70): the mirror |
+| A remote tmb cannot read: not GitHub, or no sign-in | Works as local. Pushes still go, and the record says the remote is not read | Planned (trustmybot/tmb#70) |
 | A second clone of the same repo on one machine | A second project with its own record. A task's worktree is not a clone: it shares its project's record | |
-| The same repo on a second machine | The record is per machine and out of git. Mirrored issues come back with the first full pass. Local issues, tasks and runs stay on the first machine | Planned: the mirror |
+| The same repo on a second machine | The record is per machine and out of git. Mirrored issues come back with the first full pass. Local issues, tasks and runs stay on the first machine | Planned (trustmybot/tmb#70): the mirror |
 
 - **Edge case.** A repo gains a remote later. Its local issues stay local until the Human publishes each one.
 - **Edge case.** A repo loses its remote, or the user loses access. The mirrored rows are kept and marked gone from the remote; nothing is deleted.
@@ -168,7 +168,7 @@ flowchart TD
 | Review | The run that wrote it |
 | Check run | Its task and its commit |
 
-To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. The tree starts at the run. Planned: the session level and the link from a run to its session.
+To find what is stuck, follow the records with no end downward: the lowest one is where the work stopped. The tree starts at the run. Planned (trustmybot/tmb#63): the session level and the link from a run to its session.
 
 - **Example.** A push tmb makes for an agent is that agent's. A push typed by hand is the Human's.
 - **Edge case.** Every command-line call is the Human's ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
@@ -204,7 +204,7 @@ stateDiagram-v2
 - **Example.** A reviewer gives no verdict. Its run is stopped.
 - **Edge case.** The gate allows a start and the host then fails to make the agent. No agent ran, so no stop would come to end the run. The run is stopped.
 - **A denied start opens no run.** It is recorded as a guard decision with its reason, so "why did the worker never start?" has a record.
-- **The planner's own turns are not a run.** They belong to the session record, which is Planned.
+- **The planner's own turns are not a run.** They belong to the session record, which is Planned (trustmybot/tmb#63).
 - **A reviewer that is a host's main agent** is in [ADAPTERS.md](ADAPTERS.md).
 
 **Cost is tokens, per model:** input, output, cache read and cache write, given by the host's adapter.
@@ -248,7 +248,7 @@ stateDiagram-v2
 
 - **Example.** An allow is recorded with the reason. A deny is recorded with the reason and what would be allowed.
 - **Edge case.** A task's start and close are not events: a refusal there writes no guard decision.
-- **A decision is written once, when it is made.** Planned: a start written before the hook's work, so a hook that hangs or crashes leaves a record.
+- **A decision is written once, when it is made.** Planned (trustmybot/tmb#445): a start written before the hook's work, so a hook that hangs or crashes leaves a record.
 
 ## 8. A session holds the runs
 
@@ -328,7 +328,7 @@ The file sits inside the project's folder and is left out of git. The engine cre
 | Who waived this review? | The waiver, with its reason and its commit |
 | What did this task cost? | The cost on its runs, in tokens per model |
 | Why three re-runs of this task? | The task's events in order, with its runs and reviews ([3_TASKS.md](../flows/3_TASKS.md#task-lifecycle)) |
-| Why does this session never end? | Planned, with the session record |
+| Why does this session never end? | Planned (trustmybot/tmb#63), with the session record |
 
 ## Details: schema
 
@@ -336,14 +336,14 @@ Everything above is the high level: what the record is for and its rules. From h
 
 The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and left out of git. Its schema is `src/engine/store/schema.ts`, at `SCHEMA_VERSION = 13` (`PRAGMA user_version`). The code graph has its own file and schema ([CODE_GRAPH.md](CODE_GRAPH.md#schema)); no foreign key crosses between the two.
 
-**This section is the one schema the record is built to.** A table or column marked Planned, with its issue, is not built yet; one marked "goes" is built and will be removed. Everything unmarked is built. A schema change updates this section in the same pull request. Planned: a generator with a freshness test that fails when it drifts.
+**This section is the one schema the record is built to.** A table or column marked Planned, with its issue, is not built yet; one marked "goes" is built and will be removed. Everything unmarked is built. A schema change updates this section in the same pull request. Planned (trustmybot/tmb#440): a generator with a freshness test that fails when it drifts.
 
 The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
 - **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`. Planned: `sessions`, `pull_requests`, `milestones`, `issue_links`, `docs`.
 - **Search** — `search`, one full-text index.
-- **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned), where each poll of the remote stopped.
+- **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned, trustmybot/tmb#70), where each poll of the remote stopped.
 
 ```mermaid
 flowchart LR
@@ -428,7 +428,7 @@ In each table an empty last cell means built.
 Table constraint: a `human` actor has no role and no host; an `agent` actor has both; a `tmb` actor has no role and no host, and has a source. A NULL host on an agent, or a NULL source on tmb, is refused.
 
 - **Example.** An upgrade moves a fact to a new record. It writes the event as `tmb`, source `upgrade`.
-- **Example, Planned.** A pull request is merged in the browser. The syncer writes one `updated` event: actor `tmb`, source `syncer`, `actor_remote` the account that merged it.
+- **Example, Planned (trustmybot/tmb#70).** A pull request is merged in the browser. The syncer writes one `updated` event: actor `tmb`, source `syncer`, `actor_remote` the account that merged it.
 - **Edge case.** A write with an unknown record kind or role is still refused, by the engine.
 - **Edge case.** A tool call or a hook names itself as tmb. The engine refuses it: only the engine's own code writes as tmb. A push hook that names tmb is taken as the Human's.
 
@@ -862,8 +862,8 @@ Planned, with each table above: one index per new foreign key column, in the sam
 ### How the groups connect
 
 - Every task belongs to one issue. A task may also belong to a feature branch, and may name the dropped task it replaces.
-- A discussion belongs to one issue. Planned: or to one pull request.
-- A run links to what it worked on: a task, or a feature branch for a branch review. A review names the commit it judged, the run that wrote it, and its feature branch. Planned: or its task.
+- A discussion belongs to one issue. Planned (trustmybot/tmb#405): or to one pull request.
+- A run links to what it worked on: a task, or a feature branch for a branch review. A review names the commit it judged, the run that wrote it, and its feature branch. Planned (trustmybot/tmb#406): or its task.
 - A feature branch and a task record the repo they were cut in; NULL is the project folder itself.
 - Settings are not a table of values: each change to a setting is a `setting_changes` row, and the newest row that sets a value is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305): the values move to a config file, and the record keeps only the trail.
 - A few references are soft: `reviews.target`, `tasks.branch`, every commit column and every remote account hold a name or a SHA with no declared foreign key.
@@ -872,7 +872,7 @@ Planned, with each table above: one index per new foreign key column, in the sam
 
 - **Events are append-only.** Two triggers refuse any UPDATE or DELETE on `events`.
 - **Current state is a fold.** The live write path and the rebuild apply the same function to each event, so a rebuilt projection matches the live one.
-- **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions`, `waivers`, `setting_changes`, `feedback_reports` and `imports` rows never change. Planned: a mirrored comment is the one discussion that may.
+- **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions`, `waivers`, `setting_changes`, `feedback_reports` and `imports` rows never change. Planned (trustmybot/tmb#70): a mirrored comment is the one discussion that may.
 - **Every write has an actor.** The Human, or an agent named by its role and host. A human actor carries no role or host; an agent actor carries both. Or tmb, named by its source.
 - **The remote is the truth for what it holds.** Planned (trustmybot/tmb#70). A mirrored row changes only by an event the syncer wrote, or by a write tmb first made on the remote at the Human's word.
 - **Verdicts are append-only.** A new review adds a row. A review names the exact commit it judged, so a later commit is never taken as reviewed.

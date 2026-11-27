@@ -100,7 +100,7 @@ The planner asks through its host's question tool. A person who has never used t
 - **Edge case.** A card that asks for consent recommends nothing.
 - **Repo modes are asked only in a multi-repo workspace.** A project of one repo takes the project's mode.
 
-Planned:
+Planned (trustmybot/tmb#441):
 
 - **The feature comes first.** The question opens by saying what tmb does here, in one or two sentences, and then asks.
 - **tmb's own names.** A card uses the name tmb uses everywhere, such as docs task or review mode, and says what it means.

@@ -211,7 +211,7 @@ flowchart TD
 - **Labels come from the form on both routes.** GitHub drops the labels of an issue filed through its API by someone who cannot write to the repo. So a report filed through the CLI carries one hidden line, `<!-- tmb-feedback form=bug.yml -->`, and a workflow on the repo adds that form's labels.
 - **A report holds no source code, file contents, prompts, agent messages or environment variables.**
 - **Edge case.** For an opened form the record cannot know whether the user pressed submit.
-- **Planned.** A check for an earlier or matching report before a new one is offered.
+- **Planned (trustmybot/tmb#446).** A check for an earlier or matching report before a new one is offered.
 
 ## Debugging
 

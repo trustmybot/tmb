@@ -414,7 +414,7 @@ The cases of [Kinds of symbol](#kinds-of-symbol). How two languages write each k
 - **A member is always inside its type.**
   - **Example 1.** A class `Cart` with a method `total` gives two nodes in either language: the type `Cart` and the method `Cart.total`.
   - **Example 2.** Python's `@property def items(self)` is read as `cart.items`, with no call marks. It is an accessor, so it is a method node. The data behind it, `self._items`, is the field.
-  - **Example 3.** Planned: `Cart.items` as a field node, so "who reads or writes `Cart.items`" has an answer.
+  - **Example 3.** Planned (trustmybot/tmb#312): `Cart.items` as a field node, so "who reads or writes `Cart.items`" has an answer.
   - **Edge case 1.** A field whose value is a function, `onChange = () => {}`. It is called like a method, so it is a callable node.
   - **Edge case 2.** A Python field has no declaration: `self.owner = owner` in any method creates it. The field's node is that name on the class, and each assignment is a write link.
   - **Edge case 3.** A method written outside its type's body, as Go's `func (c Cart) Total()` or a C++ `Cart::total` in another file. It is still named through its type, `Cart.Total`. It is held by the type when the same file declares the type, else by its file.
@@ -785,7 +785,7 @@ flowchart LR
 
 #### What the file holds
 
-**This section lists every table and column of the graph file.** A schema change updates it in the same pull request. Planned: a generator with a freshness test that fails when it drifts.
+**This section lists every table and column of the graph file.** A schema change updates it in the same pull request. Planned (trustmybot/tmb#440): a generator with a freshness test that fails when it drifts.
 
 | Group | Tables | Rebuilt from |
 |---|---|---|

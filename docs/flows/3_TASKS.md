@@ -45,7 +45,7 @@ flowchart LR
 ```
 
 - **Failures return to their owner.** A failed check goes back to the author, a review finding to the author, a design misfit to the planner's spec.
-- **Leaks point upstream.** When a later step or CI catches a cheap check, the fix is to move that check into the step that owns it. A leak rate per step as the health metric is Planned.
+- **Leaks point upstream.** When a later step or CI catches a cheap check, the fix is to move that check into the step that owns it. A leak rate per step as the health metric is Planned (trustmybot/tmb#439).
 
 ## 3.1 Code task
 
@@ -70,8 +70,8 @@ Any change that touches code. The planner plans and judges, a worker implements,
   - **Example 1.** The commit changes a file the spec does not list. The close names the file and the spec stays as written. The planner or the reviewer checks those names with git.
   - **Example 2.** A file in the main folder changed since the task started. The close lists each one with the command that puts it back, and the planner raises the list to the Human. tmb puts nothing back, because the change may be the Human's own.
 - **Two tasks may change the same file.** There is no lock. git settles it at the fold, and a clash holds back the later task's close.
-- **The planner closes the issue.** Planned: it closes itself once all its tasks' commits reach the base branch.
-- **Planned at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
+- **The planner closes the issue.** Planned (trustmybot/tmb#438): it closes itself once all its tasks' commits reach the base branch.
+- **Planned (trustmybot/tmb#439) at close:** a changelog check, a stale-doc check and a leak check, a probe for each open finding, and a code graph check that no downstream caller breaks.
 
 ## 3.2 Non-code task
 
@@ -91,7 +91,7 @@ tmb calls it a **docs task**: a change to docs or prompts that changes no behavi
 | The reviewer finds the docs task changed behaviour | A blocking finding: that part is redone as a code task |
 | Fold conflict, rebase conflict, or a failing check after rebase | As for a code task ([3.4](#34-retry-and-escalation)) |
 
-- **Planned: the doc-review skill.** The author's self-check and the reviewer's matching checklist.
+- **Planned (trustmybot/tmb#436): the doc-review skill.** The author's self-check and the reviewer's matching checklist.
 
 ## 3.3 Push gate
 
@@ -111,8 +111,8 @@ Every failure and its path, in the order a task meets them. Nothing here waits f
 |---|---|
 | A worker start names no open task | The start is denied, with what would be allowed; the guard decision is recorded |
 | The host fails to make the worker | The run ends as stopped, in the record |
-| Worker runs out of turns | **Planned:** it commits a checkpoint and hands back; the next run resumes |
-| Broken environment or contradictory spec | The worker stops and reports. **Planned:** the task is marked failed and the planner reopens it |
+| Worker runs out of turns | **Planned (trustmybot/tmb#438):** it commits a checkpoint and hands back; the next run resumes |
+| Broken environment or contradictory spec | The worker stops and reports. **Planned (trustmybot/tmb#438):** the task is marked failed and the planner reopens it |
 | A check fails at close | The close is refused and names the check, and the failing check run is recorded. The task stays open; the worker fixes and closes again |
 | Uncommitted work at close | The close is refused and names the files; then as for a failed check |
 | Fold or rebase conflict | The step is undone and names the files; the task stays open until settled |
@@ -123,15 +123,15 @@ Every failure and its path, in the order a task meets them. Nothing here waits f
 | Checks fail after a truest rebase | The rebase is undone and the task is open again; the worker fixes and closes again |
 | Rebased truest commit whose change differs | The task stays in review: one new review of the rebased commit |
 | A push carries a commit no pass or waiver covers | git refuses the push; the guard decision is recorded |
-| A check or a comment fails an open pull request | The planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned:** bringing the comments in ([3.5](#35-pr-comment-triage)) |
+| A check or a comment fails an open pull request | The planner starts fix tasks on the branch; nothing is pushed until the new tip is reviewed or waived. **Planned (trustmybot/tmb#70):** bringing the comments in ([3.5](#35-pr-comment-triage)) |
 | Pull request closed without a merge | The branch is recorded as closed and named at session start; a new pull request or a rework task reopens it |
-| Work merged outside the flow | The push gate refuses the uncovered push. **Planned:** its open tasks close, each recorded as a bypass when no review passed |
-| Design drift | The planner drops the task and replaces it. **Planned:** the planner amends the spec and reopens |
+| Work merged outside the flow | The push gate refuses the uncovered push. **Planned (trustmybot/tmb#438):** its open tasks close, each recorded as a bypass when no review passed |
+| Design drift | The planner drops the task and replaces it. **Planned (trustmybot/tmb#438):** the planner amends the spec and reopens |
 | Wrong approach, or nobody will finish | The planner or the Human drops the task with a reason; a new task names the one it replaces |
 | Nobody will merge the feature branch | The branch is dropped with a reason and kept in git |
 | A run started and never ended | Named at the next session start and by the health check; the planner decides |
 
-- **Rework is bounded** (Planned). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
+- **Rework is bounded** (Planned, trustmybot/tmb#400). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
 - **Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
 
 ## 3.5 PR comment triage
@@ -179,7 +179,7 @@ stateDiagram-v2
 | ready | Covered by a pass or a waiver in a repo with no remote, waiting for the Human's local merge |
 | closed | Final. An agile task is folded, with its mode recorded; the review or waiver is on the feature branch. A truest task has its pull request |
 | dropped | Final, with a reason. The task that replaces it names it |
-| failed | **Planned.** A task whose worker stopped on a broken environment or a contradictory spec ([3.4](#34-retry-and-escalation)) |
+| failed | **Planned (trustmybot/tmb#438).** A task whose worker stopped on a broken environment or a contradictory spec ([3.4](#34-retry-and-escalation)) |
 
 - **Closed and dropped are final.** Rework on closed agile work is a new fix task on the feature branch. A dropped task's work reaches no branch. A new task can name the dropped task it replaces, so a chain of retries reads as one line.
 - **In review keeps its worktree.** Nothing is pushed. Only a reviewer run records the verdict, and only on the task's current commit.
@@ -188,9 +188,9 @@ stateDiagram-v2
 - **An agile task closes unreviewed.** Its review state is on the feature branch, not the task ([3_WORKFLOW.md](3_WORKFLOW.md#review-state)).
 - **Review is the default, and only the Human waives it.** A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner never waives.
 - **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.
-- **Planned:** each move names a cause from a fixed list and the record it rests on, and the record refuses a move without it.
-- **Planned:** a move the planner takes by hand carries a note saying why, so no bypass is silent.
-- **Planned:** closing an issue ends its open tasks.
+- **Planned (trustmybot/tmb#438):** each move names a cause from a fixed list and the record it rests on, and the record refuses a move without it.
+- **Planned (trustmybot/tmb#438):** a move the planner takes by hand carries a note saying why, so no bypass is silent.
+- **Planned (trustmybot/tmb#438):** closing an issue ends its open tasks.
 - **Planned: freeze** (trustmybot/tmb#64). The Human stops all work in a project with one request: task and agent starts, closes and pull requests are denied until it is lifted. Reads stay allowed.
 - **Open, for the Human:** waivers wider than one task or one branch (a listed set, an issue, a session's docs tasks).
 

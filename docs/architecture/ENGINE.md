@@ -168,7 +168,7 @@ flowchart TD
 | `git init` | Once, in a folder that is in no repo and holds none. |
 | Feature and task branches in git | tmb never deletes them while they hold work. |
 
-Planned: the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([4_EXTENDING.md](../flows/4_EXTENDING.md)).
+Planned (trustmybot/tmb#436, trustmybot/tmb#437, trustmybot/tmb#112): the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([4_EXTENDING.md](../flows/4_EXTENDING.md)).
 
 **On the machine.** tmb is one program for every project, so two things live outside any project. Each channel's program has its own, and one never touches another's.
 
@@ -185,7 +185,7 @@ Planned: the skill files tmb ships, and the agent and cheatcode files the Human 
 - **Machine-wide state is swapped before any test runs.** Every tmb a test starts, in its own process or as a child, keeps its state in a scratch folder, never the person's. The feedback program is off for them.
 - **Each test works in a project of its own.** A fixture is copied into a fresh repo in a temp folder, removed on exit. The record is found only in a folder or above it, so a temp folder never reaches a real one.
 - **Rows a past run left behind are never deleted by an agent.** `tmb doctor` shows what it finds, and the Human decides.
-- Planned: under a test flag the record is never looked up, so a test run started inside a tmb project cannot reach its record either.
+- Planned (trustmybot/tmb#444): under a test flag the record is never looked up, so a test run started inside a tmb project cannot reach its record either.
 
 ### Enforcement
 

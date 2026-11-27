@@ -48,9 +48,9 @@ The three checkpoints are in [ENGINE.md](../architecture/ENGINE.md), and who own
 | 3.12 | [Unattended run](#312-unattended-run) | A run with no one to answer applies the planner's defaults and records each as a decision. The checkpoints allow and refuse as in a normal session. | Built | [ENGINE.md](../architecture/ENGINE.md#unattended-mode) |
 | 3.13 | [Several hosts on one record](#313-several-hosts-on-one-record) | Each host connects to the same record and takes a role, such as a planner on one host and a reviewer on another. The record is the handoff. | Built | [ADAPTERS.md](../architecture/ADAPTERS.md#different-models-on-one-task) |
 | 4.1 | [Cheatcode lifecycle](#41-cheatcode-lifecycle) | The planner finds and vets a published skill for a capability gap, and the Human approves each install. | Planned (trustmybot/tmb#112) | [4_EXTENDING.md](4_EXTENDING.md) |
-| 4.2 | [Agent creation](#42-agent-creation) | The planner drafts an agent for a role the project has none for, and the Human approves it. | Planned | [4_EXTENDING.md](4_EXTENDING.md) |
-| 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern becomes a project skill: the planner drafts, the Human approves. | Planned | [4_EXTENDING.md](4_EXTENDING.md) |
-| 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion. A consultant advises, the planner reports, and the Human decides. | Planned | [4_EXTENDING.md](4_EXTENDING.md) |
+| 4.2 | [Agent creation](#42-agent-creation) | The planner drafts an agent for a role the project has none for, and the Human approves it. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
+| 4.3 | [Skill creation](#43-skill-creation) | A recurring pattern becomes a project skill: the planner drafts, the Human approves. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
+| 4.4 | [Consultant invocation](#44-consultant-invocation) | The Human asks for a second opinion. A consultant advises, the planner reports, and the Human decides. | Planned (trustmybot/tmb#437) | [4_EXTENDING.md](4_EXTENDING.md) |
 | 5.1 | [Bug report](#51-bug-report) | When tmb itself breaks, or on `tmb feedback`, the Human reads a cleaned draft. Nothing is sent without the Human's yes. | Built | [1_INSTALL.md](1_INSTALL.md#bug-reports) |
 
 ## Ideal cases

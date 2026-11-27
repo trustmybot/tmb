@@ -52,7 +52,6 @@ The top-level rule of the design: the engine knows nothing about any host, and e
 | Host | Support | Tools | Roles |
 |---|---|---|---|
 | Claude Code, command line and desktop app | Supported | Tool server from the project's settings | Agent files in the project |
-| Others | Planned | | |
 
 One adapter shape is enough because every host has the same three building blocks: a tool server, role files and events.
 

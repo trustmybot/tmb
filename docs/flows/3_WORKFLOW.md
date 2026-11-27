@@ -258,5 +258,5 @@ flowchart TD
 
 ## Planned
 
-- **The review queue.** The tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel.
+- **The review queue** (trustmybot/tmb#442). The tasks waiting for review, proposed in groups by the files they changed, one reviewer per group in parallel.
 - **Comments on an open pull request** brought into the record and sorted into tasks (trustmybot/tmb#70).

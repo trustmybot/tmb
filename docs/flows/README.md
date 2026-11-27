@@ -51,7 +51,7 @@ The decisions about the steps. The first column names the page that holds the de
 | [1_INSTALL](1_INSTALL.md) | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
 | [3_WORKFLOW](3_WORKFLOW.md) | Review modes | Agile and truest, a mode per repo. Agile is recommended; the Human chooses. |
 | [3_TASKS](3_TASKS.md) | Sync with the remote | Planned (trustmybot/tmb#70). It brings pull request comments into the record and syncs issues both ways; issues that exist only on GitHub are not all copied in. |
-| [4_EXTENDING](4_EXTENDING.md) | Created agents | Planned. An agent a project creates is recorded and harnessed like the worker and the reviewer. |
+| [4_EXTENDING](4_EXTENDING.md) | Created agents | Planned (trustmybot/tmb#437). An agent a project creates is recorded and harnessed like the worker and the reviewer. |
 
 ## Glossary
 
@@ -71,5 +71,5 @@ The words for the steps. The first column names the page a word comes from. The 
 | [3_GIT](3_GIT.md) | Workspace | The folder where the Human ran `tmb init`: the root of a project, holding its record. It may be a git repo itself, or hold several repos that share the record (a multi-repo workspace). |
 | [3_GIT](3_GIT.md) | Base branch | The branch a pull request merges into. |
 | [3_GIT](3_GIT.md) | Feature branch | A long-lived branch that collects a milestone's tasks. |
-| [4_EXTENDING](4_EXTENDING.md) | Skill | Planned. Guidance tmb ships for a role, loaded on demand. |
+| [4_EXTENDING](4_EXTENDING.md) | Skill | Planned (trustmybot/tmb#436). Guidance tmb ships for a role, loaded on demand. |
 | [4_EXTENDING](4_EXTENDING.md) | Cheatcode | Planned (trustmybot/tmb#112). A published skill, tool server or host plugin that the planner finds, vets and installs after the Human's yes. A skill is given to a role once, for every host in that role. |

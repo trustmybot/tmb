@@ -2,8 +2,8 @@
 
 tmb splits every rule an agent follows into two layers:
 
-- **Deterministic:** code decides. The engine behind the tool server and the command line, checkpoints (git's own hooks first, then the few host hooks an adapter writes), each role file's tool list, schema constraints and skill `paths:` (Planned) apply the rule whatever the prompt says.
-- **Judgment:** a model reads prose (the role prompts in `roles/`, which each host's adapter writes in that host's format, and skills, Planned) and decides.
+- **Deterministic:** code decides. The engine behind the tool server and the command line, checkpoints (git's own hooks first, then the few host hooks an adapter writes), each role file's tool list, schema constraints and skill `paths:` (Planned, trustmybot/tmb#436) apply the rule whatever the prompt says.
+- **Judgment:** a model reads prose (the role prompts in `roles/`, which each host's adapter writes in that host's format, and skills, Planned, trustmybot/tmb#436) and decides.
 
 A rule goes deterministic whenever a check can decide it: a sequence, a default, a constraint or a measurement against a stable spec. Only what needs judgment stays in a prompt, such as classifying, composing, or weighing new context. Where a harder layer fits, it also enforces a rule that a prompt states, so when the prompt line is dropped, the failure is loud instead of silent.
 

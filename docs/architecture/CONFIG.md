@@ -42,7 +42,7 @@ The planner reads them with `settings_get`. Hooks only read them.
 
 ## Keys
 
-**This table lists every key in `src/engine/settings.ts`.** Planned: a generator with a freshness test.
+**This table lists every key in `src/engine/settings.ts`.** Planned (trustmybot/tmb#440): a generator with a freshness test.
 
 | Key | Type | Default | Set by | Effect |
 |---|---|---|---|---|

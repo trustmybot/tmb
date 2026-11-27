@@ -77,7 +77,7 @@ None of them holds the publish back: the release run publishes once its own buil
 - There is no rc branch: an rc is the tag.
 - `agent-run.yml` runs the model steps on GitHub, by hand only, and needs the `CLAUDE_CODE_OAUTH_TOKEN` secret.
 
-Planned: a gate on GitHub that an rc must pass before it publishes.
+Planned (trustmybot/tmb#260): a gate on GitHub that an rc must pass before it publishes.
 
 ## Release steps
 
