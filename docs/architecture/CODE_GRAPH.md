@@ -343,7 +343,7 @@ flowchart LR
 | Rust | rust-analyzer | The user's | rust-analyzer and the Rust toolchain |
 | C, C++ | clangd | The user's | clangd and the project's compile database |
 
-- **A tool tmb cannot carry is the user's own copy.** A tool that is a large program per platform, or needs a runtime, is used from the user's machine. tmb installs nothing. Without it, way A builds the graph and the answer says so. Planned: [where a language's tool comes from](#where-a-languages-tool-comes-from) replaces this rule and the table above.
+- **A tool tmb cannot carry is the user's own copy.** A tool that is a large program per platform, or needs a runtime, is used from the user's machine. Without it, way A builds the graph and the answer says so, until the user asks tmb to install it ([where a language's tool comes from](#where-a-languages-tool-comes-from)).
   - **Example.** A Rust repo on a machine with no rust-analyzer. The graph is built by the built-in rules, and the freshness line names the missing tool.
   - **Edge case 1.** C and C++ without the project's compile database. The tool guesses and gives wrong links, so way B does not run. The database is found where clangd looks for it. A database that cannot be read, or that names a file not on disk, counts as none.
   - **Edge case 2.** The database names some files and not others, such as the files for another platform. The tool answers for the files it names and for the headers they include. A call in any other file is not known.
@@ -380,7 +380,7 @@ flowchart LR
 - **Way B for Rust reads the Cargo workspaces the repo declares.** A file in no workspace is not loaded, and its calls are not known. No build script and no macro program is run.
   - **Edge case.** `Self(x)` in a tuple struct's own code. The tool gives no answer for it, so it is not known.
 - **tmb carries the TypeScript compiler.** Way B for TypeScript and JavaScript needs no install, and tmb always uses the compiler it carries, never the repo's own, so one tmb gives one answer. It carries the compiler's standard library files too, which the compiler needs to know the language's built-ins. The compiler is loaded only when way B builds a graph, so no other command starts slower for it.
-- **tmb installs nothing while it builds a graph.** It never installs a project's dependencies, and today it installs no tool ([planned](#where-a-languages-tool-comes-from)), and an index is used only for the commit it was made at.
+- **tmb installs nothing while it builds a graph.** It never installs a project's dependencies, and it installs a tool only when asked ([where a language's tool comes from](#where-a-languages-tool-comes-from)), and an index is used only for the commit it was made at.
   - **Example 1.** `const c = makeCart(); c.total()`. Way A has no written type for `c`, so no link. Way B asks the compiler, which knows `makeCart` returns a `Cart`, and links to `Cart.total`.
   - **Example 2.** A Python repo with no virtual environment. Way B still links the calls inside the repo. A call into a package is not known.
   - **Edge case.** A call decided only at run time, such as a method picked by a string. Neither way links it. It is counted as not known.
@@ -389,7 +389,7 @@ flowchart LR
 
 ### Where a language's tool comes from
 
-Finding a tool is built. Installing one is Planned (trustmybot/tmb#393), and so is the TypeScript compiler and pyright leaving the tmb program (trustmybot/tmb#395). Until then a missing tool means the built-in rules, and TypeScript and Python always use the copy tmb carries.
+Finding and installing a tool is built, for rust-analyzer and clangd. Planned (trustmybot/tmb#395): the TypeScript compiler and pyright leave the tmb program. Until then TypeScript and Python always use the copy tmb carries.
 
 **A tool is found or installed once per machine, and only for a language a repo uses.** tmb is installed once per machine, and so is each tool. Installing tmb installs no tool.
 
@@ -424,16 +424,20 @@ flowchart LR
   - **Example.** A Python repo on a machine with no Rust. rust-analyzer is never looked for or installed.
 - **tmb installs a tool, never a language.** The `go` command, a JDK, the Rust toolchain and a Python environment are the user's. A repo cannot be built on a machine without them, and they are too large to add unasked.
   - **Example.** A Java repo on a machine with no JDK. The built-in rules build the graph and the answer says a JDK is missing.
-- **An install is asked for, checked, and never part of a read.** Planned (trustmybot/tmb#393). `tmb init` names the tools the repo's languages miss and installs them on a yes. `tmb tools install` does the same later. A read of the graph downloads nothing: it uses the built-in rules and names the command.
-  - **How.** The pinned release comes from the tool's own release page and is checked against a checksum tmb carries. A failed check installs nothing.
-  - **Edge case.** A setting turns installs off, for a machine that may not download programs. Every tool is then the user's own or missing.
+- **An install is asked for, checked, and never part of a read.** `tmb tools install` installs the tools the repo's languages miss, or one language's. Running the command is the yes: it asks nothing. `tmb init` asks nothing either ([2_ONBOARD.md](../flows/2_ONBOARD.md#init-asks-nothing)): it names the missing tools and the command. A read of the graph downloads nothing: it uses the built-in rules and names the command.
+  - **How.** The pinned release comes from the tool's own release page and is checked against a checksum tmb carries. A failed check installs nothing and leaves nothing behind.
+  - **Edge case.** A setting on the machine turns installs off, for a machine that may not download programs. Every tool is then the user's own or missing, and the note says installs are off.
+  - **Edge case.** The tool has no release for this machine, such as clangd on Linux arm64. The note says so and offers nothing.
+  - **Edge case.** tmb's pin moves to a newer release. A copy tmb already installed is still used; a new one is installed only when none on the machine is usable.
+  - **Edge case.** The repo has no index yet, and the command names no language. It refuses: the index is how tmb knows the repo's languages.
+  - **Edge case.** A tool's project publishes no checksum file. tmb's checksum is the hash of the official download, matched to the release page's own digest.
 - **The layer records whose copy built it**, with its version, so an answer can say which tool it rests on and a changed copy rebuilds the layer.
 - **`tmb tools` lists them.** For each language in the repo: the tool, whose copy, its version, or that it is missing.
 
-| Language | Tool | The user's copy | tmb installs (Planned) |
+| Language | Tool | The user's copy | tmb installs |
 |---|---|---|---|
-| TypeScript, JavaScript | The TypeScript compiler | On the machine's PATH | The pinned compiler |
-| Python | pyright | On the machine's PATH | The pinned pyright |
+| TypeScript, JavaScript | The TypeScript compiler | On the machine's PATH | The pinned compiler. Planned (trustmybot/tmb#395) |
+| Python | pyright | On the machine's PATH | The pinned pyright. Planned (trustmybot/tmb#395) |
 | Go | go/types | The `go` command, needed | Nothing: tmb builds its small helper from source it carries, with the user's `go` |
 | Java | javac | A JDK, needed | Nothing: tmb carries a small adapter |
 | Rust | rust-analyzer | From rustup or on PATH; the Rust toolchain is needed | The pinned rust-analyzer |
@@ -1046,7 +1050,7 @@ All are FTS5 virtual tables.
 
 | Piece | Tracked in |
 |---|---|
-| A language's tool is installed once per machine | trustmybot/tmb#393, trustmybot/tmb#395 |
+| The TypeScript compiler and pyright leave the tmb program | trustmybot/tmb#395 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
 | Python's benchmark reference is a type checker | trustmybot/tmb#399 |
