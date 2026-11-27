@@ -132,7 +132,7 @@ Each language is a module of its own. Every module answers the same questions fo
 | Go | Yes | Yes |
 | Java | Yes | Yes |
 | Rust | Yes | Yes |
-| C, C++ | Planned (trustmybot/tmb#387): a function made by a macro is missed, and an `#if` inside a construct can hide one | Yes |
+| C, C++ | Yes, except a function that only a macro's expansion defines: the built-in rules expand no macro. Planned (trustmybot/tmb#387): an `#if` that cuts a construct can hide a function | Yes |
 | bash, SQL, Perl | Planned (trustmybot/tmb#141) | No |
 
 ## Links on proof
@@ -1135,7 +1135,7 @@ All are FTS5 virtual tables.
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
 | A Java anonymous class creation links to its type | trustmybot/tmb#376 |
 | A call into a store package links to the store | trustmybot/tmb#378 |
-| Every C and C++ function a node | trustmybot/tmb#387 |
+| A C or C++ `#if` that cuts a construct hides no function | trustmybot/tmb#387 |
 | Python, bash and the other languages get every function too, each with its own coverage test. Their rules are written as tree-sitter queries, the form GitHub's code navigation and Neovim use; TypeScript's rules move to that form after | trustmybot/tmb#141 |
 | A task's scope follows table links: a function in scope that reads or writes a table brings in the file that defines the table | trustmybot/tmb#309 |
 | The planner keeps concepts and areas written: a rule for when it writes them, and a view of the code not yet placed | trustmybot/tmb#310 |
