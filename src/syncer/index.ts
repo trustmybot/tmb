@@ -1,0 +1,26 @@
+// The syncer's reading half: what changed on a repository's remote since the last read
+// (trustmybot/tmb#70). It reads only. Writing what it finds into the record is not here.
+import { githubRepoOf } from "../engine/github.ts";
+import { readItem, readRemote } from "./reader.ts";
+import type { ItemKind } from "./github.ts";
+import { askThroughGh } from "./transport.ts";
+import type { ItemAnswer, Kept, ReadAnswer } from "./types.ts";
+
+export * from "./types.ts";
+export { FLOOR_MS, readItem, readRemote } from "./reader.ts";
+export type { ReadOptions } from "./reader.ts";
+export { askThroughGh } from "./transport.ts";
+export type { Answer, Ask, Request } from "./transport.ts";
+export type { ItemKind, Repo } from "./github.ts";
+
+/** Reads the remote that the project's origin names, through the user's own `gh`. */
+export function readProjectRemote(projectDir: string, kept: Kept, options: { now?: Date; force?: boolean; pageLimit?: number } = {}): Promise<ReadAnswer> {
+  return readRemote({ repo: githubRepoOf(projectDir), kept, ask: askThroughGh(projectDir), ...options });
+}
+
+/** Asks the project's remote for one item directly, to learn whether it is gone. */
+export async function readProjectItem(projectDir: string, kind: ItemKind, number: number, now?: Date): Promise<ItemAnswer> {
+  const repo = githubRepoOf(projectDir);
+  if (repo === null) return { ok: false, cannot: "not_github", why: "origin names no GitHub repository", waitUntil: null };
+  return readItem({ repo, ask: askThroughGh(projectDir), kind, number, now });
+}

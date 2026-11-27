@@ -1,0 +1,75 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: W/"3bc0ab6ec78ea42c8fc227a85cc9d089e0f30ceec693c20c34538143db9a2544"
+Link: <https://api.github.com/repositories/1463423787/pulls?state=all&sort=updated&direction=desc&per_page=1&page=2>; rel="next", <https://api.github.com/repositories/1463423787/pulls?state=all&sort=updated&direction=desc&per_page=1&page=202>; rel="last"
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 4886
+X-Ratelimit-Reset: 1795746298
+X-Ratelimit-Resource: core
+
+[
+ {
+  "url": "https://api.github.com/repos/trustmybot/tmb/pulls/299",
+  "id": 5426615175,
+  "node_id": "PR_kwDOVzoTK88AAAABQ3OThw",
+  "html_url": "https://github.com/trustmybot/tmb/pull/299",
+  "issue_url": "https://api.github.com/repos/trustmybot/tmb/issues/299",
+  "number": 299,
+  "state": "open",
+  "title": "\ud83d\udcdd docs: the plugin's docs structure, fitted to tmb",
+  "user": {
+   "login": "Zax-TMB",
+   "id": 355055752,
+   "node_id": "U_kgDOFSm4iA",
+   "url": "https://api.github.com/users/Zax-TMB",
+   "html_url": "https://github.com/Zax-TMB",
+   "type": "User"
+  },
+  "body": "The plugin's whole docs tree, copied (b1f7094, plugin dev 14f8c62b), then edited to fit tmb (fdc6287). Same structure as",
+  "created_at": "2026-11-21T09:54:20Z",
+  "updated_at": "2026-11-27T02:08:56Z",
+  "closed_at": null,
+  "merged_at": null,
+  "merge_commit_sha": "3ba10178edfb890e7f9c25923e41c8aaf0079104",
+  "assignees": [],
+  "labels": [],
+  "milestone": null,
+  "draft": false,
+  "head": {
+   "label": "trustmybot:docs/plugin-structure",
+   "ref": "docs/plugin-structure",
+   "sha": "92c389f289e2956869e9ea3ffcda8c3cef9e89e5",
+   "user": {
+    "login": "trustmybot",
+    "id": 278017979,
+    "node_id": "O_kgDOEJI3uw",
+    "url": "https://api.github.com/users/trustmybot",
+    "html_url": "https://github.com/trustmybot",
+    "type": "Organization"
+   },
+   "repo": {
+    "full_name": "trustmybot/tmb",
+    "node_id": "R_kgDOVzoTKw"
+   }
+  },
+  "base": {
+   "label": "trustmybot:dev",
+   "ref": "dev",
+   "sha": "8bbd4a5df47a67cafa25c4231b8646a1ea752f5e",
+   "user": {
+    "login": "trustmybot",
+    "id": 278017979,
+    "node_id": "O_kgDOEJI3uw",
+    "url": "https://api.github.com/users/trustmybot",
+    "html_url": "https://github.com/trustmybot",
+    "type": "Organization"
+   },
+   "repo": {
+    "full_name": "trustmybot/tmb",
+    "node_id": "R_kgDOVzoTKw"
+   }
+  },
+  "auto_merge": null,
+  "assignee": null
+ }
+]

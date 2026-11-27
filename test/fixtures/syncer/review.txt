@@ -1,0 +1,9 @@
+HTTP/2.0 200 OK
+Content-Type: application/json; charset=utf-8
+Etag: "47df56b9c7de2ab750dadaa2936448fa8f7c58b2742726f48e60bfb2ab4468eb"
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 4887
+X-Ratelimit-Reset: 1795746298
+X-Ratelimit-Resource: core
+
+[]
