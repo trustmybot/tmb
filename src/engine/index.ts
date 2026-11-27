@@ -1,15 +1,17 @@
 import type { FeedbackEnv } from "./feedback/index.ts";
 import { endHostReviewerRun, isReviewerHost, NO_VERDICT } from "./host-runs.ts";
 import { openProjectStore } from "./project.ts";
-import { sessionStartContext } from "./session-start.ts";
+import { type SessionStartTexts, sessionRole, sessionStartContext } from "./session-start.ts";
 
 /**
  * A host-neutral event, raised by a host adapter. `unattended` is true when no one can answer
  * in the run, as whoever started tmb said. `host` is the adapter's id; an event with none is
- * answered as the planner's.
+ * answered as the planner's. A session start answers with the project's state, and the role too
+ * unless `texts` says the host takes it apart, from `session-role`, which only reads.
  */
 export type EngineEvent =
-  | { type: "session-start"; projectDir: string; unattended: boolean; host?: string; feedback?: FeedbackEnv; refreshed?: string | null; doctor?: (projectDir: string) => string | null }
+  | { type: "session-start"; projectDir: string; unattended: boolean; host?: string; feedback?: FeedbackEnv; refreshed?: string | null; doctor?: (projectDir: string) => string | null; texts?: SessionStartTexts }
+  | { type: "session-role"; projectDir: string; host?: string }
   | { type: "session-end"; projectDir: string; host: string };
 
 export type EngineAnswer = { context: string };
@@ -30,7 +32,9 @@ function sessionEnd(projectDir: string, host: string): void {
 export function handleEvent(event: EngineEvent): EngineAnswer {
   switch (event.type) {
     case "session-start":
-      return { context: sessionStartContext(event.projectDir, event.unattended, event.host, event.feedback, event.refreshed ?? null, event.doctor) };
+      return { context: sessionStartContext(event.projectDir, event.unattended, event.host, event.feedback, event.refreshed ?? null, event.doctor, event.texts) };
+    case "session-role":
+      return { context: sessionRole(event.projectDir, event.host) };
     case "session-end":
       sessionEnd(event.projectDir, event.host);
       return { context: "" };
@@ -52,6 +56,7 @@ export {
   PULL_REQUESTS_ENDED_HEADING,
   plannerRole,
   reviewerRole,
+  type SessionStartTexts,
   UNATTENDED_INSTRUCTION,
 } from "./session-start.ts";
 export { NO_VERDICT } from "./host-runs.ts";

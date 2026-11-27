@@ -48,6 +48,16 @@ describe("session start", () => {
     expect(context()).toBe(plannerRole);
   });
 
+  test("cuts a state that no shorter list fits at its budget, and says which tools show the rest", () => {
+    withStore((store) => store.createIssue({ kind: "human" }, { title: "Resume me" }));
+    const budget = 2_000;
+    const text = handleEvent({ type: "session-start", projectDir: project, unattended: false, doctor: () => "finding ".repeat(1_000), texts: { withRole: false, budget } }).context;
+    expect(text.length).toBeLessThanOrEqual(budget);
+    expect(text).not.toContain("# You are bro");
+    expect(text).toContain("Resume me");
+    expect(text).toContain("issue_list, task_list, settings_get and graph_map show the rest");
+  });
+
   test("gives the role and one line naming the problem when the record cannot be read", () => {
     mkdirSync(path.dirname(projectDbPath(project)), { recursive: true });
     writeFileSync(projectDbPath(project), "this is not a database, only text long enough to look like a header");
