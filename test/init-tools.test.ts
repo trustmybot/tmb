@@ -1,8 +1,9 @@
 // tmb init and the tools a repo's languages miss (CODE_GRAPH.md, "Where a language's tool comes
-// from"; trustmybot/tmb#393): init names the tools the repo's languages miss and installs them on a
-// yes. With no yes, or with no one to ask, nothing is downloaded and the command that installs them
-// is named. A language's own toolchain is never offered. No test downloads anything: the release is
-// a small archive a fetch the test gives returns.
+// from"; 2_ONBOARD.md): init asks nothing and reads no input, on a terminal or not
+// (trustmybot/tmb#414). It names the tools the repo's languages miss and `tmb tools install`, whose
+// run is the yes; it downloads nothing. A language's own toolchain is never offered. No test
+// downloads anything: the release is a small archive a fetch the test gives returns, and each test
+// shows it is never fetched.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -120,26 +121,17 @@ const init = (ask: Ask | null, tools: InstallOptions) => runInit({ projectDir: p
 const installed = () => existsSync(path.join(toolsFolder(state), "rust-analyzer", "bin", "rust-analyzer"));
 
 describe("tmb init and the tools a repo misses", () => {
-  test("names the missing tool and installs it on a yes", async () => {
+  test("on a terminal, an asker that would say yes is never asked: nothing is downloaded, and the tool and the command are named", async () => {
     repoWith(RUST);
     const { install, fetched } = fakeRelease();
-    const ask = scripted(["y"]);
+    const ask = scripted(["y", "y"]);
     await init(ask, install);
-    expect(ask.prompts).toHaveLength(1);
-    expect(ask.prompts[0]).toContain("rust-analyzer");
-    expect(fetched).toHaveLength(1);
-    expect(installed()).toBe(true);
-  });
-
-  test("on a no, nothing is downloaded, and the command that installs it is named", async () => {
-    repoWith(RUST);
-    const { install, fetched } = fakeRelease();
-    const ask = scripted(["n"]);
-    await init(ask, install);
-    expect(ask.prompts).toHaveLength(1);
+    expect(ask.prompts).toEqual([]);
     expect(fetched).toEqual([]);
     expect(installed()).toBe(false);
-    expect(output.join("\n")).toContain("`tmb tools install");
+    const said = output.join("\n");
+    expect(said).toContain("rust-analyzer");
+    expect(said).toContain("`tmb tools install`");
   });
 
   test("with no one to ask, nothing is downloaded, and the missing tool and the command are named", async () => {
@@ -153,7 +145,7 @@ describe("tmb init and the tools a repo misses", () => {
     expect(said).toContain("`tmb tools install");
   });
 
-  test("with installs turned off, nothing is asked or downloaded", async () => {
+  test("with installs turned off, nothing is asked or downloaded, and init says installs are off", async () => {
     repoWith(RUST);
     writeFileSync(path.join(state, "tools.json"), JSON.stringify({ install: false }));
     const { install, fetched } = fakeRelease();
@@ -162,6 +154,7 @@ describe("tmb init and the tools a repo misses", () => {
     expect(ask.prompts).toEqual([]);
     expect(fetched).toEqual([]);
     expect(installed()).toBe(false);
+    expect(output.join("\n")).toContain("installs are off");
   });
 
   test("a language's toolchain is never offered: a Go repo with no `go` asks nothing", async () => {
