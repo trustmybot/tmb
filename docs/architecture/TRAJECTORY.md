@@ -754,7 +754,7 @@ Planned (trustmybot/tmb#70). One row per remote repository and list. It is not f
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
 | `remote` | TEXT | NOT NULL | The remote repository. PK with `list`. A fork has two remotes, so two sets of rows |
-| `list` | TEXT | NOT NULL | Issues, comments, pull requests or milestones |
+| `list` | TEXT | NOT NULL | Issues, comments, review comments, pull requests or milestones |
 | `tag` | TEXT | nullable | The tag the remote gave last time, sent back to ask "has anything changed?" |
 | `since` | TEXT | nullable | The time the next "what changed?" asks from |
 | `synced_at`, `full_pass_at` | TEXT | nullable | When the last poll and the last full pass ended, so a reader knows how old the copy is |
@@ -762,7 +762,9 @@ Planned (trustmybot/tmb#70). One row per remote repository and list. It is not f
 | `claimed_by`, `claim_until` | TEXT | nullable | The short claim one syncer holds, which runs out by itself |
 | `last_error` | TEXT | nullable | Why the last poll failed. NULL after a good one |
 
-- **Edge case.** The remote cannot be read at all. `last_error` says why, and the project works as local.
+- **Example.** A first read of a large repo is cut short. The row keeps where the read stopped, and the next read goes on from there. It never starts over.
+- **Edge case.** Milestones are few and come in no order of change. Every read lists them all, and no tag is kept.
+- **Edge case.** The remote cannot be read at all. `last_error` says why, and the project works as local. The reasons are told apart, because the fix differs: the host is not GitHub, the `gh` program is missing, no one is signed in, there is no network, or the remote asked for a wait.
 
 #### `meta`
 
@@ -784,6 +786,8 @@ Planned (trustmybot/tmb#70). **Every record the remote also holds carries the re
 
 - **Example 1.** An issue is closed in the browser. The syncer finds its row by `remote_id` and writes one `updated` event, made by tmb, naming the account that closed it.
 - **Example 2.** Nothing changed since the last poll. The syncer sends back the tag it kept in `sync_state`, the remote answers "not modified", and no event is written.
+- **Example 3.** A comment names its issue or pull request by number, not by id. The syncer finds the parent row by its remote and number.
+- **Example 4.** A list answer leaves out the priority, the links between issues, what a pull request closes, and its review decision and checks. The syncer asks for these in one batched ask, only for the items a list showed as changed.
 - **Edge case.** An issue is transferred to another repo. Where the remote keeps its id, the row is kept and its `remote` and address updated. Where it does not, the old row is marked gone and the new one links to it as a duplicate.
 - **Edge case.** An issue is deleted on the remote. The full pass sets `remote_gone_at`; the row and its history stay.
 
