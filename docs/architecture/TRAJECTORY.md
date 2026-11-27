@@ -371,7 +371,9 @@ erDiagram
     docs |o..o{ tasks : "implemented by"
     tasks |o..o{ waivers : "waived"
     features |o..o{ waivers : "waived"
-    features ||..o{ review_marks : "marked"
+    features |o..o{ review_marks : "marked"
+    tasks |o..o{ review_marks : "marked"
+    waivers |o..o{ waivers : "carried from"
     sessions |o..o{ freezes : "asked in"
     issues |o..o{ feedback_reports : "filed as"
 ```
@@ -628,7 +630,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
 
-- **Edge case.** A rebase leaves a task's patch unchanged. The pass is carried as a new row for the rebased commit, naming the review it carries.
+- **Edge case.** A rebase leaves a task's patch unchanged. The pass is carried as a new row for the rebased commit, with the same verdict and findings, naming the newest review of the old commit.
 
 #### `guard_decisions`
 
@@ -661,16 +663,18 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 - **Example 2.** A setting changes. One `setting_changes` row says who changed it, from what and to what.
 - **Edge case.** An upgrade writes each old `audit` entry again as an event of its new kind, made by tmb. The old events are never rewritten, and no entry is lost.
 - **Edge case.** An old entry on how a review mode was chosen has no setting change beside it. It becomes its own row for the key `review_mode`, with no values.
+- **Edge case.** An old review mark names a commit that no review and no waiver covers, so its parent cannot be found. It gets no row; its old event stays in `events`.
+- **Edge case.** An old entry holds a detail that has no column, such as a feedback report's title. The new event's data keeps it; the row takes only its columns.
 - **Edge case.** The config file is not built yet (trustmybot/tmb#305). Until it is, the newest `setting_changes` row for a key is the value in force.
 
 | Today, an `audit` entry for | Becomes |
 |---|---|
 | A Human waiver, of a task or a feature branch | A `waivers` row |
 | A review mark sent to the remote, and a mark sent late | A `review_marks` row |
-| A review carried over a rebase | A `reviews` row with `carried_from` |
+| A review carried over a rebase | A `reviews` row with `carried_from`, or a `waivers` row with `carried_from` when a waiver covered the old commit |
 | A setting change | A `setting_changes` row for its key |
 | How a review mode was chosen | The `how` of that review mode's `setting_changes` row |
-| Which tmb program the project is tied to, and tmb moved | A `setting_changes` row with the key `program` |
+| Which tmb program the project is tied to, tmb moved, and tmb's wiring redone after an update | A `setting_changes` row with the key `program`. Each holds the whole tie, so the newest row is the tie in force |
 | A base branch brought into a feature branch | An `updated` event on the feature branch, which sets `base_merged_commit` |
 | A freeze of every session's work, and its lifting (trustmybot/tmb#64) | A `freezes` row |
 | A feedback report filed or its form opened | A `feedback_reports` row |
@@ -684,7 +688,9 @@ Each new table also has `id` (PK), `created_by` and `created_at`. Each is a proj
 | | `feature_id` | TEXT | nullable | FK → `features.id`. Exactly one of the two is set |
 | | `commit_sha` | TEXT | NOT NULL | The commit the waiver covers |
 | | `reason` | TEXT | NOT NULL | Only the Human writes a waiver |
-| `review_marks` | `feature_id` | TEXT | NOT NULL | FK → `features.id` |
+| | `carried_from` | TEXT | nullable | FK → `waivers.id`. The Human's waiver that a rebase carried to this commit, with its reason |
+| `review_marks` | `task_id` | TEXT | nullable | FK → `tasks.id`, for a mark on one task's commit |
+| | `feature_id` | TEXT | nullable | FK → `features.id`. Exactly one of the two is set |
 | | `commit_sha` | TEXT | NOT NULL |  |
 | | `kind` | TEXT | NOT NULL | `pass`, `fail` or `waiver` |
 | | `state` | TEXT | NOT NULL | What the remote is told: `success` or `failure` |
