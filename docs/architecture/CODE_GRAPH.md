@@ -210,7 +210,7 @@ The goal is links found close to 100%. tmb builds two ways to make links, side b
 
 ### Where a language's tool comes from
 
-Finding and installing a tool is built, for rust-analyzer and clangd. Planned (trustmybot/tmb#395): the TypeScript compiler and pyright leave the tmb program and are installed the same way, so a developer who writes neither language carries neither tool. Until then tmb carries both.
+The tmb program carries no language tool. The TypeScript compiler and pyright are installed like the others, so a developer who writes neither language carries neither tool.
 
 **A tool is found or installed once per machine, and only for a language a repo uses.** tmb is installed once per machine, and so is each tool. Installing tmb installs no tool.
 
@@ -549,7 +549,7 @@ The cases of [Where a language's tool comes from](#where-a-languages-tool-comes-
   - **Example 1.** A Rust developer has rust-analyzer from rustup. tmb uses it.
   - **Example 2.** A machine has no clangd. tmb installs its pinned clangd into its tools folder, once, for every project on the machine.
   - **Edge case 1.** The user's copy is older than tmb supports. tmb uses its own copy and says why.
-  - **Edge case 2.** A setting names the path of a tool. That copy is used and nothing is searched. It is not held to the lowest version: the user named it, and the layer records its version.
+  - **Edge case 2.** A setting names the path of a tool. That copy is used and nothing is searched. It is not held to the lowest version: the user named it, and the layer records its version. The setting does not apply to the TypeScript compiler or pyright: only tmb's pinned copy is used.
   - **Edge case 3.** Apple's clangd reports Apple's own version number. tmb takes it as the LLVM release it is built from.
 - **The path setting and tmb's tools folder are per machine.** Both sit in tmb's state folder, which each release channel keeps for itself. The setting is a file the user edits.
   - **Example.** A machine has the stable and the dev channel. Each keeps its own tools, so a pin that changes on dev never changes what stable uses.
@@ -570,6 +570,8 @@ The cases of [Where a language's tool comes from](#where-a-languages-tool-comes-
   - **Edge case.** A setting on the machine turns installs off, for a machine that may not download programs. Every tool is then the user's own or missing, and the note says installs are off.
   - **Edge case.** The tool has no release for this machine, such as clangd on Linux arm64. The note says so and offers nothing.
   - **Edge case.** tmb's pin moves to a newer release. A copy tmb already installed is still used; a new one is installed only when none on the machine is usable.
+  - **Edge case.** The pin of the TypeScript compiler or pyright moves. Only the pinned version is used, so the installed copy counts as missing and the note names the install command.
+  - **How, for the TypeScript compiler and pyright.** The pinned package comes from the npm registry and is checked the same way.
   - **Edge case.** The repo has no index yet, and the command names no language. It refuses: the index is how tmb knows the repo's languages.
   - **Edge case.** A tool's project publishes no checksum file. tmb's checksum is the hash of the official download, matched to the release page's own digest.
 - **The layer records whose copy built it**, with its version, so an answer can say which tool it rests on and a changed copy rebuilds the layer.
@@ -577,8 +579,8 @@ The cases of [Where a language's tool comes from](#where-a-languages-tool-comes-
 
 | Language | Tool | The user's copy | tmb installs |
 |---|---|---|---|
-| TypeScript, JavaScript | The TypeScript compiler | Not looked for | The pinned compiler. Planned (trustmybot/tmb#395) |
-| Python | pyright | Not looked for | The pinned pyright. Planned (trustmybot/tmb#395) |
+| TypeScript, JavaScript | The TypeScript compiler | Not looked for | The pinned compiler |
+| Python | pyright | Not looked for | The pinned pyright |
 | Go | go/types | The `go` command, needed | Nothing: tmb builds its small helper from source it carries, with the user's `go` |
 | Java | javac | A JDK, needed | Nothing: tmb carries a small adapter |
 | Rust | rust-analyzer | From rustup or on PATH; the Rust toolchain is needed | The pinned rust-analyzer |
@@ -1129,7 +1131,6 @@ All are FTS5 virtual tables.
 
 | Piece | Tracked in |
 |---|---|
-| The TypeScript compiler and pyright leave the tmb program | trustmybot/tmb#395 |
 | A type's fields are nodes, with read and write links | trustmybot/tmb#312 |
 | A bucket and a collection are data sources ([Data sources](#data-sources)) | trustmybot/tmb#398 |
 | Python's benchmark reference is a type checker | trustmybot/tmb#399 |
