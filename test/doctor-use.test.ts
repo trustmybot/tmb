@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter as claudeCode } from "../src/adapters/claude-code/index.ts";
-import { MIGRATION_AUDIT } from "../src/adapters/claude-code/migrate-plugin.ts";
+import { PLUGIN_IMPORT } from "../src/adapters/claude-code/migrate-plugin.ts";
 import { HOST_ADAPTERS, type HostAdapter } from "../src/adapters/index.ts";
 import { sessionStartLine } from "../src/doctor/index.ts";
 import { howFarBehind } from "../src/doctor/machine.ts";
@@ -194,7 +194,7 @@ describe("a plugin record beside this one", () => {
     repo(path.join(folder, "tmb"));
     repo(path.join(folder, "plugin"));
     pluginRecord(folder, { tmb: { issues: 2, tasks: 1, runs: 1 }, plugin: { issues: 3, tasks: 2, runs: 4 } });
-    withStore(folder, (store) => store.recordAudit(HUMAN, { what: MIGRATION_AUDIT, detail: JSON.stringify({ repo: "tmb", into: null, ids: { tasks: {} } }) }));
+    withStore(folder, (store) => store.recordImport(HUMAN, { source: PLUGIN_IMPORT, repo: "tmb", detail: { repo: "tmb", into: null, ids: { tasks: {} } } }));
   });
 
   test("repos not named yet: the counts left behind, and the two steps, init first", () => {
@@ -215,7 +215,7 @@ describe("a plugin record beside this one", () => {
   });
 
   test("every plugin repo migrated: fine", () => {
-    withStore(folder, (store) => store.recordAudit(HUMAN, { what: MIGRATION_AUDIT, detail: JSON.stringify({ repo: "plugin", into: "plugin" }) }));
+    withStore(folder, (store) => store.recordImport(HUMAN, { source: PLUGIN_IMPORT, repo: "plugin", detail: { repo: "plugin", into: "plugin" } }));
     const finding = withStore(folder, (store) => pluginHistoryCheck(env(folder), folder, store, readSettings(store)));
     expect(finding.status).toBe("ok");
   });
@@ -235,7 +235,7 @@ describe("runs with no cost", () => {
     });
     expect(finding.status).toBe("warn");
     expect(finding.summary).toBe("3 of 4 ended runs (75%) carry no cost");
-    withStore(project, (store) => store.recordAudit(HUMAN, { what: MIGRATION_AUDIT, detail: "{}" }));
+    withStore(project, (store) => store.recordImport(HUMAN, { source: PLUGIN_IMPORT, detail: {} }));
     expect(withStore(project, costCheck).summary).toBe("3 of 4 ended runs (75%) carry no cost, runs migrated from the plugin included");
   });
 });
@@ -257,7 +257,7 @@ describe("tasks that name no repo once the project is a workspace", () => {
       const pulled = store.appendTask(PLANNER, { issueId: issue, title: "With a pull request" });
       store.updateTask(PLANNER, pulled, { prUrl: "https://github.com/acme/web/pull/3" });
       const unknown = store.appendTask(PLANNER, { issueId: issue, title: "Nothing shows" });
-      store.recordAudit(HUMAN, { what: MIGRATION_AUDIT, detail: JSON.stringify({ repo: "web", into: null, ids: { tasks: { "7": migrated } } }) });
+      store.recordImport(HUMAN, { source: PLUGIN_IMPORT, repo: "web", detail: { repo: "web", into: null, ids: { tasks: { "7": migrated } } } });
       writeSetting(store, HUMAN, "repos", { api: { base_branch: "main" }, web: { base_branch: "main" } });
       return { migrated, branched, pulled, unknown };
     });

@@ -3,9 +3,24 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { type Actor, ROLES } from "./actor.ts";
 import type { ProjectionTable } from "./schema.ts";
-import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, REVIEW_TARGET_KINDS, ValueError, assertOneOf } from "./values.ts";
+import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, MARK_KINDS, MARK_STATES, REVIEW_TARGET_KINDS, ValueError, assertOneOf } from "./values.ts";
 
-export const RECORD_KINDS = ["issue", "discussion", "task", "run", "check_run", "review", "guard_decision", "audit", "feature"] as const;
+export const RECORD_KINDS = [
+  "issue",
+  "discussion",
+  "task",
+  "run",
+  "check_run",
+  "review",
+  "guard_decision",
+  "feature",
+  "waiver",
+  "review_mark",
+  "setting_change",
+  "freeze",
+  "feedback_report",
+  "import",
+] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
 export type EventType = "created" | "updated";
@@ -76,7 +91,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   },
   review: {
     table: "reviews",
-    columns: ["target_kind", "target", "verdict", "findings", "feature_id", "commit_sha", "run_id"],
+    columns: ["target_kind", "target", "verdict", "findings", "feature_id", "commit_sha", "run_id", "carried_from"],
     updatable: [],
     hasUpdatedAt: false,
     searchable: false,
@@ -90,16 +105,32 @@ const RECORDS: Record<RecordKind, RecordShape> = {
     searchable: false,
     lists: { decision: GUARD_DECISIONS },
   },
-  audit: { table: "audit", columns: ["what", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
   feature: {
     table: "features",
     columns: ["name", "base_branch", "base_commit", "repo"],
-    updatable: ["state", "pr_url", "drop_reason"],
+    updatable: ["state", "pr_url", "drop_reason", "base_merged_commit"],
     initial: { state: "open" },
     hasUpdatedAt: true,
     searchable: false,
   },
+  // What `audit` held, each kind in its own table (trustmybot/tmb#408).
+  waiver: { table: "waivers", columns: ["task_id", "feature_id", "carried_from", "commit_sha", "reason"], updatable: [], hasUpdatedAt: false, searchable: false },
+  review_mark: {
+    table: "review_marks",
+    columns: ["task_id", "feature_id", "commit_sha", "kind", "state", "sent_at"],
+    updatable: ["sent_at"],
+    hasUpdatedAt: false,
+    searchable: false,
+    lists: { kind: MARK_KINDS, state: MARK_STATES },
+  },
+  setting_change: { table: "setting_changes", columns: ["key", "repo", "old_value", "new_value", "how"], updatable: [], hasUpdatedAt: false, searchable: false },
+  freeze: { table: "freezes", columns: ["reason", "session_id"], updatable: ["lifted_by", "lifted_at"], hasUpdatedAt: false, searchable: false },
+  feedback_report: { table: "feedback_reports", columns: ["route", "url", "issue_id"], updatable: [], hasUpdatedAt: false, searchable: false },
+  import: { table: "imports", columns: ["source", "repo", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
 };
+
+/** The record kind `audit` had before version 13: its old events stay, and the fold skips them (trustmybot/tmb#408). */
+export const RETIRED_RECORD_KINDS: readonly string[] = ["audit"];
 
 export function tableOf(kind: RecordKind): ProjectionTable {
   return RECORDS[kind].table;
@@ -194,6 +225,7 @@ function syncSearch(db: Database, event: StoredEvent): void {
 }
 
 export function applyEvent(db: Database, event: StoredEvent): void {
+  if (RETIRED_RECORD_KINDS.includes(event.recordKind)) return;
   const shape = RECORDS[event.recordKind];
   if (!shape) throw new Error(`unknown record kind ${JSON.stringify(event.recordKind)}`);
   if (event.type === "created") applyCreated(db, shape, event);

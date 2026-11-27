@@ -295,7 +295,7 @@ function storeAnswers(projectDir: string, answers: Partial<SettingValues>, via: 
 function printSettings(projectDir: string, recorded: number, out: (line: string) => void): void {
   out("Settings in the record:");
   for (const line of settingLines(storedSettings(projectDir) ?? NO_SETTINGS)) out(`  ${line}`);
-  out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's audit trail.`);
+  out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's setting changes.`);
 }
 
 /**

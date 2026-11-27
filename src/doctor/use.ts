@@ -12,7 +12,7 @@ import { parseRemoteUrl } from "../engine/github.ts";
 import { inGitWorkTree, repoDirOf, scanRepos, unnamedRepos, workingRepos } from "../engine/repos.ts";
 import type { Settings } from "../engine/settings.ts";
 import type { Store } from "../engine/store/index.ts";
-import { MIGRATION_AUDIT, tasksWithNoRepo } from "../engine/task-repos.ts";
+import { PLUGIN_IMPORT, tasksWithNoRepo } from "../engine/task-repos.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
 
 const finding = (check: string, rest: Omit<Finding, "check" | "scope">): Finding => ({ check, scope: "project", ...rest });
@@ -196,13 +196,7 @@ export function pluginHistoryCheck(env: DoctorEnv, projectDir: string, store: St
   if (file === null) return finding("plugin history", { status: "ok", summary: "no plugin record beside this one" });
   const counts = pluginCounts(file);
   if (counts === null) return finding("plugin history", { status: "ok", summary: `the plugin record at ${file} could not be read, so what it holds is not compared` });
-  const earlier = store.listAuditAbout(MIGRATION_AUDIT).map((entry) => {
-    try {
-      return (JSON.parse(entry.detail) as { repo?: string | null }).repo ?? null;
-    } catch {
-      return null;
-    }
-  });
+  const earlier = store.listImports(PLUGIN_IMPORT).map((entry) => entry.repo);
   const named = [...counts.keys()].filter((repo): repo is string => repo !== null).sort();
   const program = env.program.name;
   const single = settings.repos === null && inGitWorkTree(projectDir);
@@ -244,7 +238,7 @@ export function pluginHistoryCheck(env: DoctorEnv, projectDir: string, store: St
 export function costCheck(store: Store): Finding {
   const { ended, withoutCost } = store.runCostCounts();
   // Runs brought from the plugin are counted too, so an old share is not read as a new fault.
-  const migrated = store.listAuditAbout(MIGRATION_AUDIT).length > 0 ? ", runs migrated from the plugin included" : "";
+  const migrated = store.listImports(PLUGIN_IMPORT).length > 0 ? ", runs migrated from the plugin included" : "";
   if (withoutCost === 0) return finding("run costs", { status: "ok", summary: ended === 0 ? "no run has ended yet" : `every one of ${plural(ended, "ended run")} carries its cost` });
   const share = Math.round((withoutCost / ended) * 100);
   return finding("run costs", {

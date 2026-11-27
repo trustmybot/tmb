@@ -37,6 +37,7 @@ import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
 import { HUMAN_YES, humanOnlyStep, humanYesQuestion, noTerminalRefusal, notConfirmedRefusal, unattendedChangeRefusal } from "./engine/human-only.ts";
 import { readSettings, reviewModeOf } from "./engine/settings.ts";
+import { recordProgramMove } from "./engine/program-tie.ts";
 import { pushActorFrom } from "./engine/push-actor.ts";
 import { runGit } from "./engine/git.ts";
 import { repoOf, workspaceRepos } from "./engine/repos.ts";
@@ -439,7 +440,7 @@ function movedIn(projectDir: string, from: string): void {
     const opened = openProjectStore(projectDir, { create: false });
     if (opened.ok) {
       try {
-        opened.store.recordAudit({ kind: "human" }, { what: "tmb-moved", detail: JSON.stringify({ program, from, to: version }) });
+        recordProgramMove(opened.store, { kind: "human" }, { program, from, to: version });
       } finally {
         opened.store.close();
       }

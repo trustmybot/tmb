@@ -8,7 +8,6 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  FEATURE_UPDATE,
   featureBrief,
   featureStart,
   featureUpdate,
@@ -156,7 +155,9 @@ describe("feature_update brings the base branch in", () => {
     expect(git(project, "rev-list", "--parents", "-n", "1", updated.to).split(" ").slice(1)).toEqual([own.commit, landed]);
     expect(git(origin, "rev-parse", `refs/heads/${FEATURE}`)).toBe(updated.to);
     expect(git(project, "show", `${updated.to}:src/theirs.ts`)).toBe("src/theirs.ts");
-    expect(store.listAuditAbout(FEATURE_UPDATE).map((entry) => JSON.parse(entry.detail))).toMatchObject([{ feature: FEATURE, base: landed, from: own.commit, how: "merged" }]);
+    const feature = store.listFeatures().find((f) => f.name === FEATURE)!;
+    expect(feature.baseMergedCommit).toBe(landed);
+    expect(store.history(feature.id).at(-1)!.data).toMatchObject({ base_merged_commit: landed, from: own.commit, to: updated.to, how: "merged" });
 
     // Again with nothing new: nothing changes.
     expect(featureUpdate(store, PLANNER, { feature: FEATURE }, context())).toMatchObject({ how: "none", from: updated.to, to: updated.to, push: null });
@@ -184,7 +185,7 @@ describe("feature_update brings the base branch in", () => {
     expect(tip()).toBe(own.commit);
     expect(git(origin, "rev-parse", `refs/heads/${FEATURE}`)).toBe(pushedBefore);
     expect(git(project, "status", "--porcelain")).toBe("");
-    expect(store.listAuditAbout(FEATURE_UPDATE)).toEqual([]);
+    expect(store.listFeatures().find((f) => f.name === FEATURE)!.baseMergedCommit).toBeNull();
 
     // Settled in a task whose worker merges the base and resolves it; then the step has nothing left to bring.
     const started = taskStart(store, PLANNER, { issue_id: issueId, kind: "code", intent: "Settle the merge", files: ["src"], criteria: ["SC1"] }, context());

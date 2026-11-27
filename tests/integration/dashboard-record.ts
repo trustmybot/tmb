@@ -25,8 +25,8 @@ export const SEED = {
   checkOutput: "12 pass, 0 fail",
   failedOutput: "header.tsx: unused import",
   guardReason: "rm -rf outside the worktree",
-  auditWhat: "setup",
-  auditDetail: "host claude-code installed",
+  auditWhat: "setting:host",
+  auditDetail: '"claude-code"',
 } as const;
 
 export type SeededIds = { issueId: string; closedIssueId: string; taskId: string; featureId: string; decisionId: string; oldDecisionId: string };
@@ -68,7 +68,7 @@ export function seedRecord(projectDir: string): SeededIds {
       ],
     });
     store.appendGuardDecision(WORKER, { event: "PreToolUse", decision: "deny", reason: SEED.guardReason });
-    store.recordAudit(HUMAN, { what: SEED.auditWhat, detail: SEED.auditDetail });
+    store.recordSettingChange(HUMAN, { key: "host", oldValue: null, newValue: SEED.auditDetail });
     return { issueId, closedIssueId, taskId, featureId, decisionId, oldDecisionId };
   } finally {
     store.close();

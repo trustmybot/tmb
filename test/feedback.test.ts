@@ -10,7 +10,6 @@ import { FEEDBACK_HEADING, firstRunAtInit, firstRunSection } from "../src/engine
 import {
   builtInBugForm,
   cleanText,
-  FEEDBACK_AUDIT,
   type FeedbackEnv,
   type FeedbackGithub,
   feedbackRepoFrom,
@@ -353,10 +352,10 @@ describe("the planner's tools", () => {
       expect(sent).toMatchObject({ route: "issue", url: "https://github.com/trustmybot/tmb/issues/901" });
       expect(env.github.issues[0]!.title).toBe("task_close failed on a clean worktree.");
       expect(draft.report).toContain(env.github.issues[0]!.body.trimEnd().split("\n")[0]!);
-      const audit = store.listAuditAbout(FEEDBACK_AUDIT);
-      expect(audit).toHaveLength(1);
-      expect(JSON.parse(audit[0]!.detail)).toMatchObject({ route: "issue", url: "https://github.com/trustmybot/tmb/issues/901" });
-      expect(audit[0]!.createdBy).toEqual(PLANNER);
+      const reports = store.listFeedbackReports();
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({ route: "issue", url: "https://github.com/trustmybot/tmb/issues/901", issueId: null, createdBy: PLANNER });
+      expect(store.history(reports[0]!.id)[0]!.data).toMatchObject({ title: "task_close failed on a clean worktree." });
       expect((await refusal(() => feedbackSend(store, PLANNER, { draft_id: draft.draft_id, human_answer: "yes" }, context))).message).toContain("already filed");
     });
   });
@@ -370,7 +369,9 @@ describe("the planner's tools", () => {
       expect(sent).toMatchObject({ route: "form", opened: true });
       expect(opened).toHaveLength(1);
       expect(new URL(opened[0]!).searchParams.get("summary")).toBe(DRAFT_INPUT.summary);
-      expect(JSON.parse(store.listAuditAbout(FEEDBACK_AUDIT)[0]!.detail)).toMatchObject({ route: "form", opened: true });
+      const report = store.listFeedbackReports()[0]!;
+      expect(report).toMatchObject({ route: "form", url: null });
+      expect(store.history(report.id)[0]!.data).toMatchObject({ opened: true });
     });
   });
 

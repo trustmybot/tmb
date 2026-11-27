@@ -6,7 +6,9 @@ import path from "node:path";
 import { createIdFactory, idTime, isId, newId } from "../src/engine/ids.ts";
 import { type Actor, ActorError, SCHEMA_VERSION, SNIPPET_MAX, type Store, ValueError, openStore } from "../src/engine/store/index.ts";
 import { assertActor } from "../src/engine/store/actor.ts";
-import { PROJECTION_TABLES, SCHEMA_STEPS } from "../src/engine/store/schema.ts";
+import { PROJECTION_TABLES, SCHEMA_STEPS, runStep } from "../src/engine/store/schema.ts";
+import { tiedProgram } from "../src/engine/program-tie.ts";
+import { reviewModeChosenVia } from "../src/engine/settings.ts";
 import { upgradeAdvice } from "../src/program.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -58,9 +60,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(12);
+    expect(SCHEMA_VERSION).toBe(13);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 12 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 13 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -73,7 +75,7 @@ describe("openStore", () => {
    */
   function oldDatabase(version: number): { issueId: string; discussionId: string; taskId: string } {
     const old = new Database(dbPath, { create: true });
-    for (const step of SCHEMA_STEPS.slice(0, version)) old.run(step);
+    for (const step of SCHEMA_STEPS.slice(0, version)) runStep(old, step);
     old.run(`PRAGMA user_version = ${version}`);
     const at = "2026-11-01T00:00:00.000Z";
     const by = JSON.stringify(HUMAN);
@@ -165,7 +167,7 @@ result.store.close();
       const roundPath = path.join(dir, `concurrent-${round}.db`);
       const old = new Database(roundPath, { create: true });
       old.run("PRAGMA journal_mode = WAL");
-      old.run(SCHEMA_STEPS[0]!);
+      runStep(old, SCHEMA_STEPS[0]!);
       old.run("PRAGMA user_version = 1");
       old.close();
 
@@ -383,7 +385,7 @@ describe("actors", () => {
     const s = open();
     const missing = undefined as unknown as Actor;
     expect(() => s.createIssue(missing, { title: "nobody" })).toThrow(ActorError);
-    expect(() => s.recordAudit(null as unknown as Actor, { what: "nobody" })).toThrow(ActorError);
+    expect(() => s.recordSettingChange(null as unknown as Actor, { key: "host", oldValue: null, newValue: '"nobody"' })).toThrow(ActorError);
     expect(() => s.createIssue({ kind: "agent", role: "worker", host: "" } as Actor, { title: "no host" })).toThrow(ActorError);
     expect(() => s.createIssue({ kind: "agent", role: "boss", host: "h" } as unknown as Actor, { title: "bad role" })).toThrow(
       ActorError,
@@ -436,7 +438,18 @@ describe("events", () => {
       findings: [{ id: "F1", severity: "nit" }],
     });
     s.appendGuardDecision(PLANNER, { event: "push", decision: "deny", reason: "no review" });
-    s.recordAudit(HUMAN, { what: "waiver", detail: "skip a check once" });
+    const waiverId = s.recordWaiver(HUMAN, { taskId, commitSha: "def5678", reason: "skip a check once" });
+    s.recordWaiver(PLANNER, { taskId, commitSha: "fed8765", reason: "skip a check once", carriedFrom: waiverId, detail: { from: "def5678", to: "fed8765" } });
+    const reviewed = s.appendReview(PLANNER, { target: { kind: "commit", ref: taskId }, verdict: "pass", commitSha: "def5678" });
+    s.appendReview(PLANNER, { target: { kind: "commit", ref: taskId }, verdict: "pass", commitSha: "fed8765", carriedFrom: reviewed, detail: { from: "def5678" } });
+    const mark = s.recordReviewMark(PLANNER, { taskId, commitSha: "def5678", kind: "waiver", state: "success", description: "Passed: review waived" });
+    s.markSent(PLANNER, mark, "2026-11-18T00:00:01.000Z");
+    s.recordSettingChange(HUMAN, { key: "review_mode", oldValue: null, newValue: '"agile"', how: "onboard" });
+    s.recordSettingChange(PLANNER, { key: "review_mode", repo: "web", oldValue: null, newValue: '"truest"', how: "planner" });
+    const freeze = s.recordFreeze(HUMAN, { reason: "stop the agents" });
+    s.liftFreeze(HUMAN, freeze, "2026-11-18T00:00:02.000Z");
+    s.recordFeedbackReport(PLANNER, { route: "issue", url: "https://github.com/trustmybot/tmb/issues/1", detail: { title: "t" } });
+    s.recordImport(HUMAN, { source: "plugin", repo: "web", detail: { repo: "web", ids: {} } });
 
     const before = peek(snapshot);
     for (const table of PROJECTION_TABLES) expect(before[table]!.length).toBeGreaterThan(0);
@@ -444,7 +457,8 @@ describe("events", () => {
     // Damage the projections behind the store's back: the rebuild must restore them from the events alone.
     const db = new Database(dbPath);
     db.run("UPDATE issues SET title = 'tampered'");
-    db.run("DELETE FROM audit");
+    db.run("DELETE FROM review_marks");
+    db.run("UPDATE setting_changes SET new_value = NULL");
     db.run("DELETE FROM search");
     db.close();
 
@@ -570,9 +584,9 @@ describe("the other records", () => {
     const checkId = s.appendCheckRun(WORKER, { taskId, commitSha: "deadbeef" });
     const reviewId = s.appendReview(PLANNER, { target: { kind: "commit", ref: "deadbeef" }, verdict: "fail", findings: [] });
     const guardId = s.appendGuardDecision(PLANNER, { event: "edit", decision: "allow", reason: "in scope" });
-    const auditId = s.recordAudit(HUMAN, { what: "config", detail: "mode=agile" });
+    const waiverId = s.recordWaiver(HUMAN, { taskId, commitSha: "deadbeef", reason: "a typo" });
 
-    for (const id of [taskId, runId, plannerRun, checkId, reviewId, guardId, auditId]) {
+    for (const id of [taskId, runId, plannerRun, checkId, reviewId, guardId, waiverId]) {
       expect(isId(id)).toBe(true);
       expect(s.history(id).map((event) => event.type)).toEqual(["created"]);
     }
@@ -592,7 +606,7 @@ describe("the other records", () => {
         findings: "[]",
       });
       expect(db.query("SELECT decision, reason FROM guard_decisions").get()).toEqual({ decision: "allow", reason: "in scope" });
-      expect(db.query("SELECT what, detail FROM audit").get()).toEqual({ what: "config", detail: "mode=agile" });
+      expect(db.query("SELECT task_id, feature_id, commit_sha, reason FROM waivers").get()).toEqual({ task_id: taskId, feature_id: null, commit_sha: "deadbeef", reason: "a typo" });
     });
   });
 });
@@ -607,7 +621,7 @@ describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", 
    */
   function version11Database(): void {
     const old = new Database(dbPath, { create: true });
-    for (const step of SCHEMA_STEPS.slice(0, 11)) old.run(step);
+    for (const step of SCHEMA_STEPS.slice(0, 11)) runStep(old, step);
     old.run("PRAGMA user_version = 11");
     const human = JSON.stringify(HUMAN);
     const planner = JSON.stringify(PLANNER);
@@ -638,13 +652,34 @@ describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", 
       .run(review, feature, run, planner, at);
     event("guard_decision", guard, PLANNER, { event: "{}", decision: "deny", reason: "no" });
     old.query("INSERT INTO guard_decisions (id, event, decision, reason, created_by, created_at) VALUES (?, '{}', 'deny', 'no', ?, ?)").run(guard, planner, at);
-    event("audit", audit, HUMAN, { what: "waiver", detail: "{}" });
-    old.query("INSERT INTO audit (id, what, detail, created_by, created_at) VALUES (?, 'waiver', '{}', ?, ?)").run(audit, human, at);
+    const waived = JSON.stringify({ feature_id: feature, feature: "feat/old", commit: "abc1234", reason: "a typo" });
+    event("audit", audit, HUMAN, { what: "waiver", detail: waived });
+    old.query("INSERT INTO audit (id, what, detail, created_by, created_at) VALUES (?, 'waiver', ?, ?, ?)").run(audit, waived, human, at);
     old.close();
   }
 
+  /** Every row of every projection table the database has, and every event. */
   function everything(db: Database): Record<string, unknown[]> {
-    return { ...snapshot(db), events: db.query("SELECT id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at FROM events ORDER BY id").all() };
+    const tables: Record<string, unknown[]> = {};
+    for (const table of PROJECTION_TABLES) {
+      if (db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) === null) continue;
+      tables[table] = db.query(`SELECT * FROM ${table} ORDER BY id`).all();
+    }
+    tables.search = db.query("SELECT * FROM search ORDER BY record_id").all();
+    return { ...tables, events: db.query("SELECT id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at FROM events ORDER BY id").all() };
+  }
+
+  /** What an upgrade from `before` kept: each table it had, in the columns it had, and its events, which come first. */
+  function kept(before: Record<string, unknown[]>, after: Record<string, unknown[]>): Record<string, unknown[]> {
+    const out: Record<string, unknown[]> = {};
+    for (const key of Object.keys(before)) {
+      const rows = key === "events" ? after.events!.slice(0, before.events!.length) : after[key]!;
+      out[key] = rows.map((row, i) => {
+        const columns = Object.keys((before[key]![i] ?? {}) as object);
+        return Object.fromEntries(Object.entries(row as object).filter(([column]) => columns.includes(column)));
+      });
+    }
+    return out;
   }
 
   test("an upgrade from version 11 keeps every event and every row, links included, and ends with a new database's shape", () => {
@@ -653,13 +688,17 @@ describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", 
     const result = openStore(dbPath, { create: false });
     if (!result.ok) throw result.error;
     store = result.store;
-    expect(peek(everything)).toEqual(before);
+    const upgraded = peek(everything);
+    expect(kept(before, upgraded)).toEqual(before);
+    // The old waiver is a waivers row now, written as a new event by tmb's upgrade.
+    expect(upgraded.events!.slice(before.events!.length)).toMatchObject([{ record_kind: "waiver", actor_kind: "tmb" }]);
+    expect(store.listWaivers()).toMatchObject([{ featureId: before.features![0] && (before.features![0] as { id: string }).id, commitSha: "abc1234", reason: "a typo", createdBy: TMB }]);
     peek((db) => {
-      expect(db.query("SELECT DISTINCT actor_source FROM events").all()).toEqual([{ actor_source: null }]);
+      expect(db.query("SELECT DISTINCT actor_source FROM events ORDER BY actor_source").all()).toEqual([{ actor_source: null }, { actor_source: "upgrade" }]);
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
     store.rebuildProjections();
-    expect(peek(everything)).toEqual(before);
+    expect(peek(everything)).toEqual(upgraded);
 
     const fresh = openStore(path.join(dir, "fresh.db"), { create: true });
     if (!fresh.ok) throw fresh.error;
@@ -749,5 +788,191 @@ describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", 
     expect(() => s.createIssue({ kind: "human", source: "syncer" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
     expect(() => assertActor({ kind: "tmb", source: "syncer" })).toThrow(/only tmb's own code/);
     expect(peek((db) => db.query("SELECT count(*) AS n FROM events").get())).toEqual({ n: 0 });
+  });
+});
+
+describe("the audit trail goes; each entry moves to its own table (trustmybot/tmb#408)", () => {
+  const at = (n: number) => `2026-11-0${1 + Math.floor(n / 10)}T00:00:${String(n % 60).padStart(2, "0")}.000Z`;
+
+  /**
+   * Leaves a version-12 database as tmb at version 12 wrote it: a task, a feature branch, a review
+   * of each, and one audit entry of every kind tmb wrote, each as its event and its row.
+   */
+  function version12Database() {
+    const old = new Database(dbPath, { create: true });
+    for (const step of SCHEMA_STEPS.slice(0, 12)) runStep(old, step);
+    old.run("PRAGMA user_version = 12");
+    const human = JSON.stringify(HUMAN);
+    const planner = JSON.stringify(PLANNER);
+    const event = (kind: string, id: string, actor: Actor, data: Record<string, unknown>, when: string) => {
+      const agent = actor.kind === "agent" ? actor : null;
+      old
+        .query("INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at) VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)")
+        .run(newId(), kind, id, JSON.stringify(data), actor.kind, agent?.role ?? null, agent?.host ?? null, when);
+    };
+    const [issue, feature, task, taskReview, featureReview] = [newId(), newId(), newId(), newId(), newId()];
+    event("issue", issue, HUMAN, { title: "goal", body: "", milestone: null }, at(0));
+    old.query("INSERT INTO issues (id, title, body, created_by, created_at, updated_at) VALUES (?, 'goal', '', ?, ?, ?)").run(issue, human, at(0), at(0));
+    old.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('issue', ?, ?, 'goal', '')").run(issue, issue);
+    event("feature", feature, PLANNER, { name: "feat/x", base_branch: "main", base_commit: "b0", repo: null }, at(0));
+    old.query("INSERT INTO features (id, name, base_branch, base_commit, state, created_by, created_at, updated_at) VALUES (?, 'feat/x', 'main', 'b0', 'open', ?, ?, ?)").run(feature, planner, at(0), at(0));
+    event("task", task, PLANNER, { issue_id: issue, title: "t", spec: "", state: "closed", commit_sha: "c1" }, at(0));
+    old.query("INSERT INTO tasks (id, issue_id, title, spec, state, commit_sha, created_by, created_at, updated_at) VALUES (?, ?, 't', '', 'closed', 'c1', ?, ?, ?)").run(task, issue, planner, at(0), at(0));
+    const review = (id: string, kind: string, target: string, commit: string, featureId: string | null) => {
+      event("review", id, PLANNER, { target_kind: kind, target, verdict: "pass", findings: [{ id: "F1" }], feature_id: featureId, commit_sha: commit, run_id: null }, at(0));
+      old
+        .query("INSERT INTO reviews (id, target_kind, target, verdict, findings, feature_id, commit_sha, created_by, created_at) VALUES (?, ?, ?, 'pass', '[{\"id\":\"F1\"}]', ?, ?, ?, ?)")
+        .run(id, kind, target, featureId, commit, planner, at(0));
+    };
+    review(taskReview, "commit", task, "c1", null);
+    review(featureReview, "branch", "feat/x", "f1", feature);
+
+    const entries: { id: string; what: string; detail: unknown; by: Actor }[] = [];
+    const audit = (what: string, detail: unknown, by: Actor = HUMAN): string => {
+      const id = newId();
+      const text = typeof detail === "string" ? detail : JSON.stringify(detail);
+      const when = at(entries.length + 1);
+      event("audit", id, by, { what, detail: text }, when);
+      old.query("INSERT INTO audit (id, what, detail, created_by, created_at) VALUES (?, ?, ?, ?, ?)").run(id, what, text, JSON.stringify(by), when);
+      entries.push({ id, what, detail, by });
+      return id;
+    };
+    const tie = { program: "tmb", version: "1.0.0", command: ["/bin/tmb"] };
+    audit("setting:base_branch", '"main"');
+    audit("setting:review_mode", '"agile"');
+    audit("review_mode_chosen", "onboard");
+    audit("review_mode_chosen", "planner", PLANNER);
+    audit("setting:repos", { web: { base_branch: "main" } });
+    audit("repo_review_mode_chosen", { repo: "web", review_mode: "truest", via: "planner" }, PLANNER);
+    audit("program", tie);
+    audit("tmb-moved", { program: "tmb", from: "/old/tmb", to: "/new/tmb" });
+    audit("host-refresh", { program: "tmb", from: "1.0.0", to: "1.1.0", hosts: ["claude-code"], changed: [".claude/agents/worker.md"] });
+    audit("task_waiver", { task_id: task, commit: "c2", reason: "a typo" });
+    audit("waiver", { feature_id: feature, feature: "feat/x", commit: "f2", reason: "docs only" });
+    audit("review_carry", { task_id: task, from: "c1", to: "c3", onto: "main" }, PLANNER);
+    audit("review_carry", { task_id: task, from: "c2", to: "c4", onto: "main" }, PLANNER);
+    const uncovered = audit("review_carry", { task_id: task, from: "c9", to: "c5", onto: "main" }, PLANNER);
+    const mark = audit("review_mark", { commit: "c1", state: "success", description: "Passed: reviewed", sent: false }, PLANNER);
+    audit("review_mark_sent", { mark_id: mark }, PLANNER);
+    audit("review_mark", { commit: "f2", state: "success", description: "Passed: review waived", sent: true });
+    const unmatched = audit("review_mark", { commit: "nowhere", state: "failure", description: "Failed: changes needed", sent: true }, PLANNER);
+    audit("feature_update", { feature_id: feature, feature: "feat/x", base: "b1", from: "f1", to: "f3", how: "merged" }, PLANNER);
+    audit("feedback", { route: "issue", url: "https://github.com/trustmybot/tmb/issues/9", title: "a bug" }, PLANNER);
+    audit("feedback", { route: "form", opened: true, title: "an idea" }, PLANNER);
+    audit("migration.plugin", { repo: "web", into: null, ids: { tasks: {} }, schemaVersion: 3 });
+    const unknown = audit("setup", "host claude-code installed");
+    old.close();
+    return { issue, feature, task, taskReview, featureReview, entries, tie, leftBehind: [uncovered, unmatched, unknown] };
+  }
+
+  function shape(file: string): unknown[] {
+    const db = new Database(file, { readonly: true });
+    try {
+      return db.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all();
+    } finally {
+      db.close();
+    }
+  }
+
+  test("an upgraded database has a new one's shape, no audit table, and every old event as it was", () => {
+    version12Database();
+    const oldEvents = peek((db) => db.query("SELECT * FROM events ORDER BY id").all());
+    const result = openStore(dbPath, { create: false });
+    if (!result.ok) throw result.error;
+    store = result.store;
+    const fresh = openStore(path.join(dir, "fresh.db"), { create: true });
+    if (!fresh.ok) throw fresh.error;
+    fresh.store.close();
+    expect(shape(dbPath)).toEqual(shape(path.join(dir, "fresh.db")));
+    peek((db) => {
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 13 });
+      expect(db.query("SELECT name FROM sqlite_master WHERE name = 'audit'").all()).toEqual([]);
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+      const all = db.query("SELECT * FROM events ORDER BY id").all();
+      expect(all.slice(0, oldEvents.length)).toEqual(oldEvents);
+    });
+  });
+
+  test("no fact is lost: each entry is a new event by tmb's upgrade naming it, but the three that match nothing", () => {
+    const seeded = version12Database();
+    const result = openStore(dbPath, { create: false });
+    if (!result.ok) throw result.error;
+    store = result.store;
+    const moved = peek(
+      (db) =>
+        db.query("SELECT record_kind, data, actor_kind, actor_source, at FROM events WHERE actor_source = 'upgrade' ORDER BY id").all() as {
+          record_kind: string;
+          data: string;
+          actor_kind: string;
+          at: string;
+        }[],
+    );
+    expect(moved.every((event) => event.actor_kind === "tmb")).toBe(true);
+    const named = new Set(moved.flatMap((event) => {
+      const data = JSON.parse(event.data) as { audit_id?: string; chosen_audit_id?: string };
+      return [data.audit_id, data.chosen_audit_id].filter((id): id is string => id !== undefined);
+    }));
+    expect(seeded.entries.map((entry) => entry.id).filter((id) => !named.has(id))).toEqual(seeded.leftBehind);
+    // Each new event keeps the time of the entry it moves.
+    const times = new Map(seeded.entries.map((entry, n) => [entry.id, at(n + 1)]));
+    for (const event of moved) {
+      const id = (JSON.parse(event.data) as { audit_id: string }).audit_id;
+      if (event.record_kind !== "feature") expect(event.at).toBe(times.get(id)!);
+    }
+  });
+
+  test("the rows say what the entries said, and the gates read them", () => {
+    const seeded = version12Database();
+    const result = openStore(dbPath, { create: false });
+    if (!result.ok) throw result.error;
+    store = result.store;
+    const s = store;
+    const TMB: Actor = { kind: "tmb", source: "upgrade" };
+
+    // Settings: the value in force is the newest that set one; the mode's change names how it was chosen.
+    expect(s.newestSettingChange("base_branch", null, true)).toMatchObject({ oldValue: null, newValue: '"main"', createdBy: TMB });
+    expect(s.listSettingChanges("review_mode").map((c) => [c.repo, c.oldValue, c.newValue, c.how])).toEqual([
+      [null, null, '"agile"', "onboard"],
+      [null, null, null, "planner"],
+      ["web", null, '"truest"', "planner"],
+    ]);
+    expect(s.newestSettingChange("review_mode", null, true)!.newValue).toBe('"agile"');
+    expect(reviewModeChosenVia(s)).toBe("planner");
+
+    // The program tie: wired, moved with the tie unchanged, then refreshed to the new version.
+    const program = s.listSettingChanges("program");
+    expect(program.map((c) => c.newValue && JSON.parse(c.newValue))).toEqual([seeded.tie, seeded.tie, { ...seeded.tie, version: "1.1.0" }]);
+    expect(tiedProgram(s)).toEqual({ ...seeded.tie, version: "1.1.0" });
+    expect(s.history(program[2]!.id)[0]!.data).toMatchObject({ refresh: { from: "1.0.0", to: "1.1.0", hosts: ["claude-code"] } });
+
+    // Waivers and carries: a carried review copies its verdict; a carry only a waiver covered is a carried waiver.
+    const waivers = s.listWaivers();
+    expect(waivers.map((w) => [w.taskId, w.featureId, w.commitSha, w.reason, w.carriedFrom])).toEqual([
+      [seeded.task, null, "c2", "a typo", null],
+      [null, seeded.feature, "f2", "docs only", null],
+      [seeded.task, null, "c4", "a typo", waivers[0]!.id],
+    ]);
+    expect(waivers[2]!.createdBy).toEqual(TMB);
+    const carried = peek((db) => db.query("SELECT target_kind, target, verdict, findings, commit_sha, carried_from FROM reviews WHERE carried_from IS NOT NULL").all());
+    expect(carried).toEqual([{ target_kind: "commit", target: seeded.task, verdict: "pass", findings: '[{"id":"F1"}]', commit_sha: "c3", carried_from: seeded.taskReview }]);
+
+    // Marks: each names its task or feature branch; the one sent later is sent.
+    expect(s.listReviewMarks().map((m) => [m.taskId, m.featureId, m.commitSha, m.kind, m.state, m.sentAt !== null])).toEqual([
+      [seeded.task, null, "c1", "pass", "success", true],
+      [null, seeded.feature, "f2", "waiver", "success", true],
+    ]);
+
+    // The feature branch knows the base it merged; reports and imports keep their rows.
+    expect(s.findFeature("feat/x")).toMatchObject({ baseMergedCommit: "b1" });
+    expect(s.listFeedbackReports().map((r) => [r.route, r.url])).toEqual([
+      ["issue", "https://github.com/trustmybot/tmb/issues/9"],
+      ["form", null],
+    ]);
+    expect(s.listImports("plugin")).toMatchObject([{ repo: "web", detail: { repo: "web", schemaVersion: 3 } }]);
+
+    // A rebuild from the events alone gives the same rows.
+    const before = peek(snapshot);
+    s.rebuildProjections();
+    expect(peek(snapshot)).toEqual(before);
   });
 });

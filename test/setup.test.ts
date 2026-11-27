@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "../src/adapters/index.ts";
 import { openProjectStore, readSettings, reviewModeChosenVia, SettingError, type Settings, tiedProgram, TMB_EVENT_TYPES } from "../src/engine/index.ts";
-import type { AuditEntry } from "../src/engine/store/index.ts";
+import type { SettingChange } from "../src/engine/store/index.ts";
 import { type Ask, runInit, runOnboard, SetupError, type SetupFlags, type SetupOptions } from "../src/setup.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -104,11 +104,11 @@ async function initAndOnboardOutsideGit(options: RunOptions = {}): Promise<void>
   await onboard(options);
 }
 
-function record<T>(read: (settings: Settings, audit: AuditEntry[]) => T): T {
+function record<T>(read: (settings: Settings, audit: SettingChange[]) => T): T {
   const opened = openProjectStore(project, { create: false });
   if (!opened.ok) throw opened.error;
   try {
-    return read(readSettings(opened.store), opened.store.listAudit());
+    return read(readSettings(opened.store), opened.store.listSettingChanges());
   } finally {
     opened.store.close();
   }
@@ -274,12 +274,12 @@ describe("tmb onboard", () => {
     const before = auditCount();
     await onboard({ ask: scripted(["", "release", "", ""]) });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: "agile", checks: [], graph_links: null, repos: null });
-    // Three settings, and which way the review mode was chosen.
-    expect(auditCount()).toBe(before + 4);
+    // Three settings; the review mode's change names which way it was chosen.
+    expect(auditCount()).toBe(before + 3);
     expect(chosenVia()).toBe("onboard");
     await onboard({ ask: scripted(["reviewer", "", "truest", "make test", ""]) });
     expect(settings()).toEqual({ host: "a", host_roles: { a: "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["make test"], graph_links: null, repos: null });
-    expect(auditCount()).toBe(before + 8);
+    expect(auditCount()).toBe(before + 6);
   });
 
   test("sets the role of the host --host names, keeping the others'", async () => {
@@ -353,8 +353,8 @@ describe("the questions", () => {
     writeFileSync(path.join(project, "go.mod"), "");
     await initAndOnboard({ flags: { base: "develop", reviewMode: "agile", checks: ["make check"] } });
     const recorded = auditCount();
-    // Five settings, which way the review mode was chosen, and the program the project is tied to.
-    expect(recorded).toBe(7);
+    // Five settings, the review mode's naming which way it was chosen, and the program the project is tied to.
+    expect(recorded).toBe(6);
     output = [];
     const ask = scripted([]);
     await initAndOnboard({ ask });

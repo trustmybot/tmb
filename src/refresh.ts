@@ -12,9 +12,6 @@ import type { Actor } from "./engine/store/index.ts";
 /** The refresh is tmb's own step, on the Human's behalf: the update was theirs, as is the tie init records. */
 const HUMAN: Actor = { kind: "human" };
 
-/** The audit entry each refresh leaves: from which version to which, and what changed. */
-export const REFRESH_AUDIT = "host-refresh";
-
 export type RefreshOptions = {
   projectDir: string;
   /** The program running this session start. */
@@ -82,11 +79,13 @@ export function refreshProject(options: RefreshOptions): string | null {
     try {
       lines.push(...installPushGates(projectDir, readSettings(opened.store).repos, tmbCommand));
       changed = lines.filter((line) => !UNCHANGED.test(line));
-      opened.store.recordAudit(HUMAN, {
-        what: REFRESH_AUDIT,
-        detail: JSON.stringify({ program: program.name, from: from.version, to: program.version, hosts: plan.hosts.map((adapter) => adapter.id), changed }),
-      });
-      tieProgram(opened.store, HUMAN, { program: program.name, version: program.version, command: [...tmbCommand] });
+      // The refresh ties the project to the version it wired, and the row keeps what it changed (trustmybot/tmb#408).
+      tieProgram(
+        opened.store,
+        HUMAN,
+        { program: program.name, version: program.version, command: [...tmbCommand] },
+        { refresh: { program: program.name, from: from.version, to: program.version, hosts: plan.hosts.map((adapter) => adapter.id), changed } },
+      );
     } finally {
       opened.store.close();
     }

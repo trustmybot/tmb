@@ -57,7 +57,7 @@ describe("settings_set", () => {
     expect(set.changed).toEqual(["base_branch", "review_mode", "checks"]);
     expect(set.empty).toEqual([]);
     expect(readSettings(store)).toMatchObject({ base_branch: "main", review_mode: "agile", checks: ["cargo test"] });
-    const audit = store.listAudit().filter((entry) => entry.what.startsWith("setting:"));
+    const audit = store.listSettingChanges();
     expect(audit.map((entry) => entry.createdBy)).toEqual(Array(3).fill(PLANNER));
 
     const again = settingsSet(store, PLANNER, { review_mode: "truest", base_branch: "main" }, context());

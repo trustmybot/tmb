@@ -1,5 +1,5 @@
-// The project's configuration lives in the record: each change to a setting is one audit
-// entry, and a setting's current value is its newest entry.
+// The project's configuration lives in the record: each change to a setting is one
+// setting_changes row, and a setting's current value is its newest row (trustmybot/tmb#408).
 import { runningName } from "../program.ts";
 import { DEFAULT_LINK_WAY, LINK_WAYS, type LinkWay } from "./graph/ways.ts";
 import type { Actor, Role, Store } from "./store/index.ts";
@@ -45,8 +45,6 @@ export type Settings = { [N in SettingName]: SettingValues[N] | null };
 export class SettingError extends Error {
   override name = "SettingError";
 }
-
-const AUDIT_PREFIX = "setting:";
 
 function nonEmptyText(name: string, value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") throw new SettingError(`${name} must be a non-empty text, got ${JSON.stringify(value)}`);
@@ -149,20 +147,22 @@ export function validateSetting<N extends SettingName>(name: N, value: unknown):
 export function readSettings(store: Store): Settings {
   const settings: Record<string, unknown> = {};
   for (const name of SETTING_NAMES) {
-    const entry = store.newestAudit(AUDIT_PREFIX + name);
-    settings[name] = entry ? JSON.parse(entry.detail) : null;
+    const change = store.newestSettingChange(name, null, true);
+    settings[name] = change === null ? null : JSON.parse(change.newValue!);
   }
   return settings as Settings;
 }
 
 /**
- * Sets one setting, recording the change as an audit entry by `actor`. A value equal to the
- * current one records nothing. Returns whether an entry was recorded.
+ * Sets one setting, recording the change, from what and to what, by `actor`; `how` is the way the
+ * Human chose a review mode. A value equal to the current one records nothing. Returns whether a
+ * change was recorded.
  */
-export function writeSetting<N extends SettingName>(store: Store, actor: Actor, name: N, value: unknown): boolean {
-  const detail = JSON.stringify(validateSetting(name, value));
-  if (store.newestAudit(AUDIT_PREFIX + name)?.detail === detail) return false;
-  store.recordAudit(actor, { what: AUDIT_PREFIX + name, detail });
+export function writeSetting<N extends SettingName>(store: Store, actor: Actor, name: N, value: unknown, how: ReviewModeChooser | null = null): boolean {
+  const next = JSON.stringify(validateSetting(name, value));
+  const current = store.newestSettingChange(name, null, true)?.newValue ?? null;
+  if (current === next) return false;
+  store.recordSettingChange(actor, { key: name, oldValue: current, newValue: next, how });
   return true;
 }
 
@@ -187,8 +187,8 @@ export function graphLinksOf(settings: Settings, repo: string | null): LinkWay {
 
 /** The role the host's main agent takes in the project: its role in the record, else the planner. */
 export function hostRole(store: Store, host: string): HostRole {
-  const entry = store.newestAudit(AUDIT_PREFIX + "host_roles");
-  const roles = entry ? (JSON.parse(entry.detail) as HostRoles) : {};
+  const change = store.newestSettingChange("host_roles", null, true);
+  const roles = change === null ? {} : (JSON.parse(change.newValue!) as HostRoles);
   return Object.hasOwn(roles, host) ? roles[host]! : DEFAULT_HOST_ROLE;
 }
 
@@ -252,24 +252,16 @@ export const REVIEW_MODE_COSTS: Record<ReviewMode, string> = {
 /** The mode tmb recommends when it asks, the documented default. */
 export const RECOMMENDED_REVIEW_MODE: ReviewMode = "agile";
 
-const CHOSEN_WHAT = "review_mode_chosen";
-
 /**
  * Sets the review mode as the Human chose it, and records which way they chose: init, onboard or
  * the planner. A value equal to the current one records nothing. Returns whether it changed.
  */
 export function chooseReviewMode(store: Store, actor: Actor, value: unknown, via: ReviewModeChooser): boolean {
-  return store.transaction(() => {
-    if (!writeSetting(store, actor, "review_mode", value)) return false;
-    store.recordAudit(actor, { what: CHOSEN_WHAT, detail: via });
-    return true;
-  });
+  return store.transaction(() => writeSetting(store, actor, "review_mode", value, via));
 }
 
 /** The word that takes a repo's own review mode away, so it follows the workspace's again. */
 export const WORKSPACE_REVIEW_MODE = "workspace";
-
-const REPO_CHOSEN_WHAT = "repo_review_mode_chosen";
 
 /** The repos whose own review mode differs between two policies, by name. */
 export function reviewModeChanges(before: RepoPolicies | null, after: RepoPolicies): string[] {
@@ -287,7 +279,15 @@ export function writeRepos(store: Store, actor: Actor, value: unknown, via: Revi
     if (!writeSetting(store, actor, "repos", value)) return false;
     const after = readSettings(store).repos!;
     for (const repo of reviewModeChanges(before, after)) {
-      store.recordAudit(actor, { what: REPO_CHOSEN_WHAT, detail: JSON.stringify({ repo, review_mode: after[repo]!.review_mode ?? null, via }) });
+      const old = before?.[repo]?.review_mode;
+      const now = after[repo]!.review_mode;
+      store.recordSettingChange(actor, {
+        key: "review_mode",
+        repo,
+        oldValue: old === undefined ? null : JSON.stringify(old),
+        newValue: now === undefined ? null : JSON.stringify(now),
+        how: via,
+      });
     }
     return true;
   });
@@ -295,10 +295,8 @@ export function writeRepos(store: Store, actor: Actor, value: unknown, via: Revi
 
 /** Which way the review mode in force was chosen; null when it is not set, or was set before tmb recorded the way. */
 export function reviewModeChosenVia(store: Store): ReviewModeChooser | null {
-  const setting = store.newestAudit(AUDIT_PREFIX + "review_mode");
-  const chosen = store.newestAudit(CHOSEN_WHAT);
-  if (setting === null || chosen === null || chosen.id < setting.id) return null;
-  return chosen.detail as ReviewModeChooser;
+  const newest = store.newestSettingChange("review_mode");
+  return (newest?.how ?? null) as ReviewModeChooser | null;
 }
 
 /** The refusal of a task start while no review mode is chosen; it names `tmb onboard`. */
