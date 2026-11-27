@@ -241,9 +241,6 @@ export type SendResult =
   | { route: "issue"; url: string }
   | { route: "form"; url: string; opened: boolean; shortened: boolean; file: string };
 
-/** The record's audit entries for reports: what was filed, with its link, and each form opened. */
-export const FEEDBACK_AUDIT = "feedback";
-
 /**
  * Sends a draft the Human said yes to: files the issue when `gh` is signed in, else opens the
  * filled-in form. Keeps it in the record when there is one. For an opened form tmb cannot know
@@ -267,8 +264,12 @@ export function sendDraft(env: FeedbackEnv, draft: Draft, record: { store: Store
   }
   saveDraft(env.stateDir, draft);
   if (record !== null) {
-    const detail = result.route === "issue" ? { route: "issue", url: result.url, title: draft.title } : { route: "form", opened: result.opened, title: draft.title };
-    record.store.recordAudit(record.actor, { what: FEEDBACK_AUDIT, detail: JSON.stringify(detail) });
+    // A filed report keeps its link; for an opened form tmb cannot know whether it was sent (trustmybot/tmb#408).
+    record.store.recordFeedbackReport(record.actor, {
+      route: result.route,
+      url: result.route === "issue" ? result.url : null,
+      detail: result.route === "issue" ? { title: draft.title } : { title: draft.title, opened: result.opened },
+    });
   }
   return result;
 }

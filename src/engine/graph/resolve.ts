@@ -1,11 +1,10 @@
 // Links a reference to its definition only on proof, carried over from the plugin's resolver:
 // the same file, a resolved import, an explicit path, a declared receiver type, or the one
-// definition of a table or script. A bare name that matches a symbol elsewhere is never
+// definition of a script. A bare name that matches a symbol elsewhere is never
 // proof, so such a reference stays unresolved rather than risk a wrong link.
 import { basename, posix } from "node:path";
-import type { EdgeKind, ExtractedEdge, ExtractedExport, SymbolKind } from "./extract.ts";
+import { type EdgeKind, type ExtractedEdge, type ExtractedExport, SYMBOL_KINDS, type SymbolKind } from "./extract.ts";
 import { fileCandidates, ImportConfig } from "./import-config.ts";
-import { isTestPath } from "./test-paths.ts";
 
 /**
  * A symbol an edge may link to; `id` is the caller's own index for it. `reach` marks a function
@@ -22,21 +21,40 @@ export type Candidate = {
   within?: [number, number];
   /** The line it starts on. */
   line?: number;
+  /** 1 on a type its language calls a class (ExtractedSymbol.makesObjects). */
+  makesObjects?: 1;
   /** A class's bases as its file names them; '' for one that is no plain name. */
   bases?: readonly string[];
+  /** The names a class binds to anything but a method, each hiding a parent's method of that name. */
+  fields?: readonly string[];
 };
 
 /** Why a reference was linked: `exact` on a proof that names the definition, `name` on a receiver's declared type. */
 export type Link = { dst: number; how: "exact" | "name" };
 
-const CALLABLE = new Set<SymbolKind>(["function", "method", "class", "sh_function"]);
-const TABLE_EDGES = new Set<EdgeKind>(["reads_table", "writes_table", "indexes", "triggers_on"]);
+/** The kinds that are callables: a function and a method. A class is named by a call too (isClass). */
+const CALLABLE_KINDS = new Set<SymbolKind>([SYMBOL_KINDS.function, SYMBOL_KINDS.method]);
+/**
+ * A class: a type its language calls one, which a construction names (CODE_GRAPH.md, "A construction
+ * links to the class"), a receiver's written type proves, and whose parents a method is looked up in.
+ */
+const isClass = (c: Candidate): boolean => c.kind === SYMBOL_KINDS.type && c.makesObjects === 1;
+/** Whether a reference may name `c` as a callable: a function, a method or a class. */
+const callable = (c: Candidate): boolean => CALLABLE_KINDS.has(c.kind) || isClass(c);
+/**
+ * File-level data: a name a statement of the file declares outside any type or function
+ * (CODE_GRAPH.md, "Kinds of symbol"). A call whose name the language's lookup ends at such a
+ * declaration, in the file's own scope or through an import, is linked to it: the declaration is
+ * the proof, so no type is needed (trustmybot/tmb#332). Only a call is linked so; any other use of
+ * the name is not.
+ */
+const FILE_DATA = new Set<SymbolKind>([SYMBOL_KINDS.fileData]);
 /** Edges that name a key, not a symbol: they are never linked. */
 export const NAME_ONLY_EDGES: ReadonlySet<EdgeKind> = new Set<EdgeKind>(["reads_config", "covers"]);
 
 /** A symbol's name as references use it: a method's own name, else its qualified name. */
 export function shortName(kind: SymbolKind, qualifiedName: string): string {
-  return kind === "method" ? qualifiedName.slice(qualifiedName.lastIndexOf(".") + 1) : qualifiedName;
+  return kind === SYMBOL_KINDS.method ? qualifiedName.slice(qualifiedName.lastIndexOf(".") + 1) : qualifiedName;
 }
 
 /** A relative import specifier resolved against the importing file, trying the TS forms of a `.js` specifier. */
@@ -79,6 +97,12 @@ type Followed = { origin: Origin | null; cut: boolean };
 
 const originKey = (o: Origin): string => ("namespace" in o ? `*\u0000${o.namespace}` : `${o.path}\u0000${o.name}`);
 
+/** The one item of a list, else undefined: two that share a name prove neither (trustmybot/tmb#287). */
+const sole = <V>(list: readonly V[]): V | undefined => (list.length === 1 ? list[0] : undefined);
+
+/** What a name a file imports is bound to: the file the import names, null when it names none, and the name there. */
+type ImportBinding = { file: string | null; name: string };
+
 function push<V>(map: Map<string, V[]>, key: string, value: V): void {
   const list = map.get(key);
   if (list) list.push(value);
@@ -91,6 +115,8 @@ export class Resolver {
   private readonly byBase = new Map<string, Candidate[]>();
   private readonly fileSet = new Set<string>();
   private readonly importMap = new Map<string, Map<string, string>>();
+  /** Each file's names bound by its own top-level imports, by the name the file uses (trustmybot/tmb#287). */
+  private readonly importBindings = new Map<string, Map<string, ImportBinding | null>>();
   private readonly sourced = new Map<string, string[]>();
   /** The names each file declares at its top level. */
   private readonly topLevel = new Map<string, Set<string>>();
@@ -106,13 +132,13 @@ export class Resolver {
     private readonly exports: ReadonlyMap<string, readonly ExtractedExport[]> = new Map(),
   ) {
     for (const c of candidates) {
-      if (c.kind === "module") {
+      if (c.kind === SYMBOL_KINDS.file) {
         this.modules.set(c.path, c.id);
         this.fileSet.add(c.path);
         push(this.byBase, basename(c.path), c);
       } else {
         push(this.byName, shortName(c.kind, c.qualified_name), c);
-        if (c.kind !== "method" && c.reach === undefined) {
+        if (c.kind !== SYMBOL_KINDS.method && c.reach === undefined) {
           const names = this.topLevel.get(c.path) ?? new Set<string>();
           names.add(c.qualified_name);
           this.topLevel.set(c.path, names);
@@ -128,6 +154,14 @@ export class Resolver {
           const map = this.importMap.get(from) ?? new Map<string, string>();
           map.set(edge.dst_name, target);
           this.importMap.set(from, map);
+        }
+        if (edge.bound === undefined) {
+          const names = this.importBindings.get(from) ?? new Map<string, ImportBinding | null>();
+          const local = edge.local ?? edge.dst_name;
+          const known = names.get(local);
+          // A name two imports bind to two things is bound by neither on proof.
+          names.set(local, known === undefined || (known !== null && known.file === target && known.name === edge.dst_name) ? { file: target, name: edge.dst_name } : null);
+          this.importBindings.set(from, names);
         }
       } else if (edge.kind === "sources") {
         const target = this.scriptTarget(edge.dst_name);
@@ -237,35 +271,62 @@ export class Resolver {
     return { origin: unproven ? null : origin, cut };
   }
 
-  /** The top-level callable `name` declared in `origin`, when it is a declaration: never a class's method of that name. */
-  private callableAt(origin: Origin | null): number | undefined {
+  /**
+   * The top-level symbol `name` declared in `origin` that a reference may name, when it is a
+   * declaration: a callable, or file-level data for a call. Never a class's method of that name.
+   */
+  private declarationAt(origin: Origin | null, call: boolean): number | undefined {
     if (origin === null || "namespace" in origin) return undefined;
-    return (this.byName.get(origin.name) ?? []).find((c) => c.path === origin.path && c.reach === undefined && c.kind !== "method" && CALLABLE.has(c.kind))?.id;
+    return sole((this.byName.get(origin.name) ?? []).filter((c) => c.path === origin.path && c.reach === undefined && c.kind !== SYMBOL_KINDS.method && namable(c, call)))?.id;
   }
 
-  /** The class named `name` as `from` sees it: its own, or the one its import of the name leads to. */
+  /** The classes named `name` that `path` declares. */
+  private classesAt(path: string, name: string): Candidate[] {
+    return (this.byName.get(name) ?? []).filter((c) => c.path === path && isClass(c));
+  }
+
+  /**
+   * The class named `name` as `from` sees it: its own, or the one its import binding that name
+   * leads to, an import under a new name included (trustmybot/tmb#287). Null when no one class
+   * is proven: the file declares two of that name, or the import names no class of the repo.
+   */
   private classOf(from: string, name: string): { path: string; name: string } | null {
-    const isClass = (path: string, n: string) => (this.byName.get(n) ?? []).some((c) => c.path === path && c.kind === "class");
-    if (isClass(from, name)) return { path: from, name };
-    const imported = this.importMap.get(from)?.get(name);
-    if (imported === undefined) return null;
-    if (isClass(imported, name)) return { path: imported, name };
-    const origin = this.originOf(imported, name);
-    return origin !== null && "path" in origin && isClass(origin.path, origin.name) ? origin : null;
+    const own = this.classesAt(from, name);
+    if (own.length > 0) return own.length === 1 ? { path: from, name } : null;
+    const bound = this.importBindings.get(from)?.get(name);
+    if (bound === undefined || bound === null || bound.file === null) return null;
+    const there = this.classesAt(bound.file, bound.name);
+    if (there.length > 0) return there.length === 1 ? { path: bound.file, name: bound.name } : null;
+    const origin = this.originOf(bound.file, bound.name);
+    return origin !== null && "path" in origin && this.classesAt(origin.path, origin.name).length === 1 ? origin : null;
+  }
+
+  /** The class `cls` names, once classOf has proven it is the one class of that name in its file. */
+  private classRow(cls: { path: string; name: string }): Candidate | undefined {
+    return sole(this.classesAt(cls.path, cls.name));
+  }
+
+  /** The methods of the class `cls` declares under `name`. */
+  private ownMethods(cls: { path: string; name: string }, name: string): Candidate[] {
+    const qualified = `${cls.name}.${name}`;
+    return (this.byName.get(name) ?? []).filter((c) => c.kind === SYMBOL_KINDS.method && c.path === cls.path && c.qualified_name === qualified);
   }
 
   /**
    * The method `name` of a class as the language finds it on the object itself (trustmybot/tmb#246):
-   * the class's own, else its parents', in the repo. Undefined when there is none; null when a
-   * parent is not a class of the repo or two parents give two methods, so no answer is proof.
+   * the class's own, else its parents', in the repo. The first class that has the name decides,
+   * so a field of that name stops the lookup (trustmybot/tmb#287). Undefined when there is none;
+   * null when a class has the name as no one method, a parent is not a class of the repo or two
+   * parents give two methods, so no answer is proof.
    */
   private methodOf(cls: { path: string; name: string }, name: string, seen: ReadonlySet<string>): number | undefined | null {
     const key = `${cls.path}\u0000${cls.name}`;
     if (seen.has(key)) return null;
-    const qualified = `${cls.name}.${name}`;
-    const own = (this.byName.get(name) ?? []).find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified);
-    if (own) return own.id;
-    const bases = (this.byName.get(cls.name) ?? []).find((c) => c.kind === "class" && c.path === cls.path)?.bases ?? [];
+    const row = this.classRow(cls);
+    if (row?.fields?.includes(name)) return null;
+    const own = this.ownMethods(cls, name);
+    if (own.length > 0) return sole(own)?.id ?? null;
+    const bases = row?.bases ?? [];
     const found = new Set<number>();
     for (const base of bases) {
       const parent = base === "" ? null : this.classOf(cls.path, base);
@@ -275,6 +336,46 @@ export class Resolver {
       if (hit !== undefined) found.add(hit);
     }
     return found.size > 1 ? null : [...found][0];
+  }
+
+  /**
+   * Whether a file of the repo declares `name` at its top level. In a language whose files can
+   * share one global scope, such as a TypeScript script with no import or export, that
+   * declaration is the global itself, so a built-in of that name is not proven (trustmybot/tmb#252).
+   */
+  declaresAtTop(name: string): boolean {
+    for (const names of this.topLevel.values()) if (names.has(name)) return true;
+    return false;
+  }
+
+  private readonly packages = new Map<string, boolean>();
+
+  /**
+   * Whether the module an import of `from` names is a package outside the repo (trustmybot/tmb#252).
+   * With `searched`, the paths at which the language finds it in any folder it searches, it is
+   * outside when no file of the repo is at one of them. Without, it is outside when the repo's
+   * import settings resolve it to no file and to none of the repo's own code, the same answer
+   * that makes such an import no miss.
+   */
+  isPackage(from: string, spec: string, searched?: readonly string[]): boolean {
+    const key = searched === undefined ? `${posix.dirname(from)}\u0000${spec}` : `\u0000${searched.join("\u0000")}`;
+    const known = this.packages.get(key);
+    if (known !== undefined) return known;
+    let outside: boolean;
+    if (searched !== undefined) {
+      const at = searched.map((s) => `/${s}`);
+      outside = !this.anyFile((f) => at.some((s) => (s.endsWith("/") ? `/${f}`.includes(s) : `/${f}`.endsWith(s))));
+    } else {
+      const target = this.config.resolve(from, spec, this.fileSet);
+      outside = target.file === null && !target.local;
+    }
+    this.packages.set(key, outside);
+    return outside;
+  }
+
+  private anyFile(test: (file: string) => boolean): boolean {
+    for (const file of this.fileSet) if (test(file)) return true;
+    return false;
   }
 
   resolve(from: string, edge: ExtractedEdge): Link | null {
@@ -287,15 +388,11 @@ export class Resolver {
     }
     if (edge.kind === "bundles") return link(this.modules.get(edge.dst_name), "exact");
     if (edge.kind === "runs" || edge.kind === "sources") return link(this.scriptTarget(edge.dst_name)?.id, "exact");
-    if (TABLE_EDGES.has(edge.kind)) {
-      const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => c.kind === "sql_table");
-      const real = cands.filter((c) => !isTestPath(c.path));
-      const only = real.length === 1 ? real[0] : real.length === 0 && cands.length === 1 ? cands[0] : undefined;
-      return link(only?.id, "exact");
-    }
-    const cands = (this.byName.get(edge.dst_name) ?? []).filter((c) => CALLABLE.has(c.kind));
-    // A bare or imported name is never a class's method of that name (trustmybot/tmb#242).
-    const declared = cands.filter((c) => c.reach === undefined && c.kind !== "method");
+    const call = edge.call === 1;
+    const cands = (this.byName.get(edge.dst_name) ?? []).filter(callable);
+    // A bare or imported name is never a class's method of that name (trustmybot/tmb#242). A call
+    // of it may name file-level data too (trustmybot/tmb#332).
+    const declared = (this.byName.get(edge.dst_name) ?? []).filter((c) => namable(c, call) && c.reach === undefined && c.kind !== SYMBOL_KINDS.method);
     // A name bound around the reference is looked up there first, and only there (trustmybot/tmb#246).
     if (edge.bound === "value") return null;
     if (edge.bound === "self") {
@@ -305,7 +402,8 @@ export class Resolver {
     if (edge.bound === "import") {
       const file = this.importTarget(from, { ...edge, kind: "imports" }).file;
       if (file === null) return null;
-      return link(declared.find((c) => c.path === file)?.id ?? this.callableAt(this.originOf(file, edge.dst_name)), "exact");
+      const there = declared.filter((c) => c.path === file);
+      return link(there.length > 0 ? sole(there)?.id : this.declarationAt(this.originOf(file, edge.dst_name), call), "exact");
     }
     if (edge.bound === "function") {
       const at = cands.filter((c) => c.path === from && c.reach !== "member" && String(c.line) === edge.hint);
@@ -315,33 +413,61 @@ export class Resolver {
     if (edge.hint === "this") return null;
     if (edge.hint !== null) {
       // `ns.f()` on a name imported from a file that exports it as `export * as ns from`.
-      const imported = this.importMap.get(from)?.get(edge.hint);
-      const namespace = imported === undefined ? null : this.originOf(imported, edge.hint);
-      if (namespace !== null && "namespace" in namespace) return link(this.callableAt(this.originOf(namespace.namespace, edge.dst_name)), "exact");
+      const imported = this.importBindings.get(from)?.get(edge.hint);
+      const namespace = imported?.file ? this.originOf(imported.file, imported.name) : null;
+      if (namespace !== null && "namespace" in namespace) return link(this.declarationAt(this.originOf(namespace.namespace, edge.dst_name), call), "exact");
       // A receiver's type is only a name: the call links only when that name is proven to be a
       // class of this repo, defined in this file or imported from a file of it.
       const cls = this.classOf(from, edge.hint);
       if (cls === null) return null;
-      const qualified = `${cls.name}.${edge.dst_name}`;
-      return link(cands.find((c) => c.kind === "method" && c.path === cls.path && c.qualified_name === qualified)?.id, "exact");
+      return link(sole(this.ownMethods(cls, edge.dst_name))?.id, "exact");
     }
-    const same = declared.find((c) => c.path === from);
-    if (same) return link(same.id, "exact");
+    // A name the file declares twice names neither on proof (trustmybot/tmb#287).
+    const same = declared.filter((c) => c.path === from);
+    // Data the file binds by an import as well is bound twice, and which binding holds depends on
+    // the order they run in, which the graph does not keep: neither is proof (trustmybot/tmb#332).
+    if (same.some((c) => FILE_DATA.has(c.kind)) && this.importBindings.get(from)?.has(edge.dst_name)) return null;
+    if (same.length > 0) return link(sole(same)?.id, "exact");
     // A function nested in another is linked by its bare name from inside its parent, and only when
     // no other nested function of that name is in reach there.
     const nested = cands.filter((c) => c.reach === "nested" && c.path === from && c.within && edge.line >= c.within[0] && edge.line <= c.within[1]);
     if (nested.length === 1) return link(nested[0]!.id, "exact");
     const viaImport = this.importMap.get(from)?.get(edge.dst_name);
     if (viaImport) {
-      const direct = declared.find((c) => c.path === viaImport);
+      const direct = declared.filter((c) => c.path === viaImport);
       // A name the imported file re-exports is linked where it is declared (trustmybot/tmb#233).
-      return link(direct?.id ?? this.callableAt(this.originOf(viaImport, edge.dst_name)), "exact");
+      return link(direct.length > 0 ? sole(direct)?.id : this.declarationAt(this.originOf(viaImport, edge.dst_name), call), "exact");
     }
     const viaSource = (this.sourced.get(from) ?? []).map((p) => declared.find((c) => c.path === p)).find(Boolean);
     return link(viaSource?.id, "exact");
   }
 }
 
+/**
+ * The state of a call written in a function (trustmybot/tmb#252): linked to a definition of the
+ * repo, to code outside the repo, or not known.
+ */
+export type CallState = "linked" | "outside" | "not_known";
+
+/**
+ * Where a call goes when it is not linked, on the same proof a link needs (trustmybot/tmb#252):
+ * outside the repo when the language's lookup ends at one of its built-ins that no file of the
+ * repo declares at its top level, or at an import of a module that names no file of the repo
+ * and none of its own code; else not known.
+ */
+export function callState(resolver: Resolver, from: string, edge: ExtractedEdge, link: Link | null): CallState {
+  if (link !== null) return "linked";
+  const outside = edge.outside;
+  if (outside === undefined) return "not_known";
+  if (outside.kind === "builtin") return resolver.declaresAtTop(outside.name) ? "not_known" : "outside";
+  return resolver.isPackage(from, outside.module, outside.searched) ? "outside" : "not_known";
+}
+
 function link(dst: number | undefined, how: Link["how"]): Link | null {
   return dst === undefined ? null : { dst, how };
+}
+
+/** Whether a reference may name `c`: a callable always, file-level data only from a call. */
+function namable(c: Candidate, call: boolean): boolean {
+  return callable(c) || (call && FILE_DATA.has(c.kind));
 }

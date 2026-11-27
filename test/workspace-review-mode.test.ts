@@ -227,7 +227,7 @@ describe("settings show and keep each repo's mode", () => {
     withStore((store) => {
       const both = { a: { base_branch: "dev", review_mode: "agile" }, b: { base_branch: "main", review_mode: "truest" } };
       writeSetting(store, HUMAN, "repos", both);
-      store.recordAudit(HUMAN, { what: "setting:review_mode", detail: "null" });
+      store.recordSettingChange(HUMAN, { key: "review_mode", oldValue: null, newValue: "null" });
       expect(readSettings(store).review_mode).toBeNull();
       expect(emptySettings(readSettings(store))).toEqual([]);
       writeSetting(store, HUMAN, "repos", { ...both, a: { base_branch: "dev" } });
@@ -240,8 +240,8 @@ describe("settings show and keep each repo's mode", () => {
       const context = { projectDir: workspace };
       const set = settingsSet(store, PLANNER, { repos: { a: { base_branch: "dev", review_mode: "truest" } } }, context);
       expect(set.settings.repos?.a).toEqual({ base_branch: "dev", review_mode: "truest" });
-      const chosen = store.newestAudit("repo_review_mode_chosen");
-      expect(chosen && JSON.parse(chosen.detail)).toEqual({ repo: "a", review_mode: "truest", via: "planner" });
+      const chosen = store.newestSettingChange("review_mode", "a");
+      expect(chosen).toMatchObject({ repo: "a", oldValue: null, newValue: '"truest"', how: "planner" });
       expect(chosen?.createdBy).toMatchObject({ kind: "agent", role: "planner" });
       // A new base branch keeps the repo's own mode: leaving it out changes nothing.
       expect(settingsSet(store, PLANNER, { repos: { b: { base_branch: "release" } } }, context).settings.repos?.b).toEqual({ base_branch: "release", review_mode: "truest" });

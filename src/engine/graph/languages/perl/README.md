@@ -1,6 +1,6 @@
 # Perl
 
-The code graph's rules for `.pl` and `.pm` files, and for files with no extension whose shebang names perl. Perl has no grammar here; its rules are patterns ([index.ts](index.ts)).
+The code graph's rules for the files GitHub Linguist's list and rules call Perl (trustmybot/tmb#154): its endings, such as `.pl` and `.pm`, once Linguist's heuristics tell them from Prolog and Raku, and a file whose first line names perl. Perl has no grammar here; its rules are patterns ([index.ts](index.ts)).
 
 ## What it reads
 

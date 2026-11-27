@@ -14,6 +14,8 @@ import {
   RECORD_USAGE,
   runConfigCommand,
   runIndexCommand,
+  runToolsCommand,
+  TOOLS_USAGE,
   runRecordCommand,
 } from "./engine/doors/command-line.ts";
 import {
@@ -35,6 +37,7 @@ import { serveTools } from "./engine/doors/tool-server.ts";
 import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
 import { HUMAN_YES, humanOnlyStep, humanYesQuestion, noTerminalRefusal, notConfirmedRefusal, unattendedChangeRefusal } from "./engine/human-only.ts";
 import { readSettings, reviewModeOf } from "./engine/settings.ts";
+import { recordProgramMove } from "./engine/program-tie.ts";
 import { pushActorFrom } from "./engine/push-actor.ts";
 import { runGit } from "./engine/git.ts";
 import { repoOf, workspaceRepos } from "./engine/repos.ts";
@@ -59,6 +62,7 @@ const usage = (): Record<string, string> => ({
   ...RECORD_USAGE,
   config: CONFIG_USAGE,
   index: INDEX_USAGE,
+  tools: TOOLS_USAGE,
   doctor: DOCTOR_USAGE,
   init: `  tmb init [--host <id>] [--role planner|reviewer]
                             Prepare the project in the current directory: create its record,
@@ -131,6 +135,7 @@ const GROUPS: HelpGroup[] = [
     commands: [
       { name: "graph", summary: "Find code by symbol, file or topic" },
       { name: "index", summary: "Index the base branch now" },
+      { name: "tools", summary: "List or install each language's tool" },
     ],
   },
   {
@@ -435,7 +440,7 @@ function movedIn(projectDir: string, from: string): void {
     const opened = openProjectStore(projectDir, { create: false });
     if (opened.ok) {
       try {
-        opened.store.recordAudit({ kind: "human" }, { what: "tmb-moved", detail: JSON.stringify({ program, from, to: version }) });
+        recordProgramMove(opened.store, { kind: "human" }, { program, from, to: version });
       } finally {
         opened.store.close();
       }
@@ -751,6 +756,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return runConfigCommand(rest, process.cwd(), OUTPUT);
     case "index":
       return runIndexCommand(rest, process.cwd(), OUTPUT);
+    case "tools":
+      return runToolsCommand(rest, process.cwd(), OUTPUT);
     case "remove":
       return runRemoveCommand(rest);
     case "pre-push":

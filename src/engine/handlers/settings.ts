@@ -1,7 +1,7 @@
 // The project's settings through the record's tools: the planner reads them, applies the ones
 // it recommends when a session starts with them empty, and changes one when the Human asks.
 // The review mode is the exception: the planner sets it only to the Human's answer.
-// The Human sets them with `tmb onboard`; both write the same audit entries.
+// The Human sets them with `tmb onboard`; both write the same setting changes.
 import { runningName } from "../../program.ts";
 import { detectBaseBranch } from "../base-branch.ts";
 import { detectChecks } from "../check-detection.ts";
@@ -23,6 +23,7 @@ import {
 } from "../settings.ts";
 import { workingRepos } from "../repos.ts";
 import type { Actor, Store } from "../store/index.ts";
+import { LINK_WAYS } from "../graph/ways.ts";
 import { type OperationContext, requireRole } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -95,11 +96,17 @@ export const settingsSetSchema: InputSchema = {
       description: "The shell commands that must pass before a task closes, replacing the list; an empty list means none.",
       items: { type: "string", pattern: NOT_BLANK },
     },
+    graph_links: {
+      type: "string",
+      description:
+        "Which way makes the code graph's links: language-tool, the language's own tool (the default; tmb carries the TypeScript compiler), or built-in, tmb's own rules. A language with no tool uses built-in, and the graph's answer says so. In a workspace, the workspace's; a repo's own in repos.",
+      enum: LINK_WAYS,
+    },
     repos: {
       type: "object",
       description:
         "Only in a workspace of several repos: each named repo's policy, replacing that repo's; repos not named keep theirs. " +
-        "base_branch is the branch its pull requests merge into, checks the commands its tasks run before they close, review_mode its own review mode when the Human chose one, exempt true for a repo tmb does no work in.",
+        "base_branch is the branch its pull requests merge into, checks the commands its tasks run before they close, review_mode its own review mode when the Human chose one, graph_links its own way to make the code graph's links, exempt true for a repo tmb does no work in.",
       additionalProperties: {
         type: "object",
         properties: {
@@ -112,6 +119,7 @@ export const settingsSetSchema: InputSchema = {
               `${WORKSPACE_REVIEW_MODE} takes the repo's own mode away, so it follows the workspace's review_mode. Left out, the repo keeps the mode it has.`,
             enum: [...AVAILABLE_REVIEW_MODES, WORKSPACE_REVIEW_MODE],
           },
+          graph_links: { type: "string", description: "The repo's own way to make the code graph's links; left out, it follows the workspace's graph_links.", enum: LINK_WAYS },
           exempt: { type: "boolean" },
         },
         required: [],
@@ -123,8 +131,8 @@ export const settingsSetSchema: InputSchema = {
   additionalProperties: false,
 };
 
-type SetName = ProjectSetting | "repos";
-const SET_NAMES: readonly SetName[] = [...PROJECT_SETTINGS, "repos"];
+type SetName = ProjectSetting | "graph_links" | "repos";
+const SET_NAMES: readonly SetName[] = [...PROJECT_SETTINGS, "graph_links", "repos"];
 
 export type SettingsSetResult = SettingsView & { changed: SetName[] };
 

@@ -8,9 +8,11 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { newId } from "../ids.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
+import { SYMBOL_KINDS, type SymbolKind } from "./languages/contract.ts";
+import { BUILT_IN, LINK_WAYS } from "./ways.ts";
 
 export const GRAPH_FILE_NAME = "graph.db";
-export const GRAPH_SCHEMA_VERSION = 5;
+export const GRAPH_SCHEMA_VERSION = 13;
 const BUSY_TIMEOUT_MS = 30_000;
 
 export const BASE_LAYER = "base";
@@ -21,6 +23,9 @@ const TESTS_PURPOSE = "Test code: every file the test rule matches, by the commo
 export const taskLayer = (taskId: string): string => `task:${taskId}`;
 /** One layer per feature branch that is neither merged nor closed, at the branch's tip (trustmybot/tmb#182). */
 export const featureLayer = (featureId: string): string => `feature:${featureId}`;
+
+/** The ways to make links, as SQL values. */
+const WAYS_SQL = LINK_WAYS.map((w) => `'${w}'`).join(", ");
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS layers (
@@ -35,7 +40,10 @@ CREATE TABLE IF NOT EXISTS layers (
   unresolved_imports INTEGER NOT NULL DEFAULT 0,
   functions  INTEGER NOT NULL DEFAULT 0,
   not_parsed INTEGER NOT NULL DEFAULT 0,
-  not_read   TEXT NOT NULL DEFAULT '{}'
+  not_read   TEXT NOT NULL DEFAULT '{}',
+  links      TEXT NOT NULL DEFAULT '${BUILT_IN}',
+  links_note TEXT,
+  built_with TEXT
 );
 CREATE TABLE IF NOT EXISTS dirs (
   layer          TEXT NOT NULL,
@@ -75,7 +83,8 @@ CREATE TABLE IF NOT EXISTS symbols (
   exported       INTEGER NOT NULL DEFAULT 0,
   parent_id      INTEGER,
   unnamed        INTEGER NOT NULL DEFAULT 0,
-  named_id       INTEGER
+  named_id       INTEGER,
+  lang           TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS symbols_name ON symbols(layer, name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS symbols_qualified ON symbols(layer, qualified_name COLLATE NOCASE);
@@ -90,7 +99,10 @@ CREATE TABLE IF NOT EXISTS edges (
   kind       TEXT NOT NULL,
   resolution TEXT NOT NULL CHECK (resolution IN ('exact', 'name', 'unresolved')),
   line       INTEGER,
-  hint       TEXT
+  pos        INTEGER,
+  hint       TEXT,
+  call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known')),
+  way        TEXT CHECK (way IN (${WAYS_SQL}))
 );
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src_id);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst_id);
@@ -156,6 +168,86 @@ CREATE TABLE IF NOT EXISTS misses (
 );
 `;
 
+/**
+ * Schema 10 stores the kinds of symbol as one set for every language (CODE_GRAPH.md, "Kinds of
+ * symbol"; trustmybot/tmb#314). The kinds a graph stored before it, each rewritten to the kind of
+ * the set it now is: a file's own row, a class, an interface, file-level data and a shell function.
+ * Every layer was built by an older extractor, so the next read rebuilds it; until then its rows
+ * answer in the new kinds.
+ */
+const KINDS_BEFORE_SCHEMA_10: Readonly<Record<string, SymbolKind>> = {
+  module: SYMBOL_KINDS.file,
+  class: SYMBOL_KINDS.type,
+  interface: SYMBOL_KINDS.type,
+  const: SYMBOL_KINDS.fileData,
+  sh_function: SYMBOL_KINDS.function,
+};
+const SCHEMA_9_TO_10 = Object.entries(KINDS_BEFORE_SCHEMA_10).map(([before, now]) => `UPDATE symbols SET kind = '${now}' WHERE kind = '${before}'`);
+
+/**
+ * Schema 12 stores an SQL trigger as a function, and records a node's own language when it differs
+ * from its file's, '' when it does not (CODE_GRAPH.md, "Data sources"; trustmybot/tmb#397). A trigger
+ * stored before it, under a kind of its own, is rewritten: it names SQL when its file is in another
+ * language, as one in a string of code is. Every other row is in its file's language. Every layer
+ * was built by an older extractor, so the next read rebuilds it; until then its triggers answer as
+ * functions.
+ */
+const TRIGGER_KIND_BEFORE_SCHEMA_12 = "sql_trigger";
+const TRIGGER_LANGUAGE = "sql";
+const SCHEMA_11_TO_12_COLUMN = "ALTER TABLE symbols ADD COLUMN lang TEXT NOT NULL DEFAULT ''";
+const SCHEMA_11_TO_12 = [
+  `UPDATE symbols SET lang = '${TRIGGER_LANGUAGE}' WHERE kind = '${TRIGGER_KIND_BEFORE_SCHEMA_12}' AND NOT EXISTS
+     (SELECT 1 FROM files f WHERE f.layer = symbols.layer AND f.path = symbols.path AND f.lang = '${TRIGGER_LANGUAGE}')`,
+  `UPDATE symbols SET kind = '${SYMBOL_KINDS.function}' WHERE kind = '${TRIGGER_KIND_BEFORE_SCHEMA_12}'`,
+];
+
+/**
+ * Schema 13 records, for a tool tmb builds a helper for, the helper a way B layer was built with:
+ * its key, its source and the tool that built it (trustmybot/tmb#394). A record made before it
+ * names no helper, so it is dropped: the layer is stale and the next read rebuilds it, as for 11.
+ */
+const SCHEMA_12_TO_13 = ["UPDATE layers SET built_with = NULL"];
+
+/**
+ * Schema 11 records, for each tool a way B layer was built with, whose copy it was and where it is
+ * (trustmybot/tmb#392). A record made before it names no copy, so it is dropped: the layer is stale
+ * and the next read rebuilds it, as one built before schema 9.
+ */
+const SCHEMA_10_TO_11 = ["UPDATE layers SET built_with = NULL"];
+
+/**
+ * Schema 9 records what each way B layer was built with: each tool's version and the installed
+ * packages it read (trustmybot/tmb#325). A way B layer built before it records nothing, so it is
+ * stale and the next read rebuilds it; a layer built by the built-in rules rests on neither.
+ */
+const SCHEMA_8_TO_9 = ["ALTER TABLE layers ADD COLUMN built_with TEXT"];
+
+/**
+ * Schema 8 records each call's position in its file, so two calls of one name on one line are told
+ * apart (trustmybot/tmb#323): the offset where the name it calls is written, else where it starts.
+ * Layers built before it are rebuilt by the newer extractor.
+ */
+const SCHEMA_7_TO_8 = ["ALTER TABLE edges ADD COLUMN pos INTEGER"];
+
+/**
+ * Schema 7 records the way that made each link or gave each call its state, and the way each layer
+ * was asked to be built by, with why a language was built by the built-in rules instead
+ * (trustmybot/tmb#311). Layers built before it are rebuilt by the newer extractor. A layer that
+ * names no way was built by the built-in rules, the only way there was, whatever the default is now.
+ */
+const SCHEMA_6_TO_7 = [
+  `ALTER TABLE edges ADD COLUMN way TEXT CHECK (way IN (${WAYS_SQL}))`,
+  `ALTER TABLE layers ADD COLUMN links TEXT NOT NULL DEFAULT '${BUILT_IN}'`,
+  "ALTER TABLE layers ADD COLUMN links_note TEXT",
+];
+
+/**
+ * Schema 6 records the state of each call written in a function: linked, to code outside the repo,
+ * or not known; null on any other reference (trustmybot/tmb#252). Layers built before it are
+ * rebuilt by the newer extractor.
+ */
+const SCHEMA_5_TO_6 = ["ALTER TABLE edges ADD COLUMN call_state TEXT CHECK (call_state IN ('linked', 'outside', 'not_known'))"];
+
 /** Schema 5 counts what the graph does not read: unread languages and files left out by rule (trustmybot/tmb#234). */
 const SCHEMA_4_TO_5 = ["ALTER TABLE layers ADD COLUMN not_read TEXT NOT NULL DEFAULT '{}'"];
 
@@ -200,7 +292,23 @@ export function openGraphDb(projectDir: string, repo: string | null = null): Dat
         if (version >= 1 && version <= 2) for (const statement of SCHEMA_2_TO_3) db.run(statement);
         const hasNotRead = (db.query("SELECT 1 FROM pragma_table_info('layers') WHERE name = 'not_read'").get() ?? null) !== null;
         if (version >= 1 && version <= 4 && !hasNotRead) for (const statement of SCHEMA_4_TO_5) db.run(statement);
+        const hasCallState = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'call_state'").get() ?? null) !== null;
+        if (version >= 1 && version <= 5 && !hasCallState) for (const statement of SCHEMA_5_TO_6) db.run(statement);
+        const hasWay = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'way'").get() ?? null) !== null;
+        if (version >= 1 && version <= 6 && !hasWay) for (const statement of SCHEMA_6_TO_7) db.run(statement);
+        const hasPos = (db.query("SELECT 1 FROM pragma_table_info('edges') WHERE name = 'pos'").get() ?? null) !== null;
+        if (version >= 1 && version <= 7 && !hasPos) for (const statement of SCHEMA_7_TO_8) db.run(statement);
+        const hasBuiltWith = (db.query("SELECT 1 FROM pragma_table_info('layers') WHERE name = 'built_with'").get() ?? null) !== null;
+        if (version >= 1 && version <= 8 && !hasBuiltWith) for (const statement of SCHEMA_8_TO_9) db.run(statement);
         db.run(SCHEMA);
+        // After the tables are made: a graph of schema 1 to 9 may hold no symbols table yet.
+        if (version >= 1 && version <= 9) for (const statement of SCHEMA_9_TO_10) db.run(statement);
+        if (version >= 1 && version <= 10) for (const statement of SCHEMA_10_TO_11) db.run(statement);
+        // After the tables are made, as the step before: the symbols table may be new, and so hold the column.
+        const hasLang = (db.query("SELECT 1 FROM pragma_table_info('symbols') WHERE name = 'lang'").get() ?? null) !== null;
+        if (version >= 1 && version <= 11 && !hasLang) db.run(SCHEMA_11_TO_12_COLUMN);
+        if (version >= 1 && version <= 11) for (const statement of SCHEMA_11_TO_12) db.run(statement);
+        if (version >= 1 && version <= 12) for (const statement of SCHEMA_12_TO_13) db.run(statement);
         ensureTestsArea(db);
         db.run(`PRAGMA user_version = ${GRAPH_SCHEMA_VERSION}`);
       }).immediate();
@@ -247,6 +355,12 @@ export type LayerRow = {
   functions: number;
   not_parsed: number;
   not_read: string;
+  /** The way the layer was asked to make its links by. */
+  links: string;
+  /** Why a language of the layer was built by the built-in rules although the language's tool was asked for; null when none was. */
+  links_note: string | null;
+  /** What a way B layer was built with (BuiltWithRecord in build.ts, as JSON); null for one built by the built-in rules, or before it was recorded. */
+  built_with: string | null;
 };
 
 export function layerRow(db: Database, layer: string): LayerRow | null {

@@ -4,22 +4,17 @@
 // a waiver or a pull request); it never fails the review. Only the newest mark of a commit is
 // ever sent, so an old one never overwrites a newer verdict. tmb only reads branch protection.
 import { githubRepoOf, requiresStatusCheck, setCommitStatus } from "../github.ts";
-import type { Actor, Store } from "../store/index.ts";
+import type { Actor, ReviewMark, Store } from "../store/index.ts";
 
 /** The status check's name, the one the Human requires in the base branch's protection. */
 export const MARK_CONTEXT = "tmb/review";
-/** What an audit entry of a mark is about. */
-export const REVIEW_MARK = "review_mark";
-/** What an audit entry is about when a mark recorded as not sent was sent later. */
-export const REVIEW_MARK_SENT = "review_mark_sent";
-
 export type MarkKind = "pass" | "fail" | "waiver";
 export type MarkState = "success" | "failure";
+/** What a mark is for: one task's commit, or a feature branch's. */
+export type MarkParent = { taskId: string } | { featureId: string };
 
 /** What became of a mark: set on GitHub or not, or skipped because origin is no GitHub repository. */
 export type MarkResult = { commit: string; state: MarkState; description: string; sent: boolean; why?: string } | { skipped: string };
-
-type MarkDetail = { commit: string; state: MarkState; description: string; sent: boolean; why?: string };
 
 const NOT_GITHUB = "origin is not a GitHub repository";
 
@@ -35,20 +30,27 @@ function markOf(kind: MarkKind, reason: string | number | undefined): { state: M
 }
 
 /**
- * Sets the mark for a verdict or a waiver on `commit` and records it. `detail` is the number of
- * blocking findings for a fail and the reason for a waiver. Never throws: a mark that could not be
- * sent is recorded as such and sent at the next occasion.
+ * Sets the mark for a verdict or a waiver on `commit` of `parent` and records it. `detail` is the
+ * number of blocking findings for a fail and the reason for a waiver. Never throws: a mark that
+ * could not be sent is recorded as such and sent at the next occasion.
  */
-export function markReviewed(store: Store, actor: Actor, projectDir: string, commit: string, kind: MarkKind, detail?: string | number): MarkResult {
+export function markReviewed(store: Store, actor: Actor, projectDir: string, parent: MarkParent, commit: string, kind: MarkKind, detail?: string | number): MarkResult {
   try {
     const repo = githubRepoOf(projectDir);
     if (repo === null) return { skipped: NOT_GITHUB };
     sendPendingMarks(store, actor, projectDir, commit);
     const { state, description } = markOf(kind, detail);
     const sent = setCommitStatus(projectDir, repo, commit, MARK_CONTEXT, state, description);
-    const mark: MarkDetail = sent.ok ? { commit, state, description, sent: true } : { commit, state, description, sent: false, why: sent.why };
-    store.recordAudit(actor, { what: REVIEW_MARK, detail: JSON.stringify(mark) });
-    return mark;
+    store.recordReviewMark(actor, {
+      ...parent,
+      commitSha: commit,
+      kind,
+      state,
+      sentAt: sent.ok ? new Date().toISOString() : null,
+      description,
+      ...(sent.ok ? {} : { detail: { why: sent.why } }),
+    });
+    return sent.ok ? { commit, state, description, sent: true } : { commit, state, description, sent: false, why: sent.why };
   } catch (error) {
     return { skipped: `the mark was not set: ${error instanceof Error ? error.message : String(error)}` };
   }
@@ -67,22 +69,18 @@ function commitNotOnGithub(why: string): boolean {
  */
 export function sendPendingMarks(store: Store, actor: Actor, projectDir: string, except?: string): { sent: number; pending: number } {
   const repo = githubRepoOf(projectDir);
-  const delivered = new Set(store.listAuditAbout(REVIEW_MARK_SENT).map((entry) => (JSON.parse(entry.detail) as { mark_id: string }).mark_id));
-  const newest = new Map<string, { id: string; mark: MarkDetail }>();
-  for (const entry of store.listAuditAbout(REVIEW_MARK)) {
-    const mark = JSON.parse(entry.detail) as MarkDetail;
-    newest.set(mark.commit, { id: entry.id, mark });
-  }
-  const unsent = [...newest.values()].filter(({ id, mark }) => !mark.sent && !delivered.has(id) && mark.commit !== except);
+  const newest = new Map<string, ReviewMark>();
+  for (const mark of store.listReviewMarks()) newest.set(mark.commitSha, mark);
+  const unsent = [...newest.values()].filter((mark) => mark.sentAt === null && mark.commitSha !== except);
   if (repo === null) return { sent: 0, pending: unsent.length };
   let sent = 0;
-  for (const { id, mark } of unsent) {
-    const result = setCommitStatus(projectDir, repo, mark.commit, MARK_CONTEXT, mark.state, mark.description);
+  for (const mark of unsent) {
+    const result = setCommitStatus(projectDir, repo, mark.commitSha, MARK_CONTEXT, mark.state as MarkState, mark.description);
     if (!result.ok) {
       if (commitNotOnGithub(result.why)) continue;
       break;
     }
-    store.recordAudit(actor, { what: REVIEW_MARK_SENT, detail: JSON.stringify({ mark_id: id }) });
+    store.markSent(actor, mark.id, new Date().toISOString());
     sent += 1;
   }
   return { sent, pending: unsent.length - sent };

@@ -1,7 +1,7 @@
 // Preparing a project for tmb, in two commands. `tmb init` picks the host, has its adapter wire
-// tmb into the project, adds git's push hook and indexes the code graph; on a terminal it asks
-// one question, the review mode, which is the Human's choice, and leaves the other settings
-// empty, for the planner to fill at the first session start.
+// tmb into the project, adds git's push hook and indexes the code graph. It asks nothing: it leaves
+// the settings empty, the review mode for the Human to choose and the others for the planner to
+// fill at the first session start, and names the languages whose tool is missing.
 // `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
 // again at any time. They reach a host only through the adapter interface, so they name none.
 import { createInterface } from "node:readline";
@@ -48,6 +48,9 @@ import { giveTasksTheirRepos } from "./engine/task-repos.ts";
 import { runningName } from "./program.ts";
 import { version as packageVersion } from "./version.ts";
 import { Paint } from "./engine/doors/help.ts";
+import { projectLanguages } from "./engine/doors/command-line.ts";
+import { installsOff, machinePlaces } from "./engine/graph/tool-copy.ts";
+import { type InstallOptions, missingTools } from "./engine/graph/tool-install.ts";
 
 /** Answers given on the command line; each one is used without asking. */
 export type SetupFlags = {
@@ -84,6 +87,8 @@ export type SetupOptions = {
   colour?: boolean;
   /** The feedback program's environment: init's end on a terminal gives its notice once; the question is the planner's. Nothing is said unless given. */
   feedback?: FeedbackEnv;
+  /** Where init looks for the tools the repo's languages miss; this machine's places unless given. */
+  tools?: Pick<InstallOptions, "places">;
 };
 
 export class SetupError extends Error {
@@ -91,7 +96,7 @@ export class SetupError extends Error {
 }
 
 const HUMAN: Actor = { kind: "human" };
-const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, repos: null };
+const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null };
 const notInitialised = () => `tmb is not set up in this project; run ${runningName()} init first`;
 
 /** The flag answers, checked. */
@@ -295,7 +300,7 @@ function storeAnswers(projectDir: string, answers: Partial<SettingValues>, via: 
 function printSettings(projectDir: string, recorded: number, out: (line: string) => void): void {
   out("Settings in the record:");
   for (const line of settingLines(storedSettings(projectDir) ?? NO_SETTINGS)) out(`  ${line}`);
-  out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's audit trail.`);
+  out(recorded === 0 ? "No setting changed, so nothing was recorded." : `Recorded ${recorded} change${recorded === 1 ? "" : "s"} in the record's setting changes.`);
 }
 
 /**
@@ -640,9 +645,32 @@ function howReviewModeIsChosen(role: HostRole, onboard: string): string {
 }
 
 /**
- * `tmb init`. Asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162):
- * the review mode is asked at onboarding. Throws SetupError or SettingError, before writing
- * anything when it can.
+ * The tools the repo's languages miss (CODE_GRAPH.md, "Where a language's tool comes from"): init
+ * names them and the command that installs them, whose run is the yes. It asks nothing and
+ * downloads nothing (2_ONBOARD.md). With installs off, it says so. A language's own command is
+ * never offered: it is named, as tmb installs no language.
+ */
+function nameMissingTools(options: SetupOptions, code: (text: string) => string): void {
+  const { out } = options;
+  const places = options.tools?.places ?? machinePlaces();
+  const languages = projectLanguages(options.projectDir);
+  if (languages === null) return;
+  const { offers, notes } = missingTools(languages, places);
+  for (const note of notes) out(note);
+  if (offers.length === 0) return;
+  const named = offers.map((offer) => `${offer.tool} (for ${offer.languages.join(", ")})`);
+  if (installsOff(places.stateDir)) {
+    out(`The code graph misses ${listed(named)}, and installs are off on this machine: the built-in rules make those languages' links.`);
+    return;
+  }
+  const command = code(`${options.program?.name ?? runningName()} tools install`);
+  out(`The code graph misses ${listed(named)}: the built-in rules make those languages' links until ${command} installs ${offers.length === 1 ? "it" : "them"}.`);
+}
+
+/**
+ * `tmb init`. Asks nothing and never waits for input, on a terminal or not (trustmybot/tmb#162,
+ * trustmybot/tmb#414): the review mode is asked at onboarding, and a missing tool is named with the
+ * command that installs it. Throws SetupError or SettingError, before writing anything when it can.
  */
 export async function runInit(options: SetupOptions): Promise<void> {
   const { projectDir, out } = options;
@@ -663,6 +691,7 @@ export async function runInit(options: SetupOptions): Promise<void> {
     out(`The settings are still empty: ${listed(empty)}; ${howEmptySettingsFill(init.role)}. To set them yourself, run ${onboard}.`);
   }
   if (reviewModeMissing(settings.review_mode, settings.repos)) out(howReviewModeIsChosen(init.role, onboard));
+  nameMissingTools(options, code);
   // The feedback program's notice, once per program on this machine, only on a terminal; its question is the planner's.
   if (options.feedback !== undefined) firstRunAtInit(options.feedback, out);
   // Said again last, so it is not lost above init's other lines.

@@ -80,7 +80,7 @@ export function showFindings(findings: Finding[]): string {
  * A printed command of plain tmb: `tmb`, not part of a longer name or a path, then a command or a
  * flag. The same pattern as test/program-name.test.ts.
  */
-const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "dashboard", "update", "feedback", "doctor", "help", "mcp", "hook", "pre-push"];
+const COMMANDS = ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "feedback", "doctor", "help", "mcp", "hook", "pre-push"];
 const PLAIN = new RegExp(`(?<![\\w./-])tmb (?:(?:${COMMANDS.join("|")})\\b|--)`);
 
 /** The lines tmb printed since the last call that tell their reader to run plain tmb. */

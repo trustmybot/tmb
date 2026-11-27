@@ -32,6 +32,7 @@ describe("the code graph from the command line", () => {
     const card = tmb(["graph", "symbol", "applyDiscount"], project);
     expect(card).toContain("called by:");
     expect(card).toContain("cartTotal  cart.ts:");
+    expect(tmb(["graph", "symbol", "cartTotal"], project)).toContain("calls written: 1 (1 linked, 0 outside the repo, 0 not known)");
     expect(tmb(["graph", "map"], project)).toContain("discount.ts");
     expect(tmb(["graph", "scope", "loyal discount", "--anchor", "applyDiscount"], project)).toContain("cart.ts  (caller:applyDiscount");
 

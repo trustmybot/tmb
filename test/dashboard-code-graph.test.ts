@@ -133,6 +133,8 @@ describe("a small project", () => {
     if (!opened.ok) throw opened.error;
     store = opened.store;
     writeSetting(store, HUMAN, "base_branch", "main");
+    // These test the built-in rules, so the repo names them; the default is the language's tool (trustmybot/tmb#337).
+    writeSetting(store, HUMAN, "graph_links", "built-in");
     const view = await openView(project, store);
     db = view.db;
     layer = view.layer;
@@ -200,7 +202,7 @@ describe("a small project", () => {
       expect(view.callers.map(({ id: _id, ...ref }) => ref)).toEqual(card.callers);
       expect(view.callees.map((c) => c.qualifiedName)).toEqual(card.callees.filter((c) => c.target !== null).map((c) => c.target!.qualifiedName));
       // Each proven caller and callee in a function opens by its id.
-      for (const ref of [...view.callers, ...view.callees]) if (ref.kind !== "module") expect(ref.id).not.toBeNull();
+      for (const ref of [...view.callers, ...view.callees]) if (ref.kind !== "file") expect(ref.id).not.toBeNull();
     }
     const applyDiscount = db.query("SELECT id FROM symbols WHERE layer = ? AND qualified_name = 'applyDiscount'").get(layer) as { id: number };
     // Called from inside an unnamed callback: reported from the nearest named function, as the lookup does.
@@ -216,6 +218,17 @@ describe("a small project", () => {
     expect(view.callees.map((c) => c.qualifiedName)).toEqual(["applyDiscount"]);
   });
 
+  test("a function shows its calls by state, and an unnamed one its own (trustmybot/tmb#252)", () => {
+    const cart = file(db, layer, "src/shop/cart.ts")!;
+    const by = (name: string) => cart.symbols.find((s) => s.qualifiedName === name)!;
+    // Cart.total writes `.map(…)` and `.reduce(…)`, on no proven type; its callback calls applyDiscount.
+    expect(by("Cart.total").calls).toEqual({ linked: 0, outside: 0, notKnown: 2 });
+    expect(by("callback of `map`").calls).toEqual({ linked: 1, outside: 0, notKnown: 0 });
+    const view = functionView(db, layer, by("Cart.total").id)!;
+    expect(view.card.calls).toEqual({ linked: 1, outside: 0, notKnown: 2 });
+    expect(view.card.callsNote).toContain("Calls not known: 2 of 3.");
+  });
+
   test("search finds a function by part of its name, named ones first", () => {
     expect(search(db, layer, "applyDisc").map((h) => h.qualifiedName)).toEqual(["applyDiscount"]);
     expect(search(db, layer, "cart").map((h) => h.qualifiedName)).toEqual(["Cart", "makeCart", "Cart.total", "callback of `test` 'a cart'"]);
@@ -228,7 +241,7 @@ describe("a small project", () => {
     expect(tree(db, layer, "nope")).toBeNull();
     expect(file(db, layer, "src/nope.ts")).toBeNull();
     expect(functionView(db, layer, 999_999)).toBeNull();
-    const module = db.query("SELECT id FROM symbols WHERE layer = ? AND kind = 'module' LIMIT 1").get(layer) as { id: number };
+    const module = db.query("SELECT id FROM symbols WHERE layer = ? AND kind = 'file' LIMIT 1").get(layer) as { id: number };
     expect(functionView(db, layer, module.id)).toBeNull();
   });
 });

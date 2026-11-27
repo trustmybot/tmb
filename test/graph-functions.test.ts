@@ -27,8 +27,10 @@ describe("every symbol has a container", () => {
     const py = extractFile(parsers, "tools/a.py", "python", "class A:\n    def run(self):\n        return 1\n\ndef top():\n    return 2\n").symbols;
     expect(py.find((s) => s.qualified_name === "A.run")?.parent).toBe(py.findIndex((s) => s.qualified_name === "A"));
     expect(py.find((s) => s.qualified_name === "top")?.parent).toBe(0);
-    const sql = extractFile(null, "db/a.sql", "sql", "CREATE TABLE t (id INTEGER);\n").symbols;
-    expect(sql[1]?.parent).toBe(0);
+    const sql = extractFile(null, "db/a.sql", "sql", "CREATE TABLE t (id INTEGER);\nCREATE TRIGGER t_added AFTER INSERT ON t BEGIN SELECT 1; END;\n").symbols;
+    expect(sql.find((s) => s.qualified_name === "t_added")).toMatchObject({ kind: "function", parent: 0 });
+    // In an .sql file a trigger is in its file's language, so it names none of its own.
+    expect(sql.find((s) => s.qualified_name === "t_added")?.lang).toBeUndefined();
   });
 });
 
@@ -104,7 +106,7 @@ describe("indexing and lookups", () => {
         .query("SELECT s.unnamed, p.qualified_name AS parent, n.qualified_name AS named FROM symbols s JOIN symbols p ON p.id = s.parent_id JOIN symbols n ON n.id = s.named_id WHERE s.layer = ? AND s.qualified_name = 'callback of `map`'")
         .get(view.layer);
       expect(callback).toEqual({ unnamed: 1, parent: "cartTotal", named: "cartTotal" });
-      const orphans = view.db.query("SELECT count(*) AS n FROM symbols WHERE layer = ? AND kind <> 'module' AND parent_id IS NULL").get(view.layer);
+      const orphans = view.db.query("SELECT count(*) AS n FROM symbols WHERE layer = ? AND kind <> 'file' AND parent_id IS NULL").get(view.layer);
       expect(orphans).toEqual({ n: 0 });
     } finally {
       view.db.close();

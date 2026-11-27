@@ -2,13 +2,17 @@
 // init prepares a fresh project without a question and leaves its settings empty, the first
 // session start tells the planner to apply the ones it recommends, onboard changes them as often
 // as asked, and remove takes back what init added.
-import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readdirSync, readFileSync, statSync, writeFileSync, existsSync, mkdtempSync } from "node:fs";
 import path from "node:path";
 import { callJson, callRefused, CLI, tmbProcesses } from "./tmb-processes.ts";
+import { installPinnedTools } from "../lib/pinned-tools.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
+
+// A machine with tmb's pinned tools installed: init then names no missing tool.
+beforeAll(installPinnedTools);
 
 const NO_INPUT_LIMIT_MS = 20_000;
 const { scratch, env, git, run, tmb, human, sessionStart, connect, cleanup } = tmbProcesses("tmb-init-onboard-");
@@ -48,7 +52,7 @@ function snapshot(dir: string, base = dir): Record<string, string> {
   return files;
 }
 
-const EMPTY = { base_branch: null, review_mode: null, checks: null };
+const EMPTY = { base_branch: null, review_mode: null, checks: null, graph_links: null };
 
 describe("tmb init", () => {
   test("prepares a fresh project with no question asked, and ends saying how the settings get filled and that the review mode is the Human's", async () => {
@@ -125,7 +129,7 @@ describe("onboarding at the first session", () => {
     } finally {
       await client.close();
     }
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"] });
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], graph_links: null });
     expect(sessionStart(project)).not.toContain("## The project's settings are empty");
   });
 });
@@ -167,10 +171,10 @@ describe("tmb onboard", () => {
   test("changes a setting, and can be run again to change another", () => {
     const project = newProject();
     tmb(["init"], project);
-    expect(tmb(["onboard", "--base", "release"], project)).toContain("Recorded 2 changes in the record's audit trail.");
+    expect(tmb(["onboard", "--base", "release"], project)).toContain("Recorded 2 changes in the record's setting changes.");
     expect(config(project)).toMatchObject({ base_branch: "release", review_mode: null, checks: ["bun run test"] });
-    expect(human(["onboard", "--review-mode", "truest", "--role", "reviewer", "--yes"], project)).toContain("Recorded 2 changes in the record's audit trail.");
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["bun run test"] });
+    expect(human(["onboard", "--review-mode", "truest", "--role", "reviewer", "--yes"], project)).toContain("Recorded 2 changes in the record's setting changes.");
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "reviewer" }, base_branch: "release", review_mode: "truest", checks: ["bun run test"], graph_links: null });
     expect(tmb(["onboard"], project)).toContain("No setting changed, so nothing was recorded.");
   }, 30_000);
 });

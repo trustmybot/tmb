@@ -30,12 +30,12 @@ function snapshot(dir: string, base = dir): Record<string, string> {
   return files;
 }
 
-/** How many audit entries the record holds by the Human; the snapshot shows no other row changed either. */
+/** How many setting changes the record holds by the Human; the snapshot shows no other row changed either. */
 function humanEntries(project: string): number {
   const opened = openProjectStore(project, { create: false });
   if (!opened.ok) throw opened.error;
   try {
-    return opened.store.listAudit().filter((entry) => entry.createdBy.kind === "human").length;
+    return opened.store.listSettingChanges().filter((entry) => entry.createdBy.kind === "human").length;
   } finally {
     opened.store.close();
   }
@@ -76,7 +76,7 @@ describe("a step only the Human may take", () => {
     expect(refused.output).toContain("tmb onboard --review-mode needs yes typed on the terminal; nothing was done.");
     expect(snapshot(project)).toEqual(before);
 
-    expect(human(["onboard", "--review-mode", "truest", "--yes"], project)).toContain("Recorded 1 change in the record's audit trail.");
+    expect(human(["onboard", "--review-mode", "truest", "--yes"], project)).toContain("Recorded 1 change in the record's setting changes.");
   }, 90_000);
 
   test("with unattended mode on and no terminal, a run such as CI sets a review mode where none is set, never changes one, and lets nothing else through (trustmybot/tmb#223)", () => {

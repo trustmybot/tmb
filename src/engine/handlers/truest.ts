@@ -32,17 +32,10 @@ import {
   worktreeReady,
 } from "./tasks.ts";
 
-/** What an audit entry of a Human waiver of one task's review is about. */
-export const TASK_WAIVER = "task_waiver";
-/** What an audit entry is about when a rebase that left the patch unchanged carried a task's review to the rebased commit. */
-export const REVIEW_CARRY = "review_carry";
-
 const ORIGIN = "origin";
 const PATCH_ID_TIMEOUT_MS = 60_000;
-/** How many carries coverage follows back; a real task has a handful at most. */
-const CARRY_DEPTH_MAX = 50;
-
-export type TaskWaiver = { id: string; task: string; commit: string; reason: string; at: string };
+/** A Human waiver of one task's review at a commit; `carriedFrom` names the waiver a rebase carried to it. */
+export type TaskWaiver = { id: string; task: string; commit: string; reason: string; at: string; carriedFrom: string | null };
 /** A rebase that kept the patch, so the review of `from` holds for `to`. */
 export type ReviewCarry = { id: string; task: string; from: string; to: string; at: string };
 
@@ -67,50 +60,60 @@ export function taskReviewLine(id: string): string {
 }
 
 function allTaskWaivers(store: Store): TaskWaiver[] {
-  return store.listAuditAbout(TASK_WAIVER).map((entry) => {
-    const detail = JSON.parse(entry.detail) as { task_id: string; commit: string; reason: string };
-    return { id: entry.id, task: detail.task_id, commit: detail.commit, reason: detail.reason, at: entry.createdAt };
-  });
+  return store
+    .listWaivers()
+    .filter((waiver) => waiver.taskId !== null)
+    .map((waiver) => ({ id: waiver.id, task: waiver.taskId!, commit: waiver.commitSha, reason: waiver.reason, at: waiver.createdAt, carriedFrom: waiver.carriedFrom }));
 }
 
-function allCarries(store: Store): ReviewCarry[] {
-  return store.listAuditAbout(REVIEW_CARRY).map((entry) => {
-    const detail = JSON.parse(entry.detail) as { task_id: string; from: string; to: string };
-    return { id: entry.id, task: detail.task_id, from: detail.from, to: detail.to, at: entry.createdAt };
-  });
+/** The carries over rebases: each review or waiver a rebase carried, from the commit it was on to the rebased one. */
+function carriesOf(taskId: string, reviews: readonly Review[], waivers: readonly TaskWaiver[]): ReviewCarry[] {
+  const reviewCommits = new Map(reviews.map((review) => [review.id, review.commitSha]));
+  const waiverCommits = new Map(waivers.map((waiver) => [waiver.id, waiver.commit]));
+  const carries = new Map<string, ReviewCarry>();
+  for (const review of reviews) {
+    const from = review.carriedFrom === null ? undefined : reviewCommits.get(review.carriedFrom);
+    if (from && review.commitSha !== null) carries.set(`${from} ${review.commitSha}`, { id: review.id, task: taskId, from, to: review.commitSha, at: review.createdAt });
+  }
+  for (const waiver of waivers) {
+    const from = waiver.carriedFrom === null ? undefined : waiverCommits.get(waiver.carriedFrom);
+    const key = `${from} ${waiver.commit}`;
+    if (from && !carries.has(key)) carries.set(key, { id: waiver.id, task: taskId, from, to: waiver.commit, at: waiver.at });
+  }
+  return [...carries.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
 }
 
 type TaskCoverage = { reviews: Review[]; waivers: TaskWaiver[]; carries: ReviewCarry[] };
 
-/** Every waiver and carry in the record, read once for many tasks. */
-type AuditCoverage = { waivers: TaskWaiver[]; carries: ReviewCarry[] };
+/** Every task waiver in the record, read once for many tasks. */
+type AuditCoverage = { waivers: TaskWaiver[] };
 
 function auditCoverage(store: Store): AuditCoverage {
-  return { waivers: allTaskWaivers(store), carries: allCarries(store) };
+  return { waivers: allTaskWaivers(store) };
 }
 
 function coverageRecords(store: Store, taskId: string, audits: AuditCoverage = auditCoverage(store)): TaskCoverage {
-  return {
-    reviews: store.listTaskReviews(taskId),
-    waivers: audits.waivers.filter((waiver) => waiver.task === taskId),
-    carries: audits.carries.filter((carry) => carry.task === taskId),
-  };
+  const reviews = store.listTaskReviews(taskId);
+  const waivers = audits.waivers.filter((waiver) => waiver.task === taskId);
+  return { reviews, waivers, carries: carriesOf(taskId, reviews, waivers) };
 }
 
 /**
  * What lets one task's `commit` through: a Human waiver on it, the newest review on it being a
- * pass, or a carry from a commit that is itself covered. A waiver is the Human's call, so a later
- * fail does not undo it; a fail on a commit undoes a pass carried to it.
+ * pass, or a waiver or a review a rebase carried to it. A waiver is the Human's call, so a later
+ * fail does not undo it; a fail on a commit undoes a pass or a waiver carried to it.
  */
-function coverageAt(records: TaskCoverage, commit: string, depth = 0): "review" | "waiver" | null {
-  if (records.waivers.some((waiver) => waiver.commit === commit)) return "waiver";
-  const newest = records.reviews.filter((review) => review.commitSha === commit).at(-1);
-  if (newest !== undefined) return newest.verdict === "pass" ? "review" : null;
-  if (depth >= CARRY_DEPTH_MAX) return null;
-  for (const carry of records.carries.filter((each) => each.to === commit).reverse()) {
-    const carried = coverageAt(records, carry.from, depth + 1);
-    if (carried !== null) return carried;
-  }
+function coverageAt(records: TaskCoverage, commit: string): "review" | "waiver" | null {
+  const onCommit = (carried: boolean) => ({
+    waived: records.waivers.some((waiver) => waiver.commit === commit && (waiver.carriedFrom !== null) === carried),
+    newest: records.reviews.filter((review) => review.commitSha === commit && (review.carriedFrom !== null) === carried).at(-1),
+  });
+  const own = onCommit(false);
+  if (own.waived) return "waiver";
+  if (own.newest !== undefined) return own.newest.verdict === "pass" ? "review" : null;
+  const carried = onCommit(true);
+  if (carried.waived) return "waiver";
+  if (carried.newest !== undefined) return carried.newest.verdict === "pass" ? "review" : null;
   return null;
 }
 
@@ -301,7 +304,7 @@ export function taskReview(store: Store, actor: Actor, input: unknown, context: 
     return id;
   });
   const review = summaryOf(store.listTaskReviews(task.id).find((each) => each.id === reviewId)!);
-  const mark = markReviewed(store, actor, dir, task.commitSha!, given.verdict, blocking.length);
+  const mark = markReviewed(store, actor, dir, { taskId: task.id }, task.commitSha!, given.verdict, blocking.length);
   const covered = given.verdict === "pass";
   const next = covered
     ? hasOrigin(dir)
@@ -325,12 +328,12 @@ export const taskWaiveSchema: InputSchema = {
 
 export function taskWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskWaiveResult {
   const given = validateInput<{ id: string; reason: string }>("task_waive", taskWaiveSchema, input);
-  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.role} cannot`);
+  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
   const task = requireInReview(store, given.id, "there is no review to waive");
-  const detail = { task_id: task.id, commit: task.commitSha, reason: given.reason.trim() };
-  const id = store.recordAudit(actor, { what: TASK_WAIVER, detail: JSON.stringify(detail) });
+  const reason = given.reason.trim();
+  const id = store.recordWaiver(actor, { taskId: task.id, commitSha: task.commitSha!, reason });
   const waiver = allTaskWaivers(store).find((each) => each.id === id)!;
-  return { ...waiver, mark: markReviewed(store, actor, repoOfRow(store, context.projectDir, task).dir, task.commitSha!, "waiver", detail.reason) };
+  return { ...waiver, mark: markReviewed(store, actor, repoOfRow(store, context.projectDir, task).dir, { taskId: task.id }, task.commitSha!, "waiver", reason) };
 }
 
 // --- task_pr ------------------------------------------------------------------------------
@@ -452,15 +455,29 @@ async function rebaseIfBaseMoved(
   }
   store.transaction(() => {
     stillReviewed();
-    store.recordAudit(actor, { what: REVIEW_CARRY, detail: JSON.stringify({ task_id: task.id, from: reviewed, to: rebased, onto: tip }) });
+    // The review and the waiver of the reviewed commit carry to the rebased one, each as a row naming the one it carries (trustmybot/tmb#408).
+    const carry = { from: reviewed, to: rebased, onto: tip };
+    const review = store.listTaskReviews(task.id).filter((each) => each.commitSha === reviewed).at(-1);
+    if (review !== undefined) {
+      store.appendReview(actor, {
+        target: { kind: "commit", ref: task.id },
+        verdict: review.verdict,
+        findings: review.findings,
+        commitSha: rebased,
+        carriedFrom: review.id,
+        detail: carry,
+      });
+    }
+    const waiver = allTaskWaivers(store).filter((each) => each.task === task.id && each.commit === reviewed).at(-1);
+    if (waiver !== undefined) store.recordWaiver(actor, { taskId: task.id, commitSha: rebased, reason: waiver.reason, carriedFrom: waiver.id, detail: carry });
     store.updateTask(actor, task.id, { commitSha: rebased, baseCommit: tip });
   });
   // The rebased commit is a new one: the coverage carried to it marks it too.
   const carried = truestReviewOf(store, requireTask(store, task.id));
   if (carried.coveredBy === "waiver") {
-    markReviewed(store, actor, dir, rebased, "waiver", carried.waivers.at(-1)?.reason ?? "");
+    markReviewed(store, actor, dir, { taskId: task.id }, rebased, "waiver", carried.waivers.at(-1)?.reason ?? "");
   } else if (carried.coveredBy === "review") {
-    markReviewed(store, actor, dir, rebased, "pass");
+    markReviewed(store, actor, dir, { taskId: task.id }, rebased, "pass");
   }
   return { commit: rebased, onto: tip };
 }

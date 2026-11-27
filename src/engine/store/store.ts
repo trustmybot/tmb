@@ -2,8 +2,8 @@
 // the same transaction; reads come from the projections and return small pieces.
 import type { Database } from "bun:sqlite";
 import { isId, newId } from "../ids.ts";
-import { type Actor, type ActorColumns, type Role, actorColumns, actorFromColumns, assertActor } from "./actor.ts";
-import { type EventType, type RecordKind, type StoredEvent, applyEvent } from "./projections.ts";
+import { type Actor, type ActorColumns, type Role, actorColumns, actorFromColumns, assertWriter } from "./actor.ts";
+import { type EventType, type RecordKind, type StoredEvent, applyEvent, assertValues } from "./projections.ts";
 import { PROJECTION_TABLES } from "./schema.ts";
 
 export const SNIPPET_MAX = 200;
@@ -53,8 +53,60 @@ export type SearchHit = {
 export type NewIssue = { id?: string; title: string; body?: string; milestone?: string | null };
 export type IssueChanges = { title?: string; body?: string; state?: IssueState; milestone?: string | null };
 export type NewDiscussion = { id?: string; issueId: string; kind: DiscussionKind; body: string };
-export type NewAuditEntry = { what: string; detail?: string };
-export type AuditEntry = { id: string; what: string; detail: string; createdBy: Actor; createdAt: string };
+/** Details an entry keeps in its event's data, beyond its columns (trustmybot/tmb#408). */
+export type EntryDetail = Record<string, unknown>;
+/** A Human waiver of a review at one commit, of one task or one feature branch; or one a rebase carried. */
+export type NewWaiver = { taskId?: string | null; featureId?: string | null; commitSha: string; reason: string; carriedFrom?: string | null; detail?: EntryDetail };
+export type WaiverEntry = {
+  id: string;
+  taskId: string | null;
+  featureId: string | null;
+  carriedFrom: string | null;
+  commitSha: string;
+  reason: string;
+  createdBy: Actor;
+  createdAt: string;
+};
+/** The mark tmb set, or tried to set, on a commit for a verdict or a waiver. */
+export type NewReviewMark = {
+  taskId?: string | null;
+  featureId?: string | null;
+  commitSha: string;
+  kind: string;
+  state: string;
+  sentAt?: string | null;
+  /** The text the remote is shown. */
+  description: string;
+  detail?: EntryDetail;
+};
+export type ReviewMark = {
+  id: string;
+  taskId: string | null;
+  featureId: string | null;
+  commitSha: string;
+  kind: string;
+  state: string;
+  sentAt: string | null;
+  description: string;
+  createdBy: Actor;
+  createdAt: string;
+};
+/** One change to a setting: its key, the repo for one repo's own, and the values as JSON text. */
+export type NewSettingChange = { key: string; repo?: string | null; oldValue: string | null; newValue: string | null; how?: string | null; detail?: EntryDetail };
+export type SettingChange = {
+  id: string;
+  key: string;
+  repo: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  how: string | null;
+  createdBy: Actor;
+  createdAt: string;
+};
+export type NewFeedbackReport = { route: string; url?: string | null; issueId?: string | null; detail?: EntryDetail };
+export type FeedbackReport = { id: string; route: string; url: string | null; issueId: string | null; createdBy: Actor; createdAt: string };
+export type NewImport = { source: string; repo?: string | null; detail: unknown };
+export type ImportEntry = { id: string; source: string; repo: string | null; detail: unknown; createdBy: Actor; createdAt: string };
 export type NewTask = {
   /** An id made beforehand, when something outside the record, such as a branch, is named after the task first. */
   id?: string;
@@ -121,7 +173,7 @@ export type TaskChanges = {
   repo?: string | null;
 };
 export type NewFeature = { name: string; baseBranch: string; baseCommit: string; repo?: string | null };
-export type FeatureChanges = { state?: string; prUrl?: string | null; dropReason?: string | null };
+export type FeatureChanges = { state?: string; prUrl?: string | null; dropReason?: string | null; baseMergedCommit?: string | null };
 export type Feature = {
   id: string;
   name: string;
@@ -134,6 +186,8 @@ export type Feature = {
   repo: string | null;
   /** Why the feature branch was dropped; null unless it is. */
   dropReason: string | null;
+  /** The base branch's commit last brought into the branch; null until one is. */
+  baseMergedCommit: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -194,6 +248,9 @@ export type NewReview = {
   commitSha?: string | null;
   /** The reviewer run that wrote it. */
   runId?: string | null;
+  /** The review a rebase carried to this commit. */
+  carriedFrom?: string | null;
+  detail?: EntryDetail;
 };
 export type Review = {
   id: string;
@@ -204,6 +261,7 @@ export type Review = {
   featureId: string | null;
   commitSha: string | null;
   runId: string | null;
+  carriedFrom: string | null;
   createdBy: Actor;
   createdAt: string;
 };
@@ -223,7 +281,40 @@ type IssueRow = {
 };
 type DiscussionRow = { id: string; issue_id: string; kind: DiscussionKind; body: string; created_by: string; created_at: string };
 type GuardDecisionRow = { id: string; event: string; decision: "allow" | "deny"; reason: string; created_by: string; created_at: string };
-type AuditRow = { id: string; what: string; detail: string; created_by: string; created_at: string };
+type WaiverRow = {
+  id: string;
+  task_id: string | null;
+  feature_id: string | null;
+  carried_from: string | null;
+  commit_sha: string;
+  reason: string;
+  created_by: string;
+  created_at: string;
+};
+type ReviewMarkRow = {
+  id: string;
+  task_id: string | null;
+  feature_id: string | null;
+  commit_sha: string;
+  kind: string;
+  state: string;
+  sent_at: string | null;
+  data: string;
+  created_by: string;
+  created_at: string;
+};
+type SettingChangeRow = {
+  id: string;
+  key: string;
+  repo: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  how: string | null;
+  created_by: string;
+  created_at: string;
+};
+type FeedbackReportRow = { id: string; route: string; url: string | null; issue_id: string | null; created_by: string; created_at: string };
+type ImportRow = { id: string; source: string; repo: string | null; detail: string; created_by: string; created_at: string };
 type TaskRow = {
   id: string;
   issue_id: string;
@@ -257,6 +348,7 @@ type FeatureRow = {
   pr_url: string | null;
   repo?: string | null;
   drop_reason?: string | null;
+  base_merged_commit?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -270,6 +362,7 @@ type ReviewRow = {
   feature_id: string | null;
   commit_sha: string | null;
   run_id: string | null;
+  carried_from?: string | null;
   created_by: string;
   created_at: string;
 };
@@ -338,8 +431,46 @@ function toIssue(row: IssueRow): Issue {
   };
 }
 
-function toAuditEntry(row: AuditRow): AuditEntry {
-  return { id: row.id, what: row.what, detail: row.detail, createdBy: JSON.parse(row.created_by) as Actor, createdAt: row.created_at };
+function toWaiver(row: WaiverRow): WaiverEntry {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    featureId: row.feature_id,
+    carriedFrom: row.carried_from,
+    commitSha: row.commit_sha,
+    reason: row.reason,
+    createdBy: JSON.parse(row.created_by) as Actor,
+    createdAt: row.created_at,
+  };
+}
+
+function toReviewMark(row: ReviewMarkRow): ReviewMark {
+  const data = JSON.parse(row.data) as { description?: unknown };
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    featureId: row.feature_id,
+    commitSha: row.commit_sha,
+    kind: row.kind,
+    state: row.state,
+    sentAt: row.sent_at,
+    description: typeof data.description === "string" ? data.description : "",
+    createdBy: JSON.parse(row.created_by) as Actor,
+    createdAt: row.created_at,
+  };
+}
+
+function toSettingChange(row: SettingChangeRow): SettingChange {
+  return {
+    id: row.id,
+    key: row.key,
+    repo: row.repo,
+    oldValue: row.old_value,
+    newValue: row.new_value,
+    how: row.how,
+    createdBy: JSON.parse(row.created_by) as Actor,
+    createdAt: row.created_at,
+  };
 }
 
 function toTask(row: TaskRow): Task {
@@ -379,6 +510,7 @@ function toFeature(row: FeatureRow): Feature {
     prUrl: row.pr_url,
     repo: row.repo ?? null,
     dropReason: row.drop_reason ?? null,
+    baseMergedCommit: row.base_merged_commit ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -395,6 +527,7 @@ function toReview(row: ReviewRow): Review {
     featureId: row.feature_id,
     commitSha: row.commit_sha,
     runId: row.run_id,
+    carriedFrom: row.carried_from ?? null,
     createdBy: JSON.parse(row.created_by) as Actor,
     createdAt: row.created_at,
   };
@@ -500,26 +633,133 @@ export class Store {
 
   // --- the other records: one append path each; their workflow comes in later levels ---
 
-  recordAudit(actor: Actor, entry: NewAuditEntry): string {
-    return this.create(actor, "audit", { what: entry.what, detail: entry.detail ?? "" });
+  // --- what the audit trail held, each in its own table (trustmybot/tmb#408) ----------
+
+  recordWaiver(actor: Actor, waiver: NewWaiver): string {
+    return this.create(actor, "waiver", {
+      ...waiver.detail,
+      task_id: waiver.taskId ?? null,
+      feature_id: waiver.featureId ?? null,
+      carried_from: waiver.carriedFrom ?? null,
+      commit_sha: waiver.commitSha,
+      reason: waiver.reason,
+    });
   }
 
-  /** Every audit entry, oldest first. */
-  listAudit(): AuditEntry[] {
-    const rows = this.db.query("SELECT * FROM audit ORDER BY id").all() as AuditRow[];
-    return rows.map(toAuditEntry);
+  /** Every waiver, oldest first. */
+  listWaivers(): WaiverEntry[] {
+    return (this.db.query("SELECT * FROM waivers ORDER BY id").all() as WaiverRow[]).map(toWaiver);
   }
 
-  /** Every audit entry about `what`, oldest first. */
-  listAuditAbout(what: string): AuditEntry[] {
-    const rows = this.db.query("SELECT * FROM audit WHERE what = ? ORDER BY id").all(what) as AuditRow[];
-    return rows.map(toAuditEntry);
+  getWaiver(id: string): WaiverEntry | null {
+    const row = this.db.query("SELECT * FROM waivers WHERE id = ?").get(id) as WaiverRow | null;
+    return row ? toWaiver(row) : null;
   }
 
-  /** The newest audit entry about `what`, the one in force. */
-  newestAudit(what: string): AuditEntry | null {
-    const row = this.db.query("SELECT * FROM audit WHERE what = ? ORDER BY id DESC LIMIT 1").get(what) as AuditRow | null;
-    return row ? toAuditEntry(row) : null;
+  recordReviewMark(actor: Actor, mark: NewReviewMark): string {
+    return this.create(actor, "review_mark", {
+      ...mark.detail,
+      task_id: mark.taskId ?? null,
+      feature_id: mark.featureId ?? null,
+      commit_sha: mark.commitSha,
+      kind: mark.kind,
+      state: mark.state,
+      sent_at: mark.sentAt ?? null,
+      description: mark.description,
+    });
+  }
+
+  /** Records that the remote now has a mark recorded as not sent. */
+  markSent(actor: Actor, id: string, at: string): void {
+    this.append(actor, "review_mark", id, "updated", { sent_at: at });
+  }
+
+  /** Every review mark, oldest first, with the text it was set with. */
+  listReviewMarks(): ReviewMark[] {
+    const rows = this.db
+      .query("SELECT m.*, e.data AS data FROM review_marks m JOIN events e ON e.record_id = m.id AND e.type = 'created' ORDER BY m.id")
+      .all() as ReviewMarkRow[];
+    return rows.map(toReviewMark);
+  }
+
+  recordSettingChange(actor: Actor, change: NewSettingChange): string {
+    return this.create(actor, "setting_change", {
+      ...change.detail,
+      key: change.key,
+      repo: change.repo ?? null,
+      old_value: change.oldValue,
+      new_value: change.newValue,
+      how: change.how ?? null,
+    });
+  }
+
+  /**
+   * The newest change to `key`: for one repo's own setting when `repo` is given, else the project's.
+   * With `valued`, the newest that set a value: that value is the one in force until the config
+   * file holds it (trustmybot/tmb#305). A change with no value records only how a mode was chosen.
+   */
+  newestSettingChange(key: string, repo: string | null = null, valued = false): SettingChange | null {
+    const value = valued ? " AND new_value IS NOT NULL" : "";
+    const row = (
+      repo === null
+        ? this.db.query(`SELECT * FROM setting_changes WHERE key = ? AND repo IS NULL${value} ORDER BY id DESC LIMIT 1`).get(key)
+        : this.db.query(`SELECT * FROM setting_changes WHERE key = ? AND repo = ?${value} ORDER BY id DESC LIMIT 1`).get(key, repo)
+    ) as SettingChangeRow | null;
+    return row ? toSettingChange(row) : null;
+  }
+
+  /** Every setting change, oldest first; only those of `key` when given. */
+  listSettingChanges(key?: string): SettingChange[] {
+    const rows = (
+      key === undefined
+        ? this.db.query("SELECT * FROM setting_changes ORDER BY id").all()
+        : this.db.query("SELECT * FROM setting_changes WHERE key = ? ORDER BY id").all(key)
+    ) as SettingChangeRow[];
+    return rows.map(toSettingChange);
+  }
+
+  /** A freeze of agent work, with why; a session may name it (trustmybot/tmb#408). */
+  recordFreeze(actor: Actor, freeze: { reason: string; sessionId?: string | null }): string {
+    return this.create(actor, "freeze", { reason: freeze.reason, session_id: freeze.sessionId ?? null });
+  }
+
+  /** Lifts a freeze: who lifted it and when. */
+  liftFreeze(actor: Actor, id: string, at: string): void {
+    this.append(actor, "freeze", id, "updated", { lifted_by: actor, lifted_at: at });
+  }
+
+  recordFeedbackReport(actor: Actor, report: NewFeedbackReport): string {
+    return this.create(actor, "feedback_report", { ...report.detail, route: report.route, url: report.url ?? null, issue_id: report.issueId ?? null });
+  }
+
+  /** Every feedback report filed or opened, oldest first. */
+  listFeedbackReports(): FeedbackReport[] {
+    const rows = this.db.query("SELECT * FROM feedback_reports ORDER BY id").all() as FeedbackReportRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      route: row.route,
+      url: row.url,
+      issueId: row.issue_id,
+      createdBy: JSON.parse(row.created_by) as Actor,
+      createdAt: row.created_at,
+    }));
+  }
+
+  recordImport(actor: Actor, entry: NewImport): string {
+    return this.create(actor, "import", { source: entry.source, repo: entry.repo ?? null, detail: entry.detail });
+  }
+
+  /** Every import from `source`, oldest first. */
+  listImports(source: string): ImportEntry[] {
+    const rows = this.db.query("SELECT * FROM imports WHERE source = ? ORDER BY id").all(source) as ImportRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      source: row.source,
+      repo: row.repo,
+      detail: JSON.parse(row.detail) as unknown,
+      createdBy: JSON.parse(row.created_by) as Actor,
+      createdAt: row.created_at,
+    }));
   }
 
   appendTask(actor: Actor, task: NewTask): string {
@@ -582,9 +822,11 @@ export class Store {
     return this.create(actor, "feature", { name: feature.name, base_branch: feature.baseBranch, base_commit: feature.baseCommit, repo: feature.repo ?? null });
   }
 
-  updateFeature(actor: Actor, id: string, changes: FeatureChanges): void {
+  updateFeature(actor: Actor, id: string, changes: FeatureChanges, detail?: EntryDetail): void {
     // Only what changes: a key with no value would clear its column.
     this.append(actor, "feature", id, "updated", {
+      ...detail,
+      ...(changes.baseMergedCommit === undefined ? {} : { base_merged_commit: changes.baseMergedCommit }),
       ...(changes.state === undefined ? {} : { state: changes.state }),
       ...(changes.prUrl === undefined ? {} : { pr_url: changes.prUrl }),
       ...(changes.dropReason === undefined ? {} : { drop_reason: changes.dropReason }),
@@ -724,6 +966,8 @@ export class Store {
       feature_id: review.featureId ?? null,
       commit_sha: review.commitSha ?? null,
       run_id: review.runId ?? null,
+      ...(review.carriedFrom === undefined || review.carriedFrom === null ? {} : { carried_from: review.carriedFrom }),
+      ...review.detail,
     }, review.id);
   }
 
@@ -844,7 +1088,9 @@ export class Store {
    * order a rebuild replays them in.
    */
   private append(actor: Actor, recordKind: RecordKind, recordId: string, type: EventType, data: Record<string, unknown>): StoredEvent {
-    assertActor(actor);
+    assertWriter(actor);
+    const stored = asStoredData(data);
+    assertValues(recordKind, stored);
     return this.db
       .transaction(() => {
         const newest = this.db.query("SELECT max(id) AS id FROM events").get() as { id: string | null };
@@ -853,17 +1099,17 @@ export class Store {
           recordKind,
           recordId,
           type,
-          data: asStoredData(data),
+          data: stored,
           actor,
           at: this.clock(),
         };
         const who = actorColumns(actor);
         this.db
           .query(
-            `INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, actor_source, at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(event.id, recordKind, recordId, type, JSON.stringify(event.data), who.actor_kind, who.actor_role, who.actor_host, event.at);
+          .run(event.id, recordKind, recordId, type, JSON.stringify(event.data), who.actor_kind, who.actor_role, who.actor_host, who.actor_source, event.at);
         applyEvent(this.db, { ...event, actor: actorFromColumns(who) });
         return event;
       })

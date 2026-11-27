@@ -1,13 +1,22 @@
 # Python
 
-The code graph's rules for `.py` files. They are read through tree-sitter's Python grammar ([index.ts](index.ts)).
+The code graph's rules for the files GitHub Linguist's list and rules call Python (trustmybot/tmb#154): `.py`, `.pyi`, `.pyw` and Linguist's other Python endings and file names, and a file whose first line names python. They are read through tree-sitter's Python grammar ([index.ts](index.ts)).
 
 ## What it reads
 
 - Classes, functions and methods, each with its docstring and its container.
 - Module-level constants.
 - Imports, with the alias each one binds. An import inside a function holds only inside that function.
-- Calls. A name is looked up as Python looks it up: the function's own names and parameters, the functions around it, then the module and its imports. A name bound there to no function of the repo, such as a parameter or a variable, is not linked.
-- A call through `self` or `cls` is a call of a method of the class or of one of its parents. A base class is linked as an instantiation.
+- Calls. A name is looked up as Python looks it up: the function's own names and parameters, the functions around it, then the module and its imports. A name bound there to no function of the repo, such as a parameter or a variable, is not linked. A call is linked to module-level data too, each name an assignment written directly at module level binds, whatever its value, in the module and through an import (trustmybot/tmb#332).
+- A class body binds names too, its imports included, for the statements directly in it. They are not seen inside its methods, lambdas and comprehensions, since a class body is no scope around them; a comprehension's first iterable is evaluated in the class body (trustmybot/tmb#287).
+- A name imported as `from m import a as b` is looked up by `a` in `m`, as a call, as the object of a call and as a base.
+- A call through `self` or `cls` is a call of a method of the class or of one of its parents. The first class that has the name decides: an attribute of the class body, an annotation with no value, or a name its methods assign on `self` or `cls`, stops the lookup, so the call is not linked. A base class is linked as an instantiation.
+- Each class, function and method is its own symbol, so two of one name in a module, such as one under `if` and one under `else`, stay two. A name that names both is not linked.
+- An `@overload` stub is no symbol: the one definition that runs is, and a call of the name links to it (trustmybot/tmb#368). A stub is a definition decorated with `overload` of `typing` or `typing_extensions`, looked up as Python looks up the decorator: a name an import of `overload` from either binds, or `overload` of a name bound to either module. A decorator that only shares the name is not it. Stubs that no definition of their name follows in their module or class body, as in a `Protocol`, are one symbol together, from the first stub to the last: a function or method with only a declaration.
+- Every call is linked, outside the repo, or not known (trustmybot/tmb#252). It is outside only when its name, or the name it is called on in `x.f()`, is looked up as above and ends at:
+  - an import of a module bound once at the top of the module, or in the function, that is not relative and that no file of the repo could be: no `a/b.py` and no folder `a/b/` anywhere in the repo for `a.b`, since Python finds a module in any folder on its search path; or
+  - a name of Python's `builtins` module, past every class body around the call and a module that binds it nowhere and has no `from m import *`. On `x.f()`, the builtin must have a callable `f`.
+
+  [builtins.ts](builtins.ts) holds the builtins. [builtins.gen.ts](builtins.gen.ts) writes it from the Python on PATH, and names that Python's version. A test fails when the two differ, and is skipped, saying why, without that Python. A base class is no call.
 
 Every function as a node, with its fixtures and a coverage test of its own, comes with trustmybot/tmb#141.

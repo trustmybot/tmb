@@ -88,7 +88,7 @@ describe("the review mode gate", () => {
     const set = settingsSet(store, PLANNER, { review_mode: "truest" }, attended());
     expect(set.changed).toEqual(["review_mode"]);
     expect(reviewModeChosenVia(store)).toBe("planner");
-    expect(store.listAuditAbout("setting:review_mode").at(-1)!.createdBy).toEqual(PLANNER);
+    expect(store.newestSettingChange("review_mode")!.createdBy).toEqual(PLANNER);
 
     // In truest mode a task names no feature branch.
     const started = taskStart(store, PLANNER, spec(), attended());

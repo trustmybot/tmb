@@ -1,0 +1,607 @@
+{
+  "command": "bun tests/benchmark/run.ts --write",
+  "referenceVersions": {
+    "typescript": 3,
+    "python": 4,
+    "go": 2,
+    "java": 2,
+    "rust": 3,
+    "c": 1,
+    "cpp": 1
+  },
+  "entries": [
+    {
+      "repo": "tmb",
+      "language": "typescript",
+      "commit": "8ee804de3ced5ccd6555237be8dac8815c70ce04",
+      "reference": "TypeScript compiler 5.9.3",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 5484,
+            "of": 5484
+          },
+          "linksRight": {
+            "n": 10517,
+            "of": 10517
+          },
+          "linksFoundByState": {
+            "n": 10221,
+            "of": 20446
+          },
+          "linksFoundByReference": {
+            "n": 10221,
+            "of": 10951,
+            "fallAccepted": {
+              "issue": 367,
+              "was": {
+                "n": 10221,
+                "of": 10912
+              }
+            }
+          },
+          "callsAccountedFor": {
+            "n": 30077,
+            "of": 30077
+          },
+          "missesByCause": {
+            "a method on a name whose type is not written": 528,
+            "a method on an expression (a chain, a call's result, an index)": 140,
+            "a method on a name whose type is written": 43,
+            "a method on a module's or class's name": 19
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 5484,
+            "of": 5484
+          },
+          "linksRight": {
+            "n": 11247,
+            "of": 11247,
+            "note": "same tool as the reference"
+          },
+          "linksFoundByState": {
+            "n": 10969,
+            "of": 11431
+          },
+          "linksFoundByReference": {
+            "n": 10951,
+            "of": 10951
+          },
+          "callsAccountedFor": {
+            "n": 30077,
+            "of": 30077
+          },
+          "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "hono",
+      "language": "typescript",
+      "commit": "75ff8e3ea18485589816881c6278bc9783e56602",
+      "reference": "TypeScript compiler 5.9.3",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 10320,
+            "of": 10320
+          },
+          "linksRight": {
+            "n": 7908,
+            "of": 7908
+          },
+          "linksFoundByState": {
+            "n": 7054,
+            "of": 41520
+          },
+          "linksFoundByReference": {
+            "n": 7039,
+            "of": 11133,
+            "fallAccepted": {
+              "issue": 367,
+              "was": {
+                "n": 7028,
+                "of": 10701
+              }
+            }
+          },
+          "callsAccountedFor": {
+            "n": 45912,
+            "of": 45912
+          },
+          "missesByCause": {
+            "a method on a name whose type is not written": 2145,
+            "a method on a name made by `new`, its type not written": 1076,
+            "a method on an expression (a chain, a call's result, an index)": 385,
+            "a method on a name whose type is written": 340,
+            "a method on a module's or class's name": 132,
+            "a function's name called directly": 11,
+            "a call on the parent (`super`)": 2,
+            "a construction by a class's name": 2,
+            "a method on the object itself (`this`)": 1
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 10320,
+            "of": 10320
+          },
+          "linksRight": {
+            "n": 12000,
+            "of": 12000,
+            "note": "same tool as the reference"
+          },
+          "linksFoundByState": {
+            "n": 11132,
+            "of": 37598
+          },
+          "linksFoundByReference": {
+            "n": 11132,
+            "of": 11133
+          },
+          "callsAccountedFor": {
+            "n": 45912,
+            "of": 45912
+          },
+          "missesByCause": {
+            "a construction by a class's name": 1
+          }
+        }
+      }
+    },
+    {
+      "repo": "flask",
+      "language": "python",
+      "commit": "49943b5a94413a530761350f04e896f76e8d620e",
+      "reference": "Python 3.9.6 ast, pyright 1.1.414, way B's links right by Jedi 0.20.1",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 839,
+            "of": 1470
+          },
+          "linksRight": {
+            "n": 383,
+            "of": 383
+          },
+          "linksFoundByState": {
+            "n": 384,
+            "of": 3102
+          },
+          "linksFoundByReference": {
+            "n": 383,
+            "of": 1207
+          },
+          "callsAccountedFor": {
+            "n": 3472,
+            "of": 3961
+          },
+          "missesByCause": {
+            "a method on a name": 633,
+            "a method on an expression (a chain, a call's result, an index)": 99,
+            "a function's name called directly": 48,
+            "a construction by a class's name": 38,
+            "a method on `super()`": 6
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 839,
+            "of": 1470
+          },
+          "linksRight": {
+            "n": 1133,
+            "of": 1133,
+            "note": "judged by Jedi 0.20.1"
+          },
+          "linksFoundByState": {
+            "n": 1134,
+            "of": 2852
+          },
+          "linksFoundByReference": {
+            "n": 1134,
+            "of": 1207
+          },
+          "callsAccountedFor": {
+            "n": 3472,
+            "of": 3961
+          },
+          "missesByCause": {
+            "a construction by a class's name": 36,
+            "a function's name called directly": 36,
+            "a method on a name": 1
+          }
+        }
+      }
+    },
+    {
+      "repo": "datasette",
+      "language": "python",
+      "commit": "b91f2668004b3c115a8672474739a88f08945605",
+      "reference": "Python 3.9.6 ast, pyright 1.1.414, way B's links right by Jedi 0.20.1",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 3253,
+            "of": 3949
+          },
+          "linksRight": {
+            "n": 4226,
+            "of": 4226
+          },
+          "linksFoundByState": {
+            "n": 4228,
+            "of": 18996
+          },
+          "linksFoundByReference": {
+            "n": 4221,
+            "of": 7097
+          },
+          "callsAccountedFor": {
+            "n": 22576,
+            "of": 24078
+          },
+          "missesByCause": {
+            "a method on a name": 1850,
+            "a method on an expression (a chain, a call's result, an index)": 627,
+            "a function's name called directly": 278,
+            "a construction by a class's name": 113,
+            "a method on `super()`": 6,
+            "a method on the method's first parameter (`self`, `cls`)": 2
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 3253,
+            "of": 3949
+          },
+          "linksRight": {
+            "n": 6658,
+            "of": 6658,
+            "note": "judged by Jedi 0.20.1"
+          },
+          "linksFoundByState": {
+            "n": 6710,
+            "of": 17865
+          },
+          "linksFoundByReference": {
+            "n": 6705,
+            "of": 7097
+          },
+          "callsAccountedFor": {
+            "n": 22576,
+            "of": 24078
+          },
+          "missesByCause": {
+            "a function's name called directly": 278,
+            "a construction by a class's name": 113,
+            "a method on a name": 1
+          }
+        }
+      }
+    },
+    {
+      "repo": "gin",
+      "language": "go",
+      "commit": "73726dc606796a025971fe451f0aa6f1b9b847f6",
+      "reference": "go1.27.4 go/parser and go/types",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 1859,
+            "of": 1859
+          },
+          "linksRight": {
+            "n": 767,
+            "of": 767
+          },
+          "linksFoundByState": {
+            "n": 767,
+            "of": 8548
+          },
+          "linksFoundByReference": {
+            "n": 767,
+            "of": 3316
+          },
+          "callsAccountedFor": {
+            "n": 9085,
+            "of": 9085
+          },
+          "missesByCause": {
+            "a method, called on a value": 1420,
+            "a function of the package, called by its name": 847,
+            "a method of an interface, called on a value": 216,
+            "a conversion to a type": 23,
+            "a function of another package, called through its import": 22,
+            "a package-level variable, called": 21
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 1859,
+            "of": 1859
+          },
+          "linksRight": {
+            "n": 3316,
+            "of": 3316,
+            "note": "same tool as the reference"
+          },
+          "linksFoundByState": {
+            "n": 3316,
+            "of": 6183
+          },
+          "linksFoundByReference": {
+            "n": 3316,
+            "of": 3316
+          },
+          "callsAccountedFor": {
+            "n": 9085,
+            "of": 9085
+          },
+          "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "jsoup",
+      "language": "java",
+      "commit": "d90d57521d931db7bf7ee464a4c0a1a9293db088",
+      "reference": "javac 21.0.13.1+2-LTS parser and attribution",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 5418,
+            "of": 5418
+          },
+          "linksRight": {
+            "n": 1121,
+            "of": 1121
+          },
+          "linksFoundByState": {
+            "n": 1145,
+            "of": 36578
+          },
+          "linksFoundByReference": {
+            "n": 1121,
+            "of": 22659
+          },
+          "callsAccountedFor": {
+            "n": 36992,
+            "of": 36992
+          },
+          "missesByCause": {
+            "a method, called through a value or a type": 18882,
+            "a method, called by its simple name": 1423,
+            "a construction of a class": 1200,
+            "`super(…)`, a constructor of the superclass": 33
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 5418,
+            "of": 5418
+          },
+          "linksRight": {
+            "n": 22659,
+            "of": 22659,
+            "note": "same tool as the reference"
+          },
+          "linksFoundByState": {
+            "n": 22659,
+            "of": 30658
+          },
+          "linksFoundByReference": {
+            "n": 22659,
+            "of": 22659
+          },
+          "callsAccountedFor": {
+            "n": 36992,
+            "of": 36992
+          },
+          "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "ripgrep",
+      "language": "rust",
+      "commit": "669cb4c755db20b26c3af3d923c042ae224c7496",
+      "reference": "rust-analyzer 1.100.0 (0ef1bc386 2026-11-09) parser and scip",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 3460,
+            "of": 3460
+          },
+          "linksRight": {
+            "n": 495,
+            "of": 495
+          },
+          "linksFoundByState": {
+            "n": 495,
+            "of": 20418
+          },
+          "linksFoundByReference": {
+            "n": 495,
+            "of": 11785,
+            "fallAccepted": {
+              "issue": 383,
+              "was": {
+                "n": 495,
+                "of": 7234
+              }
+            }
+          },
+          "callsAccountedFor": {
+            "n": 19713,
+            "of": 19713
+          },
+          "missesByCause": {
+            "a function or a method, called in a macro's input": 4551,
+            "a method, called through a value": 4237,
+            "an item, called by its path": 1271,
+            "a function or a constructor, called by its bare name": 1231
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 3460,
+            "of": 3460
+          },
+          "linksRight": {
+            "n": 11785,
+            "of": 11785,
+            "note": "same tool as the reference"
+          },
+          "linksFoundByState": {
+            "n": 11785,
+            "of": 12142
+          },
+          "linksFoundByReference": {
+            "n": 11785,
+            "of": 11785
+          },
+          "callsAccountedFor": {
+            "n": 19713,
+            "of": 19713
+          },
+          "missesByCause": {}
+        }
+      }
+    },
+    {
+      "repo": "libuv",
+      "language": "c",
+      "commit": "840404ce8ba7cc0204be52389a6cfff9f2c90fb6",
+      "reference": "Apple clang version 17.0.0 (clang-1700.0.13.5), libclang",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 2123,
+            "of": 2146
+          },
+          "linksRight": {
+            "n": 898,
+            "of": 898
+          },
+          "linksFoundByState": {
+            "n": 2085,
+            "of": 27295
+          },
+          "linksFoundByReference": {
+            "n": 898,
+            "of": 7975
+          },
+          "callsAccountedFor": {
+            "n": 9753,
+            "of": 9761
+          },
+          "missesByCause": {
+            "a function called by its name": 7018,
+            "a member called on an object": 59
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 2123,
+            "of": 2146
+          },
+          "linksRight": {
+            "n": 7801,
+            "of": 7801,
+            "note": "clang, the compiler clangd is built on, is the reference"
+          },
+          "linksFoundByState": {
+            "n": 7804,
+            "of": 25185
+          },
+          "linksFoundByReference": {
+            "n": 7801,
+            "of": 7975
+          },
+          "callsAccountedFor": {
+            "n": 9753,
+            "of": 9761
+          },
+          "missesByCause": {
+            "a function called by its name": 115,
+            "a member called on an object": 59
+          }
+        }
+      }
+    },
+    {
+      "repo": "leveldb",
+      "language": "cpp",
+      "commit": "29465588d3dfdc80fba5e198037582b8fdb5dd60",
+      "reference": "Apple clang version 17.0.0 (clang-1700.0.13.5), libclang",
+      "ways": {
+        "A": {
+          "functionsFound": {
+            "n": 1609,
+            "of": 1811
+          },
+          "linksRight": {
+            "n": 399,
+            "of": 399
+          },
+          "linksFoundByState": {
+            "n": 463,
+            "of": 9564
+          },
+          "linksFoundByReference": {
+            "n": 399,
+            "of": 5763,
+            "fallAccepted": {
+              "issue": 355,
+              "was": {
+                "n": 399,
+                "of": 5760
+              }
+            }
+          },
+          "callsAccountedFor": {
+            "n": 7051,
+            "of": 7284
+          },
+          "missesByCause": {
+            "a member called on an object": 2450,
+            "a function called by its name": 2226,
+            "a construction": 404,
+            "a function called by a qualified name": 284
+          }
+        },
+        "B": {
+          "functionsFound": {
+            "n": 1609,
+            "of": 1811
+          },
+          "linksRight": {
+            "n": 5721,
+            "of": 5721,
+            "note": "clang, the compiler clangd is built on, is the reference"
+          },
+          "linksFoundByState": {
+            "n": 5761,
+            "of": 7145
+          },
+          "linksFoundByReference": {
+            "n": 5721,
+            "of": 5763
+          },
+          "callsAccountedFor": {
+            "n": 7051,
+            "of": 7284
+          },
+          "missesByCause": {
+            "a construction": 23,
+            "a function called by its name": 14,
+            "a function called by a qualified name": 5
+          }
+        }
+      }
+    }
+  ]
+}

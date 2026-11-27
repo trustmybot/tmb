@@ -1,10 +1,26 @@
 // Current state is a fold over the events. The live write path and the rebuild both call
 // applyEvent, so a rebuilt projection matches the live one by construction.
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import type { Actor } from "./actor.ts";
+import { type Actor, ROLES } from "./actor.ts";
 import type { ProjectionTable } from "./schema.ts";
+import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, MARK_KINDS, MARK_STATES, REVIEW_TARGET_KINDS, ValueError, assertOneOf } from "./values.ts";
 
-export const RECORD_KINDS = ["issue", "discussion", "task", "run", "check_run", "review", "guard_decision", "audit", "feature"] as const;
+export const RECORD_KINDS = [
+  "issue",
+  "discussion",
+  "task",
+  "run",
+  "check_run",
+  "review",
+  "guard_decision",
+  "feature",
+  "waiver",
+  "review_mark",
+  "setting_change",
+  "freeze",
+  "feedback_report",
+  "import",
+] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
 export type EventType = "created" | "updated";
@@ -29,6 +45,8 @@ type RecordShape = {
   initial?: Record<string, SQLQueryBindings>;
   hasUpdatedAt: boolean;
   searchable: boolean;
+  /** Columns that take a value from a fixed list, checked on each write (trustmybot/tmb#404). */
+  lists?: Record<string, readonly string[]>;
 };
 
 const RECORDS: Record<RecordKind, RecordShape> = {
@@ -39,8 +57,16 @@ const RECORDS: Record<RecordKind, RecordShape> = {
     initial: { state: "open" },
     hasUpdatedAt: true,
     searchable: true,
+    lists: { state: ISSUE_STATES },
   },
-  discussion: { table: "discussions", columns: ["issue_id", "kind", "body"], updatable: [], hasUpdatedAt: false, searchable: true },
+  discussion: {
+    table: "discussions",
+    columns: ["issue_id", "kind", "body"],
+    updatable: [],
+    hasUpdatedAt: false,
+    searchable: true,
+    lists: { kind: DISCUSSION_KINDS },
+  },
   task: {
     table: "tasks",
     columns: ["issue_id", "title", "spec", "state", "branch", "commit_sha", "worktree", "base_commit", "feature_id", "kind", "main_snapshot", "repo", "replaces"],
@@ -54,6 +80,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
     updatable: ["ended_at", "outcome", "cost", "feature_id"],
     hasUpdatedAt: false,
     searchable: false,
+    lists: { role: ROLES },
   },
   check_run: {
     table: "check_runs",
@@ -64,26 +91,63 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   },
   review: {
     table: "reviews",
-    columns: ["target_kind", "target", "verdict", "findings", "feature_id", "commit_sha", "run_id"],
+    columns: ["target_kind", "target", "verdict", "findings", "feature_id", "commit_sha", "run_id", "carried_from"],
     updatable: [],
     hasUpdatedAt: false,
     searchable: false,
+    lists: { target_kind: REVIEW_TARGET_KINDS },
   },
-  guard_decision: { table: "guard_decisions", columns: ["event", "decision", "reason"], updatable: [], hasUpdatedAt: false, searchable: false },
-  audit: { table: "audit", columns: ["what", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
+  guard_decision: {
+    table: "guard_decisions",
+    columns: ["event", "decision", "reason"],
+    updatable: [],
+    hasUpdatedAt: false,
+    searchable: false,
+    lists: { decision: GUARD_DECISIONS },
+  },
   feature: {
     table: "features",
     columns: ["name", "base_branch", "base_commit", "repo"],
-    updatable: ["state", "pr_url", "drop_reason"],
+    updatable: ["state", "pr_url", "drop_reason", "base_merged_commit"],
     initial: { state: "open" },
     hasUpdatedAt: true,
     searchable: false,
   },
+  // What `audit` held, each kind in its own table (trustmybot/tmb#408).
+  waiver: { table: "waivers", columns: ["task_id", "feature_id", "carried_from", "commit_sha", "reason"], updatable: [], hasUpdatedAt: false, searchable: false },
+  review_mark: {
+    table: "review_marks",
+    columns: ["task_id", "feature_id", "commit_sha", "kind", "state", "sent_at"],
+    updatable: ["sent_at"],
+    hasUpdatedAt: false,
+    searchable: false,
+    lists: { kind: MARK_KINDS, state: MARK_STATES },
+  },
+  setting_change: { table: "setting_changes", columns: ["key", "repo", "old_value", "new_value", "how"], updatable: [], hasUpdatedAt: false, searchable: false },
+  freeze: { table: "freezes", columns: ["reason", "session_id"], updatable: ["lifted_by", "lifted_at"], hasUpdatedAt: false, searchable: false },
+  feedback_report: { table: "feedback_reports", columns: ["route", "url", "issue_id"], updatable: [], hasUpdatedAt: false, searchable: false },
+  import: { table: "imports", columns: ["source", "repo", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
 };
+
+/** The record kind `audit` had before version 13: its old events stay, and the fold skips them (trustmybot/tmb#408). */
+export const RETIRED_RECORD_KINDS: readonly string[] = ["audit"];
 
 export function tableOf(kind: RecordKind): ProjectionTable {
   return RECORDS[kind].table;
 }
+
+/**
+ * Refuses a new event whose record kind, or a value it sets, is not on its list. Checked when an
+ * event is written, never when one is replayed: a value an older tmb wrote stays in the record.
+ */
+export function assertValues(recordKind: string, data: Record<string, unknown>): void {
+  assertOneOf("record kind", RECORD_KINDS, recordKind);
+  for (const [column, list] of Object.entries(RECORDS[recordKind as RecordKind].lists ?? {})) {
+    if (column in data) assertOneOf(`a ${recordKind}'s ${column}`, list, data[column]);
+  }
+}
+
+export { ValueError };
 
 /** A JSON object or array in event data is stored in its column as JSON text. */
 function toColumnValue(value: unknown): SQLQueryBindings {
@@ -161,6 +225,7 @@ function syncSearch(db: Database, event: StoredEvent): void {
 }
 
 export function applyEvent(db: Database, event: StoredEvent): void {
+  if (RETIRED_RECORD_KINDS.includes(event.recordKind)) return;
   const shape = RECORDS[event.recordKind];
   if (!shape) throw new Error(`unknown record kind ${JSON.stringify(event.recordKind)}`);
   if (event.type === "created") applyCreated(db, shape, event);

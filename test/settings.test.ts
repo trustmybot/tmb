@@ -28,19 +28,19 @@ afterEach(() => {
 
 describe("settings in the record", () => {
   test("start unset", () => {
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, repos: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null });
   });
 
-  test("each set is one audit entry by the actor, and the current value is the newest", () => {
+  test("each set is one setting change by the actor, and the current value is the newest", () => {
     expect(writeSetting(store, HUMAN, "base_branch", "main")).toBe(true);
     expect(writeSetting(store, HUMAN, "checks", ["bun run lint", "bun test"])).toBe(true);
     expect(writeSetting(store, HUMAN, "base_branch", "develop")).toBe(true);
 
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], repos: null });
-    const audit = store.listAudit();
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], graph_links: null, repos: null });
+    const audit = store.listSettingChanges();
     expect(audit).toHaveLength(3);
     expect(audit.every((entry) => entry.createdBy.kind === "human")).toBe(true);
-    expect(audit.map((entry) => entry.detail)).toEqual(['"main"', '["bun run lint","bun test"]', '"develop"']);
+    expect(audit.map((entry) => entry.newValue)).toEqual(['"main"', '["bun run lint","bun test"]', '"develop"']);
   });
 
   test("a value equal to the current one records nothing", () => {
@@ -49,7 +49,7 @@ describe("settings in the record", () => {
     expect(writeSetting(store, HUMAN, "host", "host-a")).toBe(false);
     expect(writeSetting(store, HUMAN, "host", "  host-a  ")).toBe(false);
     expect(writeSetting(store, HUMAN, "checks", ["pytest"])).toBe(false);
-    expect(store.listAudit()).toHaveLength(2);
+    expect(store.listSettingChanges()).toHaveLength(2);
   });
 
   test("an empty list of checks is a value, set back to after a non-empty one", () => {
@@ -70,7 +70,7 @@ describe("validation", () => {
     expect(writeSetting(store, HUMAN, "review_mode", "truest")).toBe(true);
     expect(readSettings(store).review_mode).toBe("truest");
     expect(() => writeSetting(store, HUMAN, "review_mode", "strict")).toThrow(new SettingError('review mode must be agile or truest, got "strict"'));
-    expect(store.listAudit()).toHaveLength(1);
+    expect(store.listSettingChanges()).toHaveLength(1);
   });
 
   test("refuses an unknown review mode", () => {
@@ -98,19 +98,21 @@ describe("validation", () => {
 
 describe("settingLines", () => {
   test("shows one line per setting, quoting each check and naming what is unset", () => {
-    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], repos: null })).toEqual([
+    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], graph_links: null, repos: null })).toEqual([
       "host: host-a",
       "host roles: host-a planner, host-b reviewer",
       "base branch: main",
       "review mode: agile",
       'checks: "bun run lint", "go test ./..."',
+      "graph links: (not set)",
     ]);
-    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], repos: null })).toEqual([
+    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], graph_links: null, repos: null })).toEqual([
       "host: (not set)",
       "host roles: (not set)",
       "base branch: (not set)",
       "review mode: (not set)",
       "checks: (none)",
+      "graph links: (not set)",
     ]);
   });
 });

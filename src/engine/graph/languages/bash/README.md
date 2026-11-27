@@ -1,6 +1,6 @@
 # bash and sh
 
-The code graph's rules for `.sh` and `.bash` files, and for files with no extension whose shebang names bash or sh. They are read through tree-sitter's bash grammar ([index.ts](index.ts)).
+The code graph's rules for the files GitHub Linguist's list and rules call Shell (trustmybot/tmb#154): `.sh`, `.bash`, `.zsh` and Linguist's other Shell endings and file names, and a file whose first line names a shell such as bash or sh. They are read through tree-sitter's bash grammar ([index.ts](index.ts)).
 
 ## What it reads
 

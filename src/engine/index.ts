@@ -58,7 +58,7 @@ export { type FeedbackEnv, feedbackEnv } from "./feedback/index.ts";
 export { FEEDBACK_HEADING, firstRunAtInit } from "./feedback/first-run.ts";
 export { openProjectStore, PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "./project.ts";
 export { detectBaseBranch, FALLBACK_BASE_BRANCH } from "./base-branch.ts";
-export { type ProgramTie, tiedProgram, tieProgram } from "./program-tie.ts";
+export { type ProgramTie, recordProgramMove, tiedProgram, tieProgram } from "./program-tie.ts";
 export { detectChecks } from "./check-detection.ts";
 export {
   AVAILABLE_REVIEW_MODES,

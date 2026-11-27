@@ -9,7 +9,7 @@ import { createIdFactory } from "../../engine/ids.ts";
 import { isManaged } from "../../engine/repos.ts";
 import type { RepoPolicies } from "../../engine/settings.ts";
 import type { Actor, Role, Store } from "../../engine/store/index.ts";
-import { MIGRATION_AUDIT } from "../../engine/task-repos.ts";
+import { PLUGIN_IMPORT } from "../../engine/task-repos.ts";
 import { HOST_ID } from "./mcp-json.ts";
 
 /** The plugin schema this tool reads: the last one the plugin shipped before tmb. */
@@ -19,7 +19,7 @@ export const PLUGIN_SCHEMA_VERSION = 76;
 export const PLUGIN_DB_RELATIVE = path.join(".claude", "tmb", "trajectory.db");
 
 /** The audit entry that records a migration: the source, the counts and the id map. */
-export { MIGRATION_AUDIT };
+export { PLUGIN_IMPORT };
 
 /** The plugin ran its agents on Claude Code. */
 const PLUGIN_HOST = HOST_ID;
@@ -352,7 +352,7 @@ export function migratePluginWorkspace(
   options: { pluginDbPath: string; repo?: string; into?: string },
 ): WorkspaceMigration {
   if (options.into !== undefined && options.repo === undefined) throw new MigrationError("--into names where --repo's rows go; name the plugin repo with --repo");
-  const earlier = store.listAuditAbout(MIGRATION_AUDIT).map((entry) => (JSON.parse(entry.detail) as { repo?: string | null }).repo ?? null);
+  const earlier = store.listImports(PLUGIN_IMPORT).map((entry) => entry.repo);
   const migrated = new Set(earlier.filter((repo): repo is string => repo !== null));
   return withPluginDb(options.pluginDbPath, (db, from, pluginVersion) => {
     const plugin = pluginRepos(db);
@@ -604,6 +604,7 @@ function copyRecords(
       tasks: Object.fromEntries([...taskIds].map(([plugin, tmb]) => [String(plugin), tmb])),
     },
   };
-  store.recordAudit(HUMAN, { what: MIGRATION_AUDIT, detail: JSON.stringify({ ...result, schemaVersion: PLUGIN_SCHEMA_VERSION }) });
+  const detail = { ...result, schemaVersion: PLUGIN_SCHEMA_VERSION };
+  store.recordImport(HUMAN, { source: PLUGIN_IMPORT, repo: typeof detail.repo === "string" ? detail.repo : null, detail });
   return result;
 }

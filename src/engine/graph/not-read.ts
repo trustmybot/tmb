@@ -36,7 +36,7 @@ export function layerNotRead(db: Database, layer: string): NotRead {
 
 /** The file at this path when the graph has it and does not read its language, else null. */
 export function unreadFile(db: Database, layer: string, path: string): UnreadFile | null {
-  const language = unreadLanguageOf(path);
+  const language = unreadLanguageOf(path, new Set(layerNotRead(db, layer).languages.map((l) => l.name)));
   if (language === null) return null;
   const row = db.query("SELECT 1 FROM files WHERE layer = ? AND path = ? AND lang IS NULL").get(layer, path);
   return row === null ? null : { path, language };
@@ -47,11 +47,12 @@ export function unreadLanguagesText(notRead: NotRead): string {
   return notRead.languages.map((l) => `${l.name} (${l.files} ${l.files === 1 ? "file" : "files"})`).join(", ");
 }
 
-/** "not read: Go 49 files; left out: dist/ 12 files", or "" when the graph reads everything. */
+/** "not read: Go 49 files; left out: dist/ 12 files; statements not parsed: 3", or "" when the graph reads everything. */
 export function notReadSummary(notRead: NotRead): string {
   const count = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
   const parts: string[] = [];
   if (notRead.languages.length > 0) parts.push(`not read: ${notRead.languages.map((l) => `${l.name} ${count(l.files)}`).join(", ")}`);
   if (notRead.leftOut.length > 0) parts.push(`left out: ${notRead.leftOut.map((l) => `${l.rule} ${count(l.files)}`).join(", ")}`);
+  if (notRead.statements) parts.push(`statements not parsed: ${notRead.statements}`);
   return parts.join("; ");
 }

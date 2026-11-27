@@ -1,0 +1,12 @@
+{
+ "repo": "github-linguist/linguist",
+ "tag": "v9.7.0",
+ "commit": "e0c78d62c42abae6122235d8e68a7aa43eef89da",
+ "licence": "MIT",
+ "files": {
+  "languages.yml": "7c2bc5b59662de6c5d09cd4990e82b2541d4cd2ea7c8c213537730474f24a5c7",
+  "heuristics.yml": "7fb4f1df1f8dead4bf12e3b408085f90144d3719f35db206756d762aa046aff1",
+  "generic.yml": "5f530b2b4ffbda0ed08257f45413dc02389c6f27ea2d700427b24734dc6ff484",
+  "LICENSE": "7717070c5a8c85440ff2312930bb30dd19002ab5bc235c9800042767f6f5242f"
+ }
+}

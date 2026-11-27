@@ -1,123 +1,116 @@
-// SQL DDL, read by patterns: tables and their columns, and the tables a statement reads or
-// writes, which the other languages call to read SQL held in their strings.
-import type { Collector, EdgeKind, LanguageModule } from '../contract.ts';
-import { clip, md5, oneLine } from '../kit.ts';
+// SQL (CODE_GRAPH.md, "Data sources"): the tables a statement reads and writes, from the SQL parser
+// tmb carries (parser.ts), in an .sql file and in a string in code, which the other languages hand
+// to sqlInCode. Whatever a statement names as a table is a table, by the last part of its name; a
+// name the code does not state links to the store alone. A statement of an .sql file the parser
+// cannot read gives no link and is counted.
+import { type Collector, type LanguageModule, SYMBOL_KINDS } from '../contract.ts';
+import { md5 } from '../kit.ts';
+import { readSql, type SqlRef, type SqlStatement } from './parser.ts';
 
-const SQL_HINT = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|REPLACE)\b/;
+/**
+ * The word a language puts in a string where code interpolates a value, so the statement still
+ * parses: as a value it is a name like any other, and as a table's name it says the name is not
+ * stated.
+ */
+export const SQL_HOLE = 'tmb_hole_';
 
-export function sqlRefs(text: string): Array<[EdgeKind, string]> {
-  if (!SQL_HINT.test(text)) return [];
-  const out: Array<[EdgeKind, string]> = [];
-  for (const m of text.matchAll(
-    /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+["`]?([A-Za-z_]\w*)/g,
-  )) {
-    out.push(['writes_table', m[1]!]);
-  }
-  for (const m of text.matchAll(/\b(?:FROM|JOIN)\s+["`]?([A-Za-z_]\w*)/g)) out.push(['reads_table', m[1]!]);
-  for (const m of text.matchAll(/\bALTER\s+TABLE\s+["`]?([A-Za-z_]\w*)/g)) out.push(['writes_table', m[1]!]);
-  return out;
-}
-function lineCounter(text: string, lineBase: number): (index: number) => number {
-  const starts = [0];
-  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
-  return (index) => {
-    let lo = 0;
-    let hi = starts.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (starts[mid]! <= index) lo = mid;
-      else hi = mid - 1;
-    }
-    return lineBase + lo + 1;
-  };
-}
+/**
+ * The first words of the statements that read or write a table, as SQL writes them. A string in
+ * code is given to the parser only when it starts with one, in any letter case.
+ */
+const STATEMENT_STARTS: ReadonlySet<string> = new Set([
+  'SELECT',
+  'WITH',
+  'VALUES',
+  'INSERT',
+  'REPLACE',
+  'UPDATE',
+  'DELETE',
+  'MERGE',
+  'CREATE',
+  'ALTER',
+  'DROP',
+  'TRUNCATE',
+  'COPY',
+]);
 
-function statementEnd(text: string, start: number, virtual: boolean): number {
-  if (virtual) return text.indexOf(';', start);
-  let depth = 0;
-  let i = text.indexOf('(', start);
-  for (; i >= 0 && i < text.length; i++) {
-    if (text[i] === '(') depth++;
-    else if (text[i] === ')' && --depth === 0) break;
-  }
-  return i;
-}
+/** SQL's name as a language, which a node names as its own when SQL is written inside another language's string. */
+const SQL_LANGUAGE = 'sql';
 
-function columnNames(stmt: string): string[] {
-  const inner = stmt.slice(stmt.indexOf('(') + 1, stmt.lastIndexOf(')'));
-  const cols: string[] = [];
-  let depth = 0;
-  let cur = '';
-  for (const ch of inner) {
-    if (ch === '(') depth++;
-    if (ch === ')') depth--;
-    if (ch === ',' && depth === 0) {
-      cols.push(cur);
-      cur = '';
-    } else cur += ch;
-  }
-  cols.push(cur);
-  return cols
-    .map((c) => c.trim().split(/\s+/)[0] ?? '')
-    .filter((c) => c && !/^(PRIMARY|UNIQUE|FOREIGN|CHECK|CONSTRAINT|content|content_rowid|tokenize|--)/i.test(c));
+/** What a trigger's node is keyed by in its file, apart from any function of the code around its string. */
+const TRIGGER_KEY = 'trigger';
+
+/** The kinds of data source SQL reaches: a table by its name, and the store alone when the code states no table's name. */
+export const SQL_DATA = { table: 'table', store: 'database' } as const;
+
+/** Whether a string starts like a statement that reads or writes a table. */
+export function startsLikeStatement(text: string): boolean {
+  const first = /^\s*([A-Za-z]+)\b/.exec(text)?.[1];
+  return first !== undefined && STATEMENT_STARTS.has(first.toUpperCase());
 }
 
-export function extractSqlDdl(text: string, out: Collector, moduleSymbol: number | null, lineBase = 0): void {
-  const lineAt = lineCounter(text, lineBase);
-  for (const m of text.matchAll(/CREATE\s+(VIRTUAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?(\w+)["`]?/gi)) {
-    const start = m.index;
-    let end = statementEnd(text, start, Boolean(m[1]));
-    if (end < 0) end = Math.min(text.length, start + 400);
-    const stmt = text.slice(start, end + 1);
-    const name = m[2]!;
-    out.symbol({
-      kind: 'sql_table',
-      qualified_name: name,
-      signature: clip(`${name}(${columnNames(stmt).join(', ')})`, 240),
-      doc: '',
-      start_line: lineAt(start),
-      end_line: lineAt(end),
-      body_hash: md5(oneLine(stmt)),
-      exported: 0,
-    });
+function link(out: Collector, src: number, ref: SqlRef, line: number): void {
+  const kind = ref.op === 'read' ? 'reads_data' : 'writes_data';
+  if (ref.at.to === 'table') out.dataLink(src, kind, SQL_DATA.table, ref.at.name, line);
+  else out.dataLink(src, kind, SQL_DATA.store, '', line);
+}
+
+/**
+ * One read statement's links, from `owner`; `lineOf` turns its lines into the file's. `lang` is the
+ * language its nodes name as their own: SQL in another language's string, none in an .sql file.
+ */
+function addStatement(out: Collector, owner: number, statement: SqlStatement, lineOf: (line: number) => number, lang?: string): void {
+  const line = lineOf(statement.line);
+  const end = lineOf(statement.end);
+  for (const ref of statement.refs ?? []) link(out, owner, ref, line);
+  for (const trigger of statement.triggers ?? []) {
+    // A trigger is code that runs in the store: a function node where it is written, and its body's
+    // links start at it. The store runs it on its table's event, so no call of any language names it.
+    const id = out.symbol(
+      {
+        kind: SYMBOL_KINDS.function,
+        qualified_name: trigger.name,
+        signature: `trigger ${trigger.name}`,
+        doc: '',
+        start_line: line,
+        end_line: end,
+        body_hash: md5(JSON.stringify(trigger)),
+        exported: 0,
+        parent: owner,
+        reach: 'none',
+        ...(lang === undefined ? {} : { lang }),
+      },
+      `${TRIGGER_KEY}\u0000${trigger.name}\u0000${line}`,
+    );
+    if (trigger.on?.to === 'table') out.dataLink(id, 'triggers_on', SQL_DATA.table, trigger.on.name, line);
+    for (const ref of trigger.refs) link(out, id, ref, line);
   }
-  for (const m of text.matchAll(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+ON\s+(\w+)/gi)) {
-    const line = lineAt(m.index);
-    const id = out.symbol({
-      kind: 'sql_index',
-      qualified_name: m[1]!,
-      signature: oneLine(m[0]),
-      doc: '',
-      start_line: line,
-      end_line: line,
-      body_hash: md5(m[0]),
-      exported: 0,
-    });
-    out.edge(id, 'indexes', m[2]!, line);
-  }
-  for (const m of text.matchAll(/CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+([\s\S]*?)\bON\s+(\w+)([\s\S]*?)\bEND\b/gi)) {
-    const line = lineAt(m.index);
-    const id = out.symbol({
-      kind: 'sql_trigger',
-      qualified_name: m[1]!,
-      signature: clip(oneLine(`${m[1]} ${m[2]} ON ${m[3]}`), 200),
-      doc: '',
-      start_line: line,
-      end_line: lineAt(m.index + m[0].length),
-      body_hash: md5(oneLine(m[0])),
-      exported: 0,
-    });
-    out.edge(id, 'triggers_on', m[3]!, line);
-    for (const [kind, table] of sqlRefs(m[4]!)) out.edge(id, kind, table, line);
-  }
-  if (moduleSymbol !== null) {
-    for (const m of text.matchAll(/\bALTER\s+TABLE\s+(\w+)/gi)) out.edge(moduleSymbol, 'writes_table', m[1]!, lineAt(m.index));
-  }
+}
+
+/**
+ * The tables of the SQL in a string of code, linked from `owner`. `text` is the string's value,
+ * each interpolated value replaced by SQL_HOLE; `first` and `last` are the lines the string spans
+ * in the file. The string does not say its dialect: every dialect is tried, and a statement counts
+ * when every dialect that parses it names the same tables. One that does not gives nothing and is
+ * not counted, since a string that starts like a statement may be a label.
+ */
+export function sqlInCode(text: string, owner: number, first: number, last: number, out: Collector): void {
+  if (!startsLikeStatement(text)) return;
+  const lineOf = (line: number) => Math.min(last, first + line - 1);
+  for (const statement of readSql(text, SQL_HOLE)) if (statement.read) addStatement(out, owner, statement, lineOf, SQL_LANGUAGE);
 }
 
 export const sql: LanguageModule = {
-  name: 'sql',
-  extensions: ['sql'],
+  name: SQL_LANGUAGE,
+  linguist: ['SQL'],
+  endings: ['.sql'],
+  // Linguist's names for the dialects of Postgres, SQL Server, Oracle and DB2, which its rules tell apart in an `.sql` file.
+  dialects: ['PLpgSQL', 'TSQL', 'PLSQL', 'SQLPL'],
   comment: 'hash',
-  extract: (file, out) => extractSqlDdl(file.src, out, file.module),
+  extract: (file, out) => {
+    for (const statement of readSql(file.src, '')) {
+      if (statement.read) addStatement(out, file.module, statement, (line) => line);
+      else out.statementsNotRead++;
+    }
+  },
 };

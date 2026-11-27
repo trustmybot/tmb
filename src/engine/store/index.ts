@@ -1,9 +1,20 @@
-export { type Actor, ActorError, ROLES, type Role } from "./actor.ts";
+export { type Actor, ActorError, ROLES, type Role, TMB_SOURCES, type TmbSource } from "./actor.ts";
+export { ValueError } from "./values.ts";
 export { type OpenResult, StoreOpenError, type StoreOpenFailure, currentWriter, openStore } from "./open.ts";
 export { type RecordKind, type StoredEvent } from "./projections.ts";
 export { SCHEMA_VERSION } from "./schema.ts";
 export {
-  type AuditEntry,
+  type EntryDetail,
+  type FeedbackReport,
+  type ImportEntry,
+  type NewFeedbackReport,
+  type NewImport,
+  type NewReviewMark,
+  type NewSettingChange,
+  type NewWaiver,
+  type ReviewMark,
+  type SettingChange,
+  type WaiverEntry,
   type CheckRun,
   type CheckRunEnd,
   type Discussion,
@@ -16,7 +27,6 @@ export {
   type IssueChanges,
   type IssueState,
   type IssueSummary,
-  type NewAuditEntry,
   type NewCheckRun,
   type NewDiscussion,
   type NewGuardDecision,

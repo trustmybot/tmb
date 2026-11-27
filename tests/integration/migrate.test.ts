@@ -165,7 +165,7 @@ describe("a plugin project's records carry over", () => {
     }
   });
 
-  test("reviews, agent runs and one audit entry of the migration carry over; dropped features and other repos do not", () => {
+  test("reviews, agent runs and one import naming the migration carry over; dropped features and other repos do not", () => {
     const db = new Database(path.join(project, ".tmb", "trajectory.db"), { readonly: true });
     try {
       const reviews = db.query("SELECT target_kind, target, verdict, findings, created_by FROM reviews ORDER BY id").all() as Record<string, string>[];
@@ -187,10 +187,10 @@ describe("a plugin project's records carry over", () => {
       ]);
       expect(JSON.parse(runs[0]!.cost as string)).toMatchObject({ tokens_in: 1000, tokens_out: 200 });
 
-      // init's own entries come first; the migration adds exactly one.
-      const audit = (db.query("SELECT what, detail FROM audit").all() as { what: string; detail: string }[]).filter((entry) => entry.what.startsWith("migration"));
-      expect(audit.map((entry) => entry.what)).toEqual(["migration.plugin"]);
-      const detail = JSON.parse(audit[0]!.detail) as {
+      // The migration is one import from the plugin.
+      const imports = db.query("SELECT source, repo, detail FROM imports").all() as { source: string; repo: string | null; detail: string }[];
+      expect(imports.map((entry) => [entry.source, entry.repo])).toEqual([["plugin", "app"]]);
+      const detail = JSON.parse(imports[0]!.detail) as {
         repo: string;
         leftBehind: Record<string, number>;
         ids: { issues: Record<string, string>; tasks: Record<string, string> };

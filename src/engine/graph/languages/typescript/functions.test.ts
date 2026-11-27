@@ -157,11 +157,133 @@ export class Factory<E> {
 export const createFactory = <E,>(init?: E): Factory<E> => new Factory<E>(init)
 `;
 
+// Decorated classes and members (trustmybot/tmb#317). A symbol's lines start at its first
+// decorator and end at its last line ("Kinds of symbol" in CODE_GRAPH.md), as the compiler's do.
+const DECORATED = `function cache(): any { return () => {}; }
+function inject(): any { return () => {}; }
+@cache()
+export class Store {
+  @cache()
+  // a comment between two decorators
+  @cache()
+  load(): number {
+    return 1;
+  }
+  @cache()
+  get size(): number { return 0; }
+  @cache()
+  static make(): Store { return new Store(1); }
+  @cache() async fetch(): Promise<number> { return 1; }
+  @cache()
+  label = "";
+  constructor(@inject() n: number) {}
+}
+@cache()
+class Plain {
+  @cache()
+  run() {}
+}
+export { Plain };
+`;
+
+// The same shapes in JavaScript, which has no types and no parameter decorators.
+const DECORATED_JS = `function cache() { return () => {}; }
+@cache()
+export class Store {
+  @cache()
+  // a comment between two decorators
+  @cache()
+  load() {
+    return 1;
+  }
+  @cache()
+  get size() { return 0; }
+  @cache()
+  static make() { return new Store(); }
+  @cache() async fetch() { return 1; }
+  @cache()
+  label = "";
+}
+`;
+
+// Methods that have only a declaration ("A function with a declaration and a definition is one
+// node" in CODE_GRAPH.md, trustmybot/tmb#367): an interface's, an abstract one, one of an ambient
+// class. Each is a method node named through its type; overload signatures of one name in one type
+// are one node, from the first to the last; a signature beside a body of its name is no node, the
+// body is. An alias written as an object type lists its methods as an interface does; a signature
+// in an object type with no name of its own, as a parameter's, is no node.
+const BODILESS = `export interface Ledger {
+  post(entry: string): void;
+  balance(): number;
+  balance(asOf: Date): number;
+  readonly size: number;
+  get open(): boolean;
+  set open(v: boolean);
+  (raw: string): void;
+  new (seed: number): Ledger;
+}
+
+export abstract class Shape {
+  abstract area(): number;
+  abstract get sides(): number;
+  scale(by: number): Shape;
+  scale(by: string): Shape;
+  scale(by: unknown): Shape {
+    return this;
+  }
+}
+
+declare class Remote {
+  constructor(url: string);
+  fetch(path: string): Promise<string>;
+}
+
+type Bag = { take(): number };
+export function useBag(bag: { give(): number }): Bag {
+  return { take: () => bag.give() };
+}
+`;
+
+// A named type that lists its methods holds them, whatever keyword declares it: an alias written
+// directly as an object type too. A class and an interface of one name that both list a method
+// give one node, the class's. A method of an object type inside another type has no type of its own.
+const LISTED = `export type Till = {
+  open(): void;
+  count(n: number): number;
+  count(n: string): number;
+  readonly id: string;
+};
+export type Pair = [{ left(): void }];
+export interface Clock {
+  tick(): void;
+  reset(): void;
+}
+export class Clock {
+  tick(): void {}
+}
+`;
+
 function symbols(relPath: string, text: string): ExtractedSymbol[] {
   const lang = coveredLanguage(relPath);
   if (lang === null) throw new Error(relPath);
   return extractFile(parsers, relPath, lang, text).symbols;
 }
+
+// A trigger in a string is SQL the store runs ("Data sources"): a function node of the graph whose
+// language is SQL, not its file's. The compiler does not read it, so coverage leaves it out
+// ("Benchmark", Functions found), and the compiler's list and the graph's still match.
+const TRIGGERS = `declare const db: { exec(s: string): void };
+export const SCHEMA = \`CREATE TABLE bins (id INTEGER);
+CREATE TRIGGER bin_emptied AFTER DELETE ON bins BEGIN DELETE FROM bin_labels WHERE bin = old.id; END;\`;
+export function install() {
+  db.exec("CREATE TRIGGER bin_filled AFTER INSERT ON bins BEGIN UPDATE bins SET id = 0; END");
+}
+export const drop = () => db.exec("DROP TABLE bins");
+export class Bins {
+  add() { return 1; }
+  remove() { return 2; }
+}
+`;
 
 const fn = (all: ExtractedSymbol[], name: string): ExtractedSymbol => {
   const hit = all.find((s) => s.qualified_name === name && (s.kind === "function" || s.kind === "method"));
@@ -175,6 +297,12 @@ describe("every function is a node", () => {
     ["src/list.tsx", JSX],
     ["web/server.js", JS],
     ["src/factory.ts", CALL_SIGNATURES],
+    ["src/decorated.ts", DECORATED],
+    ["src/decorated.tsx", DECORATED],
+    ["web/decorated.js", DECORATED_JS],
+    ["src/ledger.ts", BODILESS],
+    ["src/till.ts", LISTED],
+    ["src/bins.ts", TRIGGERS],
   ] as const) {
     test(`${file} matches the TypeScript compiler one to one`, () => {
       const want = compilerFunctions(file, text);
@@ -183,6 +311,26 @@ describe("every function is a node", () => {
       expect(want.length).toBeGreaterThan(3);
     });
   }
+
+  test("a trigger in a string is an SQL function node, held by what holds the string", () => {
+    const all = symbols("src/bins.ts", TRIGGERS);
+    const triggers = all.filter((s) => s.qualified_name === "bin_emptied" || s.qualified_name === "bin_filled");
+    expect(triggers.map((s) => ({ name: s.qualified_name, kind: s.kind, lang: s.lang, in: all[s.parent!]?.qualified_name }))).toEqual([
+      { name: "bin_emptied", kind: "function", lang: "sql", in: "SCHEMA" },
+      { name: "bin_filled", kind: "function", lang: "sql", in: "install" },
+    ]);
+    // Every other node is in its file's language, and names none of its own.
+    expect(all.filter((s) => !triggers.includes(s)).filter((s) => s.lang !== undefined)).toEqual([]);
+  });
+
+  test("coverage counts the nodes of the file's language: the triggers' SQL is left out", () => {
+    const all = symbols("src/bins.ts", TRIGGERS);
+    const sqlLines = all.filter((s) => s.lang === "sql").map((s) => `${s.start_line}-${s.end_line}`);
+    expect(sqlLines).toHaveLength(2);
+    const counted = graphFunctions(parsers, "src/bins.ts", TRIGGERS);
+    const own = all.filter((s) => (s.kind === "function" || s.kind === "method") && s.lang === undefined).map((s) => `${s.start_line}-${s.end_line}`);
+    expect(counted).toEqual(own.sort());
+  });
 
   test("each kind of function has its node and its name", () => {
     const all = symbols("src/kinds.ts", KINDS);
@@ -204,9 +352,52 @@ describe("every function is a node", () => {
     // A returned function and an immediately called one are named by their line.
     expect(fn(all, "function at line 47").unnamed).toBe(1);
     expect(fn(all, "function at line 65").unnamed).toBe(1);
-    // A signature without a body is not a function.
+    // An overload signature is no function: the body is. A method with only a declaration is one.
     expect(all.filter((s) => s.qualified_name === "overloaded").length).toBe(1);
-    expect(all.some((s) => s.qualified_name === "declaredOnly" || s.qualified_name === "Base.shape")).toBe(false);
+    expect(fn(all, "Base.shape").kind).toBe("method");
+  });
+
+  test("a method with only a declaration is a node named through its type; its overloads are one", () => {
+    const all = symbols("src/ledger.ts", BODILESS);
+    const lines = (name: string) => all.filter((s) => s.kind === "method" && s.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    expect(lines("Ledger.post")).toEqual([[2, 2]]);
+    expect(lines("Ledger.balance")).toEqual([[3, 4]]);
+    expect(lines("Ledger.open")).toEqual([[6, 6], [7, 7]]);
+    expect(lines("Shape.area")).toEqual([[13, 13]]);
+    expect(lines("Shape.sides")).toEqual([[14, 14]]);
+    expect(lines("Shape.scale")).toEqual([[17, 19]]);
+    expect(lines("Remote.constructor")).toEqual([[23, 23]]);
+    expect(lines("Remote.fetch")).toEqual([[24, 24]]);
+    expect(lines("Bag.take")).toEqual([[27, 27]]);
+    // A property, a call signature and a construct signature are no methods; nor is a method of a type with no name.
+    expect(all.some((s) => ["Ledger.size", "take", "give", "useBag.give"].includes(s.qualified_name) && s.kind === "method")).toBe(false);
+    // Each is held by its type.
+    const ledger = all.findIndex((s) => s.kind === "type" && s.makesObjects === undefined && s.qualified_name === "Ledger");
+    const shape = all.findIndex((s) => s.kind === "type" && s.makesObjects === 1 && s.qualified_name === "Shape");
+    expect(fn(all, "Ledger.post").parent).toBe(ledger);
+    expect(fn(all, "Shape.area").parent).toBe(shape);
+  });
+
+  test("the compiler's list holds a method with only a declaration, its overloads once", () => {
+    const want = compilerFunctions("src/ledger.ts", BODILESS);
+    for (const lines of ["2-2", "3-4", "6-6", "7-7", "13-13", "14-14", "17-19", "23-23", "24-24", "27-27"]) expect(want).toContain(lines);
+    expect(want).not.toContain("15-15");
+    expect(want.filter((l) => l === "28-28")).toEqual([]);
+  });
+
+  test("an alias written as an object type holds its methods; a class and an interface of one name give the class's", () => {
+    const all = symbols("src/till.ts", LISTED);
+    const lines = (name: string) => all.filter((s) => s.kind === "method" && s.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    expect(lines("Till.open")).toEqual([[2, 2]]);
+    expect(lines("Till.count")).toEqual([[3, 4]]);
+    expect(all.some((s) => s.kind === "method" && (s.qualified_name.endsWith("left") || s.qualified_name === "Till.id"))).toBe(false);
+    expect(lines("Clock.tick")).toEqual([[13, 13]]);
+    expect(lines("Clock.reset")).toEqual([[10, 10]]);
+    const till = all.findIndex((s) => s.kind === "type" && s.qualified_name === "Till");
+    expect(fn(all, "Till.open").parent).toBe(till);
+    const want = compilerFunctions("src/till.ts", LISTED);
+    for (const l of ["2-2", "3-4", "10-10", "13-13"]) expect(want).toContain(l);
+    for (const l of ["7-7", "9-9"]) expect(want).not.toContain(l);
   });
 
   test("functions inside JSX are nodes, named by the attribute or call they are passed to", () => {
@@ -222,8 +413,33 @@ describe("every function is a node", () => {
     for (const name of ["Factory.constructor", "Factory.createApp", "Factory.createHandlers"]) expect(fn(all, name).kind).toBe("method");
     expect(fn(all, "createFactory").kind).toBe("function");
     expect(fn(all, "callback of `filter`").unnamed).toBe(1);
-    const iface = all.find((s) => s.kind === "interface" && s.qualified_name === "CreateHandlers");
+    const iface = all.find((s) => s.kind === "type" && s.qualified_name === "CreateHandlers");
     expect([iface?.start_line, iface?.end_line]).toEqual([1, 9]);
+  });
+
+  test("a decorated symbol's lines start at its first decorator and end at its last line", () => {
+    for (const [file, text] of [
+      ["src/decorated.ts", DECORATED],
+      ["web/decorated.js", DECORATED_JS],
+    ] as const) {
+      const all = symbols(file, text);
+      const at = (kind: string, name: string) => {
+        const s = all.find((x) => x.kind === kind && x.qualified_name === name);
+        return [s?.start_line, s?.end_line];
+      };
+      const o = file.endsWith(".js") ? -1 : 0; // the JavaScript fixture has one helper fewer above
+      expect(at("type", "Store")).toEqual([3 + o, file.endsWith(".js") ? 17 : 19]);
+      expect(at("method", "Store.load")).toEqual([5 + o, 10 + o]);
+      expect(at("method", "Store.size")).toEqual([11 + o, 12 + o]);
+      expect(at("method", "Store.make")).toEqual([13 + o, 14 + o]);
+      expect(at("method", "Store.fetch")).toEqual([15 + o, 15 + o]);
+    }
+    const ts = symbols("src/decorated.ts", DECORATED);
+    const lines = (kind: string, name: string) => ts.filter((x) => x.kind === kind && x.qualified_name === name).map((s) => [s.start_line, s.end_line]);
+    // A parameter's decorator is inside its constructor: the constructor starts at its own line.
+    expect(lines("method", "Store.constructor")).toEqual([[18, 18]]);
+    expect(lines("type", "Plain")).toEqual([[20, 24]]);
+    expect(lines("method", "Plain.run")).toEqual([[22, 23]]);
   });
 
   test("the repair keeps every line and column, and touches a file it cannot improve not at all", () => {
@@ -255,13 +471,13 @@ describe("every symbol has a container", () => {
   test("a nested function's container is its parent function, a method's its class, the rest the file", () => {
     const all = symbols("src/kinds.ts", KINDS);
     const index = (s: ExtractedSymbol) => all.indexOf(s);
-    expect(all[0]!.kind).toBe("module");
+    expect(all[0]!.kind).toBe("file");
     expect(all[0]!.parent).toBeUndefined();
     for (const s of all.slice(1)) expect(s.parent).toBeNumber();
     expect(fn(all, "innerNamed").parent).toBe(index(fn(all, "topLevel")));
     expect(fn(all, "innerArrow").parent).toBe(index(fn(all, "topLevel")));
     expect(fn(all, "callback of `map`").parent).toBe(index(fn(all, "topLevel")));
-    const shop = all.findIndex((s) => s.kind === "class" && s.qualified_name === "Shop");
+    const shop = all.findIndex((s) => s.kind === "type" && s.makesObjects === 1 && s.qualified_name === "Shop");
     expect(fn(all, "Shop.load").parent).toBe(shop);
     expect(fn(all, "callback of `run`").parent).toBe(index(fn(all, "Shop.load")));
     expect(fn(all, "topLevel").parent).toBe(0);

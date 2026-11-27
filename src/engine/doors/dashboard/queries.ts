@@ -10,9 +10,9 @@ const RECENT_RUNS = 10;
 export const LIST_LIMIT_MAX = 1000;
 const LIST_LIMIT_DEFAULT = 300;
 
-/** The Human, or the agent's role; the host stays in `created_by`. */
+/** The Human, the agent's role, or tmb; the host and source stay in `created_by`. */
 export function authorOf(actor: Actor): string {
-  return actor.kind === "human" ? "human" : actor.role;
+  return actor.kind === "agent" ? actor.role : actor.kind;
 }
 
 function parseJson(text: unknown, fallback: unknown): unknown {
@@ -141,8 +141,23 @@ export function guardDecisions(db: Database, limit: number): Row[] {
   return all(db, "SELECT * FROM guard_decisions ORDER BY id DESC LIMIT ?", limit).map((r) => shape(r));
 }
 
+/**
+ * The feed of what the audit trail held before it went (trustmybot/tmb#408): setting changes,
+ * waivers, review marks, freezes, feedback reports and imports, newest first, each as what and detail.
+ */
 export function audit(db: Database, limit: number): Row[] {
-  return all(db, "SELECT * FROM audit ORDER BY id DESC LIMIT ?", limit).map((r) => shape(r));
+  return all(
+    db,
+    `SELECT id, created_by, created_at, 'setting:' || key || coalesce(' (' || repo || ')', '') AS what,
+            coalesce(new_value, '') || coalesce(' via ' || how, '') AS detail FROM setting_changes
+     UNION ALL SELECT id, created_by, created_at, 'waiver', commit_sha || ': ' || reason FROM waivers
+     UNION ALL SELECT id, created_by, created_at, 'review_mark', kind || ' ' || state || ' on ' || commit_sha || CASE WHEN sent_at IS NULL THEN ', not sent' ELSE '' END FROM review_marks
+     UNION ALL SELECT id, created_by, created_at, 'freeze', reason || CASE WHEN lifted_at IS NULL THEN '' ELSE ', lifted' END FROM freezes
+     UNION ALL SELECT id, created_by, created_at, 'feedback', route || coalesce(' ' || url, '') FROM feedback_reports
+     UNION ALL SELECT id, created_by, created_at, 'import', source || coalesce(' ' || repo, '') FROM imports
+     ORDER BY id DESC LIMIT ?`,
+    limit,
+  ).map((r) => shape(r));
 }
 
 // --- overview -----------------------------------------------------------------------------

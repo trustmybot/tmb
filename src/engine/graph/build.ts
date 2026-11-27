@@ -2,23 +2,30 @@
 // whole layer in one transaction, so a read never sees half a graph. Each file is parsed once
 // per blob: a later commit reparses only the files it changed.
 import type { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { basename, posix } from "node:path";
-import { type ExtractedExport, type Extraction, extractFile, languageOf, leftOutRule, type SourceLanguage, splitWords, symbolTerms } from "./extract.ts";
+import { GITATTRIBUTES, GitAttributes } from "../linguist/gitattributes.ts";
+import { HEURISTICS_CONSIDER } from "../linguist/index.ts";
+import { type ExtractedExport, type Extraction, extractFile, fileLanguages, languageOf, leftOutRule, moduleOfLanguages, NODE_MODULES_RULE, type SourceLanguage, splitWords, SYMBOL_KINDS, symbolTerms } from "./extract.ts";
 import { BASE_LAYER, dropLayer, layerRow } from "./db.ts";
-import { listTree, readBlobs, type TreeEntry } from "./git-source.ts";
-import { languageNamed } from "./languages/registry.ts";
-import { unreadLanguageOf } from "./languages/unread.ts";
+import { commitReader, listTree, readBlobs, type TreeEntry } from "./git-source.ts";
+import type { LanguageTool, ToolAnswer, ToolCall, ToolNode, Whose } from "./languages/contract.ts";
+import { LANGUAGES, languageNamed } from "./languages/registry.ts";
+import { unreadLanguage } from "./languages/unread.ts";
 import { loadParsers, type Parsers } from "./loader.ts";
 import { ImportConfig, isImportConfigPath } from "./import-config.ts";
-import { type Candidate, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
+import { type Candidate, callState, type Link, NAME_ONLY_EDGES, Resolver, shortName } from "./resolve.ts";
 import { fileSummary, isReadme, readmeSummary } from "./summary.ts";
 import { laneOf } from "./test-paths.ts";
 import { recheckAreas } from "./areas.ts";
 import { recheckConcepts } from "./concepts.ts";
+import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
+import { type CopySearch, findCopy, machinePlaces } from "./tool-copy.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 9;
-const MAX_PARSE_BYTES = 1_000_000;
+export const EXTRACTOR_VERSION = 38;
+/** Files larger than this are kept as files and not parsed. */
+export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */
 export const MINIFIED = "minified; not parsed";
 const MAX_ERROR_CHARS = 200;
@@ -40,6 +47,12 @@ export type BuildStats = {
   notParsed: number;
   /** What the graph does not read: code in languages tmb has no module for, and files left out by rule (trustmybot/tmb#234). */
   notRead: NotRead;
+  /** The way the layer was asked to make its links by (trustmybot/tmb#311). */
+  links: LinkWay;
+  /** Why a language was built by the built-in rules although its tool was asked for, and what a tool's answers rest on that the reader should know; null when neither. */
+  linksNote: string | null;
+  /** What a way B layer was built with (BuiltWithRecord, as JSON); null for a layer built by the built-in rules. */
+  builtWith: string | null;
 };
 
 /** Files of a commit the graph does not read, with counts, most first. */
@@ -48,6 +61,8 @@ export type NotRead = {
   languages: { name: string; files: number }[];
   /** Files each rule leaves out of the graph altogether, such as dist/ or lockfiles. */
   leftOut: { rule: string; files: number }[];
+  /** Statements a language's parser could not read, each of which gave no link; absent when there are none. */
+  statements?: number;
 };
 
 export const NOTHING_UNREAD: NotRead = { languages: [], leftOut: [] };
@@ -60,17 +75,19 @@ export function parseNotRead(text: string | null | undefined): NotRead {
   if (text === null || text === undefined) return NOTHING_UNREAD;
   try {
     const value = JSON.parse(text) as Partial<NotRead>;
-    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [] };
+    return { languages: value.languages ?? [], leftOut: value.leftOut ?? [], ...(value.statements ? { statements: value.statements } : {}) };
   } catch {
     return NOTHING_UNREAD;
   }
 }
 
 /** The symbol kinds that are functions. */
-export const FUNCTION_KINDS: ReadonlySet<string> = new Set(["function", "method", "sh_function"]);
+export const FUNCTION_KINDS: ReadonlySet<string> = new Set<string>([SYMBOL_KINDS.function, SYMBOL_KINDS.method]);
 
 type FilePlan = {
   entry: TreeEntry;
+  /** The languages Linguist's rules leave the file (trustmybot/tmb#154): one when they settle it. */
+  languages: string[];
   lang: SourceLanguage | null;
   extraction: Extraction | null;
   error: string | null;
@@ -93,12 +110,23 @@ function cachedParse(db: Database, blob: string, lang: string): { extraction: Ex
 
 function parseOne(parsers: Parsers, entry: TreeEntry, lang: SourceLanguage, text: string): { extraction: Extraction | null; error: string | null } {
   try {
-    const { symbols, edges, exports } = extractFile(parsers, entry.path, lang, text);
-    return { extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}) }, error: null };
+    const { symbols, edges, exports, statementsNotRead } = extractFile(parsers, entry.path, lang, text);
+    return {
+      extraction: { symbols, edges, ...(exports && exports.length > 0 ? { exports } : {}), ...(statementsNotRead ? { statementsNotRead } : {}) },
+      error: null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { extraction: null, error: message.slice(0, MAX_ERROR_CHARS) };
   }
+}
+
+/** The Linguist attributes the `.gitattributes` files of a commit's tree give its paths (trustmybot/tmb#154). */
+export function commitAttributes(repoDir: string, tree: readonly TreeEntry[]): GitAttributes {
+  const files = tree.filter((e) => e.path === GITATTRIBUTES || e.path.endsWith(`/${GITATTRIBUTES}`));
+  if (files.length === 0) return new GitAttributes(new Map());
+  const texts = readBlobs(repoDir, files.map((e) => e.blob));
+  return new GitAttributes(new Map(files.flatMap((e) => (texts.has(e.blob) ? [[e.path, texts.get(e.blob)!] as const] : []))));
 }
 
 /** Reads and parses every file of `commit`, reusing the parse of each blob seen before. */
@@ -106,43 +134,70 @@ async function planCommit(
   db: Database,
   repoDir: string,
   commit: string,
-): Promise<{ plans: FilePlan[]; readmes: Map<string, string>; configs: Map<string, string>; parsed: number; reused: number; leftOut: Map<string, number> }> {
+): Promise<{
+  plans: FilePlan[];
+  readmes: Map<string, string>;
+  configs: Map<string, string>;
+  parsed: number;
+  reused: number;
+  leftOut: Map<string, number>;
+  attributes: GitAttributes;
+}> {
   const leftOut = new Map<string, number>();
-  const entries = listTree(repoDir, commit).filter((entry) => {
-    const rule = leftOutRule(entry.path);
+  const tree = listTree(repoDir, commit);
+  const attributes = commitAttributes(repoDir, tree);
+  const entries = tree.filter((entry) => {
+    const rule = leftOutRule(entry.path, attributes.of(entry.path));
     if (rule !== null) leftOut.set(rule, (leftOut.get(rule) ?? 0) + 1);
     return rule === null;
   });
-  const byExtension = new Map<string, SourceLanguage | null>();
+  const waiting = new Set<string>();
   const needText: string[] = [];
+  const needStart: string[] = [];
   const plans: FilePlan[] = [];
   const readmes = new Map<string, string>();
   let reused = 0;
   for (const entry of entries) {
+    // A file whose language its text decides (a script with no known name, a `.h` header) waits for its text.
     let headless = false;
-    const lang = languageOf(entry.path, () => {
-      headless = true;
-      return "";
-    });
-    byExtension.set(entry.path, headless ? null : lang);
-    const cached = lang !== null && !headless ? cachedParse(db, entry.blob, lang) : null;
+    const languages = fileLanguages(
+      entry.path,
+      () => {
+        headless = true;
+        return "";
+      },
+      attributes.of(entry.path),
+    );
+    const lang = headless ? null : moduleOfLanguages(entry.path, languages);
+    if (headless) waiting.add(entry.path);
+    const cached = lang !== null ? cachedParse(db, entry.blob, lang) : null;
     if (cached) reused++;
-    plans.push({ entry, lang: headless ? null : lang, extraction: cached?.extraction ?? null, error: cached?.error ?? null, summary: "" });
+    plans.push({ entry, languages: headless ? [] : languages, lang, extraction: cached?.extraction ?? null, error: cached?.error ?? null, summary: "" });
     const parseable = entry.size <= MAX_PARSE_BYTES;
     const wantsText =
       parseable && ((lang !== null && !cached) || headless || isReadme(entry.path) || /\.(md|markdown)$/i.test(entry.path) || isImportConfigPath(entry.path));
     if (wantsText) needText.push(entry.blob);
+    // A file too large to parse still has its language: Linguist reads its start (HEURISTICS_CONSIDER).
+    else if (headless) needStart.push(entry.blob);
   }
   const texts = readBlobs(repoDir, needText);
+  const starts = readBlobs(repoDir, needStart);
   const configs = new Map<string, string>();
   for (const { entry } of plans) {
     const text = isImportConfigPath(entry.path) ? texts.get(entry.blob) : undefined;
     if (text !== undefined) configs.set(entry.path, text);
   }
   for (const plan of plans) {
-    const text = texts.get(plan.entry.blob) ?? null;
-    if (plan.lang === null && text !== null && byExtension.get(plan.entry.path) === null) {
-      plan.lang = languageOf(plan.entry.path, () => text.slice(0, 120));
+    const text = texts.get(plan.entry.blob) ?? starts.get(plan.entry.blob)?.slice(0, HEURISTICS_CONSIDER) ?? null;
+    if (waiting.has(plan.entry.path)) {
+      plan.languages = fileLanguages(plan.entry.path, text === null ? null : () => text, attributes.of(plan.entry.path));
+      plan.lang = moduleOfLanguages(plan.entry.path, plan.languages);
+      const cached = plan.lang !== null ? cachedParse(db, plan.entry.blob, plan.lang) : null;
+      if (cached) {
+        reused++;
+        plan.extraction = cached.extraction;
+        plan.error = cached.error;
+      }
     }
   }
   // Only the grammars of the files this commit parses anew are loaded (trustmybot/tmb#157).
@@ -167,11 +222,198 @@ async function planCommit(
         cache.run(plan.entry.blob, plan.lang, EXTRACTOR_VERSION, result.extraction === null ? null : JSON.stringify(result.extraction), result.error);
       }
     }
-    const moduleDoc = plan.extraction?.symbols.find((s) => s.kind === "module")?.doc ?? null;
+    const moduleDoc = plan.extraction?.symbols.find((s) => s.kind === SYMBOL_KINDS.file)?.doc ?? null;
     plan.summary = fileSummary(plan.entry.path, moduleDoc, text);
     if (isReadme(plan.entry.path) && text !== null) readmes.set(dirOf(plan.entry.path), readmeSummary(text));
   }
-  return { plans, readmes, configs, parsed, reused, leftOut };
+  return { plans, readmes, configs, parsed, reused, leftOut, attributes };
+}
+
+/**
+ * How a part of the links note ends when its languages' links are the built-in rules' because
+ * their tool gave none; a part that does not end so is something the tool's answers rest on.
+ */
+export const BUILT_IN_RULES = ", so the built-in rules";
+
+/**
+ * The tools' answers for the calls of a commit, by the call's place in the layer's list of edges;
+ * why a language had none; and what the tools were built with (BuiltWithRecord, as JSON), null
+ * when no tool was asked.
+ */
+type ToolLinks = { answers: Map<number, ToolAnswer>; note: string | null; builtWith: string | null };
+
+const NO_TOOL_LINKS: ToolLinks = { answers: new Map(), note: null, builtWith: null };
+
+/**
+ * What a way B layer was built with (CODE_GRAPH.md: "A way B graph is stale when the tool or the
+ * installed packages change", trustmybot/tmb#325; "Where a language's tool comes from",
+ * trustmybot/tmb#392): for each tool asked for a language of the layer, by its name, whose copy it
+ * was (or that none was found) and where it is, the tool as it reported itself (or why it is
+ * missing), a digest of the installed packages it read, and the places it read them from, which a
+ * later read reads again.
+ */
+export type BuiltWithRecord = Record<
+  string,
+  { whose: Whose | "missing"; path: string | null; tool: string; packages: string; places: string[]; helper?: { key: string; source: string; builtBy: string } }
+>;
+
+/**
+ * One tool's entry of a BuiltWithRecord, made now, with the copy the find order found; with the
+ * helper tmb builds to run it, when it needs one (CODE_GRAPH.md, "Go's helper is built once"): its
+ * key, its source and the tool that builds it.
+ */
+function builtWithEntry(tool: LanguageTool, repoDir: string, places: readonly string[], found: CopySearch): BuiltWithRecord[string] {
+  const sorted = [...new Set(places)].sort();
+  const copy = "missing" in found ? { whose: "missing" as const, path: null, tool: `missing: ${found.missing}` } : { whose: found.whose, path: found.path, tool: found.version };
+  const packages = "missing" in found ? "" : tool.builtWith(repoDir, sorted, found).packages;
+  const helper = "missing" in found ? null : (tool.helper?.(found, machinePlaces().stateDir) ?? null);
+  return {
+    ...copy,
+    packages: createHash("sha256").update(packages).digest("hex"),
+    places: sorted,
+    ...(helper === null ? {} : { helper: { key: helper.key, source: helper.source, builtBy: helper.builtBy } }),
+  };
+}
+
+/** The record as stored: its tools in the order of their names, so one record is one text. */
+const recordText = (record: BuiltWithRecord): string => JSON.stringify(Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b))));
+
+/**
+ * Whether what a way B layer was built with is what it would be built with now: each tool it
+ * records is the same copy, found by the same order, reporting the same version, with the same
+ * helper, and finds the same installed packages at the same places. A
+ * layer that records nothing, as one built before it was recorded, is not; nor is one that names a
+ * tool tmb no longer has.
+ */
+export function stillBuiltWith(repoDir: string, recorded: string | null): boolean {
+  if (recorded === null) return false;
+  let record: BuiltWithRecord;
+  try {
+    record = JSON.parse(recorded) as BuiltWithRecord;
+  } catch {
+    return false;
+  }
+  const tools = new Map(LANGUAGES.flatMap((language) => (language.tool ? [[language.tool.name, language.tool] as const] : [])));
+  for (const [name, entry] of Object.entries(record)) {
+    const tool = tools.get(name);
+    if (tool === undefined) return false;
+    const now = builtWithEntry(tool, repoDir, entry.places, findCopy(tool.copy, machinePlaces()));
+    if (now.whose !== entry.whose || now.path !== entry.path || now.tool !== entry.tool || now.packages !== entry.packages) return false;
+    if (JSON.stringify(now.helper ?? null) !== JSON.stringify(entry.helper ?? null)) return false;
+  }
+  return true;
+}
+
+/** One file's symbols and edges, at their places in the layer's lists, in the order applyLayer writes them. */
+function* layerRows(plans: readonly FilePlan[]): Generator<{ plan: FilePlan; extraction: Extraction; symbolOffset: number; edgeOffset: number }> {
+  let symbolOffset = 0;
+  let edgeOffset = 0;
+  for (const plan of plans) {
+    if (!plan.extraction) continue;
+    yield { plan, extraction: plan.extraction, symbolOffset, edgeOffset };
+    symbolOffset += plan.extraction.symbols.length;
+    edgeOffset += plan.extraction.edges.length;
+  }
+}
+
+/** A node's own name: the last part of its qualified name. */
+const ownName = (qualifiedName: string): string => qualifiedName.slice(qualifiedName.lastIndexOf(".") + 1);
+
+/**
+ * Way B (trustmybot/tmb#311): each language's own tool answers for the calls of its files. A
+ * language with no tool, and one whose tool cannot run in this repo, keeps the built-in rules'
+ * links, and the note says so. Read before the layer is written, so no write waits on the tool.
+ */
+async function toolLinks(repoDir: string, commit: string, plans: readonly FilePlan[], configs: ReadonlyMap<string, string>, attributes: GitAttributes): Promise<ToolLinks> {
+  const present = new Set(plans.filter((p) => p.extraction !== null && p.lang !== null).map((p) => p.lang as SourceLanguage));
+  const tools = new Map<LanguageTool, SourceLanguage[]>();
+  for (const language of LANGUAGES) if (language.tool) tools.set(language.tool, [...(tools.get(language.tool) ?? []), language.name]);
+  const notes: string[] = [];
+  const toolless = [...present].filter((lang) => languageNamed(lang)?.tool === undefined).sort();
+  if (toolless.length > 0) notes.push(`${toolless.join(", ")}: no language tool${BUILT_IN_RULES}`);
+  const answers = new Map<number, ToolAnswer>();
+  const builtWith: BuiltWithRecord = {};
+  for (const [tool, langs] of tools) {
+    if (!langs.some((lang) => present.has(lang))) continue;
+    // The copy of the tool, in the one find order; the layer records whose it was.
+    const found = findCopy(tool.copy, machinePlaces());
+    if ("missing" in found) {
+      notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${found.missing})${BUILT_IN_RULES}`);
+      // A tool that is missing is recorded too: once a copy is found, the layer is stale.
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, [], found);
+      continue;
+    }
+    if (found.note !== undefined) notes.push(`${langs.join(", ")}: ${tool.name}: ${found.note}`);
+    const opened = await tool.open(repoDir, found);
+    if ("unavailable" in opened) {
+      notes.push(`${langs.join(", ")}: ${tool.name} cannot run (${opened.unavailable})${BUILT_IN_RULES}`);
+      // A tool that could not run is recorded too: once it can, the layer is stale.
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, [], found);
+      continue;
+    }
+    const mine = new Set(langs);
+    // Every file of the tool's languages at the commit, so the tool sees what an import names;
+    // installed packages are not the repo's and are left to the tool.
+    const tree = listTree(repoDir, commit);
+    const read = commitReader(repoDir, tree);
+    const parsed = tree.filter((e) => e.size <= MAX_PARSE_BYTES && leftOutRule(e.path) !== NODE_MODULES_RULE);
+    // A file Linguist could put in one of the tool's languages by its name is read, and kept when its text puts it there.
+    const names = new Set(langs.flatMap((lang) => languageNamed(lang)?.linguist ?? []));
+    const entries = parsed.filter((e) => tool.reads?.(e.path) !== true && fileLanguages(e.path, null, attributes.of(e.path)).some((name) => names.has(name)));
+    // The other files the tool reads, such as its settings files, beside the project's.
+    const extra = parsed.filter((e) => tool.reads?.(e.path) === true && !configs.has(e.path));
+    const blobs = readBlobs(repoDir, [...entries, ...extra].map((e) => e.blob));
+    const files = new Map<string, string>();
+    for (const e of entries) {
+      const text = blobs.get(e.blob);
+      if (text !== undefined && mine.has(languageOf(e.path, () => text, attributes.of(e.path)) ?? "")) files.set(e.path, text);
+    }
+    const toolConfigs = new Map(configs);
+    for (const e of extra) {
+      const text = blobs.get(e.blob);
+      if (text !== undefined) toolConfigs.set(e.path, text);
+    }
+    const nodes: ToolNode[] = [];
+    const nodeRows: number[] = [];
+    const calls: ToolCall[] = [];
+    const callRows: number[] = [];
+    for (const { plan, extraction, symbolOffset, edgeOffset } of layerRows(plans)) {
+      if (plan.lang === null || !mine.has(plan.lang)) continue;
+      const file = plan.entry.path;
+      extraction.symbols.forEach((s, i) => {
+        if (s.kind === SYMBOL_KINDS.file || s.unnamed === 1 || s.reach === "none") return;
+        nodes.push({ path: file, name: ownName(s.qualified_name), start: s.start_line, end: s.end_line });
+        nodeRows.push(symbolOffset + i);
+      });
+      extraction.edges.forEach((edge, i) => {
+        if (edge.call !== 1 || edge.pos === undefined) return;
+        calls.push({ path: file, pos: edge.pos, name: edge.dst_name, ...(edge.inMacro === 1 ? { inMacro: true as const } : {}) });
+        callRows.push(edgeOffset + i);
+      });
+    }
+    let answered: ToolAnswer[];
+    const places: string[] = [];
+    try {
+      answered = await opened.answer(
+        { files, configs: toolConfigs, read, nodes, calls },
+        (text) => notes.push(`${langs.join(", ")}: ${tool.name}: ${text}`),
+        (more) => places.push(...more),
+      );
+    } catch (error) {
+      notes.push(`${langs.join(", ")}: ${tool.name} failed (${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_CHARS)})${BUILT_IN_RULES}`);
+      continue;
+    } finally {
+      builtWith[tool.name] = builtWithEntry(tool, repoDir, places, found);
+    }
+    answered.forEach((answer, i) => {
+      if (!("nodes" in answer)) answers.set(callRows[i]!, answer);
+      else {
+        const [first, ...more] = answer.nodes;
+        answers.set(callRows[i]!, { nodes: [nodeRows[first]!, ...more.map((n) => nodeRows[n]!)] });
+      }
+    });
+  }
+  return { answers, note: notes.length === 0 ? null : notes.join("; "), builtWith: recordText(builtWith) };
 }
 
 function ancestorsOf(dir: string): string[] {
@@ -179,6 +421,28 @@ function ancestorsOf(dir: string): string[] {
   for (let d = dir; d !== "."; d = dirOf(d)) out.push(d);
   out.push(".");
   return out;
+}
+
+const dataSourceKey = (kind: string, name: string): string => `${kind}\u0000${name}`;
+
+/**
+ * The layer's data sources (CODE_GRAPH.md, "Data sources"): one node of each kind and name its
+ * links reach, in no file and in nothing, its kind as its signature and its name ('' for a store
+ * the code does not name). Returns each one's id by dataSourceKey.
+ */
+function writeDataSources(db: Database, layer: string, edges: readonly Extraction["edges"][number][]): Map<string, number> {
+  const insert = db.prepare("INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, exported, unnamed) VALUES (?, '', ?, ?, ?, ?, '', 0, 0)");
+  const insertFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, '')");
+  const ids = new Map<string, number>();
+  for (const edge of edges) {
+    if (edge.data === undefined) continue;
+    const key = dataSourceKey(edge.data, edge.dst_name);
+    if (ids.has(key)) continue;
+    const id = Number(insert.run(layer, SYMBOL_KINDS.dataSource, edge.dst_name, edge.dst_name, edge.data).lastInsertRowid);
+    insertFts.run(id, layer, `${splitWords(edge.dst_name)} ${splitWords(edge.data)}`);
+    ids.set(key, id);
+  }
+  return ids;
 }
 
 /** Writes one whole layer, replacing what it held. */
@@ -190,6 +454,8 @@ function applyLayer(
   readmeByDir: Map<string, string>,
   configs: Map<string, string>,
   leftOut: Map<string, number>,
+  links: LinkWay,
+  byTool: ToolLinks,
 ): Omit<BuildStats, "parsed" | "reused"> {
   dropLayer(db, layer);
   const dirFiles = new Map<string, number>();
@@ -213,6 +479,7 @@ function applyLayer(
   const pending: Pending[] = [];
   const symbolRows: { file: string; s: Extraction["symbols"][number]; offset: number }[] = [];
   const exports = new Map<string, ExtractedExport[]>();
+  let statementsNotRead = 0;
   for (const plan of plans) {
     const file = plan.entry.path;
     const source = plan.summary === "" ? "none" : plan.extraction ? "header" : "heading";
@@ -220,10 +487,11 @@ function applyLayer(
     insertFileFts.run(layer, file, `${splitWords(file)} ${splitWords(basename(file))}`, plan.summary);
     if (!plan.extraction) continue;
     if (plan.extraction.exports) exports.set(file, plan.extraction.exports);
+    statementsNotRead += plan.extraction.statementsNotRead ?? 0;
     const offset = symbolRows.length;
     for (const s of plan.extraction.symbols) {
-      // An unnamed function is no reference's target: nothing names it.
-      if (s.unnamed !== 1) {
+      // An unnamed function is no reference's target: nothing names it. Nor is a function no call names.
+      if (s.unnamed !== 1 && s.reach !== "none") {
         const parent = s.reach === "nested" && s.parent !== undefined ? plan.extraction.symbols[s.parent] : undefined;
         candidates.push({
           id: symbolRows.length,
@@ -233,7 +501,9 @@ function applyLayer(
           line: s.start_line,
           ...(s.reach ? { reach: s.reach } : {}),
           ...(parent ? { within: [parent.start_line, parent.end_line] as [number, number] } : {}),
+          ...(s.makesObjects === 1 ? { makesObjects: 1 as const } : {}),
           ...(s.bases ? { bases: s.bases } : {}),
+          ...(s.fields ? { fields: s.fields } : {}),
         });
       }
       symbolRows.push({ file, s, offset });
@@ -242,7 +512,7 @@ function applyLayer(
   }
 
   const insertSymbol = db.prepare(
-    "INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, start_line, end_line, exported, parent_id, unnamed, named_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO symbols (layer, path, kind, qualified_name, name, signature, doc, start_line, end_line, exported, parent_id, unnamed, named_id, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const insertSymbolFts = db.prepare("INSERT INTO symbols_fts (symbol_id, layer, terms, doc) VALUES (?, ?, ?, ?)");
   // A symbol's container and owner come before it in its file's list, so their ids are known.
@@ -266,6 +536,7 @@ function applyLayer(
         parentId,
         s.unnamed === 1 ? 1 : 0,
         namedId,
+        s.lang ?? "",
       ).lastInsertRowid,
     );
     // Unnamed functions stay out of search by name and by meaning.
@@ -273,29 +544,91 @@ function applyLayer(
     if (FUNCTION_KINDS.has(s.kind)) functions++;
     ids.push(id);
   }
+  const sources = writeDataSources(db, layer, pending.map((p) => p.edge));
   const notParsed = plans.filter((plan) => plan.lang !== null && plan.extraction === null).length;
 
-  const resolver = new Resolver(candidates, pending.map(({ file, edge }) => ({ from: file, edge })), new ImportConfig(configs), exports);
-  const insertEdge = db.prepare("INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  // A name written as a call in a macro's input that its language's tool does not answer as a call is
+  // dropped (CODE_GRAPH.md, "Inside a macro, the tool says what is a call"). With no tool to ask, it
+  // is a call that is not known, and no link is made from it.
+  const dropped = (edge: Extraction["edges"][number], index: number): boolean => {
+    const answer = edge.inMacro === 1 ? byTool.answers.get(index) : undefined;
+    return answer !== undefined && "call" in answer;
+  };
+  const resolver = new Resolver(
+    candidates,
+    // A name in a macro's input is linked by no rule: only the tool links it.
+    pending.flatMap(({ file, edge }) => (edge.inMacro === 1 ? [] : [{ from: file, edge }])),
+    new ImportConfig(configs),
+    exports,
+  );
+  const insertEdge = db.prepare(
+    "INSERT INTO edges (layer, src_id, dst_id, dst_name, kind, resolution, line, pos, hint, call_state, way) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
   let unresolved = 0;
-  for (const { file, symbolIndex, edge } of pending) {
-    const link = resolver.resolve(file, edge);
+  let written = 0;
+  pending.forEach(({ file, symbolIndex, edge }, index) => {
+    if (dropped(edge, index)) return;
+    written++;
+    if (edge.data !== undefined) {
+      // A link to a data source ends at the layer's one node of its kind and name.
+      insertEdge.run(layer, ids[symbolIndex]!, sources.get(dataSourceKey(edge.data, edge.dst_name))!, edge.dst_name, edge.kind, "exact", edge.line, null, null, null, BUILT_IN);
+      return;
+    }
+    // A call its language's tool answered takes the tool's answer, and nothing else (trustmybot/tmb#311).
+    const answer = byTool.answers.get(index);
+    const linked = answer !== undefined && "nodes" in answer ? answer.nodes : null;
+    // A call the language's own rules prove goes to a symbol of its file links to it (ExtractedEdge.target).
+    const proven: Link | null = edge.target === undefined ? null : { dst: symbolIndex - edge.src + edge.target, how: "exact" };
+    const unasked = edge.inMacro === 1 && answer === undefined;
+    const link: Link | null = unasked ? null : answer === undefined ? (proven ?? resolver.resolve(file, edge)) : linked !== null ? { dst: linked[0], how: "exact" } : null;
     if (!link && !NAME_ONLY_EDGES.has(edge.kind)) unresolved++;
-    insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.hint);
-  }
+    // A call written in a function records its state; any other reference has none (trustmybot/tmb#252).
+    const state = unasked
+      ? "not_known"
+      : answer !== undefined
+        ? "state" in answer
+          ? answer.state
+          : "linked"
+        : edge.call === 1
+          ? callState(resolver, file, edge, link)
+          : null;
+    const way = answer === undefined ? BUILT_IN : LANGUAGE_TOOL;
+    insertEdge.run(layer, ids[symbolIndex]!, link ? ids[link.dst]! : null, edge.dst_name, edge.kind, link ? link.how : "unresolved", edge.line, edge.pos ?? null, edge.hint, state, way);
+    // A call that can go to more than one node links to each (trustmybot/tmb#344): one row per
+    // further link, at the call's place. The call is one call in one state, so its state is on its
+    // first row alone, and every count of calls counts it once.
+    for (const dst of linked?.slice(1) ?? []) {
+      insertEdge.run(layer, ids[symbolIndex]!, ids[dst]!, edge.dst_name, edge.kind, "exact", edge.line, edge.pos ?? null, edge.hint, null, way);
+    }
+  });
   const unresolvedImports = resolver.unresolvedImports;
   const unread = new Map<string, number>();
   for (const plan of plans) {
-    const language = plan.lang === null ? unreadLanguageOf(plan.entry.path) : null;
+    const language = plan.lang === null ? unreadLanguage(plan.languages, plan.entry.path) : null;
     if (language !== null) unread.set(language, (unread.get(language) ?? 0) + 1);
   }
   const notRead: NotRead = {
     languages: sortedCounts(unread).map(([name, files]) => ({ name, files })),
     leftOut: sortedCounts(leftOut).map(([rule, files]) => ({ rule, files })),
+    ...(statementsNotRead > 0 ? { statements: statementsNotRead } : {}),
   };
-  const stats = { layer, commit, files: plans.length, symbols: ids.length, edges: pending.length, unresolved, unresolvedImports, functions, notParsed, notRead };
+  const stats = {
+    layer,
+    commit,
+    files: plans.length,
+    symbols: ids.length + sources.size,
+    edges: written,
+    unresolved,
+    unresolvedImports,
+    functions,
+    notParsed,
+    notRead,
+    links,
+    linksNote: byTool.note,
+    builtWith: byTool.builtWith,
+  };
   db.run(
-    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed, not_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO layers (layer, commit_sha, extractor, built_at, files, symbols, edges, unresolved, unresolved_imports, functions, not_parsed, not_read, links, links_note, built_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
     layer,
     commit,
@@ -309,22 +642,45 @@ function applyLayer(
     stats.functions,
     stats.notParsed,
     JSON.stringify(notRead),
+    links,
+    byTool.note,
+    byTool.builtWith,
     ],
   );
   return stats;
 }
 
+export type BuildOptions = {
+  force?: boolean;
+  /**
+   * The way to make links, from the repo's `graph_links` setting (graphLinksOf, whose default is the
+   * language's tool). A caller that names none, such as a check of the built-in rules, gets them.
+   */
+  links?: LinkWay;
+};
+
 /**
  * Indexes the repo at `commit` into `layer`, replacing it in one step, unless the layer is
- * already at `commit` and `force` is not set. A base layer then re-checks every concept.
+ * already at `commit`, built by this extractor the way asked, and `force` is not set. A base
+ * layer then re-checks every concept.
  */
-export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: { force?: boolean } = {}): Promise<BuildStats> {
-  const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut } = await planCommit(db, repoDir, commit);
+export async function buildLayer(db: Database, repoDir: string, commit: string, layer: string, options: BuildOptions = {}): Promise<BuildStats> {
+  const { plans, readmes: readmeByDir, configs, parsed, reused, leftOut, attributes } = await planCommit(db, repoDir, commit);
+  // Built-in, not DEFAULT_LINK_WAY: a caller that names no way gets the built-in rules, so the links-right check judges way A on its own; the callers that read settings apply graph_links.
+  const links = options.links ?? BUILT_IN;
+  const byTool = links === LANGUAGE_TOOL ? await toolLinks(repoDir, commit, plans, configs, attributes) : NO_TOOL_LINKS;
   const stats = db
     .transaction(() => {
       // Another process may have applied this very commit while this one parsed: keep its layer.
       const current = layerRow(db, layer);
-      if (options.force !== true && current !== null && current.commit_sha === commit && current.extractor === EXTRACTOR_VERSION) {
+      if (
+        options.force !== true &&
+        current !== null &&
+        current.commit_sha === commit &&
+        current.extractor === EXTRACTOR_VERSION &&
+        current.links === links &&
+        current.built_with === byTool.builtWith
+      ) {
         return {
           layer,
           commit,
@@ -336,9 +692,12 @@ export async function buildLayer(db: Database, repoDir: string, commit: string, 
           functions: current.functions,
           notParsed: current.not_parsed,
           notRead: parseNotRead(current.not_read),
+          links,
+          linksNote: current.links_note,
+          builtWith: current.built_with,
         };
       }
-      const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs, leftOut);
+      const applied = applyLayer(db, layer, commit, plans, readmeByDir, configs, leftOut, links, byTool);
       if (layer === BASE_LAYER) {
         recheckConcepts(db, commit);
         recheckAreas(db, commit);

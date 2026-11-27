@@ -204,9 +204,6 @@ export function noBaseBranch(repo: string | null): string {
 
 // --- feature_update -----------------------------------------------------------------------
 
-/** What an audit entry of a base branch brought into a feature branch is about. */
-export const FEATURE_UPDATE = "feature_update";
-
 export const featureUpdateSchema: InputSchema = {
   type: "object",
   properties: {
@@ -291,9 +288,9 @@ export function featureUpdate(store: Store, actor: Actor, input: unknown, contex
   const undo = moveFeature(dir, feature.name, from, to, why);
   try {
     store.transaction(() => {
-      store.recordAudit(actor, { what: FEATURE_UPDATE, detail: JSON.stringify({ feature_id: feature.id, feature: feature.name, base, from, to, how }) });
+      // The base commit brought in is the feature's own column; from, to and how stay in the event (trustmybot/tmb#408).
       // A ready branch's tip moved: it is open again until a pass or a waiver covers the new tip and feature_pr makes it ready.
-      if (feature.state === READY) store.updateFeature(actor, feature.id, { state: OPEN });
+      store.updateFeature(actor, feature.id, { baseMergedCommit: base, ...(feature.state === READY ? { state: OPEN } : {}) }, { from, to, how });
     });
   } catch (error) {
     undo();

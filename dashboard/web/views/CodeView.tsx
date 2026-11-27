@@ -34,7 +34,10 @@ export type FileSymbol = {
   signature: string;
   unresolved: number;
   callsOut: number;
+  calls: CallCounts;
 };
+/** The calls written in a function by state: linked to the repo's code, outside the repo, not known. */
+export type CallCounts = { linked: number; outside: number; notKnown: number };
 export type FileData = Base & {
   path: string;
   lang: string | null;
@@ -53,7 +56,11 @@ export type FunctionData = Base & {
   name: string;
   unnamed: boolean;
   parent: number | null;
-  card: { symbol: { kind: string; qualifiedName: string; path: string; startLine: number | null; endLine: number | null; signature: string; doc: string } };
+  card: {
+    symbol: { kind: string; qualifiedName: string; path: string; startLine: number | null; endLine: number | null; signature: string; doc: string };
+    calls: CallCounts;
+    callsNote?: string;
+  };
   callers: NodeRef[];
   callees: NodeRef[];
   /** How many distinct callers and callees were left out past the cap. */
@@ -65,6 +72,8 @@ type Hit = { id: number; name: string; qualifiedName: string; kind: string; path
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 const lines = (start: number | null, end: number | null) => (start === null ? '' : end === null || end === start ? `line ${start}` : `lines ${start}–${end}`);
+const callsText = (c: CallCounts) => `${plural(c.linked + c.outside + c.notKnown, 'call')} written: ${c.linked} linked, ${c.outside} outside the repo, ${c.notKnown} not known`;
+const hasCalls = (c: CallCounts) => c.linked + c.outside + c.notKnown > 0;
 const width = (n: number) => Math.min(1 + Math.log2(n + 1), 6);
 
 const COSE: LayoutOptions = { name: 'cose', animate: false, nodeDimensionsIncludeLabels: true, padding: 24, componentSpacing: 60, nodeRepulsion: () => 8000, idealEdgeLength: () => 80 } as LayoutOptions;
@@ -224,6 +233,7 @@ function SymbolDetails({ symbol, path }: { symbol: FileSymbol; path: string }) {
         {symbol.kind} in {path}, {lines(symbol.startLine, symbol.endLine)}
         {symbol.unresolved > 0 ? ` · ${plural(symbol.unresolved, 'call')} not resolved` : ''}
       </p>
+      {hasCalls(symbol.calls) && <p className="text-fg-muted" data-calls>{callsText(symbol.calls)}</p>}
       {symbol.signature && <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-(--bgColor-muted) p-2 font-mono text-xs">{symbol.signature}</pre>}
       <a className={LINK} href={placeHref({ fn: symbol.id })}>
         Callers and callees →
@@ -364,7 +374,7 @@ function linesText(ref: NodeRef) {
 
 /** A node's label: a caller's lines are in its own file; a callee's are where it is called. */
 function refLabel(ref: NodeRef, side: string) {
-  const name = ref.kind === 'module' ? ref.path : ref.qualifiedName;
+  const name = ref.kind === 'file' ? ref.path : ref.qualifiedName;
   const file = ref.path.slice(ref.path.lastIndexOf('/') + 1);
   const at = linesText(ref);
   if (side === 'callee') return `${name}\n${file}${at === '' ? '' : `\ncalled at ${ref.lines.length + ref.moreLines > 1 ? 'lines' : 'line'} ${at}`}`;
@@ -378,7 +388,7 @@ function FunctionLevel({ data }: { data: FunctionData }) {
   const elements = useMemo<ElementDefinition[]>(() => {
     const column = (refs: NodeRef[], x: number, side: string) =>
       refs.map((r, i) => ({
-        data: { id: `${side}:${i}`, kind: r.kind === 'module' ? 'file' : 'function', label: refLabel(r, side) },
+        data: { id: `${side}:${i}`, kind: r.kind === 'file' ? 'file' : 'function', label: refLabel(r, side) },
         position: { x, y: (i - (refs.length - 1) / 2) * 56 },
       }));
     return [
@@ -423,6 +433,12 @@ function FunctionLevel({ data }: { data: FunctionData }) {
           Callers on the left, what it calls on the right, each proven. Click one to center on it.
           {data.unresolved > 0 ? ` ${plural(data.unresolved, 'call')} it makes could not be resolved to one definition: counted, not drawn.` : ''}
         </p>
+        {hasCalls(data.card.calls) && (
+          <p className="text-fg-muted" data-calls>
+            {callsText(data.card.calls)}
+            {data.card.callsNote ? `. ${data.card.callsNote}` : ''}
+          </p>
+        )}
       </div>
       <GraphCanvas label={`Callers and callees of ${data.name}`} elements={elements} layout={PRESET} onTap={goTo} />
       <div className="grid gap-4 md:grid-cols-2">
@@ -458,7 +474,7 @@ function RefList({ title, side, refs, more }: { title: string; side: 'caller' | 
         {refs.map((r) => (
           <li key={r.id === null ? `file:${r.path}` : r.id}>
             <a className={LINK} href={r.id === null ? placeHref({ file: r.path }) : placeHref({ fn: r.id })}>
-              {r.kind === 'module' ? r.path : r.qualifiedName}
+              {r.kind === 'file' ? r.path : r.qualifiedName}
             </a>
             <span className="ml-2 text-xs text-fg-muted">
               {r.path}
