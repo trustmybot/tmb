@@ -67,7 +67,7 @@ A search is only as good as the labels, so the list is small and closed, with on
 
 ## The list is a setting
 
-**The project's labels are set in its config file, not in tmb.** The file names the groups, the labels in each with a description, and how many of a group one issue may carry ([CONFIG.md](CONFIG.md#planned-a-config-file)). tmb ships a default list, so a new project can file and find issues from its first session.
+**The project's labels are set in its config file, not in tmb.** The file names the groups, the labels in each with a description, and how many of a group one issue may carry ([CONFIG.md](CONFIG.md#planned-more-in-the-config-file)). tmb ships a default list, so a new project can file and find issues from its first session.
 
 | Group | Shipped default |
 |---|---|

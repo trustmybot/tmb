@@ -22,23 +22,28 @@ flowchart LR
 - **Machine settings** belong to the person, not the project ([Kept per machine](#kept-per-machine-not-in-the-record)).
 - **Environment variables** hold for one run ([Environment variables](#environment-variables)).
 
-## A project setting is its newest change
+## Project settings live in a config file
 
-The project settings are a fixed list of six keys, kept in the record. There is no table of values: each change is one setting change in the record, and the newest one that sets a value is the value in force.
+**Planned (trustmybot/tmb#305). The six project keys live in one text file in tmb's folder in the workspace. tmb reads a setting from that file and never from the record. The record is for trajectory only.**
 
 ```mermaid
 flowchart LR
-    I["tmb init"] --> A["setting change, one per change"]
-    O["tmb onboard"] --> A
-    P["planner: settings_set"] --> A
-    A -->|"newest change wins"| V["value in force"]
-    V --> R["settings_get, tmb config, session start, hooks"]
+    I["tmb init"] --> W["A write, through tmb"]
+    O["tmb onboard"] --> W
+    P["planner: settings_set"] --> W
+    W --> F["The config file: the value in force"]
+    W -.-> A["The record: who changed what, as history"]
+    F --> R["settings_get, tmb config, session start, hooks"]
 ```
 
 The planner reads them with `settings_get`. Hooks only read them.
 
-- **Example 1.** The planner sets `base_branch` to the value already in force. Nothing is recorded.
-- **Example 2.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
+- **Example 1.** The record cannot be read. tmb still reads the base branch and the checks from the file.
+- **Example 2.** The planner sets `base_branch` to the value already in force. Nothing is written or recorded.
+- **Example 3.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
+- **Example 4.** Every write goes through tmb, which also records it as a setting change. That history says who changed what. No reader takes a value from it.
+- **Edge case.** A key only the Human may set is edited in the file by hand. tmb compares the file with the last recorded change and refuses the mismatch until the Human confirms on a terminal.
+- **Open, for the Human:** whether the file is committed to git, so a team shares it.
 
 ## Keys
 
@@ -105,13 +110,7 @@ One setting belongs to the person, not the project. It is kept in each channel's
 | `TMB_CHANNEL`, `TMB_INSTALL_VERSION` | Read by the installer: the channel to install, or one exact release. |
 | `TMB_NO_MODIFY_PATH` | Read by the installer: leave the shell's PATH setup alone. |
 
-## Planned: a config file
+## Planned: more in the config file
 
-Planned (trustmybot/tmb#305). The project settings move out of the record into one text file in the workspace, with a table per purpose.
-
-- **Why.** A text file needs no reader and can be read when the database cannot. The record is then for trajectory only.
-- **Writes still go through tmb,** which records each change as a setting change in the record.
-- **A Human-only key stays fenced.** tmb compares the file with the last recorded value and refuses a mismatch until the Human confirms on a terminal.
 - **For a repo shared with others** (trustmybot/tmb#411): the user's account on the remote, and which remote repository issues come from, such as the upstream of a fork. The record reads both and stores neither.
 - **The project's issue labels** (trustmybot/tmb#417): the groups, each label with a description, how many of a group one issue may carry, and the mapping from labels the project already has. tmb ships a default list ([ISSUES.md](ISSUES.md#the-list-is-a-setting)). The record holds which labels each issue carries, never the list.
-- **Open, for the Human:** whether the file is committed to git, so a team shares it.

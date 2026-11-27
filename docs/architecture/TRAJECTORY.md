@@ -384,6 +384,12 @@ erDiagram
     reviews |o..o{ reviews : "carried from"
     milestones |o..o{ issues : "groups"
     repos ||..o{ milestones : "holds"
+    repos |o..o{ issues : "holds"
+    repos ||..o{ pull_requests : "holds"
+    repos ||..o{ docs : "describes"
+    repos |o..o{ features : "cut in"
+    repos |o..o{ tasks : "cut in"
+    repos |o..o{ setting_changes : "set for"
     issues ||..o{ issue_links : "from"
     issues ||..o{ issue_links : "to"
     pull_requests |o..o{ discussions : "has"
@@ -702,7 +708,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 - **Edge case.** tmb moved to a new program. That alone changes no value: its row repeats the tie in force, and the wiring refresh that follows writes the new tie.
 - **Edge case.** An old review mark names a commit that no review and no waiver covers, so its parent cannot be found. It gets no row; its old event stays in `events`.
 - **Edge case.** An old entry holds a detail that has no column, such as a feedback report's title. The new event's data keeps it; the row takes only its columns.
-- **Edge case.** The config file is not built yet (trustmybot/tmb#305). Until it is, the newest `setting_changes` row for a key is the value in force.
+- **Planned (trustmybot/tmb#305).** A `setting_changes` row is history only. The value in force is in the config file ([CONFIG.md](CONFIG.md)).
 
 | An entry for | Is |
 |---|---|
@@ -733,7 +739,7 @@ Each of the six tables also has `id` (PK), `created_by` and `created_at`. Each i
 | | `state` | TEXT | NOT NULL | What the remote is told: `success` or `failure` |
 | | `sent_at` | TEXT | nullable | NULL until the remote has it |
 | `setting_changes` | `key` | TEXT | NOT NULL |  |
-| | `repo` | TEXT | nullable | For one repo's own setting |
+| | `repo` | TEXT | nullable | For one repo's own setting. Goes, for `repo_id`, FK → `repos.id` (trustmybot/tmb#466) |
 | | `old_value`, `new_value` | TEXT | nullable | JSON |
 | | `how` | TEXT | nullable | The way the Human chose a review mode: `init`, `onboard` or `planner`. NULL for every other key |
 | `freezes` | `reason` | TEXT | NOT NULL | Only the Human's request writes a freeze |
@@ -744,7 +750,7 @@ Each of the six tables also has `id` (PK), `created_by` and `created_at`. Each i
 | | `url` | TEXT | nullable | Where it landed |
 | | `issue_id` | TEXT | nullable | FK → `issues.id` |
 | `imports` | `source` | TEXT | NOT NULL | What was imported from, such as the plugin |
-| | `repo` | TEXT | nullable |  |
+| | `repo` | TEXT | nullable | Goes, for `repo_id`, FK → `repos.id` (trustmybot/tmb#466) |
 | | `detail` | TEXT | NOT NULL | JSON: what was carried and what was left behind |
 
 #### `docs`
@@ -879,8 +885,8 @@ Planned, with each table above: one index per new foreign key column, in the sam
 - Every task belongs to one issue. A task may also belong to a feature branch, and may name the dropped task it replaces.
 - A discussion belongs to one issue. Planned (trustmybot/tmb#405): or to one pull request.
 - A run links to what it worked on: a task, or a feature branch for a branch review. A review names the commit it judged, the run that wrote it, and its feature branch. Planned (trustmybot/tmb#406): or its task.
-- A feature branch and a task record the repo they were cut in; NULL is the project folder itself.
-- Settings are not a table of values: each change to a setting is a `setting_changes` row, and the newest row that sets a value is the value in force ([`CONFIG.md`](CONFIG.md)). Planned (trustmybot/tmb#305): the values move to a config file, and the record keeps only the trail.
+- A feature branch and a task record the repo they were cut in; NULL is the project folder itself. Planned (trustmybot/tmb#466): every record that belongs to a repo names its `repos` row, so an issue, a milestone, a pull request, a task and a document of one repo join on it.
+- Settings are not in the record. Planned (trustmybot/tmb#305): the values are in the config file ([`CONFIG.md`](CONFIG.md)), and a `setting_changes` row is only the history of who changed one.
 - A few references are soft: `reviews.target`, `tasks.branch`, every commit column and every remote account hold a name or a SHA with no declared foreign key.
 
 ### Rules the data keeps

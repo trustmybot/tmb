@@ -132,9 +132,9 @@ Planned (trustmybot/tmb#441):
 - **Plain, short sentences.** Setting names and file formats stay off the card.
 - **The planner recommends a mode per repo** from what each repo shows, with the reason beside it.
 
-## Settings live in the record
+## Settings live in the config file
 
-**Onboarding writes its settings to the record. Nothing lands in the repo's working tree beyond the ignore lines.** How the record keeps a setting is in [CONFIG.md](../architecture/CONFIG.md).
+**Planned (trustmybot/tmb#305). Onboarding writes its settings to tmb's config file, in tmb's own folder. Nothing lands in the repo's working tree beyond the ignore lines.** The file is in [CONFIG.md](../architecture/CONFIG.md).
 
 - **Example.** The checks are a setting, not a file in the repo, so there is no file for the Human to commit.
 
