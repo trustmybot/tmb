@@ -6,6 +6,11 @@ type Json = Record<string, any>;
 
 export type Repo = { host: string; owner: string; name: string };
 
+/**
+ * The one string that names a remote repository, and the value the record's `remote` column
+ * holds: host, owner and name as origin gives them, joined by slashes. A rename on the remote
+ * changes this address and never an item's `remoteId`.
+ */
 export const remoteName = (repo: Repo): string => `${repo.host}/${repo.owner}/${repo.name}`;
 
 /** GitHub itself, or a host of its cloud. Any other host is GitHub only if it answers like it. */
