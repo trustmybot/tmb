@@ -23,7 +23,7 @@ import { BUILT_IN, LANGUAGE_TOOL, type LinkWay } from "./ways.ts";
 import { type CopySearch, findCopy, machinePlaces } from "./tool-copy.ts";
 
 /** Bumped whenever extraction changes what it returns, so cached parses and built layers are redone. */
-export const EXTRACTOR_VERSION = 36;
+export const EXTRACTOR_VERSION = 37;
 /** Files larger than this are kept as files and not parsed. */
 export const MAX_PARSE_BYTES = 1_000_000;
 /** Why a minified bundle has no symbols: by design, so the doctor does not count it as a problem. */

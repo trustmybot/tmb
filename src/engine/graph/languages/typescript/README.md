@@ -30,7 +30,7 @@ Each class is its own symbol, so two classes of one name in one file stay two. A
 
 ## Where a call goes
 
-Every call or construction written in a function is in one of three states (trustmybot/tmb#252): linked to a definition of the repo, outside the repo, or not known. A call is what the grammar writes as one: a call, a `new`, a tagged template, `import(…)`, `super(…)`. `import("m")` in a type, as in `let d: import("m").T`, runs nothing and is no call. A call whose callee is no name, such as `f()()`, is named by its callee's text and is not known.
+Every call or construction written in a function is in one of three states (trustmybot/tmb#252): linked to a definition of the repo, outside the repo, or not known. A call is what the grammar writes as one: a call, a `new`, a tagged template, `import(…)`, `super(…)`. `import("m")` in a type, as in `let d: import("m").T` or `x as import("m").T`, runs nothing and is no call (trustmybot/tmb#426). A call whose callee is no name, such as `f()()`, is named by its callee's text and is not known.
 
 A call is outside the repo only on the same proof a link needs. Its name, or the name it is called on in `x.f()`, is looked up as above and ends at either:
 
