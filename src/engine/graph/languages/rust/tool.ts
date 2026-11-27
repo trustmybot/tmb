@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import type { Node, Parser } from "web-tree-sitter";
-import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
+import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput, ToolRelease } from "../contract.ts";
 import { atLeast, versionNumbers } from "../../tool-copy.ts";
 import { isNameToken } from "./keywords.ts";
 import { ENCODING, isFunction, isLocal, KIND_ENUM_MEMBER, ownerOfType, packageOf, readScip, ROLE_DEFINITION, type ScipDocument } from "./scip.ts";
@@ -105,6 +105,30 @@ export function supportedRustAnalyzer(report: string): boolean {
   const version = versionNumbers(match[1]!);
   return (version[0] ?? 0) >= 1 ? atLeast(version, versionNumbers(LOWEST_TOOLCHAIN)) : match[2]! >= LOWEST_COMMIT_DAY;
 }
+
+/**
+ * The rust-analyzer tmb installs when a machine has none it supports: a release of rust-analyzer's
+ * own, from its release page, built on or after LOWEST_COMMIT_DAY. Each asset is the program,
+ * gzipped, except on Windows, where it is a zip holding `rust-analyzer.exe`. The project publishes
+ * no checksum file; each sha256 is of the asset as its release page serves it.
+ */
+export const RUST_ANALYZER_RELEASE = "2026-11-09";
+const RELEASE_PAGE = "https://github.com/rust-lang/rust-analyzer/releases";
+const asset = (target: string, ending: "gz" | "zip"): string => `${RELEASE_PAGE}/download/${RUST_ANALYZER_RELEASE}/rust-analyzer-${target}.${ending}`;
+const GZIP = { format: "gzip" } as const;
+const WINDOWS_ZIP = { format: "zip", from: "", to: "bin/" } as const;
+export const RUST_ANALYZER_PIN: ToolRelease = {
+  version: RUST_ANALYZER_RELEASE,
+  page: RELEASE_PAGE,
+  assets: {
+    "darwin-arm64": { url: asset("aarch64-apple-darwin", "gz"), sha256: "e43a65008f8f4291320f33c0545dd577ad7623a7407b584a27155833d3722dfb", archive: GZIP },
+    "darwin-x64": { url: asset("x86_64-apple-darwin", "gz"), sha256: "abf410a54e33e9f8b2d37f76dde8884db86a030d6a9cc70c0e3f87a77c084c5c", archive: GZIP },
+    "linux-x64": { url: asset("x86_64-unknown-linux-gnu", "gz"), sha256: "8c039b25cb338b3970c731646677a4c9d4e9dd7a92c9ab9ae459c71467fbf4a9", archive: GZIP },
+    "linux-arm64": { url: asset("aarch64-unknown-linux-gnu", "gz"), sha256: "813ca3cec78ac6dab99c7bc9d51e63578f6d401b994ecf29cc0dcad86f9b2cd4", archive: GZIP },
+    "win32-x64": { url: asset("x86_64-pc-windows-msvc", "zip"), sha256: "973ab11e84955a7f8e3cf01ccd98a33f3ecbd6d4a14bf59bb164aa9e831c6fef", archive: WINDOWS_ZIP },
+    "win32-arm64": { url: asset("aarch64-pc-windows-msvc", "zip"), sha256: "ca0770b76d3881642221d0437f7535e324f22a9499bcd00bbebeb0228617249e", archive: WINDOWS_ZIP },
+  },
+};
 
 /** Cargo's home, where it keeps the crates it fetched: `$CARGO_HOME`, else `~/.cargo` (The Cargo Book, "Cargo Home"). */
 function cargoHome(): string {
@@ -460,6 +484,7 @@ export const rustAnalyzer: LanguageTool = {
     supported: supportedRustAnalyzer,
     userPlaces: () => [path.join(cargoHome(), "bin")],
     tmbInstalls: true,
+    release: RUST_ANALYZER_PIN,
   },
   reads: (file) => (MANIFESTS as readonly string[]).includes(path.posix.basename(file)),
   async open(_repoDir, found) {

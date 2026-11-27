@@ -134,7 +134,7 @@ const GROUPS: HelpGroup[] = [
     commands: [
       { name: "graph", summary: "Find code by symbol, file or topic" },
       { name: "index", summary: "Index the base branch now" },
-      { name: "tools", summary: "List each language's tool and whose copy" },
+      { name: "tools", summary: "List or install each language's tool" },
     ],
   },
   {
@@ -612,9 +612,9 @@ async function runPrepareCommand(command: "init" | "onboard", args: string[]): P
   const { values, positionals } = parseArgs({ args, options, allowPositionals: true, strict: true });
   if (positionals.length > 0) throw new Error(`${command} takes no arguments, got ${positionals.join(" ")}`);
   const given = values as { host?: string; role?: string; base?: string; "review-mode"?: string; check?: string[]; yes?: boolean; repo?: string; exempt?: boolean; "add-push-gate"?: boolean };
-  // onboard asks only when a person is at both ends; init never asks or waits for input.
+  // Both ask only when a person is at both ends; init asks only whether to install the tools the repo's languages miss.
   const attended = process.stdin.isTTY === true && process.stdout.isTTY === true;
-  const terminal = command === "onboard" && attended ? terminalAsk() : null;
+  const terminal = attended ? terminalAsk() : null;
   const run = { init: runInit, onboard: runOnboard }[command];
   const setupOptions: SetupOptions = {
     projectDir: process.cwd(),

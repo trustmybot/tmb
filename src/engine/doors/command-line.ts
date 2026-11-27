@@ -30,6 +30,9 @@ import type { Concept } from "../graph/concepts.ts";
 import { existsSync } from "node:fs";
 import { graphDbPath, openGraphDb } from "../graph/db.ts";
 import { indexProject } from "../graph/fresh.ts";
+import { languageNamed } from "../graph/languages/registry.ts";
+import { machinePlaces } from "../graph/tool-copy.ts";
+import { type InstallOptions, installTool, missingTools } from "../graph/tool-install.ts";
 import { baseLanguages, toolLine, type ToolRow, toolRows } from "../graph/tool-report.ts";
 import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
@@ -827,7 +830,13 @@ export function runConfigCommand(args: string[], projectDir: string, output: Out
 export const TOOLS_USAGE = `  tmb tools [--json]        List each language of the indexed code with its tool and whose
                             copy the code graph would use now: a copy the setting names, the
                             user's own, tmb's, or that it is missing; in a workspace, each
-                            repo's. Installs nothing`;
+                            repo's. Installs nothing
+  tmb tools install [language]
+                            Install the tool the language misses, or each one the indexed
+                            code's languages miss, into tmb's tools folder, once per machine:
+                            its pinned release, from the tool's own release page, checked
+                            against the checksum tmb carries. tmb installs a tool, never a
+                            language`;
 
 /** The languages of one graph's indexed base branch; null when the graph is not indexed yet. */
 function indexedLanguages(projectDir: string, repo: string | null): string[] | null {
@@ -841,12 +850,90 @@ function indexedLanguages(projectDir: string, repo: string | null): string[] | n
   }
 }
 
-/** Lists each language's tool and whose copy it is, as `tmb tools` does; resolves to the exit code. */
-export async function runToolsCommand(args: string[], projectDir: string, output: Output): Promise<number> {
+/** The languages of every graph of the project, each once; null when the project has no record or no graph is indexed yet. */
+export function projectLanguages(projectDir: string): string[] | null {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return null;
+  let graphs: (string | null)[];
+  try {
+    const repos = workspaceRepos(opened.store);
+    graphs = repos === null ? [null] : workingRepos(repos);
+  } finally {
+    opened.store.close();
+  }
+  const each = graphs.map((repo) => indexedLanguages(projectDir, repo)).filter((languages): languages is string[] => languages !== null);
+  return each.length === 0 ? null : [...new Set(each.flat())].sort();
+}
+
+/**
+ * `tmb tools install [language]`: installs the tool the language misses, or each one the indexed
+ * code's languages miss; resolves to the exit code. A tool the find order finds a copy of is not
+ * installed again; a language's own command never is.
+ */
+async function runToolsInstall(positionals: string[], projectDir: string, output: Output, install: InstallOptions): Promise<number> {
+  const program = runningName();
+  if (positionals.length > 1) throw new UsageError(`tools install takes at most one language, got ${positionals.join(" ")}`);
+  const named = positionals[0];
+  let languages: string[];
+  if (named !== undefined) {
+    const language = languageNamed(named);
+    if (language === null) throw new UsageError(`${named} is not a language tmb reads`);
+    const tool = language.tool;
+    if (tool === undefined) {
+      output.out(`${named} has no language tool: the built-in rules make its links, and there is nothing to install`);
+      return 0;
+    }
+    if ("carried" in tool.copy) {
+      output.out(`${named}: tmb carries ${tool.name} in its own program, at ${tool.copy.carried}; there is nothing to install`);
+      return 0;
+    }
+    if (!tool.copy.tmbInstalls) {
+      output.err(`tmb: ${named}: ${tool.copy.what} is the user's own: tmb installs a tool, never a language`);
+      return 1;
+    }
+    languages = [named];
+  } else {
+    const indexed = projectLanguages(projectDir);
+    if (indexed === null) {
+      output.err(`tmb: no indexed code here to read the languages of; run \`${program} index\`, or name a language: \`${program} tools install <language>\``);
+      return 1;
+    }
+    languages = indexed;
+  }
+  const { offers, notes } = missingTools(languages, install.places);
+  for (const note of notes) output.out(note);
+  if (offers.length === 0) {
+    if (notes.length === 0) output.out(`Nothing to install: the find order finds a copy of the tool of ${languages.join(", ")}; \`${program} tools\` lists whose`);
+    return notes.length === 0 ? 0 : 1;
+  }
+  let failed = notes.length > 0;
+  for (const offer of offers) {
+    const result = await installTool(offer.copy, install);
+    if ("installed" in result) output.out(`Installed ${offer.tool} for ${offer.languages.join(", ")} at ${result.installed}`);
+    else {
+      output.err(`tmb: ${offer.tool} was not installed: ${result.failed}`);
+      failed = true;
+    }
+  }
+  return failed ? 1 : 0;
+}
+
+/** Lists each language's tool and whose copy it is, as `tmb tools` does, or installs one with `tmb tools install`; resolves to the exit code. */
+export async function runToolsCommand(args: string[], projectDir: string, output: Output, install: InstallOptions = { places: machinePlaces() }): Promise<number> {
+  if (args[0] === "install") {
+    try {
+      const { positionals } = parse(args.slice(1), {});
+      return await runToolsInstall(positionals, projectDir, output, install);
+    } catch (error) {
+      if (!(error instanceof UsageError)) throw error;
+      writeUsageError("tools", error, output);
+      return 2;
+    }
+  }
   let json: boolean;
   try {
     const { values, positionals } = parse(args, {});
-    if (positionals.length > 0) throw new UsageError(`tools takes no arguments, got ${positionals.join(" ")}`);
+    if (positionals.length > 0) throw new UsageError(`tools takes no arguments but install, got ${positionals.join(" ")}`);
     json = values.json === true;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

@@ -27,29 +27,55 @@ export type CopyPlaces = { searchPath: string; stateDir: string };
 /** tmb's tools folder, inside its machine-wide state folder: one folder per program, holding `bin/<program>`. */
 export const TOOLS_FOLDER = "tools";
 
-/** The setting that names a tool's path, by its program's name: `{ "paths": { "<program>": "<path>" } }`, in the state folder. */
+/**
+ * The machine's tool settings, a file in the state folder the user edits: the path of a tool, by
+ * its program's name, and whether tmb may install tools: `{ "paths": { "<program>": "<path>" },
+ * "install": false }`. Installs are on unless `install` is false.
+ */
 export const TOOL_PATHS_FILE = "tools.json";
 
 /** tmb's tools folder in a state folder. */
 export const toolsFolder = (stateDir: string): string => path.join(stateDir, TOOLS_FOLDER);
 
+/** tmb's own folder for one tool, in its tools folder: it holds `bin/<program>` and what the release lays out beside it. */
+export const toolFolder = (stateDir: string, program: string): string => path.join(toolsFolder(stateDir), program);
+
 /** A program's file name on this platform. */
-const fileName = (program: string): string => (process.platform === "win32" ? `${program}.exe` : program);
+export const fileName = (program: string): string => (process.platform === "win32" ? `${program}.exe` : program);
 
 /** The machine's places now: its PATH and the running program's state folder. */
 export function machinePlaces(env: NodeJS.ProcessEnv = process.env): CopyPlaces {
   return { searchPath: env.PATH ?? "", stateDir: programStateDir(runningName(), env) };
 }
 
-/** The paths the setting names, by program; a missing or unreadable setting names none. */
-export function toolPaths(stateDir: string): Record<string, string> {
+/** The machine's tool settings as written; a missing or unreadable file sets nothing. */
+function toolSettings(stateDir: string): { paths?: unknown; install?: unknown } {
   try {
-    const value = JSON.parse(readFileSync(path.join(stateDir, TOOL_PATHS_FILE), "utf8")) as { paths?: unknown };
-    if (typeof value.paths !== "object" || value.paths === null) return {};
-    return Object.fromEntries(Object.entries(value.paths).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim() !== ""));
+    const value = JSON.parse(readFileSync(path.join(stateDir, TOOL_PATHS_FILE), "utf8")) as unknown;
+    return typeof value === "object" && value !== null ? value : {};
   } catch {
     return {};
   }
+}
+
+/** The paths the setting names, by program; a missing or unreadable setting names none. */
+export function toolPaths(stateDir: string): Record<string, string> {
+  const { paths } = toolSettings(stateDir);
+  if (typeof paths !== "object" || paths === null) return {};
+  return Object.fromEntries(Object.entries(paths).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim() !== ""));
+}
+
+/** Whether the setting turns installs off, for a machine that may not download programs. */
+export const installsOff = (stateDir: string): boolean => toolSettings(stateDir).install === false;
+
+/** The running machine as a release names its assets: `<os>-<arch>`, as the running program names them. */
+export const machineKind = (): string => `${process.platform}-${process.arch}`;
+
+/** How a tool tmb does not have yet can come: the command that installs it, or why it cannot. */
+function howToInstall(tool: Spawned, stateDir: string): string {
+  if (installsOff(stateDir)) return `installs are off in ${path.join(stateDir, TOOL_PATHS_FILE)}`;
+  if (tool.release?.assets[machineKind()] === undefined) return `tmb has no release of it for ${machineKind()}`;
+  return `\`${runningName()} tools install\` installs it`;
 }
 
 /** Whether a file is there and may be run. */
@@ -109,18 +135,19 @@ export function findCopy(tool: ToolCopy, places: CopyPlaces): CopySearch {
   }
   // 3. tmb's copy in its tools folder; a language has none.
   if (tool.tmbInstalls) {
-    const tmbs = path.join(toolsFolder(places.stateDir), tool.program, "bin", fileName(tool.program));
+    const tmbs = path.join(toolFolder(places.stateDir, tool.program), "bin", fileName(tool.program));
     if (runnable(tmbs)) {
       const run = reportOf(tool, tmbs);
       if ("report" in run) return { whose: "tmb", path: tmbs, version: run.report, ...(older === null ? {} : { note: `${older}; tmb's copy is used` }) };
-      return { missing: `${older === null ? "" : `${older}; `}tmb's copy at ${tmbs} does not run (${run.fails})` };
+      return { missing: `${older === null ? "" : `${older}; `}tmb's copy at ${tmbs} does not run (${run.fails}); ${howToInstall(tool, places.stateDir)}` };
     }
   }
   // 4. None.
   const looked = ["PATH", ...(tool.userPlaces?.() ?? [])].join(" or in ");
-  const none = `${tool.what} is missing: no \`${tool.program}\` on ${looked}${tool.tmbInstalls ? " or in tmb's tools folder" : ""}`;
+  const how = tool.tmbInstalls ? `; ${howToInstall(tool, places.stateDir)}` : "";
+  const none = `${tool.what} is missing: no \`${tool.program}\` on ${looked}${tool.tmbInstalls ? " or in tmb's tools folder" : ""}${how}`;
   if (older === null) return { missing: none };
-  return { missing: `${older}, and ${tool.tmbInstalls ? "tmb's tools folder holds no copy" : "tmb installs no language"}` };
+  return { missing: `${older}, and ${tool.tmbInstalls ? "tmb's tools folder holds no copy" : "tmb installs no language"}${how}` };
 }
 
 /** Whether a version, as numbers, is at or above the lowest, as numbers: a part not given is 0. */
