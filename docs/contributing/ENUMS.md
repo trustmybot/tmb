@@ -77,7 +77,7 @@ These two states deliberately match GitHub's issue states. The engine checks it.
 | `note` | tmb | Running narrative on an issue |
 | `decision` | tmb | A decision and its reason |
 
-The engine checks it. `tmb migrate` leaves a plugin discussion of any other kind behind.
+The engine checks it.
 
 ### `tasks.state` — task lifecycle
 

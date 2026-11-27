@@ -314,7 +314,6 @@ The file sits inside the project's folder and is left out of git. The engine cre
 - **A denied gate still lets the agent look.** Reading files and running shell commands go on, because tmb watches neither, so the agent can see what is wrong and tell the Human.
 - **Nothing downgrades a record.** For one made by a newer tmb, the Human runs the newer program there or updates this one.
 - **The code graph is separate.** It can be rebuilt from git at any time and lives in its own file, one per repo. Indexing is not recorded in the trajectory ([CODE_GRAPH.md](CODE_GRAPH.md)).
-- **Plugin projects.** A one-way migration carries a plugin project's records into a new tmb database and leaves the plugin's database untouched. A kind of record tmb does not have is left behind, not folded into another kind.
 
 ## 12. Debugging with it
 

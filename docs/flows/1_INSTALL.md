@@ -1,6 +1,6 @@
 # Install, upgrade and session start
 
-Flows 1.1 to 1.3, 3.7 and 5.1 of [FLOWS.md](FLOWS.md), in the order they happen: tmb gets onto a machine and into a project, each session starts from the record, updates land, and the Human finds what broke. The commands to type are in the [reference](../reference/README.md).
+Flows 1.1, 1.2, 3.7 and 5.1 of [FLOWS.md](FLOWS.md), in the order they happen: tmb gets onto a machine and into a project, each session starts from the record, updates land, and the Human finds what broke. The commands to type are in the [reference](../reference/README.md).
 
 ```mermaid
 flowchart TD
@@ -98,12 +98,6 @@ The limits on each are in [ENGINE.md](../architecture/ENGINE.md).
 - **Example 2.** Claude Code is not installed. Init stops, says it needs Claude Code and changes nothing.
 - **Example 3.** Init installs git's pre-push hook; session start does not. A repo marked exempt gets none, and a hook that is another tool's is kept ([3_GIT.md](3_GIT.md)).
 - **Edge case.** Run again, init replaces only what tmb wrote. It takes out what this version does not wire: role files for roles it does not have, and hooks under an event it does not use. The Human's own entries stay. Files marked as written by `tmb setup` count as tmb's.
-
-## Move a plugin project
-
-**`tmb migrate` copies a plugin project's records into tmb's record, one way.** This is flow 1.3. The plugin's database stays unchanged. How to use it is in the [reference](../reference/README.md#move-a-plugin-project).
-
-- **Edge case.** A plugin project of several repos goes into one workspace record. Each repo goes to the workspace repo of the same name, or to one the Human names. tmb never guesses a repo.
 
 ## Session start
 

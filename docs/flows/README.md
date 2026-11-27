@@ -47,7 +47,6 @@ The decisions about the steps. The first column names the page that holds the de
 |---|---|---|
 | [1_INSTALL](1_INSTALL.md) | Platforms | macOS, Windows and Linux. |
 | [1_INSTALL](1_INSTALL.md) | Install and updates | One-step install. Three channels: dev, rc and stable. Updates are pushed to each channel. |
-| [1_INSTALL](1_INSTALL.md) | Plugin projects | A fresh start. A one-way migration tool carries a plugin project's records over. |
 | [3_WORKFLOW](3_WORKFLOW.md) | Review modes | Agile and truest, a mode per repo. Agile is recommended; the Human chooses. |
 | [3_TASKS](3_TASKS.md) | Sync with the remote | Planned (trustmybot/tmb#70). It brings pull request comments into the record and syncs issues both ways; issues that exist only on GitHub are not all copied in. |
 | [4_EXTENDING](4_EXTENDING.md) | Created agents | Planned (trustmybot/tmb#437). An agent a project creates is recorded and harnessed like the worker and the reviewer. |

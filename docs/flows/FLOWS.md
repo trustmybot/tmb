@@ -60,7 +60,6 @@ The complete list. "Steps" links the page that holds every case of the flow.
 |---|---|---|---|---|
 | 1.1 | [Install and session start](#11-install-and-session-start) | The Human installs tmb in one step and runs `tmb init` once per project. Every session start then briefs the planner from the record. | Built | [1_INSTALL.md](1_INSTALL.md) |
 | 1.2 | [Updates and channels](#12-updates-and-channels) | An install follows one channel and updates itself. A running session keeps its build while a task is open. | Built | [1_INSTALL.md](1_INSTALL.md#upgrade) |
-| 1.3 | [Move a plugin project](#13-move-a-plugin-project) | `tmb migrate` copies a plugin project's records into tmb's record, one way, and leaves the plugin's database unchanged. | Built | [1_INSTALL.md](1_INSTALL.md#move-a-plugin-project) |
 | 2.1 | [First contact](#21-first-contact) | At the first session with empty settings, the planner applies the base branch and the checks it recommends, and asks the Human for the review mode. No task starts before the answer. | Built | [2_ONBOARD.md](2_ONBOARD.md) |
 | 2.2 | [Index and code-graph refresh](#22-index-and-code-graph-refresh) | `tmb init` or `tmb index` builds a code graph per repo from its base branch. A lookup that finds the graph behind brings it forward first. | Built | [2_CODE_GRAPH.md](2_CODE_GRAPH.md) |
 | 2.3 | [Environment profile](#23-environment-profile) | tmb suggests a repo's checks from the files its stack leaves behind. The planner applies them, or the Human replaces them. | Built | [2_ONBOARD.md](2_ONBOARD.md#the-repos-checks) |
@@ -107,15 +106,6 @@ flowchart LR
     C --> D["Install at the session's end, or on tmb update"]
     D --> E["A running session moves at its next tool call, once no task is open"]
     E --> F["Next session start with no task open: the project's wiring is refreshed and the refresh recorded"]
-```
-
-### 1.3 Move a plugin project
-
-```mermaid
-flowchart LR
-    A["tmb init in the project"] --> B["tmb migrate"]
-    B --> C["Plugin records copied into tmb's record"]
-    C --> D["Plugin database left unchanged"]
 ```
 
 ### 2.1 First contact

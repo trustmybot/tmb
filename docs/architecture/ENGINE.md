@@ -154,7 +154,7 @@ flowchart TD
 | **A project's data stays in the project** | The record, one code graph per repo, the task worktrees and small notes on which host files init created sit in tmb's own folder there. Nothing about a project is kept anywhere else on the machine. |
 | **tmb writes only where the Human ran it** | A project gets tmb's files when the Human runs init in it, never because a session opened there. |
 | **tmb changes only what it wrote** | In a host file or a hook it shares with the Human or another tool, tmb adds its own marked entries and leaves the rest. Remove takes out exactly those ([1_INSTALL.md](../flows/1_INSTALL.md#upgrade)). |
-| **Reads outside the project are read-only and named** | tmb looks for the host's program on the machine, reads a plugin project's database when the Human migrates it, and reads GitHub through the Human's own command line. |
+| **Reads outside the project are read-only and named** | tmb looks for the host's program on the machine and reads GitHub through the Human's own command line. |
 | **The host's own instruction file is never written** | The role reaches a session as the engine's answer to its session start. Planned (trustmybot/tmb#112): a cheatcode may add one reference line and take it out again ([4_EXTENDING.md](../flows/4_EXTENDING.md#cheatcodes)). |
 | **No login, no trust, no host settings** | tmb never changes a repo's branch protection, and changes no host setting beyond its own entries. |
 
