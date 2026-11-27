@@ -89,23 +89,21 @@ At the first session the planner fills the settings init left empty ([Onboarding
 
 `tmb init` asks nothing and never waits for input, on a terminal or not.
 
-- **It looks for the hosts tmb supports,** today Claude Code. With none installed it stops, names the hosts it supports and changes nothing. With one installed it says which and uses it. With several it takes the one stored by an earlier init, else the first, and says so; `--host <id>` picks one. Run it once per host to use two hosts on one record.
-- **It wires tmb into that host** ([Settings](#settings) lists what it writes) and stores the host and its role, `planner` unless `--role reviewer` is given. It takes no other flag and sets no other setting: a setting stored before is kept, and the rest stay empty.
-- **It ends by printing the settings and the next steps:** the command that starts the host in this folder and, for a planner, what to send first. A host set up as the reviewer gets one step, since it starts as the reviewer. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. With no review mode stored, it says that none is chosen, how to choose it, and that no task starts until it is. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
+- **It looks for Claude Code.** Without it, init stops, says it needs Claude Code and changes nothing.
+- **It wires tmb into Claude Code** ([Settings](#settings) lists what it writes) and stores the host. It takes no flag and sets no other setting: a setting stored before is kept, and the rest stay empty.
+- **It ends by printing the settings and the next steps:** the command that starts Claude Code in this folder and what to send first. The last line says which settings are still empty and how they get filled, or, with every setting stored, how to change them; it names the program to run `onboard` with, such as `tmb-dev`. With no review mode stored, it says that none is chosen, how to choose it, and that no task starts until it is. The commands are coloured as in [Help and mistyped commands](#help-and-mistyped-commands).
 - **Run again, it replaces what an earlier tmb wrote** and takes out what this version no longer uses: tmb's role files for roles that no longer exist, and tmb's hooks under an event they no longer use. Your own entries stay.
 
 ### onboard
 
-`tmb onboard` asks four questions, each offering the value stored now:
+`tmb onboard` asks three questions, each offering the value stored now:
 
 | Question | Default | Flag |
 |---|---|---|
-| The role of the host's main agent | `planner`; `reviewer` makes the host the project's reviewer. | `--role planner\|reviewer` |
 | The base branch, the branch pull requests merge into | The branch origin names as its default, else the current branch, else `main`. Outside a git repository there is no default. | `--base <branch>` |
 | The review mode | `agile` or `truest`. | `--review-mode <mode>` |
 | The checks, the shell commands that must pass before a task closes | The commands it finds in the project: the `lint`, `typecheck` and `test` scripts of `package.json`, run with bun, npm, pnpm or yarn as the lockfile shows; `pytest` for a Python project; `cargo test` for Rust; `go test ./...` for Go. | `--check <command>`, once per command; the commands given replace the list |
 
-- The host is the one init stored; `--host <id>` names another host init wired.
 - A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
 - The review mode has no default. `--review-mode` is a [step only you may take](#steps-only-you-may-take): it asks you to type yes on the terminal, also when `--yes` is given. Without a terminal it is refused, unless unattended mode is on for the run (`TMB_UNATTENDED=1`), as in CI, and no review mode is set yet: unattended mode sets one, never changes one. Without the flag and with no terminal, the review mode stays as it is and onboard says so.
@@ -246,7 +244,7 @@ For more information, try 'tmb --help'.
 | In this project | Fix |
 |---|---|
 | The record: readable, its shape's version, and which program wrote it | Repairs a damaged record on your yes, keeping the damaged file beside it; for a newer shape, the program to use |
-| The host files and git's pre-push hook match what this tmb wires | `tmb init --host <id>` |
+| The host files and git's pre-push hook match what this tmb wires | `tmb init` |
 | A project folder that is not a git repo and holds repos the record does not name: the push gate is off there, the repos are not set and no code graph can be built | `tmb init`, run again in the project folder |
 | The program the project is tied to, and any running session that keeps it on an older build | Shown only |
 | Empty settings, and the review mode not chosen | `tmb onboard` |

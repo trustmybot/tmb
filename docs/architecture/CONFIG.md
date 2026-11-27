@@ -5,7 +5,7 @@ tmb's settings: where each one lives, who may set it and what it does. The user'
 ```mermaid
 flowchart LR
     subgraph P["Per project, in the workspace"]
-        S["The seven keys"]
+        S["The six keys"]
     end
     subgraph M["Per machine, in the home folder"]
         F["The feedback program"]
@@ -24,7 +24,7 @@ flowchart LR
 
 ## A project setting is its newest change
 
-The project settings are a fixed list of seven keys, kept in the record. There is no table of values: each change is one setting change in the record, and the newest one that sets a value is the value in force.
+The project settings are a fixed list of six keys, kept in the record. There is no table of values: each change is one setting change in the record, and the newest one that sets a value is the value in force.
 
 ```mermaid
 flowchart LR
@@ -46,8 +46,7 @@ The planner reads them with `settings_get`. Hooks only read them.
 
 | Key | Type | Default | Set by | Effect |
 |---|---|---|---|---|
-| `host` | string: a host id | unset until `tmb init`, which stores the host it wired | `tmb init`; `tmb onboard --host <id>` names another wired host | The host the project is set up for. |
-| `host_roles` | object: `{"<host id>": "planner" \| "reviewer"}` | a host with no entry is `planner` | `tmb init --role`, `tmb onboard --role` | The role each host's main agent takes: it plans, or it only reviews. A worker is always a subagent. |
+| `host` | string: a host id | unset until `tmb init`, which stores the host it wired | `tmb init` | The host the project is set up for: Claude Code. |
 | `base_branch` | string | unset. Onboard offers the branch origin names as its default, else the current branch, else `main` | the planner via `settings_set`; `tmb onboard --base` | The branch pull requests merge into. Not used in a multi-repo workspace, where each repo has its own in `repos`. |
 | `review_mode` | string: `agile` \| `truest` | unset, with no default. tmb recommends `agile` and never picks it | the Human only: by answering the planner, which stores the answer with `settings_set`, or with `tmb onboard` | `agile`: one review of each feature branch as a whole. `truest`: a review of every task before its push. No task starts while it is unset. |
 | `checks` | string[]: shell commands | unset. Onboard offers the commands it finds in the project | the planner via `settings_set`; `tmb onboard --check`, once per command | The commands that must pass before a task closes. The list given replaces the old one; `[]` means none. Each command gets 10 minutes. Not used in a multi-repo workspace. |
@@ -73,7 +72,6 @@ Every key is null until it is first set. Readers treat null as "not set", never 
 
 - **Example 1.** `review_mode` is null. No task starts, and tmb does not pick `agile` for the Human.
 - **Example 2.** A session starts as the planner and `base_branch`, `review_mode` or `checks` is empty. The session start says so, and the planner applies the base branch and checks it recommends ([`2_ONBOARD.md`](../flows/2_ONBOARD.md)).
-- **Edge case.** The one fallback is a host's role: a host with no entry in `host_roles` is the planner.
 
 ## The way a review mode was chosen is recorded
 

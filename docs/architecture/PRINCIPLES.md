@@ -60,7 +60,7 @@ tmb has two sides. Nothing from the first appears in the second.
 
 ## 3. Lose nothing at a handoff
 
-Context is lost at each handoff: Human → planner → worker → reviewer → the next session or host. The trajectory exists to cut that loss. Stability comes first, then efficiency.
+Context is lost at each handoff: Human → planner → worker → reviewer → the next session. The trajectory exists to cut that loss. Stability comes first, then efficiency.
 
 - **Example 1.** A session ends in the middle of a task. The next session reads the record and carries on.
 - **Example 2.** One discussion maps to one issue, so a decision can be found from the work it shaped.
@@ -102,21 +102,18 @@ The record is the only source of truth. An agent's context is a disposable copy 
 - **Example 1.** Everything is written to the record as it happens, so a crashed session loses nothing.
 - **Example 2.** An agent loads the smallest page it needs and ends at a task boundary.
 
-## 8. Any host, through adapters
+## 8. The host, through one adapter
 
-tmb is one compiled program, not a plugin of one agent program. The engine never names a host. Everything a host needs is in its adapter. Details are in [ADAPTERS.md](ADAPTERS.md).
+tmb is one compiled program, not a plugin of the agent program. The engine never names the host. Everything the host needs is in its adapter. Details are in [ADAPTERS.md](ADAPTERS.md).
 
 ```mermaid
 flowchart LR
-    H1["Claude Code"] --> A1["Its adapter"]
-    H3["Another host"] --> A3["A new adapter"]
-    A1 --> E["One engine"]
-    A3 --> E
+    H1["Claude Code"] --> A1["The adapter"] --> E["The engine"]
 ```
 
-- **Example 1.** A new host is a new adapter. The engine does not change.
-- **Example 2.** Roles are written once, host-neutral. The adapter turns them into the host's format.
-- **Example 3.** Every function is a terminal command or an agent tool, the same on every host.
+- **Example 1.** Claude Code changes a file format. The adapter changes. The engine does not.
+- **Example 2.** Roles are written once. The adapter turns them into Claude Code's format.
+- **Example 3.** Every function is a terminal command or an agent tool.
 - **Edge case.** An adapter grows a rule of its own. That is a defect: rules live in the engine.
 - **What tmb leaves to the host.** Starting agents, running models and managing parallel sessions, on the Human's own login.
 
@@ -137,7 +134,7 @@ flowchart LR
 | Guide an agent | Session-start text and role prompts | Weak: a prompt can be ignored |
 | Offer tools | Its tool server and command line | Strong where a step must go through the tool |
 | Refuse an outcome | Task close, review, push | Strong: the engine or git enforces it |
-| Remember | The record | Lets a new session or host carry on |
+| Remember | The record | Lets a new session carry on |
 
 - **Example 1.** A worker's change breaks a test. Nothing stops the edit. The close runs the task's checks on the commit and refuses it.
 - **Example 2.** A host fails to raise an event. The push gate still checks every commit: a later checkpoint catches what an earlier one missed.
@@ -149,7 +146,7 @@ flowchart LR
 
 Where git can do the job, tmb uses git. tmb builds nothing of its own unless it must.
 
-- **Example 1.** The push gate is git's pre-push hook, so it holds on every host and for a push typed by hand.
+- **Example 1.** The push gate is git's pre-push hook, so it holds for an agent's push and for a push typed by hand.
 - **Example 2.** Two tasks change the same file. There is no lock: each has its branch and worktree, and the merge decides.
 - **Example 3.** The engine does the git steps itself (branches, worktrees, folds, pushes, pull requests). Agents ask through tmb's tools, so every step is recorded.
 - **Edge case.** tmb needs a sandbox or a lane manager. The host does that well, so tmb builds neither.

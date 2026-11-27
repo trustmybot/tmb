@@ -99,10 +99,9 @@ Planned:
 | An agent start that failed | The host could not start the subagent | The run that was opened is ended | Host | After a failed call of its agent tool |
 | A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | That folder becomes the task's worktree | Host | Before a call of tmb's brief or close tool |
 | After an agent stop | A subagent has ended | Its run is ended, with the tokens it used where the host tells | Host | Its subagent stop event, with the subagent's token use |
-| Session end | A host session closes | A run still open for a host set up as the reviewer is ended, with no verdict | Host | Its session end event |
 | Before a push | Commits are about to leave the machine | Refused while they are not reviewed, as the review mode asks | git | git's pre-push hook |
 
-- **Example 1.** An event carries the same fields whatever raised it: the role, the host, the task and what is about to happen. A push tmb makes for an agent carries that agent's role and host. A push typed by hand is the Human's.
+- **Example 1.** An event carries the same fields whatever raised it: the role, the task and what is about to happen. A push tmb makes for an agent carries that agent's role. A push typed by hand is the Human's.
 - **Example 2.** A push is judged by git's pre-push hook, not by reading an agent's command.
 - **Edge case.** A task's start and close are not events. The engine checks them itself when it is asked, and a refusal there goes to the caller without a recorded decision.
 - **Edge case.** tmb ships its own rules only. Users cannot add rules of their own on these events.

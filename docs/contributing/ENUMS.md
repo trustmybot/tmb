@@ -59,7 +59,7 @@ Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 | `actor_role` | `worker` | The subagent that carries out one task |
 | `actor_role` | `reviewer` | The agent that judges a branch or a task it did not write |
 
-The engine checks it. `runs.role` takes the same three roles. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`. A host's main agent takes one of two, `planner` or `reviewer` (the `host_roles` setting, [`CONFIG.md`](../architecture/CONFIG.md)).
+The engine checks it. `runs.role` takes the same three roles. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`.
 
 ### `issues.state` — issue lifecycle
 
