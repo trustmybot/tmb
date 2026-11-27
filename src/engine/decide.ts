@@ -12,7 +12,7 @@ import { humanOnlyInShell, shellDenyReason } from "./human-only.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
 import { hostRole } from "./settings.ts";
-import { FINISHED, STOPPED } from "./host-runs.ts";
+import { FINISHED, STOPPED, startTaskRun } from "./host-runs.ts";
 import { OPEN } from "./handlers/common.ts";
 import { runGit } from "./git.ts";
 import { inGitWorkTree, repoDirOf } from "./repos.ts";
@@ -129,7 +129,7 @@ function workerStart(store: Store, event: TmbEvent): Decision {
       };
     }
   }
-  const runId = store.appendRun(actorOf(event), { taskId, role: WORKER });
+  const runId = startTaskRun(store, actorOf(event), taskId, WORKER);
   return { decision: "allow", reason: `worker run ${runId} started on open task ${taskId}` };
 }
 
