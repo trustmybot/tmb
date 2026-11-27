@@ -448,7 +448,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `type` | TEXT | nullable | The kind of work, such as bug or feature | trustmybot/tmb#402 |
 | `labels` | TEXT | NOT NULL | A JSON list of free labels. Default `'[]'` | trustmybot/tmb#402 |
 | `assignees` | TEXT | NOT NULL | A JSON list of remote accounts. Default `'[]'` | trustmybot/tmb#409 |
-| `repo` | TEXT | nullable | The repo it belongs to, named as `tasks.repo` names its own | trustmybot/tmb#402 |
+| `repo_id` | TEXT | nullable | FK → `repos.id`. The repo it belongs to | trustmybot/tmb#402 |
 | `remote_url` | TEXT | nullable | Its address on the remote. UNIQUE | trustmybot/tmb#402 |
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a local issue | trustmybot/tmb#70 |
 | `created_by` | TEXT | NOT NULL |  |  |
@@ -456,7 +456,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `updated_at` | TEXT | NOT NULL |  |  |
 
 - **Example.** The Human publishes a local issue. Its `remote_id` and `remote_url` are filled, and from then on the syncer follows it.
-- **Edge case.** The repo's issues are kept in another repository. `remote_url` names that one and `repo` still names the code's.
+- **Edge case.** The repo's issues are kept in another repository. `remote_url` names that one and `repo_id` still names the code's.
 
 #### `issue_links`
 
@@ -484,7 +484,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | `title` | TEXT | NOT NULL | UNIQUE with `repo_id` |
 | `description` | TEXT | NOT NULL | Default `''` |
 | `state` | TEXT | NOT NULL | `open` or `closed` |
-| `repo_id` | TEXT | NOT NULL | FK → `repos.id`. A milestone belongs to exactly one repo |
+| `repo_id` | TEXT | NOT NULL | FK → `repos.id` (trustmybot/tmb#466). A milestone belongs to exactly one repo |
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
@@ -494,7 +494,10 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 
 #### `repos`
 
-Planned (trustmybot/tmb#70). One row per repo tmb works in, kept in step with the set init records ([CONFIG.md](CONFIG.md)).
+Planned (trustmybot/tmb#466). **One row per repo tmb works in, so every record that belongs to a repo names it by foreign key and can be joined on it.** A single-repo project has one row. The table is identity only: a repo's policy stays in the settings ([CONFIG.md](CONFIG.md)).
+
+- **Example.** "Every task and pull request of this milestone's repo" is one join on `repo_id`.
+- **Edge case.** A repo leaves the workspace. Its row stays, because its tasks still point at it.
 
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
@@ -528,7 +531,7 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 |---|---|---|---|
 | `id` | TEXT | PK |  |
 | `url` | TEXT | NOT NULL | UNIQUE |
-| `repo` | TEXT | nullable | Named as `tasks.repo` names its own |
+| `repo_id` | TEXT | NOT NULL | FK → `repos.id` |
 | `feature_id` | TEXT | nullable | FK → `features.id` |
 | `task_id` | TEXT | nullable | FK → `tasks.id`. At most one of `feature_id` and `task_id` is set; a teammate's pull request has neither |
 | `author` | TEXT | nullable | The remote account that opened it. NULL when tmb opened it |
@@ -554,7 +557,7 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `base_commit` | TEXT | NOT NULL | The commit the branch was cut from. It never changes |  |
 | `base_merged_commit` | TEXT | nullable | The base branch's commit last brought into the branch |  |
 | `state` | TEXT | NOT NULL | Default `'open'` |  |
-| `repo` | TEXT | nullable | NULL is the project folder itself |  |
+| `repo` | TEXT | nullable | NULL is the project folder itself | Goes, for `repo_id`, FK → `repos.id` (trustmybot/tmb#466) |
 | `drop_reason` | TEXT | nullable |  |  |
 | `pr_url` | TEXT | nullable |  | Goes, for a `pull_requests` row (trustmybot/tmb#405) |
 | `created_by` | TEXT | NOT NULL |  |  |
@@ -576,7 +579,7 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `state` | TEXT | NOT NULL |  |  |
 | `kind` | TEXT | nullable |  |  |
 | `review_mode` | TEXT | nullable |  |  |
-| `repo` | TEXT | nullable | NULL is the project folder itself |  |
+| `repo` | TEXT | nullable | NULL is the project folder itself | Goes, for `repo_id`, FK → `repos.id` (trustmybot/tmb#466) |
 | `branch` | TEXT | nullable |  |  |
 | `worktree` | TEXT | nullable |  |  |
 | `base_commit` | TEXT | nullable |  |  |
@@ -751,8 +754,8 @@ Planned (trustmybot/tmb#302). One row per design document, so the planner finds 
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
 | `id` | TEXT | PK |  |
-| `repo` | TEXT | nullable | The repo the document describes; NULL is the project folder itself |
-| `location` | TEXT | NOT NULL | A path inside the repo, a link outside it, or a name for a document kept in the record. UNIQUE with `repo`; CHECK `length(trim(location)) > 0` |
+| `repo_id` | TEXT | NOT NULL | FK → `repos.id`. The repo the document describes |
+| `location` | TEXT | NOT NULL | A path inside the repo, a link outside it, or a name for a document kept in the record. UNIQUE with `repo_id`; CHECK `length(trim(location)) > 0` |
 | `body` | TEXT | nullable | The document's text, only for a document kept in the record |
 | `title` | TEXT | NOT NULL | CHECK `length(trim(title)) > 0` |
 | `purpose` | TEXT | NOT NULL | What the document is for and when to read it. CHECK `length(trim(purpose)) > 0` |
