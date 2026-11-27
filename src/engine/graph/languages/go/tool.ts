@@ -15,13 +15,22 @@
 // them is not known. The `go` is the user's, as the find order finds it (tool-copy.ts): tmb installs
 // a tool, never a language. Without it, way B for Go cannot run, and the built-in rules make the
 // links.
+//
+// The helper is built once (CODE_GRAPH.md, "Go's helper is built once"; trustmybot/tmb#394): the
+// first time a Go repo is indexed, with the user's `go`, the same one that then runs its `go list`,
+// into tmb's tools folder under its name and its key, `<state>/tools/gotypes/<key>/gotypes`. The key
+// is a digest of all the build rests on: the source, the build's go.mod and recipe, the exact Go
+// version and the machine's kind. A helper built by an older Go than the one that runs `go list`
+// gives wrong answers, so a new key builds a new helper, and the old one is removed once it is
+// built. The build takes none of the user's Go settings; the run takes them as before.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import GOTYPES from "./gotypes.go" with { type: "text" };
-import { atLeast, versionNumbers } from "../../tool-copy.ts";
-import type { BuiltWith, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
+import { atLeast, machinePlaces, toolsFolder, versionNumbers } from "../../tool-copy.ts";
+import type { BuiltHelper, BuiltWith, FoundCopy, LanguageTool, ToolAnswer, ToolInput } from "../contract.ts";
 
 /** The settings files of a Go module or workspace that the go command reads beside the code ("Modules", "Workspaces", "Vendoring"). */
 export const SETTINGS_FILES = ["go.mod", "go.sum", "go.work", "go.work.sum", "vendor/modules.txt"] as const;
@@ -55,7 +64,11 @@ export type HelperCall = {
   answer: { repo?: { file: string; line: number; name: string; what: string }; outside?: string; notKnown?: string };
 };
 
-export type HelperOutput = { go: string; modules: string[]; errors: number; firstErrors: string[]; loaded: string[]; calls: HelperCall[] };
+/**
+ * The helper's output; see gotypes.go. `cannotCheck` names each package, or module, the type
+ * checker could not check at all, with why: then its answers are no answers.
+ */
+export type HelperOutput = { go: string; modules: string[]; errors: number; firstErrors: string[]; cannotCheck: string[]; loaded: string[]; calls: HelperCall[] };
 
 /** The program way B for Go runs: the user's own `go`. */
 export const GO = "go";
@@ -109,11 +122,111 @@ function foldersOf(files: Iterable<string>): Set<string> {
   return out;
 }
 
+/** The helper's name: its folder in tmb's tools folder, and its program's name there. */
+export const HELPER = "gotypes";
+
+/** The helper's file name on this platform. */
+const helperFile = (): string => (process.platform === "win32" ? `${HELPER}.exe` : HELPER);
+
+/**
+ * The go.mod the helper is built under, in a folder of its own: no go.mod above the folder takes the
+ * build over, and the helper compiles at the language level of the lowest Go tmb supports.
+ */
+export const BUILD_GO_MOD = `module tmb.invalid/${HELPER}\n\ngo ${LOWEST_GO}\n`;
+
+/** How the helper is built: with no build paths and no version control facts in it, so one source and one Go build one program. */
+export const BUILD_FLAGS = ["-trimpath", "-buildvcs=false"] as const;
+
+/**
+ * The environment the helper is built in, over the user's with every Go setting taken out (each
+ * variable `go env` reports, and its settings file, GOENV): nothing is downloaded and no other
+ * toolchain fetched, no workspace takes over, no C compiler runs, and it is built for this machine.
+ */
+export const BUILD_ENV = { GOENV: "off", GOPROXY: "off", GOTOOLCHAIN: "local", GOWORK: "off", CGO_ENABLED: "0", GOFLAGS: "" } as const;
+
+/** The build's recipe, as the key reads it: its flags and environment. */
+const BUILD_RECIPE = JSON.stringify({ flags: BUILD_FLAGS, env: BUILD_ENV });
+
+/** The digest of the helper's source tmb carries. */
+export const HELPER_SOURCE = createHash("sha256").update(GOTYPES).digest("hex");
+
+/** What a built helper rests on: its source, the build's go.mod and recipe, the Go that builds it, exactly, and the machine's kind. */
+export type HelperParts = { source: string; goMod: string; recipe: string; goVersion: string; host: string };
+
+/** The helper's key: a digest of all it rests on. Where the `go` is is not part of it: one Go version builds one program. */
+export function helperKey(parts: HelperParts): string {
+  return createHash("sha256").update(JSON.stringify([parts.source, parts.goMod, parts.recipe, parts.goVersion, parts.host])).digest("hex");
+}
+
+/** What `go env` reports of a `go`, run as the helper runs it, with the user's own settings. */
+type GoEnv = Record<string, string>;
+
+/** The `go`'s environment as it reports it, or why it does not say. */
+function goEnv(program: string): GoEnv | { fails: string } {
+  const run = spawnSync(program, ["env", "-json"], { encoding: "utf8", env: { ...process.env, ...HELPER_ENV } });
+  if (run.error !== undefined) return { fails: run.error.message };
+  if (run.status !== 0) return { fails: `\`go env\` failed: ${(run.stderr ?? "").trim()}` };
+  try {
+    return JSON.parse(run.stdout) as GoEnv;
+  } catch {
+    return { fails: "`go env -json` gave no settings" };
+  }
+}
+
+/** The helper the `go` builds and where it is kept in the tools folder, from what `go env` reports. */
+function helperOf(env: GoEnv, stateDir: string): BuiltHelper {
+  const builtBy = env.GOVERSION ?? "";
+  const key = helperKey({ source: HELPER_SOURCE, goMod: BUILD_GO_MOD, recipe: BUILD_RECIPE, goVersion: builtBy, host: `${env.GOHOSTOS ?? ""}/${env.GOHOSTARCH ?? ""}` });
+  const file = path.join(toolsFolder(stateDir), HELPER, key, helperFile());
+  return { name: HELPER, key, source: HELPER_SOURCE, builtBy, path: file, built: existsSync(file) };
+}
+
+/** The helper the `go` builds, and whether it is built; null when the `go` does not say what it is. */
+export function goHelper(program: string, stateDir: string): BuiltHelper | null {
+  const env = goEnv(program);
+  return "fails" in env ? null : helperOf(env, stateDir);
+}
+
+/**
+ * The helper the `go` builds: built once, the first time it is asked for. It is built in a folder of
+ * its own under a temporary name and moved into place, so two builds at once each leave a whole
+ * program; then each helper of another key is removed. Throws why it could not be built.
+ */
+export function builtHelper(program: string, stateDir: string): string {
+  const env = goEnv(program);
+  if ("fails" in env) throw new Error(`the Go helper could not be built: ${env.fails}`);
+  const helper = helperOf(env, stateDir);
+  if (helper.built) return helper.path;
+  const folder = path.dirname(helper.path);
+  mkdirSync(folder, { recursive: true });
+  const work = mkdtempSync(path.join(folder, ".build-"));
+  try {
+    writeFileSync(path.join(work, `${HELPER}.go`), GOTYPES);
+    writeFileSync(path.join(work, "go.mod"), BUILD_GO_MOD);
+    // None of the user's Go settings; the user's build cache, and the `go`'s own root.
+    const user = Object.fromEntries(Object.entries(process.env).filter(([name]) => !(name in env)));
+    const buildEnv = { ...user, ...BUILD_ENV, GOCACHE: env.GOCACHE ?? "", GOROOT: env.GOROOT ?? "" };
+    const out = path.join(work, helperFile());
+    const run = spawnSync(program, ["build", ...BUILD_FLAGS, "-o", out, "."], { cwd: work, encoding: "utf8", env: buildEnv });
+    if (run.error !== undefined || run.status !== 0) throw new Error(`the Go helper could not be built: ${run.error?.message ?? (run.stderr ?? "").trim()}`);
+    renameSync(out, helper.path);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+  const all = path.dirname(folder);
+  for (const other of readdirSync(all)) {
+    if (other !== helper.key && existsSync(path.join(all, other, helperFile()))) rmSync(path.join(all, other), { recursive: true, force: true });
+  }
+  return helper.path;
+}
+
 /**
  * Runs the helper on the repo's files at the commit, written to a scratch folder with the module
- * settings files of every folder that holds Go code, and returns its answer.
+ * settings files of every folder that holds Go code, and returns its answer. The helper is the one
+ * `program` builds, and its `go list` runs `program`. A package it could not check at all makes the
+ * whole answer no answer: it throws why.
  */
-export function runHelper(input: Pick<ToolInput, "files" | "read">, program: string = GO): HelperOutput {
+export function runHelper(input: Pick<ToolInput, "files" | "read">, program: string = GO, helper: string = builtHelper(program, machinePlaces().stateDir)): HelperOutput {
   const scratch = mkdtempSync(path.join(tmpdir(), "tmb-gotypes-"));
   try {
     const repo = path.join(scratch, "repo");
@@ -130,12 +243,11 @@ export function runHelper(input: Pick<ToolInput, "files" | "read">, program: str
         if (text !== undefined) write(rel, text);
       }
     }
-    const helper = path.join(scratch, "helper");
-    mkdirSync(helper);
-    writeFileSync(path.join(helper, "gotypes.go"), GOTYPES);
-    const run = spawnSync(program, ["run", "gotypes.go", repo], { cwd: helper, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env: { ...process.env, ...HELPER_ENV } });
+    const run = spawnSync(helper, [program, repo], { cwd: scratch, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, env: { ...process.env, ...HELPER_ENV } });
     if (run.error !== undefined || run.status !== 0) throw new Error(`the Go helper failed: ${run.error?.message ?? run.stderr.trim()}`);
-    return JSON.parse(run.stdout) as HelperOutput;
+    const out = JSON.parse(run.stdout) as HelperOutput;
+    if (out.cannotCheck.length > 0) throw new Error(`go/types could not check ${out.cannotCheck.join("; ")}`);
+    return out;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -203,13 +315,21 @@ export const goTypeChecker: LanguageTool = {
   },
   open(_repoDir, found) {
     const program = found.path ?? GO;
+    // The first index of a Go repo builds the helper; a failed build means the built-in rules.
+    let helper: string;
+    try {
+      helper = builtHelper(program, machinePlaces().stateDir);
+    } catch (error) {
+      return { unavailable: error instanceof Error ? error.message : String(error) };
+    }
     return {
       answer: (input: ToolInput, _note: (text: string) => void, readFrom: (places: readonly string[]) => void) => {
         readFrom(cacheFolders(sumsOf(input)));
-        return answerCalls(input, runHelper(input, program));
+        return answerCalls(input, runHelper(input, program, helper));
       },
     };
   },
+  helper: (found: FoundCopy, stateDir: string) => goHelper(found.path ?? GO, stateDir),
   // The installed packages are the module cache: of each module version go.sum lists, whether the
   // cache holds it.
   builtWith(_repoDir: string, places: readonly string[], found): BuiltWith {

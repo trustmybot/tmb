@@ -5,10 +5,11 @@
 // downloads nothing: the caller sets GOPROXY=off, so a module not already on disk is not found,
 // and what depends on it is not known.
 //
-// Usage: go run gotypes.go <repo dir>. It writes JSON on stdout:
+// Usage: gotypes <go> <repo dir>, where <go> is the `go` that lays the packages out: the one that
+// built the helper. It writes JSON on stdout:
 //
 //	{"go": "go1.27.4", "modules": [dir, ...], "errors": n, "firstErrors": [...],
-//	 "loaded": [file, ...],
+//	 "cannotCheck": [...], "loaded": [file, ...],
 //	 "calls": [{"file", "pos", "off", "line", "name", "callee", "kind", "answer"}]}
 //
 // A call is every ast.CallExpr of a loaded file of the repo, a conversion included ("Calls",
@@ -21,6 +22,9 @@
 //
 // An answer is no answer while the type checker reports an error inside the call, or when the
 // declaration's package could not be checked without errors.
+//
+// cannotCheck names each package the type checker could not check at all, and each module `go list`
+// could not lay out at all, with why. Then no answer is one: the caller uses none of them.
 package main
 
 import (
@@ -35,6 +39,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -43,6 +48,12 @@ import (
 
 // How many errors are kept in full, for a reader.
 const keptErrors = 20
+
+// The code go/types gives an error when a file needs a newer Go than the type checker knows, read
+// from a types.Error as go/types' own documentation of the field says a tool may read it
+// (go/types, api.go, Error.go116code; internal/types/errors, codes.go, TooNew). The type checker
+// then "may produce spurious errors or fail to report real errors" (the same).
+const tooNewCode = 151
 
 // One package as `go list -json` names it.
 type listed struct {
@@ -92,6 +103,7 @@ type output struct {
 	Modules     []string `json:"modules"`
 	Errors      int      `json:"errors"`
 	FirstErrors []string `json:"firstErrors"`
+	CannotCheck []string `json:"cannotCheck"`
 	Loaded      []string `json:"loaded"`
 	Calls       []call   `json:"calls"`
 }
@@ -110,6 +122,8 @@ type checked struct {
 }
 
 type run struct {
+	// The go command that lays the packages out.
+	gocmd      string
 	root       string
 	fset       *token.FileSet
 	out        *output
@@ -120,11 +134,11 @@ type run struct {
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: go run gotypes.go <repo dir>")
+	if len(os.Args) != 3 {
+		fmt.Fprintln(os.Stderr, "usage: gotypes <go> <repo dir>")
 		os.Exit(2)
 	}
-	root, err := filepath.Abs(os.Args[1])
+	root, err := filepath.Abs(os.Args[2])
 	if err == nil {
 		root, err = filepath.EvalSymlinks(root)
 	}
@@ -132,8 +146,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	out := &output{Go: runtime.Version(), Modules: []string{}, FirstErrors: []string{}, Loaded: []string{}, Calls: []call{}}
-	r := &run{root: root, fset: token.NewFileSet(), out: out, incomplete: map[*types.Package]bool{}, seen: map[string]bool{}}
+	out := &output{Go: runtime.Version(), Modules: []string{}, FirstErrors: []string{}, CannotCheck: []string{}, Loaded: []string{}, Calls: []call{}}
+	r := &run{gocmd: os.Args[1], root: root, fset: token.NewFileSet(), out: out, incomplete: map[*types.Package]bool{}, seen: map[string]bool{}}
 	for _, dir := range moduleDirs(root) {
 		rel, _ := filepath.Rel(root, dir)
 		out.Modules = append(out.Modules, filepath.ToSlash(rel))
@@ -176,9 +190,26 @@ func (r *run) error(msg string) {
 	}
 }
 
+// Records what the type checker could not check at all, and why: an error too.
+func (r *run) cannotCheck(what, why string) {
+	r.error(fmt.Sprintf("%s: %s", what, why))
+	if len(r.out.CannotCheck) < keptErrors {
+		r.out.CannotCheck = append(r.out.CannotCheck, fmt.Sprintf("%s: %s", what, why))
+	}
+}
+
+// The code go/types gives an error; 0 when it gives none.
+func errorCode(e types.Error) int64 {
+	f := reflect.ValueOf(e).FieldByName("go116code")
+	if !f.IsValid() || f.Kind() != reflect.Int {
+		return 0
+	}
+	return f.Int()
+}
+
 // Checks one module, or the workspace, as `go list` lays it out, and answers the calls of its files.
 func (r *run) module(dir string) {
-	cmd := exec.Command("go", "list", "-e", "-json", "-deps", "-test", "./...")
+	cmd := exec.Command(r.gocmd, "list", "-e", "-json", "-deps", "-test", "./...")
 	cmd.Dir = dir
 	// The workspace is the repo's own go.work, or none: never one found above the repo.
 	work := filepath.Join(dir, "go.work")
@@ -190,7 +221,9 @@ func (r *run) module(dir string) {
 	cmd.Stderr = &stderr
 	text, err := cmd.Output()
 	if err != nil && len(text) == 0 {
-		r.error(fmt.Sprintf("go list in %s: %s", dir, strings.TrimSpace(stderr.String())))
+		// `go list` laid out nothing, as for a module that needs a newer Go: no package of it is checked.
+		rel, _ := filepath.Rel(r.root, dir)
+		r.cannotCheck("the module at "+filepath.ToSlash(rel), strings.TrimSpace(stderr.String()))
 		return
 	}
 	r.byID = map[string]*listed{}
@@ -279,6 +312,8 @@ func (r *run) check(id string) *checked {
 			c.files = append(c.files, f)
 		}
 	}
+	// Whether the type checker reported an error as it checked.
+	reported := false
 	conf := types.Config{
 		IgnoreFuncBodies: !own,
 		Importer: importerFunc(func(path string) (*types.Package, error) {
@@ -302,6 +337,7 @@ func (r *run) check(id string) *checked {
 			if te, ok := err.(types.Error); ok {
 				c.errs = append(c.errs, te)
 			}
+			reported = true
 			c.broken = true
 			r.error(err.Error())
 		},
@@ -317,7 +353,27 @@ func (r *run) check(id string) *checked {
 	if i := strings.Index(path, " ["); i >= 0 {
 		path = path[:i]
 	}
-	c.pkg, _ = conf.Check(path, r.fset, c.files, c.info)
+	pkg, err := conf.Check(path, r.fset, c.files, c.info)
+	c.pkg = pkg
+	// A package the type checker could not check at all: it gave no package; it returned an error it
+	// never reported, as Check reports each error it finds while it checks to Config.Error and
+	// returns the first ("Config.Check", "Config.Error"), so that one stopped it before it checked;
+	// or a file needs a newer Go than it knows.
+	switch {
+	case pkg == nil:
+		c.broken = true
+		r.cannotCheck(path, "the type checker gave no package")
+	case err != nil && !reported:
+		c.broken = true
+		r.cannotCheck(path, err.Error())
+	default:
+		for _, e := range c.errs {
+			if errorCode(e) == tooNewCode {
+				r.cannotCheck(path, e.Msg)
+				break
+			}
+		}
+	}
 	if c.incomplete && c.pkg != nil {
 		r.incomplete[c.pkg] = true
 	}

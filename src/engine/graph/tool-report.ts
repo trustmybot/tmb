@@ -19,6 +19,8 @@ export type ToolRow = {
   path: string | null;
   /** Why the tool is missing, or why the copy found is not the first place's. */
   note: string | null;
+  /** The program tmb builds to run the tool with the copy found, for a tool that needs one: where it is kept, whether it is built yet, and the tool that builds it. */
+  helper?: { name: string; built: boolean; builtBy: string; path: string };
 };
 
 /** The languages of the repo's indexed base branch, by name; none when it is not indexed yet. */
@@ -34,7 +36,16 @@ export function toolRows(languages: readonly string[], places: CopyPlaces = mach
     if (tool === undefined) return { language, tool: null, whose: null, version: null, path: null, note: null };
     const found = findCopy(tool.copy, places);
     if ("missing" in found) return { language, tool: tool.name, whose: "missing", version: null, path: null, note: found.missing };
-    return { language, tool: tool.name, whose: found.whose, version: found.version, path: found.path, note: found.note ?? null };
+    const helper = tool.helper?.(found, places.stateDir) ?? null;
+    return {
+      language,
+      tool: tool.name,
+      whose: found.whose,
+      version: found.version,
+      path: found.path,
+      note: found.note ?? null,
+      ...(helper === null ? {} : { helper: { name: helper.name, built: helper.built, builtBy: helper.builtBy, path: helper.path } }),
+    };
   });
 }
 
@@ -46,5 +57,8 @@ export function toolLine(row: ToolRow): string {
   if (row.tool === null) return `${row.language}: no language tool; the built-in rules make its links`;
   if (row.whose === "missing" || row.whose === null) return `${row.language}: ${row.tool} is missing (${row.note}); the built-in rules make its links`;
   const where = row.path === null ? "carried in tmb" : `at ${row.path}`;
-  return `${row.language}: ${row.tool}, ${WHOSE_WORDS[row.whose]}, ${row.version}, ${where}${row.note === null ? "" : ` (${row.note})`}`;
+  const line = `${row.language}: ${row.tool}, ${WHOSE_WORDS[row.whose]}, ${row.version}, ${where}${row.note === null ? "" : ` (${row.note})`}`;
+  if (row.helper === undefined) return line;
+  const { name, built, builtBy, path } = row.helper;
+  return built ? `${line}; its helper ${name}, built by ${builtBy}, at ${path}` : `${line}; its helper ${name} is not built yet: the first index of a ${row.language} repo builds it with ${builtBy}`;
 }
