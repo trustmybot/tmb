@@ -617,7 +617,7 @@ describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", 
         .query("INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, at) VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)")
         .run(newId(), kind, id, JSON.stringify(data), actor.kind, agent?.role ?? null, agent?.host ?? null, at);
     };
-    const [issue, note, feature, task, run, review, guard, audit] = Array.from({ length: 8 }, () => newId());
+    const [issue, note, feature, task, run, review, guard, audit] = [newId(), newId(), newId(), newId(), newId(), newId(), newId(), newId()];
     event("issue", issue, HUMAN, { title: "goal", body: "", milestone: "M1" });
     old.query("INSERT INTO issues (id, title, body, milestone, created_by, created_at, updated_at) VALUES (?, 'goal', '', 'M1', ?, ?, ?)").run(issue, human, at, at);
     old.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('issue', ?, ?, 'goal', '')").run(issue, issue);
