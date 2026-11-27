@@ -43,6 +43,7 @@ The planner reads them with `settings_get`. Hooks only read them.
 - **Example 3.** A write names an unknown key, a blank text or a value of the wrong shape. tmb refuses it.
 - **Example 4.** Every write goes through tmb, which also records it as a setting change. That history says who changed what. No reader takes a value from it.
 - **Example 5.** The file is local. It is in tmb's folder, which git ignores, so each person's workspace has its own.
+- **Example 6.** The file's first line says who may edit it: the Human, or an agent with the Human's approval. That line is the whole fence. No guard watches the file.
 - **Edge case.** The Human edits the file by hand. tmb reads the new value. That edit has no history, and no check compares the file with the record.
 
 ## Keys

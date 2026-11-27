@@ -110,7 +110,7 @@ Planned:
 
 **A checkpoint never runs twice or at two versions.** Several things could answer for one project: two channels' programs, or an old build beside a new one. Three rules keep it to one:
 
-1. **One program per project.** The project is tied to the program whose init last wired it. Its host events, its tool server and git's push hook all call that program.
+1. **One program per project.** The project is tied to the program whose init last wired it. Its host events, its tool server and git's push hook all call that program. Planned (trustmybot/tmb#305): a command typed with another channel's program still runs, with one warning line that names the project's program. tmb reads the tie from the wiring, never from the record.
 2. **One build per session.** While a session runs, every tmb call in its project runs the build the session started with. The host files are refreshed only at a session start with no task open ([1_INSTALL.md](../flows/1_INSTALL.md#upgrade)).
 3. **One engine.** Every way in asks the same engine.
 
