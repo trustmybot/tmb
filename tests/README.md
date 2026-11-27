@@ -8,15 +8,15 @@ A feature is done only when its tests pass with no manual step.
 
 ## Test layers
 
-Ordered from cheap to costly.
+Ordered by when they run, cheapest first.
 
 | Layer | Folder | What it runs | Catches |
 |---|---|---|---|
-| Install | [tests/install](install/README.md) | The published compiled file, downloaded and started on a clean machine of each platform. | A file that does not download, start or update. |
 | Lint | [tests/lint](lint/README.md) | Static checks on code, docs and prompts. | Type errors, broken links, a test file with no timeout. |
 | Unit | [test](../test/README.md) | One engine rule at a time, called directly. | A wrong rule, a wrong record shape. |
 | Integration | [tests/integration](integration/README.md) | The real engine process through a real door: the tool server, the command line, a host event passed through the adapter. | A rule that is right but unreachable: a tool the host cannot call, an event the adapter mistranslates. |
 | Workflow simulation | [tests/workflow](workflow/README.md) | A whole flow as a scripted sequence of tool calls, with no model. | A workflow step that can be skipped or done out of order. |
+| Install | [tests/install](install/README.md) | The published compiled file, downloaded and started on a clean machine of each platform. | A file that does not download, start or update. |
 | Agent run | [tests/agent-run](agent-run/README.md) | A real host agent given one prompt in a prepared project. | An agent that does not do what its prompt and tools should lead it to. |
 | Agent chain | [tests/agent-chain](agent-chain/README.md) | A real host agent across several sessions on one record. | Work that is lost between sessions. |
 
@@ -29,7 +29,7 @@ Two more folders run beside the layers:
 
 - A lower layer passing says nothing about the layer above it. Each layer catches what the ones below cannot see.
 - Tests run from cheap to costly, and a failure stops the run.
-- The layers from Install to Workflow simulation use no model and cost nothing. An agent run and an agent chain use the host under a subscription login, so they cost time and usage.
+- The layers from Lint to Install use no model and cost nothing. An agent run and an agent chain use the host under a subscription login, so they cost time and usage.
 - The prompts of an agent run are written by the Human, in the words a real user would type ([agent-run](agent-run/README.md#prompts)). An agent never edits one to make a test pass.
 
 ## When each layer runs
