@@ -586,7 +586,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 | `tmb_version` | TEXT | NOT NULL | The tmb program that served it |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
-- **Example.** A Claude Code session plans and a Codex session reviews. That is two rows with two hosts and two roles, in one record.
+- **Example.** One session plans and a second session reviews. That is two rows with two roles, in one record.
 - **Edge case.** A planner starts another planner. The second row names the first in `parent_id`.
 - **No lanes table.** A lane is a session; what it holds is the tasks and runs that name it.
 
