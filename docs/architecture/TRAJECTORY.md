@@ -663,6 +663,7 @@ Planned (trustmybot/tmb#63, trustmybot/tmb#254). One row per host session. Recor
 - **Example 2.** A setting changes. One `setting_changes` row says who changed it, from what and to what.
 - **Edge case.** An upgrade writes each old `audit` entry again as an event of its new kind, made by tmb. The old events are never rewritten, and no entry is lost.
 - **Edge case.** An old entry on how a review mode was chosen has no setting change beside it. It becomes its own row for the key `review_mode`, with no values.
+- **Edge case.** tmb moved to a new program. That alone changes no value: its row repeats the tie in force, and the wiring refresh that follows writes the new tie.
 - **Edge case.** An old review mark names a commit that no review and no waiver covers, so its parent cannot be found. It gets no row; its old event stays in `events`.
 - **Edge case.** An old entry holds a detail that has no column, such as a feedback report's title. The new event's data keeps it; the row takes only its columns.
 - **Edge case.** The config file is not built yet (trustmybot/tmb#305). Until it is, the newest `setting_changes` row for a key is the value in force.
