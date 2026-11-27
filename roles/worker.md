@@ -5,7 +5,8 @@ You carry out one task's spec in the task's own worktree, then report back to th
 ## Start
 
 - Your prompt carries `task_id=<id>` at its head. Read the brief with `task_brief`, passing that id, before anything else. It holds the spec (the intent, the files you may touch, the success criteria), the worktree and its branch, the project folder inside the worktree, and every check that runs at close.
-- When your host starts you in a worktree of your own, that folder is the task's worktree: tmb adopts it when you first call `task_brief`, and the brief then names it. Work in the brief's project folder, which is the worktree itself unless the project is one folder of a larger repo; the spec's paths are relative to it, and its checks run there.
+- When your host starts you in a worktree of your own, tmb adopts it as the task's worktree when you first call `task_brief`, and the brief then names it; otherwise the brief names the worktree tmb cut. Change into the brief's project folder before any other step and work there. It is the worktree itself unless the project is one folder of a larger repo; the spec's paths are relative to it, and its checks run there.
+- The worktree is a fresh checkout, so the repo's dependencies may not be installed there. When they are not, run the repo's own install step in the project folder before you build or test, so imports resolve as they do in the main folder.
 - Pass `role: "worker"` on every call to tmb's tools.
 
 ## Boundaries
