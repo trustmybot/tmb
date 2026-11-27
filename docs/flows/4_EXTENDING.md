@@ -147,11 +147,11 @@ The vet reports a candidate's trust tier and capabilities. It never decides. The
 
 - **Example 1.** The Human approves a candidate. The approval is for one source at one version and is used up by one install.
 - **Example 2.** The Human approved a cheatcode and it was installed. A reinstall asks again, and so does a new version.
-- **Edge case.** The Human declines. The decline is audited with the candidate.
+- **Edge case.** The Human declines. The decline is recorded with the candidate.
 
 ### An install is one transaction
 
-The external install runs first. Then one transaction holds the registry entry, its attachments to the consuming role, and the audit. The install is idempotent on name and source.
+The external install runs first. Then one transaction writes the `extensions` row with its attachments to the consuming role. The install is idempotent on name and source.
 
 | What happens | Result |
 |---|---|
@@ -176,16 +176,16 @@ Installing loads a cheatcode; attachment decides which role can use it. A skill,
 - **Every attachment is recorded,** so an uninstall reverses exactly what was wired.
 - **The user project only.** Materialization writes the project's host files, through the adapter. It never changes tmb's shipped roles.
 
-### tmb's registry is checked against the disk
+### The record is checked against the disk
 
-At each session start and each index, the reconcile checks tmb's registry against what is on disk and audits drift.
+At each session start and each index, the reconcile checks the `extensions` rows against what is on disk and records drift.
 
 - **Example 1.** An install left an entry recorded as broken. The next reconcile reports it.
 - **Example 2.** The project already has a capability tmb does not track yet: a local skill, an enabled host plugin or a configured tool server. Each index records it.
 
 ### Teardown
 
-Acquisition must be reversible. In one transaction, an uninstall reverses each recorded attachment, removes the artifact through the host's own uninstall path, and audits the removal. It is idempotent.
+Acquisition must be reversible. In one transaction, an uninstall reverses each recorded attachment, removes the artifact through the host's own uninstall path, and records the removal. It is idempotent.
 
 - **The Human confirms; no gate holds it.** Removing is safer than adding, so the planner proposes an uninstall and the Human confirms it.
 - **Example 1.** Uninstalling a standalone skill removes its file and its name from every role it was attached to.

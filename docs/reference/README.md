@@ -166,7 +166,7 @@ In an unattended run nobody can answer, so the task start is refused, the refusa
 
 ### Settings
 
-The settings are kept in the record; the keys are in [CONFIG.md](../architecture/CONFIG.md). Init and onboard print the settings in force, and `tmb config` shows them later.
+The keys, and where they are kept, are in [CONFIG.md](../architecture/CONFIG.md). Init and onboard print the settings in force, and `tmb config` shows them later.
 
 `tmb init` also:
 
