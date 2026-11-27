@@ -192,6 +192,22 @@ describe("the worker gate", () => {
     withStore((store) => expect(store.openRuns("worker").map((run) => run.taskId)).toEqual([first]));
   });
 
+  test("a new worker start on a task ends that task's older open run as stopped, so the next stop ends the new one (trustmybot/tmb#459)", () => {
+    createRecord();
+    const taskId = openTask();
+    const other = openTask();
+    workerStart(`task_id=${taskId}`);
+    workerStart(`task_id=${other}`);
+    const [crashed] = withStore((store) => store.openRuns("worker", taskId));
+    workerStart(`task_id=${taskId}`);
+    withStore((store) => {
+      expect(store.getRun(crashed!.id)).toMatchObject({ outcome: "stopped", cost: null });
+      expect(store.getRun(crashed!.id)!.endedAt).toBeString();
+      expect(store.openRuns("worker", taskId).map((run) => run.id)).not.toContain(crashed!.id);
+      expect(store.openRuns("worker").map((run) => run.taskId)).toEqual([other, taskId]);
+    });
+  });
+
   test("a worker run whose task left the open state ends finished, and keeps the cost its stop carried", () => {
     createRecord();
     const taskId = openTask();

@@ -2,7 +2,7 @@
 // its run. Its run opens at the host's session start, or when it next reads a brief after a
 // verdict, and ends with the verdict it records or, failing that, with the session.
 import { hostRole } from "./settings.ts";
-import type { Actor, Run, Store } from "./store/index.ts";
+import type { Actor, Role, Run, Store } from "./store/index.ts";
 
 /** A run that did what it was started for: a worker's task left the open state, a reviewer recorded its verdict (trustmybot/tmb#133). */
 export const FINISHED = "finished";
@@ -41,4 +41,16 @@ export function endHostReviewerRun(store: Store, host: string, outcome: string):
   if (!run) return null;
   store.endRun(reviewerActor(host), run.id, { outcome });
   return run.id;
+}
+
+/**
+ * Opens a run of `role` on a task; returns its id. The task's earlier open runs of that role end
+ * as stopped first (trustmybot/tmb#459): a new start on the task means the old agent is gone, and
+ * a stop that names no task could never end it.
+ */
+export function startTaskRun(store: Store, actor: Actor, taskId: string, role: Role): string {
+  return store.transaction(() => {
+    for (const run of store.openRuns(role, taskId)) store.endRun(actor, run.id, { outcome: STOPPED, cost: null });
+    return store.appendRun(actor, { taskId, role });
+  });
 }
