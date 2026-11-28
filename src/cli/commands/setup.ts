@@ -4,7 +4,6 @@
 // fill at the first session start, and names the languages whose tool is missing.
 // `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
 // again at any time. They reach a host only through the adapter interface, so they name none.
-import { createInterface } from "node:readline";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "../../adapters/index.ts";
 import {
   AVAILABLE_REVIEW_MODES,
@@ -33,7 +32,8 @@ import {
 } from "../../engine/index.ts";
 import { type Actor, addToForeignHook, detectBaseBranchWithEvidence, emptySettings, type FeedbackEnv, firstRunAtInit, foreignHooks, giveTasksTheirRepos, handCallLine, HandlerError, indexProject, inGitWorkTree, type InstallOptions, installPushGates, installsOff, machinePlaces, MARK_CONTEXT, missingTools, notReadSummary, otherProjectInRepo, type Repo, repoDirOf, type RepoPolicies, type RepoPolicy, repoPolicyLine, requiredMarkOn, requireMarkHowTo, runGit, runningName, type Scan, scanWorkspace, validateRepoName, version as packageVersion, workingRepos, WORKSPACE_REVIEW_MODE, writeRepos } from "../../engine/index.ts";
 import { Paint } from "../help.ts";
-import { projectLanguages } from "../command-line.ts";
+import { projectLanguages } from "../code-languages.ts";
+import type { Ask } from "../terminal.ts";
 
 /** Answers given on the command line; each one is used without asking. */
 export type SetupFlags = {
@@ -51,8 +51,7 @@ export type SetupFlags = {
   addPushGate?: boolean;
 };
 
-/** Shows a prompt and reads one line; null once input has ended. */
-export type Ask = (prompt: string) => Promise<string | null>;
+export type { Ask } from "../terminal.ts";
 
 export type SetupOptions = {
   projectDir: string;
@@ -744,19 +743,4 @@ function sayMarkRule(projectDir: string, base: string | null, out: (line: string
     return;
   }
   out(`${requireMarkHowTo(base)} GitHub offers this rule on a private repository only on its paid plans.`);
-}
-
-/** Asks on the process's terminal, one line per question. */
-export function terminalAsk(): { ask: Ask; close: () => void } {
-  const lines = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-  const next = lines[Symbol.asyncIterator]();
-  return {
-    ask: async (prompt) => {
-      lines.setPrompt(prompt);
-      lines.prompt();
-      const line = await next.next();
-      return line.done ? null : (line.value as string);
-    },
-    close: () => lines.close(),
-  };
 }

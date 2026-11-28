@@ -5,9 +5,9 @@
 // the Human's own entries alone; it asks nothing and changes no setting. It waits while a task is
 // open, leaves a project tied to another program to the Human's `tmb init`, and never fails the
 // session: it says what failed and names `tmb init`.
-import type { HostAdapter } from "../../adapters/index.ts";
-import { installPushGates, openProjectStore, type ProgramTie, readSettings, tiedProgram, tieProgram } from "../../engine/index.ts";
-import type { Actor } from "../../engine/index.ts";
+import type { HostAdapter } from "../adapters/index.ts";
+import { installPushGates, openProjectStore, type ProgramTie, readSettings, tiedProgram, tieProgram } from "../engine/index.ts";
+import type { Actor } from "../engine/index.ts";
 
 /** The refresh is tmb's own step, on the Human's behalf: the update was theirs, as is the tie init records. */
 const HUMAN: Actor = { kind: "human" };

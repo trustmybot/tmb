@@ -2,7 +2,10 @@
 // with `--fix` does each fix the Human says yes to (trustmybot/tmb#160). Doctor itself only reads.
 import { parseArgs } from "node:util";
 import { Database } from "bun:sqlite";
-import { projectDbPath, projectRootOf, readSettings, runningName, SCHEMA_VERSION, Store, unnamedRepos } from "../../../engine/index.ts";
+import { keepLastError, projectDbPath, projectRootOf, readSettings, runningName, SCHEMA_VERSION, Store, unnamedRepos } from "../../../engine/index.ts";
+import { type Command, listed } from "../../command.ts";
+import { asksHelp } from "../../help.ts";
+import type { Runtime } from "../../runtime.ts";
 import { MACHINE_CHECKS } from "./machine.ts";
 import { guarded, projectFindings } from "./project.ts";
 import { type DoctorEnv, type Finding, SLOW_CHECKS, type Status } from "./types.ts";
@@ -163,5 +166,39 @@ function fromRecord<T>(env: DoctorEnv, none: T, read: (store: Store) => T): T {
     return none;
   } finally {
     db.close();
+  }
+}
+
+/** `tmb doctor`: `--fix` asks only when a person is at both ends. */
+export class DoctorCommand implements Command {
+  readonly name = "doctor";
+  readonly summary = "Check this machine and project, and clean up";
+  readonly listing = listed("Program");
+  readonly handsOver = true;
+
+  constructor(private readonly runtime: Runtime) {}
+
+  usage(): string {
+    return DOCTOR_USAGE;
+  }
+
+  asksHelp(args: readonly string[]): boolean {
+    return asksHelp([...args]);
+  }
+
+  async run(args: readonly string[]): Promise<number> {
+    const { runtime } = this;
+    const terminal = runtime.terminal();
+    const env = runtime.doctorEnvironment(runtime.cwd());
+    try {
+      return await runDoctorCommand([...args], env, {
+        out: runtime.out,
+        err: runtime.err,
+        ask: terminal?.ask ?? null,
+        keepBug: (finding) => keepLastError(env.stateDir, { at: env.now().toISOString(), command: `doctor ${finding.check}`, message: finding.summary, stack: null }),
+      });
+    } finally {
+      terminal?.close();
+    }
   }
 }
