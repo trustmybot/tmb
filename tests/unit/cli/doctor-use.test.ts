@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter as claudeCode } from "../../../src/adapters/claude-code/index.ts";
@@ -346,7 +346,7 @@ describe("worktrees with none of tmb's wiring", () => {
     const finding = check();
     expect(finding.status).toBe("warn");
     expect(finding.summary).toBe("2 worktrees of the project's repos have none of tmb's wiring: a session started there works without tmb's hooks or tool server");
-    expect(finding.details!.map((line) => line.split(":")[0]).sort()).toEqual([inside, outside].sort());
+    expect(finding.details!.map((line) => line.split(":")[0]).sort()).toEqual([inside, outside].map((dir) => realpathSync(dir)).sort());
   });
 
   test("many are counted, and only the first few listed", () => {
