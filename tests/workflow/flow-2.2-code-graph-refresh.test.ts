@@ -1,9 +1,10 @@
+// Flow 2.2, Index and code-graph refresh (docs/flows/FLOWS.md): this file is its scenario test.
 // The code graph driven as separate processes: the Human's `tmb index` and `tmb graph`
 // commands, and an agent's graph tools over stdio. The graph is current after a change lands
 // on the base branch, with no one running an index.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { PROJECT_MAP_HEADING } from "../../../src/engine/session-start.ts";
-import { callJson, callRefused, tmbProcesses } from "../../lib/tmb-processes.ts";
+import { PROJECT_MAP_HEADING } from "../../src/engine/session-start.ts";
+import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

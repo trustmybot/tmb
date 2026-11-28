@@ -1,11 +1,11 @@
 // `tmb init`, `tmb onboard` and `tmb remove` as separate processes, the way the Human runs them:
-// init prepares a fresh project without a question and leaves its settings empty, the first
-// session start tells the planner to apply the ones it recommends, onboard changes them as often
-// as asked, and remove takes back what init added.
+// init writes the roles' agent files and takes only the host and its role, onboard changes the
+// settings as often as asked, and remove takes back what init added. Init's ideal case is flow
+// 1.1's test and the first session's is flow 2.1's (tests/workflow).
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { readdirSync, readFileSync, statSync, writeFileSync, existsSync, mkdtempSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync, mkdtempSync } from "node:fs";
 import path from "node:path";
-import { callJson, callRefused, CLI, tmbProcesses } from "../../lib/tmb-processes.ts";
+import { tmbProcesses } from "../../lib/tmb-processes.ts";
 import { installPinnedTools } from "../../lib/pinned-tools.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -14,26 +14,9 @@ setDefaultTimeout(30_000);
 // A machine with tmb's pinned tools installed: init then names no missing tool.
 beforeAll(installPinnedTools);
 
-const NO_INPUT_LIMIT_MS = 20_000;
-const { scratch, env, git, run, tmb, human, sessionStart, connect, cleanup } = tmbProcesses("tmb-init-onboard-");
+const { scratch, git, run, tmb, human, newProject, config, cleanup } = tmbProcesses("tmb-init-onboard-");
 
 afterAll(cleanup);
-
-/** A fresh git project on branch trunk with one commit and a bun package with a test script. */
-function newProject(): string {
-  const project = mkdtempSync(path.join(scratch, "project-"));
-  git(project, "init", "-q", "-b", "trunk");
-  writeFileSync(path.join(project, "package.json"), JSON.stringify({ name: "fixture", scripts: { test: "bun test" } }));
-  writeFileSync(path.join(project, "bun.lock"), "");
-  writeFileSync(path.join(project, "index.ts"), "export const one = 1;\n");
-  git(project, "add", ".");
-  git(project, "commit", "-q", "-m", "first");
-  return project;
-}
-
-function config(project: string): Record<string, unknown> {
-  return JSON.parse(tmb(["config", "--json"], project)) as Record<string, unknown>;
-}
 
 /** Every file under `dir` but git's objects, logs and index, with its content; folders end in /. */
 function snapshot(dir: string, base = dir): Record<string, string> {
@@ -52,33 +35,7 @@ function snapshot(dir: string, base = dir): Record<string, string> {
   return files;
 }
 
-const EMPTY = { base_branch: null, review_mode: null, checks: null, graph_links: null };
-
 describe("tmb init", () => {
-  test("prepares a fresh project with no question asked, and ends saying how the settings get filled and that the review mode is the Human's", async () => {
-    const project = newProject();
-    // stdin stays open and empty: an init that waited for an answer would never exit.
-    const child = Bun.spawn([process.execPath, CLI, "init"], { cwd: project, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => child.kill(), NO_INPUT_LIMIT_MS);
-    const status = await child.exited;
-    clearTimeout(timer);
-    const stdout = await new Response(child.stdout).text();
-    expect(status).toBe(0);
-    expect(stdout).toContain("Indexed the code graph of trunk");
-    // Piped, so plain: no colour codes around the commands.
-    expect(stdout.trimEnd().split("\n").slice(-5)).toEqual([
-      "tmb is set up for Claude Code. Next:",
-      "  1. Run `claude` in this folder.",
-      "  2. Send `@bro`.",
-      "The settings are still empty: base branch and checks; bro applies the ones it recommends. To set them yourself, run `tmb onboard`.",
-      "No review mode is chosen yet: it is your choice, as it decides how many tokens the project uses. To choose it, bro asks you among its onboarding questions at the first session, or run `tmb onboard`; no task starts until it is set.",
-    ]);
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, ...EMPTY });
-    for (const file of [".tmb/trajectory.db", ".mcp.json", ".claude/settings.local.json", ".claude/agents/worker.md", ".git/hooks/pre-push"]) {
-      expect(existsSync(path.join(project, file))).toBe(true);
-    }
-  });
-
   test("the reviewer's agent file takes away exactly the three editing tools, and the worker's takes away none", () => {
     const project = newProject();
     expect(run(["init"], project).status).toBe(0);
@@ -108,52 +65,6 @@ describe("tmb init", () => {
       const result = run(["init", flag, ...(flag === "--base" ? ["main"] : [])], newProject());
       expect(result.status).toBe(2);
       expect(result.stderr).toContain(flag);
-    }
-  });
-});
-
-describe("onboarding at the first session", () => {
-  test("the planner is told the settings are empty, and applies its recommendation through settings_set", async () => {
-    const project = newProject();
-    tmb(["init"], project);
-    const context = sessionStart(project);
-    expect(context).toContain("## The project's settings are empty");
-    expect(context).toContain("- base branch: `trunk`");
-    expect(context).toContain("- checks: `bun run test`");
-    expect(context).toContain("`tmb onboard` can be run again at any time");
-
-    const client = await connect(project);
-    try {
-      const set = await callJson(client, "settings_set", { base_branch: "trunk", review_mode: "agile", checks: ["bun run test"] });
-      expect(set.empty).toEqual([]);
-    } finally {
-      await client.close();
-    }
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], graph_links: null });
-    expect(sessionStart(project)).not.toContain("## The project's settings are empty");
-  });
-});
-
-describe("the review mode is the Human's choice (trustmybot/tmb#114)", () => {
-  test("no task starts until it is chosen; in an unattended run the planner cannot choose it, and the Human's tmb onboard --review-mode --yes can", async () => {
-    const project = newProject();
-    tmb(["init"], project);
-    tmb(["onboard", "--base", "trunk", "--check", "true", "--yes"], project);
-    expect(config(project).review_mode).toBeNull();
-
-    const client = await connect(project, "test", { unattended: true });
-    try {
-      const issue = await callJson(client, "issue_create", { title: "A goal" });
-      await callJson(client, "feature_start", { name: "feat/goal" });
-      const spec = { issue_id: issue.id, kind: "code", intent: "Do it", files: ["a.txt"], criteria: ["SC1: done"] };
-      expect(await callRefused(client, "task_start", spec)).toContain("`tmb onboard`");
-      expect(await callRefused(client, "settings_set", { review_mode: "agile" })).toContain("no one can answer in this run");
-      expect(config(project).review_mode).toBeNull();
-
-      human(["onboard", "--review-mode", "agile", "--yes"], project);
-      expect((await callJson(client, "task_start", spec)).brief).toMatchObject({ state: "open", feature: "feat/goal" });
-    } finally {
-      await client.close();
     }
   });
 });

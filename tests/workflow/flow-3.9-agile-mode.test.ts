@@ -1,3 +1,4 @@
+// Flow 3.9, Agile mode (docs/flows/FLOWS.md): this file is its scenario test.
 // Workflow simulation: the review of a whole feature branch, scripted as the calls a planner, a
 // reviewer and the Human make, with no model. The reviewer fails the branch, the planner reworks
 // it in a task, the reviewer passes the new tip, and the pull request opens; on a second branch

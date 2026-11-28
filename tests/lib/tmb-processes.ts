@@ -94,6 +94,23 @@ export function tmbProcesses(prefix: string) {
     return project;
   }
 
+  /** A fresh git project on branch trunk with one commit and a bun package with a test script; tmb not yet set up. */
+  function newProject(): string {
+    const project = mkdtempSync(path.join(scratch, "project-"));
+    git(project, "init", "-q", "-b", "trunk");
+    writeFileSync(path.join(project, "package.json"), JSON.stringify({ name: "fixture", scripts: { test: "bun test" } }));
+    writeFileSync(path.join(project, "bun.lock"), "");
+    writeFileSync(path.join(project, "index.ts"), "export const one = 1;\n");
+    git(project, "add", ".");
+    git(project, "commit", "-q", "-m", "first");
+    return project;
+  }
+
+  /** The project's settings, as `tmb config --json` shows them. */
+  function config(project: string): Record<string, unknown> {
+    return JSON.parse(tmb(["config", "--json"], project)) as Record<string, unknown>;
+  }
+
   /** Writes and commits one file in a worktree, as the one doing a task would; returns the commit. */
   function commitFile(worktree: string, file: string, text: string, message: string): string {
     mkdirSync(path.dirname(path.join(worktree, file)), { recursive: true });
@@ -152,7 +169,7 @@ export function tmbProcesses(prefix: string) {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  return { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
+  return { scratch, env, git, run, tmb, human, tmbJson, setUpProject, newProject, config, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
 }
 
 /** Calls a tool that must succeed and parses its JSON answer. */
