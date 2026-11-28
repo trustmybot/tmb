@@ -2,7 +2,8 @@ name: dev release
 
 # Publishes every push to dev as the rolling `dev` prerelease of the public
 # trustmybot/tmb-releases repo, so installs need no login. Installs on the dev channel
-# read its VERSION asset to update themselves.
+# read its VERSION asset to update themselves. The run only builds and publishes: a pull request's
+# own checks gate dev, and the install and update tests run on an rc or stable tag.
 
 on:
   push:
@@ -55,7 +56,6 @@ jobs:
         with:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
-      - run: bun test
       - run: bun scripts/build.ts ${{ matrix.targets }}
         env:
           TMB_VERSION: ${{ needs.version.outputs.tmb_version }}
@@ -97,44 +97,6 @@ jobs:
           gh release create dev --repo "$RELEASES_REPO" --prerelease --title "dev (${TMB_VERSION})" \
             --notes "Rolling dev build ${TMB_VERSION} from trustmybot/tmb@${GITHUB_SHA}." \
             dist/tmb-* dist/install.sh dist/install.ps1 dist/VERSION dist/SHA256SUMS
-
-  # Installs the release just published, the way a user does, on every OS. Needs no secret.
-  install-test:
-    needs: [version, publish]
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-latest, ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.runner }}
-    env:
-      TMB_EXPECTED_VERSION: ${{ needs.version.outputs.tmb_version }}
-    steps:
-      - uses: actions/checkout@v4
-      # Only the test driver runs under bun; the installer runs under sh, or PowerShell on Windows.
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4"
-      - name: Install smoke
-        shell: bash
-        run: bun tests/install/smoke.ts dev "$TMB_EXPECTED_VERSION"
-
-  # An older dev install updates itself to the release just published, between sessions and
-  # never with a task open, on every OS. Needs no secret.
-  install-update:
-    needs: [version, publish]
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-latest, ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4"
-      - run: bun install --frozen-lockfile
-      - run: bun tests/install/update.ts dev "${{ needs.version.outputs.tmb_version }}"
-        shell: bash
 
   # Fills in the Homebrew cask, the Scoop manifest and the winget manifests from this release.
   # Skips cleanly while the tap, the bucket or their token do not exist.
