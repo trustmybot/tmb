@@ -597,11 +597,18 @@ CREATE TABLE sync_state (
 );
 `;
 
+// Version 17: the remote's own time a mirrored issue or comment was opened, so a page shows its
+// age on the remote rather than when the syncer brought it in (trustmybot/tmb#512).
+const VERSION_17_SQL = `
+ALTER TABLE issues ADD COLUMN remote_created_at TEXT;
+ALTER TABLE discussions ADD COLUMN remote_created_at TEXT;
+`;
+
 /** One step: SQL, or code for a step SQL alone cannot take. A step's code is frozen with it and never reads today's projections. */
 export type SchemaStep = string | ((db: Database) => void);
 
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL), VERSION_14_SQL, VERSION_15_SQL, VERSION_16_SQL];
+export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL), VERSION_14_SQL, VERSION_15_SQL, VERSION_16_SQL, VERSION_17_SQL];
 
 /** Runs one schema step on `db`. */
 export function runStep(db: Database, step: SchemaStep): void {

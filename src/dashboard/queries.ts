@@ -10,8 +10,12 @@ const RECENT_RUNS = 10;
 export const LIST_LIMIT_MAX = 1000;
 const LIST_LIMIT_DEFAULT = 300;
 
-/** The Human, the agent's role, or tmb; the host and source stay in `created_by`. */
+/**
+ * The Human, the agent's role, or tmb; the host and source stay in `created_by`. A row the syncer
+ * mirrored names the remote account that wrote it, not tmb.
+ */
 export function authorOf(actor: Actor): string {
+  if (actor.kind === "tmb" && actor.remote) return actor.remote;
   return actor.kind === "agent" ? actor.role : actor.kind;
 }
 
@@ -44,7 +48,8 @@ export function clampLimit(raw: string | null): number {
 }
 
 const ISSUE_LIST_SQL = `
-SELECT i.id, i.title, i.state, i.milestone, i.created_by, i.created_at, i.updated_at,
+SELECT i.id, i.title, i.state, i.milestone, i.created_by, i.created_at, i.updated_at, i.remote, i.remote_url, i.remote_created_at,
+  COALESCE(i.remote_created_at, i.created_at) AS opened_at,
   (SELECT count(*) FROM tasks t WHERE t.issue_id = i.id) AS task_count,
   (SELECT count(*) FROM tasks t WHERE t.issue_id = i.id AND t.state = 'closed') AS tasks_done,
   (SELECT count(*) FROM discussions d WHERE d.issue_id = i.id) AS discussion_count

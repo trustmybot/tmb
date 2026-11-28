@@ -57,7 +57,7 @@ type RecordShape = {
 /** The columns every mirrored row keeps of its item on the remote (trustmybot/tmb#70). */
 const REMOTE_COLUMNS = ["remote", "remote_id", "remote_updated_at", "remote_gone_at"] as const;
 /** What the syncer sets on an issue mirrored from the remote; a local issue leaves them empty. */
-const MIRRORED_ISSUE_COLUMNS = ["state", "state_reason", "milestone_id", "type", "labels", "assignees", "remote_url", ...REMOTE_COLUMNS] as const;
+const MIRRORED_ISSUE_COLUMNS = ["state", "state_reason", "milestone_id", "type", "labels", "assignees", "remote_url", "remote_created_at", ...REMOTE_COLUMNS] as const;
 
 const RECORDS: Record<RecordKind, RecordShape> = {
   issue: {
@@ -71,9 +71,9 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   },
   discussion: {
     table: "discussions",
-    columns: ["issue_id", "kind", "body", "remote_author", "updated_at", ...REMOTE_COLUMNS],
+    columns: ["issue_id", "kind", "body", "remote_author", "remote_created_at", "updated_at", ...REMOTE_COLUMNS],
     // Only a comment mirrored from the remote changes; the store refuses it for a note or a decision.
-    updatable: ["body", "updated_at", ...REMOTE_COLUMNS],
+    updatable: ["body", "updated_at", "remote_created_at", ...REMOTE_COLUMNS],
     hasUpdatedAt: false,
     searchable: true,
     lists: { kind: DISCUSSION_KINDS },

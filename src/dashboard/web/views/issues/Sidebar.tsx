@@ -3,6 +3,7 @@ import { GitBranchIcon } from '@primer/octicons-react';
 import type { Row } from '../../api.ts';
 import { Badge } from '../../shared/Badge.tsx';
 import { actorText, ENTITY_LINK, hrefFor } from '../../shared/columns.tsx';
+import { MirroredFrom } from './remote.tsx';
 
 function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
@@ -65,6 +66,13 @@ export function Sidebar({ issue, tasks }: { issue: Row; tasks: Row[] }) {
           </ul>
         )}
       </Section>
+      {issue['remote_url'] ? (
+        <Section title="Remote">
+          <span className="text-fg">
+            <MirroredFrom row={issue} />
+          </span>
+        </Section>
+      ) : null}
       <Section title="Recorded By">
         <span className="text-fg">{actorText(issue['created_by'])}</span>
       </Section>

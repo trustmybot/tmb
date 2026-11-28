@@ -120,7 +120,7 @@ describe("the page", () => {
 describe("the API reads the record", () => {
   test("summary", async () => {
     const s = await api("summary");
-    expect(s.issues).toEqual({ open: 1, closed: 1 });
+    expect(s.issues).toEqual({ open: 2, closed: 1 });
     expect(s.tasks_by_state).toEqual([{ state: "open", count: 1 }]);
     expect(s.open_features).toBe(1);
     expect(s.open_runs).toBe(1);
@@ -132,6 +132,8 @@ describe("the API reads the record", () => {
     const issue = list.find((i: any) => i.id === ids.issueId);
     expect(issue).toMatchObject({ title: SEED.issueTitle, state: "open", milestone: SEED.milestone, task_count: 1, tasks_done: 0, discussion_count: 3, author: "planner" });
     expect(list.find((i: any) => i.id === ids.closedIssueId)).toMatchObject({ state: "closed", author: "human" });
+    // A mirrored issue names the remote account that opened it, and its age is the remote's.
+    expect(list.find((i: any) => i.id === ids.mirroredIssueId)).toMatchObject({ author: SEED.mirroredAuthor, remote_url: SEED.mirroredUrl, opened_at: SEED.mirroredOpened });
     const detail = await api(`issues/${ids.issueId}`);
     expect(detail.issue.body).toBe(SEED.issueBody);
     expect(detail.discussions.map((d: any) => d.body)).toEqual([SEED.note, SEED.oldDecision, SEED.decision]);
@@ -314,6 +316,12 @@ describe("every page shows its data", () => {
 
   test("one issue: body, notes, the decision in force, tasks and feature branch", async () => {
     await show(`#/issues/${ids.issueId}`, "Add a dark mode switch", "dark mode", SEED.note, SEED.oldDecision, "Earlier decision", "Decision in force", SEED.taskTitle, SEED.featureName, "0 / 1");
+  });
+
+  test("one mirrored issue: the remote's author, address and opened time, and its comment's", async () => {
+    await show(`#/issues/${ids.mirroredIssueId}`, SEED.mirroredTitle, `opened on Mar 1, 2025 by ${SEED.mirroredAuthor}`, "mirrored from", "o/r#7", "tmb's syncer");
+    await show(`#/issues/${ids.mirroredIssueId}`, SEED.comment, SEED.commentAuthor, "commented on the remote on Mar 1, 2025", "mirrored comment");
+    expect(root.textContent).not.toContain("undefined");
   });
 
   test("tasks", async () => {

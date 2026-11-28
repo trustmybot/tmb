@@ -6,6 +6,7 @@ import { RelativeTime } from '../../ui/RelativeTime.tsx';
 import { StateLabel } from '../../ui/StateLabel.tsx';
 import { Composer } from './Composer.tsx';
 import { IssueEditor } from './IssueEditor.tsx';
+import { MirroredFrom, openedAt } from './remote.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { CommentCard, Timeline } from './Timeline.tsx';
 
@@ -24,8 +25,9 @@ export function IssuePage({ id, detail }: { id: string; detail: IssueDetail }) {
           <div className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
             <StateLabel status={open ? 'open' : 'closed'} />
             <span>
-              opened <RelativeTime value={issue['created_at']} /> by {String(issue['author'] ?? '—')} · {count} {count === 1 ? 'entry' : 'entries'}
+              opened <RelativeTime value={openedAt(issue)} /> by {String(issue['author'] ?? '—')} · {count} {count === 1 ? 'entry' : 'entries'}
             </span>
+            <MirroredFrom row={issue} />
             <Button size="small" className="ml-auto" onClick={() => setEditing(true)}>Edit</Button>
           </div>
         </div>
@@ -35,7 +37,7 @@ export function IssuePage({ id, detail }: { id: string; detail: IssueDetail }) {
           <CommentCard
             author={String(issue['author'] ?? '')}
             verb="opened"
-            at={issue['created_at']}
+            at={openedAt(issue)}
             badge={<Label variant="secondary">Author</Label>}
             body={String(issue['body'] ?? '')}
           />

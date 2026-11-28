@@ -27,9 +27,15 @@ export const SEED = {
   guardReason: "rm -rf outside the worktree",
   auditWhat: "setting:host",
   auditDetail: '"claude-code"',
+  mirroredTitle: "Crash on an empty config",
+  mirroredUrl: "https://github.com/o/r/issues/7",
+  mirroredAuthor: "octocat",
+  mirroredOpened: "2025-03-01T12:00:00Z",
+  comment: "Seen on 1.2 as well.",
+  commentAuthor: "hubot",
 } as const;
 
-export type SeededIds = { issueId: string; closedIssueId: string; taskId: string; featureId: string; decisionId: string; oldDecisionId: string };
+export type SeededIds = { issueId: string; closedIssueId: string; mirroredIssueId: string; taskId: string; featureId: string; decisionId: string; oldDecisionId: string };
 
 /** Writes the prepared record into `projectDir/.tmb/trajectory.db` and returns the ids made. */
 export function seedRecord(projectDir: string): SeededIds {
@@ -69,7 +75,24 @@ export function seedRecord(projectDir: string): SeededIds {
     });
     store.appendGuardDecision(WORKER, { event: "PreToolUse", decision: "deny", reason: SEED.guardReason });
     store.recordSettingChange(HUMAN, { key: "host", oldValue: null, newValue: SEED.auditDetail });
-    return { issueId, closedIssueId, taskId, featureId, decisionId, oldDecisionId };
+    // An issue and a comment the syncer mirrored from the remote, opened there long before they came in.
+    const remote = { remote: "github.com/o/r", remote_updated_at: SEED.mirroredOpened, remote_created_at: SEED.mirroredOpened };
+    const mirroredIssueId = store.mirror.createMirrored({ kind: "tmb", source: "syncer", remote: SEED.mirroredAuthor }, "issue", {
+      title: SEED.mirroredTitle,
+      body: "",
+      remote_id: "I7",
+      remote_url: SEED.mirroredUrl,
+      ...remote,
+    });
+    store.mirror.createMirrored({ kind: "tmb", source: "syncer", remote: SEED.commentAuthor }, "discussion", {
+      issue_id: mirroredIssueId,
+      kind: "comment",
+      body: SEED.comment,
+      remote_author: SEED.commentAuthor,
+      remote_id: "C1",
+      ...remote,
+    });
+    return { issueId, closedIssueId, mirroredIssueId, taskId, featureId, decisionId, oldDecisionId };
   } finally {
     store.close();
   }
