@@ -58,10 +58,7 @@ export class UpdateCommand extends ParsedCommand<UpdateOptions> {
     const applied = updater.apply();
     if (applied.outcome === "applied") {
       out(`Updated ${name} from ${version} to ${applied.version}.`);
-      for (const { lease, reason } of updater.waiting(applied.version!)) {
-        const title = lease.title ? `"${lease.title}", ` : "";
-        out(`The session in ${lease.project} (${title}started ${new Date(lease.startedAt).toLocaleString()}) stays on ${lease.build}: ${reason}.`);
-      }
+      for (const line of waitingLines(updater.waiting(applied.version!))) out(line);
       const unused = unusedBuildsLine(updater);
       if (unused !== null) out(unused);
       return 0;
@@ -82,4 +79,27 @@ export class UpdateCommand extends ParsedCommand<UpdateOptions> {
     if (updater.options.enabled) return `tmb ${version} runs from source and does not update itself.`;
     return `Updates are turned off (TMB_NO_UPDATE=1); this is ${name} ${version}.`;
   }
+}
+
+type Waiting = ReturnType<Updater["waiting"]>[number];
+
+/**
+ * One line per group of sessions that wait for the same reason, in the same project, on the same
+ * build: a session alone is named by its title and start time, several are counted.
+ */
+export function waitingLines(waiting: Waiting[]): string[] {
+  const groups = new Map<string, Waiting[]>();
+  for (const entry of waiting) {
+    const key = JSON.stringify([entry.lease.project, entry.lease.build, entry.reason]);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+  return [...groups.values()].map((group) => {
+    const { lease, reason } = group[0]!;
+    if (group.length === 1) {
+      const title = lease.title ? `"${lease.title}", ` : "";
+      return `The session in ${lease.project} (${title}started ${new Date(lease.startedAt).toLocaleString()}) stays on ${lease.build}: ${reason}.`;
+    }
+    const plural = reason.replace(/\bit moves at its\b/, "they move at their").replace(/\bit moves\b/, "they move").replace(/^it could not move/, "they could not move");
+    return `${group.length} sessions in ${lease.project} stay on ${lease.build}: ${plural}.`;
+  });
 }

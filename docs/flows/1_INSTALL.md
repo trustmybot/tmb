@@ -156,7 +156,7 @@ flowchart TD
 **A running session and its project stay on the session's build.** Every tmb call there runs that build: Claude Code's events, the tool server, git's push hook, a command the Human types. The record keeps its shape and the host files stay as they are until the session moves.
 
 - **Example 1.** The session has no task open. At its next tool call its tool server moves to the new build by itself, says so, and keeps its conversation.
-- **Example 2.** A task is open. The session stays on its build. `tmb update` names each session still on an old build, with its folder, title and start time, and why it waits.
+- **Example 2.** A task is open. The session stays on its build. `tmb update` names each session still on an old build, with its folder, title and start time, and why it waits; several that wait alike in one folder are counted in one line.
 - **Edge case.** The move fails. The session keeps its build and says how to reconnect the tool server in Claude Code.
 
 ### The record follows the program
