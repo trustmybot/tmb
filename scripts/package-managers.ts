@@ -13,8 +13,8 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { programName } from "../src/program.ts";
-import { channelOf, compareVersions, type Channel, Updater } from "../src/update.ts";
+import { programName } from "../src/engine/program.ts";
+import { channelOf, compareVersions, type Channel, Updater } from "../src/cli/commands/update.ts";
 
 const root = path.resolve(import.meta.dir, "..");
 const PACKAGING = path.join(root, "packaging");

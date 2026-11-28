@@ -7,7 +7,7 @@ import onboarding from "../../skills/tmb-onboarding.md" with { type: "text" };
 import recovery from "../../skills/tmb-recovery.md" with { type: "text" };
 import spec from "../../skills/tmb-spec.md" with { type: "text" };
 import truest from "../../skills/tmb-truest.md" with { type: "text" };
-import { namingProgram } from "../program.ts";
+import { namingProgram } from "./program.ts";
 
 export type Skill = {
   /** The skill's name, which is also its folder's or file's name: lowercase letters, digits and hyphens. */

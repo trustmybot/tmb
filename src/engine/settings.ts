@@ -1,6 +1,6 @@
 // The project's configuration lives in the record: each change to a setting is one
 // setting_changes row, and a setting's current value is its newest row (trustmybot/tmb#408).
-import { runningName } from "../program.ts";
+import { runningName } from "./program.ts";
 import { DEFAULT_LINK_WAY, LINK_WAYS, type LinkWay } from "./graph/ways.ts";
 import type { Actor, Role, Store } from "./store/index.ts";
 

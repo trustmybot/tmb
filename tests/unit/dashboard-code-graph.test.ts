@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { childOf, file, functionView, search, tree } from "../../src/engine/doors/dashboard/code-graph.ts";
+import { childOf, file, functionView, search, tree } from "../../src/dashboard/code-graph.ts";
 import { FUNCTION_KINDS } from "../../src/engine/graph/build.ts";
 import { indexProject, openView } from "../../src/engine/graph/fresh.ts";
 import { lookupSymbol } from "../../src/engine/graph/lookups.ts";

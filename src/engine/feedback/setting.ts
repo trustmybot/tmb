@@ -4,7 +4,7 @@
 // turned on; TMB_NO_FEEDBACK=1 and DO_NOT_TRACK=1 turn it off whatever it says.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { Channel } from "../../program.ts";
+import type { Channel } from "../program.ts";
 
 export type FeedbackSetting = "on" | "off";
 /** How the first run told the person: a notice on dev and rc, a question on stable. */

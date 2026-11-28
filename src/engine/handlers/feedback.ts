@@ -1,7 +1,7 @@
 // The planner's two feedback tools (trustmybot/tmb#122): one drafts a bug report about tmb
 // itself, one sends a draft. The send is refused unless the Human said yes to that draft, and
 // in a run where no one can answer nothing is drafted for sending.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import { channelFor, draftReport, draftText, type FeedbackEnv, readDraft, routeLine, sendDraft, statusOf } from "../feedback/index.ts";
 import type { Actor, Store } from "../store/index.ts";
 import { type OperationContext, requireRole } from "./common.ts";

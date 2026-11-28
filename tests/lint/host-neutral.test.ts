@@ -34,7 +34,7 @@ describe("host-neutral boundary", () => {
   });
 
   test("the scan sees the files it guards and catches a mention", () => {
-    expect(scanned).toContain("src/cli.ts");
+    expect(scanned).toContain("src/cli/index.ts");
     expect(scanned).toContain("roles/planner.md");
     expect(scanned).toContain("skills/tmb-spec.md");
     expect(scanned.filter((file) => file.startsWith("src/adapters/claude-code/")).flatMap(hostMentions).length).toBeGreaterThan(0);

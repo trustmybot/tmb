@@ -3,7 +3,7 @@
 // several lines that each repeat its usage, so each message is counted once, by its id. The
 // format is Claude Code's own and may change: anything unreadable gives no cost, never an error.
 import { readFileSync } from "node:fs";
-import type { ModelUsage } from "../../engine/store/index.ts";
+import type { ModelUsage } from "../../engine/index.ts";
 
 type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
 

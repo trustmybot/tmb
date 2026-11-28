@@ -12,7 +12,7 @@ import { asHuman } from "../lib/as-human.ts";
 setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
+const CLI = path.join(ROOT, "src", "cli", "index.ts");
 const PLANNER_ROLE = readFileSync(path.join(ROOT, "roles", "planner.md"), "utf8");
 
 let scratch: string;
@@ -102,7 +102,7 @@ describe("tmb init and remove", () => {
     writeFileSync(settingsFile, JSON.stringify(original, null, 2) + "\n");
     const readSettings = () => JSON.parse(readFileSync(settingsFile, "utf8")) as Record<string, any>;
 
-    // From source, init wires Bun running src/cli.ts, and remove must recognise that hook.
+    // From source, init wires Bun running src/cli/index.ts, and remove must recognise that hook.
     const init = run(process.execPath, [CLI, "init"], project);
     expect(init.status).toBe(0);
     const afterInit = readSettings();

@@ -14,7 +14,7 @@ import { hooksJsonPath } from "../../src/adapters/codex/paths.ts";
 import { HOST_ADAPTERS } from "../../src/adapters/index.ts";
 import { handleEvent, HOST_FILES_HEADING, installPushGate, openProjectStore, recordProgramMove, SUBAGENT_ROLES, tiedProgram, tieProgram, writeSetting } from "../../src/engine/index.ts";
 import type { Actor, Store } from "../../src/engine/store/index.ts";
-import { refreshProject } from "../../src/refresh.ts";
+import { refreshProject } from "../../src/cli/commands/refresh.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

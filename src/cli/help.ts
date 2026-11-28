@@ -2,7 +2,7 @@
 // closest command on a typo, and their colours. No dependency: the runtime's styleText only
 // adds the codes; whether to colour is decided here.
 import { styleText } from "node:util";
-import { runningName } from "../../program.ts";
+import { runningName } from "../engine/index.ts";
 
 /** The part of a stream the colour rule reads. */
 export type ColourStream = { isTTY?: boolean };

@@ -7,8 +7,9 @@
     "build": "bun scripts/build.ts",
     "build:local": "bun scripts/build.ts --local",
     "test": "bun test",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p dashboard",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/dashboard/web",
     "lint:links": "bun tests/lint/links.ts",
+    "lint:boundaries": "depcruise src",
     "test:install": "bun tests/install/smoke.ts",
     "test:install:update": "bun tests/install/update.ts",
     "test:install:channels": "bun tests/install/channels.ts",
@@ -26,9 +27,11 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
+    "@swc/core": "1.16.22",
     "@types/bun": "^1.4.4",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "dependency-cruiser": "18.9.0",
     "typescript": "^7.0.2",
     "typescript5": "npm:typescript@5.9.3"
   },

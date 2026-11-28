@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CAPABILITIES, type Capability, type SubagentRole } from "../../engine/index.ts";
-import { inGitWorkTree } from "../../engine/repos.ts";
+import { inGitWorkTree } from "../../engine/index.ts";
 import { deleteFile } from "../common/json-file.ts";
 
 const AGENTS_RELATIVE = path.join(".claude", "agents");

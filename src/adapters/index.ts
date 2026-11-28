@@ -31,4 +31,4 @@ export {
   type MigrationResult,
   type WorkspaceMigration,
 } from "./claude-code/migrate-plugin.ts";
-export type { HostAdapter, HostDetection, HostLimits } from "./host-adapter.ts";
+export type { HookRun, HostAdapter, HostDetection, HostLimits } from "./host-adapter.ts";

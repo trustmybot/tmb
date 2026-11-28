@@ -4,20 +4,8 @@
 import { Database } from "bun:sqlite";
 import { existsSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
-import { sessionEntries } from "../builds.ts";
-import { detectBaseBranch } from "../engine/base-branch.ts";
-import { EXTRACTOR_VERSION, MINIFIED } from "../engine/graph/build.ts";
-import { BASE_LAYER, graphDbPath } from "../engine/graph/db.ts";
-import { baseCommit } from "../engine/graph/git-source.ts";
-import { keptCheckouts, removeTaskCheckout } from "../engine/handlers/fold.ts";
-import { emptySettings } from "../engine/handlers/settings.ts";
-import { tiedProgram } from "../engine/program-tie.ts";
-import { runningName } from "../program.ts";
-import { PROJECT_DIR_NAME, projectDbPath, projectRootOf } from "../engine/project.ts";
-import { addToForeignHook, FOREIGN_GAP, foreignHooks, handCallLine, pushGateGaps } from "../engine/push-gate.ts";
-import { repoDirOf, unnamedRepos, unnamedReposFix, workingRepos } from "../engine/repos.ts";
-import { readSettings, reviewModeOf, type Settings } from "../engine/settings.ts";
-import { SCHEMA_VERSION, SHAPE_WRITER_KEY, Store, type Task } from "../engine/store/index.ts";
+import { sessionEntries } from "../../builds.ts";
+import { addToForeignHook, BASE_LAYER, baseCommit, detectBaseBranch, emptySettings, EXTRACTOR_VERSION, FOREIGN_GAP, foreignHooks, graphDbPath, handCallLine, keptCheckouts, MINIFIED, PROJECT_DIR_NAME, projectDbPath, projectRootOf, pushGateGaps, readSettings, removeTaskCheckout, repoDirOf, reviewModeOf, runningName, SCHEMA_VERSION, type Settings, SHAPE_WRITER_KEY, Store, type Task, tiedProgram, unnamedRepos, unnamedReposFix, workingRepos } from "../../../engine/index.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
 import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "./use.ts";
 

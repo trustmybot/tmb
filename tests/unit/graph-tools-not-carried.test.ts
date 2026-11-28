@@ -1,7 +1,7 @@
 // The TypeScript compiler and pyright are not in the tmb program (CODE_GRAPH.md, "Where a
 // language's tool comes from"; trustmybot/tmb#395): a developer who writes neither language carries
 // neither tool. Each is installed on ask into tmb's tools folder and loaded from there. The program
-// is bundled the way scripts/build.ts bundles it, from src/cli.ts; no file of it, code or a file it
+// is bundled the way scripts/build.ts bundles it, from src/cli/index.ts; no file of it, code or a file it
 // carries, holds the compiler's code, pyright's, or the language files each reads.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -29,7 +29,7 @@ let texts: string[];
 
 beforeAll(async () => {
   outdir = mkdtempSync(path.join(tmpdir(), "tmb-not-carried-"));
-  const result = await Bun.build({ entrypoints: [path.join(ROOT, "src", "cli.ts")], target: "bun", outdir, throw: false });
+  const result = await Bun.build({ entrypoints: [path.join(ROOT, "src", "cli", "index.ts")], target: "bun", outdir, throw: false });
   expect(result.success).toBe(true);
   texts = result.outputs.filter((o) => !o.path.endsWith(".wasm")).map((o) => readFileSync(o.path, "utf8"));
 });

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, setDefaultTimeout, test } from "bun:test
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Dashboard, startDashboard } from "../../src/engine/doors/dashboard/server.ts";
+import { type Dashboard, startDashboard } from "../../src/dashboard/index.ts";
 import { openProjectStore } from "../../src/engine/index.ts";
 import type { Actor } from "../../src/engine/store/index.ts";
 

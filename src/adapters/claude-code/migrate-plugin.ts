@@ -5,11 +5,7 @@ import { Database } from "bun:sqlite";
 import { copyFileSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createIdFactory } from "../../engine/ids.ts";
-import { isManaged } from "../../engine/repos.ts";
-import type { RepoPolicies } from "../../engine/settings.ts";
-import type { Actor, Role, Store } from "../../engine/store/index.ts";
-import { PLUGIN_IMPORT } from "../../engine/task-repos.ts";
+import { type Actor, createIdFactory, isManaged, PLUGIN_IMPORT, type RepoPolicies, type Role, type Store } from "../../engine/index.ts";
 import { HOST_ID } from "./mcp-json.ts";
 
 /** The plugin schema this tool reads: the last one the plugin shipped before tmb. */

@@ -63,7 +63,7 @@ beforeAll(async () => {
   process.chdir(REPO);
   let built: Awaited<ReturnType<typeof Bun.build>>;
   try {
-    built = await Bun.build({ entrypoints: [path.join(REPO, "src", "cli.ts")], compile: { outfile: program }, plugins: [tailwind], throw: false });
+    built = await Bun.build({ entrypoints: [path.join(REPO, "src", "cli", "index.ts")], compile: { outfile: program }, plugins: [tailwind], throw: false });
   } finally {
     process.chdir(cwd);
   }

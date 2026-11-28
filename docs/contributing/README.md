@@ -67,7 +67,7 @@ flowchart LR
 
 | When | What runs |
 |---|---|
-| A pull request, or a push to `dev` | `test` (typecheck, `bun test` and the link lint) and `chain` (the whole chain in a container, without its model steps, trustmybot/tmb#260). `test` is the one required check. |
+| A pull request, or a push to `dev` | `test` (typecheck, the component boundary lint, `bun test` and the link lint) and `chain` (the whole chain in a container, without its model steps, trustmybot/tmb#260). `test` is the one required check. |
 | After each merge to `dev` | The dev channel's build. It does not block a pull request ([RELEASE.md](RELEASE.md)). |
 | A version tag | The heavy jobs. They do not block a pull request ([RELEASE.md](RELEASE.md)). |
 

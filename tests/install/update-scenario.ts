@@ -21,7 +21,7 @@ export function buildTmb(version: string, outfile: string): void {
   mkdirSync(path.dirname(outfile), { recursive: true });
   const result = spawnSync(
     process.execPath,
-    ["build", "--compile", "--define", `TMB_VERSION=${JSON.stringify(version)}`, "--define", `TMB_GIT_SHA="test"`, "src/cli.ts", "--outfile", outfile],
+    ["build", "--compile", "--define", `TMB_VERSION=${JSON.stringify(version)}`, "--define", `TMB_GIT_SHA="test"`, "src/cli/index.ts", "--outfile", outfile],
     { cwd: ROOT, encoding: "utf8", timeout: 300_000 },
   );
   if (result.status !== 0) throw new Error(`build of ${version} failed: ${result.stderr}`);

@@ -6,7 +6,7 @@ import path from "node:path";
 import { type HostAdapter, SUPPORTED_HOST_IDS } from "../../src/adapters/index.ts";
 import { openProjectStore, readSettings, reviewModeChosenVia, SettingError, type Settings, tiedProgram, TMB_EVENT_TYPES } from "../../src/engine/index.ts";
 import type { SettingChange } from "../../src/engine/store/index.ts";
-import { type Ask, runInit, runOnboard, SetupError, type SetupFlags, type SetupOptions } from "../../src/setup.ts";
+import { type Ask, runInit, runOnboard, SetupError, type SetupFlags, type SetupOptions } from "../../src/cli/commands/setup.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

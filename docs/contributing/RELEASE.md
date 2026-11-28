@@ -79,7 +79,7 @@ Why the installer script is the only route on macOS, and the package-manager rou
 
 | Workflow | On a tag it runs |
 |---|---|
-| `ci.yml` | `test` (typecheck, `bun test`, link lint), `chain` (the whole chain in a container, without its model steps), and `update-scenario` on macOS and Windows |
+| `ci.yml` | `test` (typecheck, boundary lint, `bun test`, link lint), `chain` (the whole chain in a container, without its model steps), and `update-scenario` on macOS and Windows |
 | `packaging-probe.yml` | The packaging probe on macOS, Linux and Windows |
 | `release.yml` | The build, the publish and the install and update tests in section 3 |
 

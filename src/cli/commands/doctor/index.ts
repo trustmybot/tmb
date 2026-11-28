@@ -2,11 +2,7 @@
 // with `--fix` does each fix the Human says yes to (trustmybot/tmb#160). Doctor itself only reads.
 import { parseArgs } from "node:util";
 import { Database } from "bun:sqlite";
-import { projectDbPath, projectRootOf } from "../engine/project.ts";
-import { unnamedRepos } from "../engine/repos.ts";
-import { readSettings } from "../engine/settings.ts";
-import { SCHEMA_VERSION, Store } from "../engine/store/index.ts";
-import { runningName } from "../program.ts";
+import { projectDbPath, projectRootOf, readSettings, runningName, SCHEMA_VERSION, Store, unnamedRepos } from "../../../engine/index.ts";
 import { MACHINE_CHECKS } from "./machine.ts";
 import { guarded, projectFindings } from "./project.ts";
 import { type DoctorEnv, type Finding, SLOW_CHECKS, type Status } from "./types.ts";

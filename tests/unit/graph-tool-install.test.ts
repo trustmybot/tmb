@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { deflateRawSync, gzipSync } from "node:zlib";
-import { runToolsCommand } from "../../src/engine/doors/command-line.ts";
+import { runToolsCommand } from "../../src/cli/command-line.ts";
 import { buildLayer } from "../../src/engine/graph/build.ts";
 import { openGraphDb } from "../../src/engine/graph/db.ts";
 import { clangdTool, LOWEST_CLANGD } from "../../src/engine/graph/languages/c/clangd.ts";

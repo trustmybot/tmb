@@ -13,7 +13,7 @@ import type { Decision } from "./decide.ts";
 import { runGit } from "./git.ts";
 import { coveredCommits } from "./handlers/reviews.ts";
 import { truestTaskCommits } from "./handlers/truest.ts";
-import { runningName } from "../program.ts";
+import { runningName } from "./program.ts";
 import { openProjectStore, projectDbPath } from "./project.ts";
 import { TRUEST } from "./handlers/common.ts";
 import { repoDirOf, repoOf } from "./repos.ts";

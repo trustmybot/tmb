@@ -1,49 +1,9 @@
 // The record commands of the command line: the Human's way into the record. Each command
 // calls the same operation an agent's tool call does, acting as the Human.
-import { repoOf, repoOfRow, workingRepos, workspaceRepos } from "../repos.ts";
+import { type Actor, type Area, baseLanguages, type CallCounts, type Concept, DEFAULT_LINK_WAY, type Discussion, endReadyLine, type FeatureBrief, type FeatureDropResult, type FeaturePrResult, type FeatureSummary, type FeatureUpdateResult, type GraphAnswer, graphDbPath, HandlerError, type Hit, indexProject, type InstallOptions, installTool, type Issue, type IssueDetail, type IssueSummary, type IssueUpdateResult, languageNamed, machinePlaces, type MapResult, markLine, markRequiredLine, missingTools, notReadLines, type NotReadNote, notReadSummary, openGraphDb, openProjectStore, type OperationName, OPERATIONS, readSettings, type RefRow, repoOf, repoOfRow, runningName, type ScopeResult, type SearchHit, settingLines, type Store, type StoredEvent, SYMBOL_KINDS, type SymbolCard, type TaskBrief, type TaskCloseResult, type TaskDropResult, type TaskPrResult, type TaskStartResult, type TaskSummary, type TaskWaiveResult, toolLine, type ToolRow, toolRows, type WaiveResult, workingRepos, workspaceRepos } from "../engine/index.ts";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
-import {
-  type FeatureBrief,
-  type FeatureDropResult,
-  type FeaturePrResult,
-  type FeatureSummary,
-  type FeatureUpdateResult,
-  type GraphAnswer,
-  HandlerError,
-  type IssueDetail,
-  markLine,
-  markRequiredLine,
-  type IssueUpdateResult,
-  OPERATIONS,
-  type OperationName,
-  type TaskBrief,
-  type TaskCloseResult,
-  type TaskPrResult,
-  type TaskStartResult,
-  type TaskSummary,
-  type TaskDropResult,
-  type TaskWaiveResult,
-  type WaiveResult,
-} from "../handlers/index.ts";
-import type { Area } from "../graph/areas.ts";
-import type { Concept } from "../graph/concepts.ts";
 import { existsSync } from "node:fs";
-import { graphDbPath, openGraphDb } from "../graph/db.ts";
-import { indexProject } from "../graph/fresh.ts";
-import { languageNamed } from "../graph/languages/registry.ts";
-import { machinePlaces } from "../graph/tool-copy.ts";
-import { type InstallOptions, installTool, missingTools } from "../graph/tool-install.ts";
-import { baseLanguages, toolLine, type ToolRow, toolRows } from "../graph/tool-report.ts";
-import { endReadyLine } from "../handlers/common.ts";
 import { Paint, unknownCommandText, usageErrorText } from "./help.ts";
-import type { CallCounts, Hit, MapResult, RefRow, ScopeResult, SymbolCard } from "../graph/lookups.ts";
-import { type NotReadNote, notReadLines, notReadSummary } from "../graph/not-read.ts";
-import { SYMBOL_KINDS } from "../graph/languages/contract.ts";
-import { DEFAULT_LINK_WAY } from "../graph/ways.ts";
-import { runningName } from "../../program.ts";
-import { openProjectStore } from "../project.ts";
-import { readSettings, settingLines } from "../settings.ts";
-import type { Actor, Discussion, Issue, IssueSummary, SearchHit, Store, StoredEvent } from "../store/index.ts";
 
 export const RECORD_COMMANDS = ["issue", "note", "search", "history", "feature", "task", "graph"] as const;
 export type RecordCommand = (typeof RECORD_COMMANDS)[number];

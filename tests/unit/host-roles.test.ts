@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ToolSession } from "../../src/engine/doors/tool-server.ts";
+import { ToolSession } from "../../src/engine/tool-server.ts";
 import { featureBrief, featureStart, issueCreate, reviewRecord, taskClose, taskStart } from "../../src/engine/handlers/index.ts";
 import {
   AWAITING_REVIEW_HEADING,
