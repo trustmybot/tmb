@@ -7,6 +7,8 @@ import {
   type Issue,
   type IssueChanges,
   type IssueState,
+  ISSUE_PAGE_DEFAULT,
+  ISSUE_PAGE_MAX,
   type IssueSummary,
   type MirroredRow,
   SEARCH_LIMIT_DEFAULT,
@@ -39,12 +41,26 @@ export const issueCreateSchema: InputSchema = {
   additionalProperties: false,
 };
 
+/** The states issue_list takes: an issue's own state, or all. */
+const ISSUE_LIST_STATES = [...ISSUE_STATES, "all"] as const;
+type IssueListState = (typeof ISSUE_LIST_STATES)[number];
+
 export const issueListSchema: InputSchema = {
   type: "object",
-  properties: { state: { type: "string", description: "Only issues in this state; all issues when left out.", enum: ISSUE_STATES } },
+  properties: {
+    state: { type: "string", description: "Which issues to list: open (the default), closed or all.", enum: ISSUE_LIST_STATES },
+    limit: { type: "integer", description: `At most this many issues; ${ISSUE_PAGE_DEFAULT} when left out.`, minimum: 1, maximum: ISSUE_PAGE_MAX },
+    offset: { type: "integer", description: "Skip this many of the newest first, to read the next page; 0 when left out.", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+  },
   required: [],
   additionalProperties: false,
 };
+
+/**
+ * One page of issues, newest first: the whole list's size, and, when the page does not reach its
+ * end, a line saying how many more there are and how to read them.
+ */
+export type IssueList = { issues: IssueSummary[]; total: number; more?: string; nextOffset?: number };
 
 export const issueGetSchema: InputSchema = {
   type: "object",
@@ -112,9 +128,13 @@ export class IssueService {
     return this.requireIssue(id);
   }
 
-  list(input: unknown): IssueSummary[] {
-    const { state } = validateInput<{ state?: IssueState }>("issue_list", issueListSchema, input);
-    return this.store.listIssues(state === undefined ? {} : { state });
+  list(input: unknown): IssueList {
+    const { state = "open", limit = ISSUE_PAGE_DEFAULT, offset = 0 } = validateInput<{ state?: IssueListState; limit?: number; offset?: number }>("issue_list", issueListSchema, input);
+    const page = this.store.pageIssues({ state: state === "all" ? undefined : state, limit, offset });
+    const next = offset + page.issues.length;
+    if (next >= page.total) return page;
+    const kind = state === "all" ? "issues" : `${state} issues`;
+    return { ...page, more: `${page.total - next} more ${kind} are not shown; list again with offset ${next} for the next ones.`, nextOffset: next };
   }
 
   get(input: unknown): IssueDetail {
@@ -217,7 +237,7 @@ export class IssueService {
 
 // The operations as the operation table and the command line call them.
 export const issueCreate = (store: Store, actor: Actor, input: unknown): Issue => new IssueService(store, actor).create(input);
-export const issueList = (store: Store, actor: Actor, input: unknown): IssueSummary[] => new IssueService(store, actor).list(input);
+export const issueList = (store: Store, actor: Actor, input: unknown): IssueList => new IssueService(store, actor).list(input);
 export const issueGet = (store: Store, actor: Actor, input: unknown): IssueDetail => new IssueService(store, actor).get(input);
 export const issueUpdate = (store: Store, actor: Actor, input: unknown, context?: OperationContext): Promise<IssueUpdateResult> =>
   new IssueService(store, actor, context?.remoteIssues).update(input);

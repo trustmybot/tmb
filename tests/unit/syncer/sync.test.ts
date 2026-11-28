@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { OUTSIDE_CHANGES_HEADING, openProjectStore, type Store, takeOutsideChanges, writeSetting } from "../../../src/engine/index.ts";
 import { type Answer, type Ask, type Changes, Folder, type Request, syncProject, UNTITLED } from "../../../src/syncer/index.ts";
 import { readGhOutput } from "../../../src/syncer/transport.ts";
-import { RECORD_READ_WAIT_MS } from "../../../src/engine/index.ts";
+import { RECORD_READ_WAIT_MS, SYNC_RUNNING_NOTE } from "../../../src/engine/index.ts";
 import { ToolSession } from "../../../src/engine/tool-server.ts";
 
 setDefaultTimeout(30_000);
@@ -307,6 +307,30 @@ describe("when the syncer runs", () => {
     } finally {
       finish();
       session.close();
+    }
+  });
+
+  test("a list or search answered while the poll still runs says so in one plain line, and only then", async () => {
+    let finish: () => void = () => {};
+    const slow = new ToolSession(dir, "host-a", false, undefined, undefined, undefined, () => new Promise<void>((resolve) => {
+      finish = resolve;
+    }));
+    const quick = new ToolSession(dir, "host-a", false, undefined, undefined, undefined, () => Promise.resolve());
+    try {
+      const listed = await slow.call("issue_list", {});
+      expect(listed.content).toEqual([
+        { type: "text", text: JSON.stringify({ issues: [], total: 0 }) },
+        { type: "text", text: SYNC_RUNNING_NOTE },
+      ]);
+      expect((await slow.call("search", { query: "anything" })).content).toContainEqual({ type: "text", text: SYNC_RUNNING_NOTE });
+      expect(SYNC_RUNNING_NOTE).not.toContain("\n");
+      finish();
+      expect((await quick.call("issue_list", {})).content).toHaveLength(1);
+      expect((await quick.call("search", { query: "anything" })).content).toHaveLength(1);
+    } finally {
+      finish();
+      slow.close();
+      quick.close();
     }
   });
 

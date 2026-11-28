@@ -7,6 +7,9 @@ export const SNIPPET_MAX = 200;
 export const SEARCH_LIMIT_MAX = 50;
 /** How many hits a search returns when it names no limit. */
 export const SEARCH_LIMIT_DEFAULT = 10;
+/** How many issues one page of a list holds when it names no limit, and the most it may hold. */
+export const ISSUE_PAGE_DEFAULT = 50;
+export const ISSUE_PAGE_MAX = 200;
 
 export type IssueState = "open" | "closed";
 /** A note and a decision are local; a comment is mirrored from the remote. */
@@ -31,6 +34,8 @@ export type Issue = {
 
 /** An issue as a list shows it: the body cut to a snippet. */
 export type IssueSummary = { id: string; title: string; state: IssueState; milestone: string | null; snippet: string };
+/** One page of a list of issues, newest first, and how many issues the whole list holds. */
+export type IssuePage = { issues: IssueSummary[]; total: number };
 
 export type Discussion = {
   id: string;
@@ -141,6 +146,17 @@ export class IssueRepository {
         : this.log.db.query(`SELECT ${SUMMARY_COLUMNS} FROM ${ISSUES_FROM} WHERE issues.state = ? ORDER BY issues.id`).all(filter.state)
     ) as Pick<IssueRow, "id" | "title" | "state" | "milestone" | "body">[];
     return rows.map(({ body, ...summary }) => ({ ...summary, snippet: clip(body) }));
+  }
+
+  /** One page of the issues in the state given, or all, newest first. */
+  pageIssues(filter: { state?: IssueState; limit: number; offset: number }): IssuePage {
+    const where = filter.state === undefined ? "" : "WHERE issues.state = ?";
+    const parameters = filter.state === undefined ? [] : [filter.state];
+    const { n } = this.log.db.query(`SELECT count(*) AS n FROM ${ISSUES_FROM} ${where}`).get(...parameters) as { n: number };
+    const rows = this.log.db
+      .query(`SELECT ${SUMMARY_COLUMNS} FROM ${ISSUES_FROM} ${where} ORDER BY issues.id DESC LIMIT ? OFFSET ?`)
+      .all(...parameters, filter.limit, filter.offset) as Pick<IssueRow, "id" | "title" | "state" | "milestone" | "body">[];
+    return { issues: rows.map(({ body, ...summary }) => ({ ...summary, snippet: clip(body) })), total: n };
   }
 
   /** A note or a decision; a comment comes only from the remote, through the syncer. */
