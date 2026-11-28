@@ -25,6 +25,10 @@ export type GuardDecision = NewGuardDecision & { id: string; createdBy: Actor; c
 /** A project's grant or revoke of one action for one role. */
 export type NewRoleChange = { role: string; action: string; change: "grant" | "revoke" };
 export type RoleChange = NewRoleChange & { id: string; createdBy: Actor; createdAt: string };
+/** A role the project created: its name, what it is for, and its prompt. Its actions are role changes. */
+export type NewProjectRole = { name: string; purpose: string; prompt: string };
+export type ProjectRole = NewProjectRole & { id: string; state: "active" | "deleted"; createdBy: Actor; createdAt: string; updatedAt: string };
+type ProjectRoleRow = { id: string; name: string; purpose: string; prompt: string; state: "active" | "deleted"; created_by: string; created_at: string; updated_at: string };
 type RoleChangeRow = { id: string; role: string; action: string; change: "grant" | "revoke"; created_by: string; created_at: string };
 
 type SettingChangeRow = {
@@ -173,5 +177,33 @@ export class RoleChangeRepository {
   listRoleChanges(): RoleChange[] {
     const rows = this.log.db.query("SELECT * FROM role_changes ORDER BY id").all() as RoleChangeRow[];
     return rows.map((row) => ({ id: row.id, role: row.role, action: row.action, change: row.change, createdBy: actorOf(row.created_by), createdAt: row.created_at }));
+  }
+}
+
+/** The roles the project created. A deleted one keeps its row. */
+export class ProjectRoleRepository {
+  constructor(private readonly log: EventLog) {}
+
+  createRole(actor: Actor, role: NewProjectRole): string {
+    return this.log.create(actor, "role", { name: role.name, purpose: role.purpose, prompt: role.prompt });
+  }
+
+  deleteRole(actor: Actor, id: string): void {
+    this.log.update(actor, "role", id, { state: "deleted" });
+  }
+
+  /** The roles in use, oldest first. */
+  listRoles(): ProjectRole[] {
+    const rows = this.log.db.query("SELECT * FROM roles WHERE state = 'active' ORDER BY id").all() as ProjectRoleRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      purpose: row.purpose,
+      prompt: row.prompt,
+      state: row.state,
+      createdBy: actorOf(row.created_by),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 }

@@ -10,7 +10,7 @@ A failure goes back to its owner. tmb waits for no timer: it acts only when some
 | `feature_update` conflicts | Nothing changed, and the answer names the files. Settle it in a task on the branch whose worker merges the base in its worktree, or raise it to the Human, then call `feature_update` again. |
 | The reviewer fails the feature branch | Start a task for each blocking finding on the branch, and review again once they land. |
 | A check or a review comment fails an open pull request | Start fix tasks on its feature branch; `feature_pr` updates the same pull request once the new tip is reviewed or waived. |
-| A run started and never ended | The session start or `tmb doctor` names it. Resume the task with a new worker, or drop it. |
+| A run started and never ended | The session start or `tmb doctor` names it. Resume the task with a new worker, or drop it. When its work is committed and only the close is missing, close it yourself with `task_close` and a `reason` saying why you closed it and not its worker. |
 
 ## Drop a task
 

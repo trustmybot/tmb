@@ -2,7 +2,7 @@
 
 What a project adds to its team: skills, cheatcodes (published capabilities), created agents and consultants. This page holds every case of flows 4.1 and 4.2 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [ROLES.md](../architecture/ROLES.md).
 
-tmb ships three roles, planner, worker and reviewer, and six skills of its own. The rest of this page is **Planned**: the tmb skills not shipped yet (trustmybot/tmb#495), cheatcodes (trustmybot/tmb#112), and created agents, project skills and consultants (trustmybot/tmb#437).
+tmb ships three roles, planner, worker and reviewer, and six skills of its own. The rest of this page is **Planned**: the tmb skills not shipped yet (trustmybot/tmb#495), cheatcodes (trustmybot/tmb#112), and project skills, consultants and the recording of a created agent's runs (trustmybot/tmb#437).
 
 ```mermaid
 flowchart LR
@@ -21,7 +21,7 @@ flowchart LR
 
 ## Nothing is written without the Human's approval
 
-This one rule holds for all four flows. The planner drafts or proposes, the Human approves each item, and only then does tmb record it and write it. The approval is the Human's: a yes typed on a terminal, like a waiver ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)).
+This rule holds for skills and cheatcodes. A created agent is the planner's own call, signed in the record ([Created agents](#created-agents)). The planner drafts or proposes, the Human approves each item, and only then does tmb record it and write it. The approval is the Human's: a yes typed on a terminal, like a waiver ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)).
 
 - **Example 1.** The planner drafts a skill and the Human says yes. The skill lands in the project.
 - **Example 2.** The planner drafts a skill and the Human says no. The draft is discarded and nothing is written.
@@ -200,45 +200,32 @@ Acquisition must be reversible. In one transaction, an uninstall reverses each r
 
 ## Created agents
 
-**Planned (trustmybot/tmb#437).** Flow 4.2. tmb manages a created agent the way it manages the worker and the reviewer, from its first run: its runs are recorded, its tool calls are role-checked and its work passes the same checkpoints ([ROLES.md](../architecture/ROLES.md)).
+**The planner creates a role, and the role becomes a real agent of the host.** A role is data in the record: a name, a purpose, a prompt and its actions, with who created it ([PERMISSIONS.md](../architecture/PERMISSIONS.md#4-roles-are-data)). The adapter writes the agent's file, and later sessions start it like a worker. Its tool calls are checked against its actions, and its work passes the same checkpoints ([ROLES.md](../architecture/ROLES.md#agents-a-project-creates)).
 
 ```mermaid
 flowchart TD
-    A["Routing hits a role with no agent"] --> B{"Name allowed?"}
-    B -- "planner, bro, worker or reviewer" --> X["Refused"]
-    B -- "a project agent of that name exists" --> T{"tmb wrote it?"}
-    T -- yes --> U["Show the diff; the Human says yes or no"]
-    T -- no --> V["The Human picks skip, adopt or overwrite; skip is the default"]
-    U -- yes --> W
-    V -- "adopt or overwrite" --> W
-    U -- no --> Z
-    V -- skip --> Z
-    B -- new --> Q["Up to three clarifying questions"]
-    Q --> D["Tailored draft"]
-    D --> H{"Human approves?"}
-    H -- revise --> D
-    H -- no --> Z["Draft discarded; nothing is written"]
-    H -- yes --> W["Agent recorded: who asked, what it is for, its role file"]
-    W --> P["The adapter writes its file"]
-    P --> R["Later sessions route to it"]
+    A["The planner needs a role tmb does not ship"] --> B{"Name allowed?"}
+    B -- "one of tmb's own, as planner, bro, worker or reviewer" --> X["Refused"]
+    B -- "the project already has it" --> Y["Refused: change its actions, or delete it first"]
+    B -- new --> C{"Each action one the planner holds and may grant?"}
+    C -- no --> X
+    C -- yes --> W["Role recorded: its purpose, prompt, actions and who created it"]
+    W --> P["The adapter writes its agent file"]
+    P --> R["Later sessions start it"]
+    W -. "deleted later" .-> D["Its grants are revoked and its file removed"]
 ```
 
-- **Example 1.** The name is new. The planner asks up to three clarifying questions and drafts the agent. The Human approves, tmb records the agent, and later sessions route to it.
-- **Example 2.** The name is planner, bro, worker or reviewer. tmb refuses it: a project agent with that name would shadow the workflow backbone.
-- **Example 3.** A project agent of that name exists and tmb wrote it. tmb shows the diff and the Human says yes or no.
-- **Edge case.** A project agent of that name exists and tmb did not write it. The Human picks skip, adopt or overwrite; skip is the default.
-
-**A created agent's actions are part of what the Human approves.** The planner proposes the actions the agent may take with its draft, and the Human approves them with the agent. With none approved, it holds only what every role may: reading the record and the code graph ([ROLES.md](../architecture/ROLES.md#permissions)).
-
-- **Example.** The planner creates a designer agent to design a logo. It proposes `record.read`, `graph.read` and `task.close`, and the Human approves the agent with those three.
+- **Example 1.** The planner creates `designer` with a prompt and the action `task.close`. tmb records it, the adapter writes `designer`'s agent file, and the planner starts it on a task.
+- **Example 2.** The name is planner, bro, worker or reviewer. The create is refused: a project agent with that name would shadow the workflow backbone.
+- **Example 3.** The planner gives `designer` an action the planner does not hold, such as `review.record`. The create is refused; the Human grants such an action with `tmb role grant`.
+- **Edge case.** The project already has an agent file of that name that tmb did not write. Setup leaves it alone and says so ([ENGINE.md](../architecture/ENGINE.md#a-file-tmb-wrote-at-an-update)).
 
 | Rule | What it means |
 |---|---|
-| **Every draft starts from one generic scaffold** | There is no per-role template; the clarifying questions tailor the draft |
+| **The prompt is the planner's draft** | There is no per-role template; the planner writes who the agent is, what it does, its boundaries and how it reports |
 | **A backbone role is never copied** | Attaching a skill or a cheatcode to the worker or the reviewer extends that role's lists; the adapter writes the result |
-| **An approval covers one file and lapses** | A draft approved but not written within a short window needs a new approval |
-| **The agent's files stay local** | They stay in this checkout |
-| **tmb never touches an agent file it did not write** | Setup leaves such a file alone and says so, and replaces only its own while nobody edited it ([ENGINE.md](../architecture/ENGINE.md#a-file-tmb-wrote-at-an-update)) |
+| **The agent's files stay local** | They stay in this checkout, and the record writes them again at every setup |
+| **tmb never touches an agent file it did not write** | Setup leaves such a file alone and says so, and replaces only its own while nobody edited it |
 
 ## Consultants
 
@@ -248,16 +235,15 @@ flowchart TD
 flowchart TD
     A["Human asks for a second opinion"] --> C{"Consultant exists?"}
     C -- yes --> S["The host starts the consultant on the question"]
-    C -- no --> F["Flow 4.2: draft, the Human approves, record and write"]
-    F -- approved --> S
-    F -- rejected --> Z["No consultant; the planner answers the question itself and says so"]
+    C -- no --> F["The planner creates it as a created agent"]
+    F --> S
     S --> R["Analysis recorded on the issue, checked when it stops"]
     R --> B["The planner reports; the Human decides"]
 ```
 
 - **Example 1.** A consultant exists. The host starts it on the question, its analysis is recorded on the issue, the planner reports and the Human decides.
-- **Example 2.** No consultant exists. The planner drafts one as a created agent, and the Human approves it first.
-- **Edge case.** The Human rejects the draft. The planner answers the question itself and says so.
+- **Example 2.** No consultant exists. The planner creates one as a created agent, then starts it on the question.
+- **Edge case.** The create is refused, as for a name tmb keeps. The planner answers the question itself and says so.
 
 **A consultant holds no workflow state.** Its run and its analysis are recorded; it starts no task, closes none and records no verdict.
 

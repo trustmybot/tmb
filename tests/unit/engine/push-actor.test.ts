@@ -16,7 +16,7 @@ describe("the push's actor", () => {
     expect(pushActorFrom({})).toEqual({ kind: "human" });
     expect(pushActorFrom({ [PUSH_ACTOR_ENV]: "" })).toEqual({ kind: "human" });
     expect(pushActorFrom({ [PUSH_ACTOR_ENV]: "not json" })).toEqual({ kind: "human" });
-    expect(pushActorFrom({ [PUSH_ACTOR_ENV]: JSON.stringify({ kind: "agent", role: "boss", host: "x" }) })).toEqual({ kind: "human" });
+    expect(pushActorFrom({ [PUSH_ACTOR_ENV]: JSON.stringify({ kind: "agent", role: "Boss!", host: "x" }) })).toEqual({ kind: "human" });
     expect(pushActorFrom({ [PUSH_ACTOR_ENV]: JSON.stringify({ kind: "agent", role: "worker" }) })).toEqual({ kind: "human" });
     // Only tmb's own code writes as tmb; a hook that names it is refused (trustmybot/tmb#404).
     expect(pushActorFrom({ [PUSH_ACTOR_ENV]: JSON.stringify({ kind: "tmb", source: "syncer" }) })).toEqual({ kind: "human" });

@@ -30,12 +30,12 @@ bareOrigin(project, path.join(work, "origin.git"), base);
 tmb.shown(["init"], `tmb init failed in ${project}`);
 tmb.human(["onboard", "--yes", "--base", base, "--review-mode", "agile", "--check", check], `tmb onboard failed in ${project}`);
 
-// The Human lands the fix as a task on the feature branch, so there is a finished branch to review.
-const issue = tmb.json<{ id: string }>(["issue", "create", "add returns the wrong sum"]).data.id;
-tmb.text(["feature", "start", feature]);
-const started = tmb.json<{ id?: string; worktree?: string }>(["task", "start", issue, "--kind", "code", "--intent", "Make add return the sum", "--file", "src/math.ts", "--criterion", "add(2, 3) is 5"]);
-const { id: task, worktree } = started.data;
-if (!task || !worktree || !existsSync(worktree)) fail(`tmb task start gave no task or worktree: ${started.text}`);
+// The fix lands as a task on the feature branch, through the planner's and the worker's tools, so there is a finished branch to review.
+const issue = tmb.tool<{ id: string }>("issue_create", { title: "add returns the wrong sum" }).id;
+tmb.tool("feature_start", { name: feature });
+const started = tmb.tool<{ id?: string; worktree?: string }>("task_start", { issue_id: issue, kind: "code", intent: "Make add return the sum", files: ["src/math.ts"], criteria: ["add(2, 3) is 5"] });
+const { id: task, worktree } = started;
+if (!task || !worktree || !existsSync(worktree)) fail(`task_start gave no task or worktree: ${JSON.stringify(started)}`);
 const source = path.join(worktree, "src/math.ts");
 writeFileSync(source, readFileSync(source, "utf8").replace("a - b", "a + b"));
 try {
@@ -43,7 +43,7 @@ try {
 } catch (error) {
   fail(`could not commit the fix in ${worktree}: ${error instanceof Error ? error.message : String(error)}`);
 }
-tmb.text(["task", "close", task]);
+tmb.tool("task_close", { id: task, role: "worker" });
 
 console.log(`Asking claude (${MODEL}): ${prompt}`);
 const status = askClaude(project, prompt, log, { allowedTools: CODE_TOOLS });

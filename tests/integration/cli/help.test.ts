@@ -55,7 +55,7 @@ describe("tmb help", () => {
   });
 
   test("every command answers --help with its own detail", () => {
-    for (const command of ["init", "onboard", "config", "remove", "purge", "role", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "help", "mcp", "hook", "pre-push"]) {
+    for (const command of ["init", "onboard", "config", "remove", "purge", "role", "migrate", "issue", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "help", "mcp", "hook", "pre-push"]) {
       const result = run([command, "--help"]);
       expect(result.status).toBe(0);
       expect(result.stdout).toStartWith(`Usage:\n  tmb ${command}`);
@@ -64,11 +64,11 @@ describe("tmb help", () => {
   });
 
   test("a sub-command answers --help with its own lines only", () => {
-    const result = run(["task", "close", "--help"]);
+    const result = run(["task", "waive", "--help"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("  tmb task close <id>");
-    expect(result.stdout).not.toContain("tmb task start");
-    expect(run(["help", "task", "close"]).stdout).toBe(result.stdout);
+    expect(result.stdout).toContain("  tmb task waive <id>");
+    expect(result.stdout).not.toContain("tmb task list");
+    expect(run(["help", "task", "waive"]).stdout).toBe(result.stdout);
   });
 });
 
@@ -92,11 +92,11 @@ describe("an unknown command", () => {
   });
 
   test("one level down, the tip names that command's action", () => {
-    const result = run(["task", "clsoe"]);
+    const result = run(["task", "wiave"]);
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("tip: a similar command exists: 'close'");
+    expect(result.stderr).toContain("tip: a similar command exists: 'waive'");
     expect(result.stderr).toContain("Usage: tmb task <COMMAND>");
-    expect(run(["help", "task", "clsoe"]).status).toBe(2);
+    expect(run(["help", "task", "wiave"]).status).toBe(2);
   });
 
   test("help for an unknown command is the same typo", () => {

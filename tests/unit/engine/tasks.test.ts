@@ -456,9 +456,33 @@ describe("task_close", () => {
     ]);
 
     writeSetting(store, HUMAN, "checks", ["true"]);
-    await taskClose(store, PLANNER, { id: started.id }, context());
+    await taskClose(store, PLANNER, { id: started.id, reason: "the worker ended without closing" }, context());
     expect(store.getTask(started.id)!.state).toBe("closed");
     expect(store.listCheckRuns(started.id).map((run) => run.result)).toEqual(["failed", "passed"]);
+  });
+
+  test("the planner closes a worker's task only with a reason, kept as its note; the record signs every close", async () => {
+    const started = taskStart(store, PLANNER, spec(), context());
+    commitWork(started.worktree);
+    for (const reason of [undefined, "  "]) {
+      const error = await asyncRefusal(() => taskClose(store, PLANNER, { id: started.id, ...(reason === undefined ? {} : { reason }) }, context()));
+      expect(error.message).toContain(`the planner closes a worker's task only with a reason: pass reason, saying why you close task ${started.id}`);
+    }
+    expect(store.getTask(started.id)!.state).toBe("open");
+
+    await taskClose(store, PLANNER, { id: started.id, reason: "its worker ended without closing it" }, context());
+    expect(store.history(started.id).find((event) => event.data.state === "closed")).toMatchObject({ actor: PLANNER });
+    expect(store.listDiscussions(started.brief.issueId).at(-1)).toMatchObject({
+      kind: "note",
+      body: `The planner closed task ${started.id}: its worker ended without closing it`,
+      createdBy: PLANNER,
+    });
+
+    // The worker closes its own task with nothing more, and the record names the worker.
+    const other = taskStart(store, PLANNER, spec(), context());
+    commitWork(other.worktree, "src/a/more.ts");
+    await taskClose(store, WORKER, { id: other.id }, context());
+    expect(store.history(other.id).find((event) => event.data.state === "closed")).toMatchObject({ actor: WORKER });
   });
 
   test("a check past its time limit fails the close", async () => {

@@ -13,6 +13,7 @@ import { REPO_ROOT } from "./paths.ts";
 const ROOT = REPO_ROOT;
 export const CLI = path.join(ROOT, "src", "cli", "index.ts");
 export const BASE_BRANCH = "main";
+const CALL_TOOL = path.join(ROOT, "tests", "lib", "call-tool.ts");
 
 export type ToolResult = { isError?: boolean; content: { type: string; text: string }[] };
 
@@ -64,6 +65,23 @@ export function tmbProcesses(prefix: string) {
 
   function tmbJson<T = any>(args: string[], cwd: string): T {
     return JSON.parse(tmb([...args, "--json"], cwd)) as T;
+  }
+
+  /**
+   * One tool call on the project's tool server, as the planner unless `args` names a role, made
+   * synchronously in a process of its own: the tool's answer, an error or not.
+   */
+  function call(project: string, name: string, args: Record<string, unknown>): { isError: boolean; text: string } {
+    const result = spawnSync(process.execPath, [CALL_TOOL, CLI, project, name, JSON.stringify(args)], { cwd: project, env, encoding: "utf8", timeout: 60_000 });
+    if (result.status !== 0) throw new Error(`the ${name} call exited ${result.status}: ${result.stderr}`);
+    return JSON.parse(result.stdout) as { isError: boolean; text: string };
+  }
+
+  /** A tool call that must succeed, made as `call` makes it; its JSON answer. */
+  function tool<T = any>(project: string, name: string, args: Record<string, unknown> = {}): T {
+    const result = call(project, name, args);
+    if (result.isError) throw new Error(`${name} failed: ${result.text}`);
+    return JSON.parse(result.text) as T;
   }
 
   /**
@@ -169,7 +187,7 @@ export function tmbProcesses(prefix: string) {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  return { scratch, env, git, run, tmb, human, tmbJson, setUpProject, newProject, config, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
+  return { scratch, env, git, run, tmb, human, tmbJson, call, tool, setUpProject, newProject, config, commitFile, sessionStart, hook, startSubagent, stopSubagent, connect, cleanup };
 }
 
 /** Calls a tool that must succeed and parses its JSON answer. */

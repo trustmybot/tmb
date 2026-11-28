@@ -31,6 +31,8 @@ const SHORT_ID_LENGTH = 8;
 const DIRTY_LINES_SHOWN = 10;
 /** The review mode a close records when the project has none set: agile is the default. */
 const DEFAULT_REVIEW_MODE = "agile";
+/** The role whose close of a task needs a reason. */
+const PLANNER = "planner";
 
 /** Who writes a task: a worker writes code, the planner writes docs. The planner names it at start. */
 export const TASK_KINDS = ["code", "docs"] as const;
@@ -336,7 +338,10 @@ export const taskListSchema: InputSchema = {
 
 export const taskCloseSchema: InputSchema = {
   type: "object",
-  properties: { id: { type: "string", description: "The task's id.", pattern: RECORD_ID } },
+  properties: {
+    id: { type: "string", description: "The task's id.", pattern: RECORD_ID },
+    reason: { type: "string", description: "Why you close the task. The planner must pass it when it closes a worker's task; tmb keeps it as a note on the task's issue." },
+  },
   required: ["id"],
   additionalProperties: false,
 };
@@ -680,10 +685,26 @@ export class TaskService {
     }));
   }
 
+  /**
+   * Closes a task; the record names who closed it. A docs task is the planner's own work, as a
+   * code task is its worker's. The planner closes a code task too, as a recovery, only with a
+   * reason, which is kept as a note on the task's issue once the close is recorded.
+   */
   async close(input: unknown): Promise<TaskCloseResult> {
     const { store, actor } = this;
+    const { id, reason } = validateInput<{ id: string; reason?: string }>("task_close", taskCloseSchema, input);
+    const recovery = actor.kind === "agent" && actor.role === PLANNER && store.getTask(id)?.kind !== "docs";
+    if (recovery && (reason === undefined || reason.trim() === "")) {
+      throw new HandlerError("refused", `the planner closes a worker's task only with a reason: pass reason, saying why you close task ${id} and not its worker; tmb keeps it as a note on the task's issue`);
+    }
+    const result = await this.closeTask(id);
+    if (recovery) store.appendDiscussion(actor, { issueId: result.brief.issueId, kind: "note", body: `The planner closed task ${id}: ${reason!.trim()}` });
+    return result;
+  }
+
+  private async closeTask(id: string): Promise<TaskCloseResult> {
+    const { store, actor } = this;
     const context = this.context!;
-    const { id } = validateInput<{ id: string }>("task_close", taskCloseSchema, input);
     const task = requireTask(store, id);
     if (task.state !== OPEN) throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task closes`);
     if (!worktreeReady(task)) throw new HandlerError("refused", `task ${id}'s worktree ${task.worktree ?? "(none)"} is missing, so there is nothing to check`);

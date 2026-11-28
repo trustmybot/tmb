@@ -5,7 +5,6 @@
 // judges no file write and reads no shell command: git's pre-push hook holds every push, whatever
 // was typed, and a step only the Human may take runs only on a terminal.
 // A record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
-import { runningName } from "./program.ts";
 import { adoptWorktree } from "./handlers/adopt.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";
 import { openProjectStore } from "./project.ts";
@@ -89,7 +88,7 @@ const WORKER: Role = "worker";
 const REVIEWER: Role = "reviewer";
 
 function howToStart(): string {
-  return `Start the task first with the task_start tool, or \`${runningName()} task start\` from the command line, then start the worker with the ${taskStartLine("<id>")} line from its brief in the start prompt.`;
+  return `Start the task first with the task_start tool, then start the worker with the ${taskStartLine("<id>")} line from its brief in the start prompt.`;
 }
 
 /** The rules for one event, read against the record it is recorded in. */

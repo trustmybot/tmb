@@ -145,13 +145,13 @@ export function shortHelpText(groups: HelpGroup[], paint: Paint): string {
   return lines.join("\n");
 }
 
-/** Whether a usage line starts a command's entry, as `  tmb issue create <title>` does. */
+/** Whether a usage line starts a command's entry, as `  tmb issue show <id>` does. */
 function startsEntry(line: string): boolean {
   return line.startsWith("  tmb ");
 }
 
 /**
- * The lines of `usage` for one action, such as `tmb task close`: that action's entries and the
+ * The lines of `usage` for one action, such as `tmb task waive`: that action's entries and the
  * notes that hold for every action. All of `usage` when no action is named.
  */
 export function actionUsage(usage: string, command: string, action?: string): string {

@@ -29,6 +29,13 @@ function run(args: string[], cwd: string) {
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
+/** Records an issue in the workspace's record as the planner does, with its tool. */
+function createIssue(title: string): void {
+  const call = path.join(REPO_ROOT, "tests", "lib", "call-tool.ts");
+  const result = spawnSync(process.execPath, [call, CLI, workspace, "issue_create", JSON.stringify({ title })], { cwd: workspace, env, encoding: "utf8", timeout: 60_000 });
+  if (result.status !== 0 || (JSON.parse(result.stdout) as { isError: boolean }).isError) throw new Error(`issue_create: ${result.stdout}${result.stderr}`);
+}
+
 function tmb(args: string[], cwd: string): string {
   const result = run(args, cwd);
   if (result.status !== 0) throw new Error(`tmb ${args.join(" ")} exited ${result.status}: ${result.stderr}`);
@@ -75,10 +82,9 @@ afterAll(() => {
 });
 
 describe("record commands in a workspace", () => {
-  test("run in the workspace folder and in a repo folder, they use the workspace's one record", () => {
-    tmb(["issue", "create", "Made in the workspace folder"], workspace);
+  test("run in the workspace folder and in a repo folder, they read the workspace's one record", () => {
+    for (const title of ["Made in the workspace folder", "Made in a repo folder"]) createIssue(title);
     const api = path.join(workspace, "api");
-    tmb(["issue", "create", "Made in a repo folder"], api);
     const deeper = path.join(api, "src");
     for (const cwd of [workspace, api, deeper]) {
       const list = tmb(["issue", "list"], cwd);

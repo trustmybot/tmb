@@ -61,9 +61,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(14);
+    expect(SCHEMA_VERSION).toBe(15);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 14 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 15 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -388,9 +388,9 @@ describe("actors", () => {
     expect(() => s.createIssue(missing, { title: "nobody" })).toThrow(ActorError);
     expect(() => s.recordSettingChange(null as unknown as Actor, { key: "host", oldValue: null, newValue: '"nobody"' })).toThrow(ActorError);
     expect(() => s.createIssue({ kind: "agent", role: "worker", host: "" } as Actor, { title: "no host" })).toThrow(ActorError);
-    expect(() => s.createIssue({ kind: "agent", role: "boss", host: "h" } as unknown as Actor, { title: "bad role" })).toThrow(
-      ActorError,
-    );
+    // A role the project created is any lowercase name; the Human's name or a malformed one is no agent's.
+    expect(() => s.createIssue({ kind: "agent", role: "human", host: "h" } as unknown as Actor, { title: "bad role" })).toThrow(ActorError);
+    expect(() => s.createIssue({ kind: "agent", role: "Boss!", host: "h" } as unknown as Actor, { title: "bad role" })).toThrow(ActorError);
     expect(peek((db) => db.query("SELECT count(*) AS n FROM events").get())).toEqual({ n: 0 });
   });
 });
@@ -452,6 +452,9 @@ describe("events", () => {
     s.recordFeedbackReport(PLANNER, { route: "issue", url: "https://github.com/trustmybot/tmb/issues/1", detail: { title: "t" } });
     s.recordImport(HUMAN, { source: "plugin", repo: "web", detail: { repo: "web", ids: {} } });
     s.recordRoleChange(HUMAN, { role: "worker", action: "task.drop", change: "grant" });
+    const designer = s.createRole(PLANNER, { name: "designer", purpose: "Draws the screens", prompt: "You draw screens." });
+    s.createRole(PLANNER, { name: "tester", purpose: "Tests", prompt: "You test." });
+    s.deleteRole(PLANNER, designer);
 
     const before = peek(snapshot);
     for (const table of PROJECTION_TABLES) expect(before[table]!.length).toBeGreaterThan(0);
@@ -761,7 +764,7 @@ describe("value lists in the engine, and tmb as an actor (trustmybot/tmb#404)", 
     expect(() => s.appendRun(PLANNER, { role: "architect" as never })).toThrow(ValueError);
     expect(() => s.appendReview(PLANNER, { target: { kind: "tag" as never, ref: "v1" }, verdict: "pass" })).toThrow(ValueError);
     expect(() => s.appendGuardDecision(PLANNER, { event: "{}", decision: "ask" as never, reason: "r" })).toThrow(ValueError);
-    expect(() => s.createIssue({ kind: "agent", role: "architect", host: "h" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
+    expect(() => s.createIssue({ kind: "agent", role: "Architect", host: "h" } as unknown as Actor, { title: "t" })).toThrow(ActorError);
     expect(events()).toEqual(before);
   });
 
@@ -887,7 +890,7 @@ describe("the audit trail goes; each entry moves to its own table (trustmybot/tm
     fresh.store.close();
     expect(shape(dbPath)).toEqual(shape(path.join(dir, "fresh.db")));
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 14 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 15 });
       expect(db.query("SELECT name FROM sqlite_master WHERE name = 'audit'").all()).toEqual([]);
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
       const all = db.query("SELECT * FROM events ORDER BY id").all();

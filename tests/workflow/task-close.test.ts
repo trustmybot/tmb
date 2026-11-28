@@ -12,7 +12,7 @@ setDefaultTimeout(30_000);
 const VALUE_FILE = "value.txt";
 const CHECK = `grep -qx right ${VALUE_FILE}`;
 
-const { git, tmbJson, setUpProject, connect, cleanup } = tmbProcesses("tmb-workflow-");
+const { git, tmbJson, setUpProject, connect, cleanup, tool } = tmbProcesses("tmb-workflow-");
 afterAll(cleanup);
 
 /** Writes the value file in the worktree and commits it, as a worker would; returns the commit. */
@@ -26,7 +26,7 @@ function commitValue(worktree: string, value: string): string {
 describe("closing a task", () => {
   test("is refused while the check fails, succeeds once the fix is committed, and is refused a second time", async () => {
     const project = setUpProject(CHECK, { [VALUE_FILE]: "wrong\n" });
-    const issue = tmbJson(["issue", "create", "The value is wrong"], project);
+    const issue = tool(project, "issue_create", { title: "The value is wrong" });
     const client = await connect(project);
     try {
       await callJson(client, "feature_start", { name: "feat/value" });

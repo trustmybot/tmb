@@ -4,7 +4,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { HOST_ADAPTERS } from "../../adapters/index.ts";
-import { openProjectStore, projectRootOf, recordProgramMove, runningProgram, serveTools } from "../../engine/index.ts";
+import { openProjectStore, projectRootOf, recordProgramMove, runningProgram, serveTools, type SubagentRole } from "../../engine/index.ts";
 import { HIDDEN, HUMAN, ParsedCommand } from "../command.ts";
 import type { Runtime } from "../runtime.ts";
 import { runFront } from "../tool-front.ts";
@@ -81,7 +81,9 @@ export class McpCommand extends ParsedCommand<McpOptions> {
     const feedback = this.runtime.feedbackEnvironment(adapter === undefined ? [] : [adapter]);
     // A change to the shared folders reaches the host's own files, so the worktrees it makes link them too.
     const onSharedFolders = adapter?.shareFolders === undefined ? undefined : (dir: string, folders: readonly string[]) => void adapter.shareFolders!(dir, folders);
-    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders });
+    // A role created or deleted reaches the host's agent files, so the host can start its agent.
+    const onRoles = adapter?.writeRoles === undefined ? undefined : (dir: string, roles: readonly SubagentRole[]) => void adapter.writeRoles!(dir, roles);
+    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders, onRoles });
   }
 
   /** A session's front: its engine serves the tools; a session start looks for an update in the background, and the session's end may apply it. */

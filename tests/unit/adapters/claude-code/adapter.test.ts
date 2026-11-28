@@ -7,7 +7,7 @@ import { adapter, settingsFile, toolServer } from "../../../../src/adapters/clau
 import { serverEntry } from "../../../../src/adapters/claude-code/mcp-json.ts";
 import { setUpRecord } from "../../../../src/adapters/common/record.ts";
 import { hookCommand, isTmbHookCommand } from "../../../../src/adapters/claude-code/settings.ts";
-import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath, reviewerRole, UNATTENDED_INSTRUCTION } from "../../../../src/engine/index.ts";
+import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath, reviewerRole, subagentRolesOf, UNATTENDED_INSTRUCTION } from "../../../../src/engine/index.ts";
 import { namingProgram } from "../../../../src/engine/program.ts";
 import { HOOK_TEXT_CAP, SESSION_TEXT_BUDGET } from "../../../../src/adapters/claude-code/host.ts";
 import { CLI_ENTRY } from "../../../lib/paths.ts";
@@ -370,6 +370,25 @@ describe("adapter setup and remove", () => {
     expect(() => adapter.setup(project, BINARY)).toThrow(/cannot set up the record/);
     expect(existsSync(toolServer.path(project))).toBe(false);
     expect(existsSync(settingsFile.path(project))).toBe(false);
+  });
+
+  test("a role the project creates gets its agent file; setup keeps it; once deleted, its file goes", () => {
+    adapter.setup(project, BINARY);
+    const agentFile = path.join(project, ".claude", "agents", "designer.md");
+    const opened = openProjectStore(project, { create: false });
+    if (!opened.ok) throw opened.error;
+    const id = opened.store.createRole({ kind: "agent", role: "planner", host: "claude-code" }, { name: "designer", purpose: "Draws the screens", prompt: "You are the designer." });
+    adapter.writeRoles(project, subagentRolesOf(opened.store));
+    const written = readFileSync(agentFile, "utf8");
+    expect(written).toContain("You are the designer.");
+    expect(written).toContain('Pass `role: "designer"` on every call');
+    adapter.setup(project, BINARY);
+    expect(existsSync(agentFile)).toBe(true);
+    opened.store.deleteRole({ kind: "agent", role: "planner", host: "claude-code" }, id);
+    adapter.writeRoles(project, subagentRolesOf(opened.store));
+    opened.store.close();
+    expect(existsSync(agentFile)).toBe(false);
+    expect(existsSync(path.join(project, ".claude", "agents", "worker.md"))).toBe(true);
   });
 
   test("remove undoes setup and keeps the record, saying so", () => {

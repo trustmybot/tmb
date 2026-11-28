@@ -6,7 +6,6 @@
 // with no remote there is no pull request: a ready feature or truest task moves on once the local
 // base branch holds its tip (trustmybot/tmb#183), or the work of it, after a squash or a rebase
 // merge by hand (trustmybot/tmb#214).
-import { runningName } from "./program.ts";
 import { spawnSync } from "node:child_process";
 import { runGit } from "./git.ts";
 import { CLOSED, CLOSED_UNMERGED, MERGED, READY } from "./handlers/common.ts";
@@ -79,8 +78,7 @@ function gitWritesMergeTrees(dir: string): boolean {
 
 /** The note tmb gives when its git cannot see a squash or a rebase merge. */
 export function oldGitNote(): string {
-  const name = runningName();
-  return `git is older than 2.38, so tmb records a ready branch merged only once the base branch holds its tip, not after a squash or a rebase merge by hand; end such a branch with ${name} feature drop or ${name} task drop and the reason`;
+  return "git is older than 2.38, so tmb records a ready branch merged only once the base branch holds its tip, not after a squash or a rebase merge by hand; the planner ends such a branch with feature_drop or task_drop and the reason";
 }
 
 /**

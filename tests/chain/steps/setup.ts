@@ -143,8 +143,8 @@ export const onboard: Step = {
     const saysNoMode = /no task starts yet/.test(lastWord);
     checks.ok("onboard does not say no task starts once every repo has its own mode (trustmybot/tmb#263)", !saysNoMode, lastWord);
 
-    const close = world.tmb(["issue", "close", issueId!]);
-    checks.ok("the Human closes the gate's issue", close.status === 0, close.output);
+    const [close] = await callTools(world, [{ name: "issue_update", args: { id: issueId, state: "closed" } }]);
+    checks.ok("the planner closes the gate's issue", close?.ok === true, close?.text);
   },
 };
 

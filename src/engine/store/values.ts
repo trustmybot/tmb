@@ -11,6 +11,8 @@ export const MARK_KINDS = ["pass", "fail", "waiver"] as const;
 export const MARK_STATES = ["success", "failure"] as const;
 /** What a project did to one of a role's actions. */
 export const ROLE_CHANGE_KINDS = ["grant", "revoke"] as const;
+/** Whether a role the project created is in use or was deleted. */
+export const ROLE_STATES = ["active", "deleted"] as const;
 
 export class ValueError extends Error {
   override name = "ValueError";

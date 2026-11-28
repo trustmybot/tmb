@@ -11,13 +11,13 @@ import { CLI, callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { env, git, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-close-checks-");
+const { env, git, tmbJson, setUpProject, commitFile, connect, cleanup, tool } = tmbProcesses("tmb-close-checks-");
 afterAll(cleanup);
 
 const CHECK = "true";
 
 async function startTask(project: string, files: string[]) {
-  const issue = tmbJson(["issue", "create", "A goal"], project);
+  const issue = tool(project, "issue_create", { title: "A goal" });
   const client = await connect(project);
   await callJson(client, "feature_start", { name: "feat/goal" });
   const started = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Do the goal", files, criteria: ["SC1: done"] });

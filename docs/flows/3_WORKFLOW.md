@@ -54,7 +54,7 @@ flowchart TD
     PM --> T
 ```
 
-- **The Human chooses the mode,** because it decides how many tokens the project uses. tmb marks agile as recommended and shows what each mode costs. It never picks. The Human sets it on a terminal, or asks the planner to ([ROLES.md](../architecture/ROLES.md#permissions)).
+- **The Human chooses the mode,** because it decides how many tokens the project uses. tmb marks agile as recommended and shows what each mode costs. It never picks. The Human sets it on a terminal, or asks the planner to ([PERMISSIONS.md](../architecture/PERMISSIONS.md)).
 - **The Human is asked at onboarding** ([2_ONBOARD.md](2_ONBOARD.md)).
 - **A repo that names no mode follows the workspace's,** and follows it when it changes ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
 - **The mode lives in the record,** and every change is kept as a setting change ([CONFIG.md](../architecture/CONFIG.md)).
@@ -197,7 +197,7 @@ flowchart TD
     RD --> M
 ```
 
-- **Waivers.** A waiver is the Human's call ([ROLES.md](../architecture/ROLES.md#permissions)). A waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The record keeps it as a waiver, and the commit's mark on GitHub says the review was waived.
+- **Waivers.** A waiver is the Human's call ([PERMISSIONS.md](../architecture/PERMISSIONS.md)). A waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The record keeps it as a waiver, and the commit's mark on GitHub says the review was waived.
 - **What tmb does not gate.** A pull request the Human opens by hand, and the merge button. The commit's mark on GitHub stops a merge only when the Human makes it a required check ([3_GIT.md](3_GIT.md#beyond-the-local-hook)).
 - **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line. A read that fails changes nothing. The session start names each pull request that ended since the last session. **Planned (trustmybot/tmb#458):** the sync with the remote (trustmybot/tmb#70) reads the state, and the session start reports it from the record without calling GitHub.
 - **Dropped is final.** The planner or the Human drops a branch nobody will merge, with a reason. The branch is kept in git.

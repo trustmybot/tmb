@@ -126,6 +126,29 @@ describe("host roles", () => {
       session.close();
     }
   });
+
+  test("the tool server checks a created role's calls, reads only for an unknown one, refuses the Human's, and tells the adapter", async () => {
+    const told: string[][] = [];
+    const session = new ToolSession(project, "host-a", false, undefined, undefined, (_dir, roles) => told.push(roles.map((role) => role.name)));
+    const text = (result: Awaited<ReturnType<ToolSession["call"]>>) => (result.content[0] as { text: string }).text;
+    try {
+      const created = await session.call("role_create", { name: "designer", purpose: "Draws screens.", prompt: "You draw screens.", actions: ["issue.create"] });
+      expect(created.isError).toBeFalsy();
+      expect(told).toEqual([["worker", "reviewer", "designer"]]);
+      const made = await session.call("issue_create", { title: "From the designer", role: "designer" });
+      const id = (JSON.parse(text(made)) as { id: string }).id;
+      expect(store.getIssue(id)?.createdBy).toEqual({ kind: "agent", role: "designer", host: "host-a" });
+      expect(text(await session.call("issue_create", { title: "x", role: "stranger" }))).toContain("(issue.create)");
+      expect(text(await session.call("issue_list", { role: "stranger" }))).not.toContain("may not");
+      const human = await session.call("issue_list", { role: "human" });
+      expect(human.isError).toBe(true);
+      expect(text(human)).toContain("role must be");
+      await session.call("role_delete", { name: "designer" });
+      expect(told.at(-1)).toEqual(["worker", "reviewer"]);
+    } finally {
+      session.close();
+    }
+  });
 });
 
 describe("a host set up as the reviewer", () => {

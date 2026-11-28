@@ -41,7 +41,7 @@ Each layer owns one level of quality, and no layer repeats another's check. [3_T
 - **Example 3.** A role's file is its identity. The start prompt is the task context. A skill adds a procedure the role loads when needed ([4_EXTENDING.md](../flows/4_EXTENDING.md#tmbs-own-skills)).
 - **Edge case.** A role file tmb did not write sits in the project. Init replaces and removes only role files it wrote ([ENGINE.md](ENGINE.md#what-tmb-writes-and-where)).
 
-Agents the project creates are Planned (trustmybot/tmb#437) ([Agents a project creates](#agents-a-project-creates)).
+A project may add agents of its own ([Agents a project creates](#agents-a-project-creates)).
 
 ## Planner (bro)
 
@@ -55,7 +55,7 @@ Agents the project creates are Planned (trustmybot/tmb#437) ([Agents a project c
 | **Writes only docs tasks** | A change to docs or prompts that changes no behaviour is a docs task. The planner writes it itself, in that task's worktree. The close refuses one that touches a file that is not a docs type ([3_TASKS.md](../flows/3_TASKS.md#docs-task)). |
 | **Keeps the code graph's knowledge** | Records the flows and rules that span files, and proposes the project's areas to the Human. Only the planner writes or removes an area. |
 | **Talks to the Human** | Only the planner asks the Human questions and reports to them. It raises main-folder changes as a report and never puts a file back itself. |
-| **Takes the Human's steps only when asked** | It sets the review mode or waives a review only when the Human asked for it, and never removes tmb ([Permissions](#permissions)). |
+| **Takes the Human's steps only when asked** | It sets the review mode or waives a review only when the Human asked for it, and never removes tmb ([PERMISSIONS.md](PERMISSIONS.md#3-the-planner-takes-the-humans-steps-only-when-asked)). |
 | **Runs parallel sessions** | With its prompt and tools ([Parallel lanes](#parallel-lanes)). |
 
 - **Edge case.** A run has no one to answer. The planner applies its defaults ([ENGINE.md](ENGINE.md#unattended-mode)).
@@ -123,7 +123,7 @@ flowchart TD
 - **Example 3.** A model per role is written into the role file by the adapter ([ADAPTERS.md](ADAPTERS.md#different-models-on-one-task)).
 - **Edge case.** The reviewer writes a file from its shell. tmb watches no file write. The Planned git check (trustmybot/tmb#303, under [Reviewer](#reviewer)) covers it.
 
-**The engine checks every action against one permission table** ([Permissions](#permissions)).
+**The engine checks every action against one permission table** ([PERMISSIONS.md](PERMISSIONS.md)).
 
 - **Example 1.** The role is the one the caller gives. A subagent passes its own role. The main agent defaults to the planner.
 - **Edge case.** tmb cannot prove which agent called. So a verdict also needs an open reviewer run.
@@ -131,40 +131,7 @@ flowchart TD
 
 ## Permissions
 
-**Every action has a name, and each role has a set of actions it may take. A tool call and a command-line command ask the same check, and an action no role holds is denied.** The Human is a role too: the command line records its caller as the Human. The Human does not hold every action.
-
-| Action | Does | Human | Planner | Worker | Reviewer |
-|---|---|---|---|---|---|
-| `tmb.uninstall` | Remove tmb from the machine. Planned (trustmybot/tmb#498) | ✓ | | | |
-| `project.remove` | Remove tmb's wiring from a project, keep the record (`tmb remove`) | ✓ | | | |
-| `project.purge` | Remove the wiring and delete the record for good (`tmb purge`) | ✓ | | | |
-| `permissions.manage` | Grant or revoke a role's actions (`tmb role`) | ✓ | | | |
-| `settings.review-mode` | Choose or change the review mode | ✓ | ✓ on the Human's ask | | |
-| `feature.waive`, `task.waive` | Waive a review | ✓ | ✓ on the Human's ask | | |
-| `settings.set`, `issue.*`, `feature.start`, `feature.update`, `feature.drop`, `feature.pr`, `task.start`, `task.drop`, `task.pr`, `graph.write`, `feedback.send` | Other settings, issues, features, start or drop a task, open a pull request, the code graph's knowledge, feedback to tmb | | ✓ | | |
-| `task.close` | Close a task | | ✓ (docs task) | ✓ | |
-| `review.record` | Record a review verdict | | | | ✓ |
-| `record.read`, `graph.read` | Read the record, a brief and the code graph | ✓ | ✓ | ✓ | ✓ |
-
-- **Example 1.** A worker calls `task_start`. The worker does not hold `task.start`, so the call is refused, naming the action.
-- **Example 2.** The Human types `tmb task waive T-3 --reason "typo fix"`. The Human holds `task.waive`, and the command runs once the Human types yes on the terminal.
-- **Example 3.** The reviewer reads a task's brief in a truest review. Reading a brief is reading the record, which every role may do.
-- **Edge case.** A role tmb does not ship, such as an agent the project created, holds only what every role may: reading the record and the code graph.
-
-**The planner waives a review or sets the review mode only when the Human asked for it, in the Human's words.** tmb cannot tell the Human's ask from the planner's own decision, so the rule lives in the planner's prompt. Each waiver needs a reason, and the record names who waived, the Human or the planner. The Human sees each planner waiver afterwards, on the dashboard and wherever waivers are listed.
-
-- **Example 1.** Human: "That task only fixes a typo, waive its review." The planner waives it, with the Human's words as the reason.
-- **Example 2.** The reviewer failed a branch, and the planner thinks the finding is wrong. It reports to the Human and waives nothing.
-- **Edge case.** In an unattended run no one can ask, so the planner never sets or changes the review mode there ([ENGINE.md](ENGINE.md#unattended-mode)).
-
-**The cost: review no longer gates the planner itself.** A planner that waives can open a pull request no reviewer passed. The record of who waived, and why, is what the Human has.
-
-**A project changes a role's actions.** The table above is tmb's defaults. A project adds a grant or a revoke on top, kept in the record with who made it, so an update that changes a default keeps the project's change. A role's actions are the defaults, plus the project's grants, minus its revokes; the newest change to one action wins. Changing them is itself an action, `permissions.manage`, the Human's by default and grantable: the Human runs `tmb role list`, then `tmb role grant <role> <action>` or `tmb role revoke <role> <action>` on a terminal and types yes. A planner granted `permissions.manage` makes the same change through its tool, on the Human's ask.
-
-- **Example 1.** `tmb role grant worker task.drop` lets the worker drop its own task. `tmb role list` marks the worker as changed.
-- **Example 2.** `tmb role revoke planner task.waive` takes waiving back from the planner. Granting it again puts the default back.
-- **Example 3.** A designer agent created to design a logo is given `task.close`, so it holds reading the record and the code graph, and closing a task, only.
-- **Edge case.** `tmb.uninstall`, `project.remove` and `project.purge` are command-line steps with no tool. They stay the Human's, and granting one is refused with that reason. Reading, which every role may do, is never revoked, and the Human's own actions do not change.
+**Each role holds a set of actions, and the engine checks every call against it.** Who may do what, and why, is in [PERMISSIONS.md](PERMISSIONS.md).
 
 ## Parallel lanes
 
@@ -213,9 +180,14 @@ Two sessions may both be planners.
 
 ## Agents a project creates
 
-**Planned (trustmybot/tmb#437).** tmb is an agent management tool. An agent the project creates is recorded in the record and harnessed like the worker and the reviewer: its file is written in the host's format, its runs are recorded, its tool calls are role-checked, and its work passes the same checkpoints. How one is created and invoked is in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
+**A role the project creates is a real agent of the host, harnessed like the worker and the reviewer.** The planner creates it with a name, a purpose, its prompt and its actions; the adapter writes its file in the host's format, and deleting the role removes the file. What it may do is in [PERMISSIONS.md](PERMISSIONS.md#4-roles-are-data), and how one is made in [4_EXTENDING.md](../flows/4_EXTENDING.md#created-agents).
 
-A consultant is one kind of created agent. It keeps three rules:
+- **Example 1.** The planner creates `designer` to draw a screen. Init and every later setup keep its file, and the planner starts it like a worker.
+- **Example 2.** A designer agent calls tmb's tools with its role. The calls are checked against the actions the designer holds, and its work passes the same checkpoints.
+- **Edge case.** The name is one of tmb's own, such as planner, bro, worker or reviewer. The create is refused: it would shadow the workflow's backbone.
+- **Planned (trustmybot/tmb#437).** A created agent's runs are recorded like a worker's, and its skills are recorded with it.
+
+A consultant is one kind of created agent. Planned (trustmybot/tmb#437). It keeps three rules:
 
 - **Cannot write workflow state.** Its issue, task, status and verdict writes are refused.
 - **Writes analyses** as discussion notes.

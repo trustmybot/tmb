@@ -71,6 +71,14 @@ flowchart LR
 - **Example 3.** The fold conflicts ([3_WORKFLOW.md](3_WORKFLOW.md#safe-close)), or a docs task's commit holds a file that is not a docs type ([Docs task](#docs-task)). The close is refused.
 - **Edge case.** A refused close changes nothing. The task stays open, and the feature branch and the worktree stay as they were.
 
+### Who closes a task
+
+**A code task's worker closes it, and the planner closes its own docs task. The planner may also close any task, with a reason, and the record names who closed each one.** The reason is kept as a note on the task's issue, so no recovery is silent. Who may close is in [PERMISSIONS.md](../architecture/PERMISSIONS.md#6-every-close-is-signed).
+
+- **Example 1.** A worker closes its task. Nothing more is asked, and the record names the worker.
+- **Example 2.** A worker's run ended with its work committed but the task open. The planner closes it with the reason "its worker ended before closing", and the issue shows that note.
+- **Edge case.** The planner closes a worker's task with no reason. The close is refused and says to pass one; the task stays open.
+
 **Checks never fail open.**
 
 - **Example 1.** A check could not run. It is recorded as not run, with the reason, and the task stays open.
@@ -221,11 +229,11 @@ stateDiagram-v2
 - **Example 2.** A task is dropped. Its work reaches no branch. A new task can name the dropped task it replaces, so a chain of retries reads as one line.
 - **Edge case.** Dropping keeps what holds work ([3_GIT.md](3_GIT.md#closing-a-task)).
 
-**Review is the default, and a waiver is the Human's call.** The Human waives on a terminal, or asks the planner to waive ([ROLES.md](../architecture/ROLES.md#permissions)).
+**Review is the default, and a waiver is the Human's call.** The Human waives on a terminal, or asks the planner to waive ([PERMISSIONS.md](../architecture/PERMISSIONS.md#3-the-planner-takes-the-humans-steps-only-when-asked)).
 
 - **Example 1.** A truest task is in review. It keeps its worktree. Only a reviewer run records the verdict, and only on the task's current commit.
 - **Example 2.** An agile task closes unreviewed. Its review state is on the feature branch, not the task ([3_WORKFLOW.md](3_WORKFLOW.md#review-state)).
-- **Example 3.** The Human waives a review. A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner never waives.
+- **Example 3.** The Human waives a review. A waiver is given per truest task or per feature branch, with a reason, on a terminal with a typed yes. It counts as a pass on the current commit and is kept in the record as a waiver. The planner waives only on the Human's ask.
 - **Edge case.** The repo has no remote, so the reviewed task is ready. The Human merges locally with the command tmb gives, and tmb then counts the work as merged ([3_WORKFLOW.md](3_WORKFLOW.md#a-project-with-no-remote)). A ready task the Human will not merge is dropped.
 
 **Auditing is a join.** A task's story is its events in order, joined with its runs, check runs and reviews.

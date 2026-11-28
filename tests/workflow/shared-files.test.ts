@@ -15,13 +15,13 @@ const FEATURE = "feat/shared";
 const SHARED = "src/shared.ts";
 const ORIGINAL = "export const one = 1;\nexport const two = 2;\nexport const three = 3;\nexport const four = 4;\nexport const five = 5;\n";
 
-const { git, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-shared-files-");
+const { git, tmbJson, setUpProject, commitFile, connect, cleanup, tool } = tmbProcesses("tmb-shared-files-");
 afterAll(cleanup);
 
 describe("two open tasks share a file", () => {
   test("both start, the second told of the first; different lines both fold; the same lines stop the later close", async () => {
     const project = setUpProject("true", { "README.md": "hello\n", [SHARED]: ORIGINAL });
-    const issue = tmbJson(["issue", "create", "Two changes to one file"], project);
+    const issue = tool(project, "issue_create", { title: "Two changes to one file" });
     const client = await connect(project);
     try {
       await callJson(client, "feature_start", { name: FEATURE });

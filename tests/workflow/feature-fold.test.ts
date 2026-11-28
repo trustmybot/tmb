@@ -14,7 +14,7 @@ const FEATURE = "feat/greeting";
 const CODE_FILE = "src/greet.ts";
 const DOCS_FILE = "docs/greeting.md";
 
-const { git, tmbJson, setUpProject, connect, cleanup } = tmbProcesses("tmb-workflow-feature-");
+const { git, tmbJson, setUpProject, connect, cleanup, tool } = tmbProcesses("tmb-workflow-feature-");
 afterAll(cleanup);
 
 /** Writes and commits one file in the worktree, as the one doing the task would; returns the commit. */
@@ -30,7 +30,7 @@ describe("a feature branch collects its tasks", () => {
   test("a code task and then a docs task, each started and closed in turn, fold into the feature branch in order", async () => {
     const project = setUpProject("true");
     const base = git(project, "rev-parse", "main");
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project);
     try {
       const feature = await callJson(client, "feature_start", { name: FEATURE });

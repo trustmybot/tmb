@@ -12,7 +12,7 @@ import { BASE_BRANCH, CLI, tmbProcesses } from "../../lib/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, run, tmb, human, setUpProject, cleanup } = tmbProcesses("tmb-human-only-");
+const { scratch, env, git, run, tmb, human, setUpProject, cleanup, tool } = tmbProcesses("tmb-human-only-");
 afterAll(cleanup);
 
 /** Each file under the project, git's own objects aside, by a hash of its bytes. */
@@ -57,7 +57,7 @@ const steps = (name: string): { args: string[]; command: string }[] => [
 describe("a step only the Human may take", () => {
   test("with no terminal, each is refused and changes nothing, and the record holds no entry by the Human from it", () => {
     const project = setUpProject("true");
-    tmb(["feature", "start", "feat/wave"], project);
+    tool(project, "feature_start", { name: "feat/wave" });
     const before = snapshot(project);
     const entries = humanEntries(project);
     for (const step of steps(path.basename(project))) {

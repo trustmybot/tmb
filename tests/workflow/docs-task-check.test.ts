@@ -10,7 +10,7 @@ import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { git, tmbJson, setUpProject, connect, cleanup } = tmbProcesses("tmb-workflow-docs-check-");
+const { git, tmbJson, setUpProject, connect, cleanup, tool } = tmbProcesses("tmb-workflow-docs-check-");
 afterAll(cleanup);
 
 function commitFiles(worktree: string, files: Record<string, string>, message: string): string {
@@ -26,7 +26,7 @@ function commitFiles(worktree: string, files: Record<string, string>, message: s
 describe("a docs task is checked by file type at its close", () => {
   test("touching a source file is refused and named; touching only docs closes", async () => {
     const project = setUpProject("true");
-    const issue = tmbJson(["issue", "create", "Document the greeting"], project);
+    const issue = tool(project, "issue_create", { title: "Document the greeting" });
     const client = await connect(project);
     try {
       await callJson(client, "feature_start", { name: "feat/greeting-docs" });

@@ -147,8 +147,8 @@ A project of one repo whose folder later becomes a workspace keeps its tasks. `t
 - On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. It asks for the workspace's review mode once, then asks once whether any repo takes its own, and asks each repo only on a yes.
 - The planner sets the same with `settings_set` and `repos`. A repo it names keeps no part of its old policy except its review mode, which stays unless the planner names one or `workspace`. Repos it does not name keep theirs.
 - `base_branch`, `checks` and `shared_folders` are not used in a multi-repo workspace: each repo has its own in `repos`, and `settings_set` refuses them.
-- `tmb feature start <name> --repo <name>` and `tmb task start ... --repo <name>` name the repo; with several repos, one that names none is refused with the list.
-- Each repo works in its own review mode: `tmb feature start` is refused in a repo in truest mode, and a task there goes into review at close. `tmb config` and the session start show each repo's mode.
+- The planner names the repo when it starts a feature branch or a task; with several repos, one that names none is refused with the list.
+- Each repo works in its own review mode: a feature branch is refused in a repo in truest mode, and a task there goes into review at close. `tmb config` and the session start show each repo's mode.
 
 ### Onboarding by itself
 
@@ -210,7 +210,7 @@ When no one can answer during a run, such as in CI, a scheduled job or an agent 
 
 ## Help and mistyped commands
 
-`tmb --help` lists the commands in four groups, one line each. `tmb help <command>` and `tmb <command> --help` give that command's detail, and the same works one level down, as in `tmb task close --help`. The commands only a host or git calls are left out; `tmb help --all` lists them last.
+`tmb --help` lists the commands in four groups, one line each. `tmb help <command>` and `tmb <command> --help` give that command's detail, and the same works one level down, as in `tmb task waive --help`. The commands only a host or git calls are left out; `tmb help --all` lists them last.
 
 A command tmb does not know is answered with the closest one, a usage line and where to read more, never with the full help:
 
@@ -300,37 +300,26 @@ The planner has two tools for this, `feedback_draft` and `feedback_send`. Both a
 
 ## The record from the command line
 
-The planner records work through tmb's tools. You can read and change the same record yourself, from the project folder or any folder below it, such as one repo of a workspace. The flows behind these commands are in [3_TASKS.md](../flows/3_TASKS.md), [3_WORKFLOW.md](../flows/3_WORKFLOW.md) and [3_GIT.md](../flows/3_GIT.md).
+The planner records work through tmb's tools: issues and notes, feature branches, tasks and pull requests. You read the same record yourself, and take the few steps that are yours, from the project folder or any folder below it, such as one repo of a workspace. The flows behind these commands are in [3_TASKS.md](../flows/3_TASKS.md), [3_WORKFLOW.md](../flows/3_WORKFLOW.md) and [3_GIT.md](../flows/3_GIT.md).
 
 | Command | Does |
 |---|---|
-| `tmb issue create <title> [--body <text>] [--milestone <name>]` | Record a new issue |
 | `tmb issue list [--state open\|closed]` | List issues |
 | `tmb issue show <id>` | Show an issue with its notes and decisions |
-| `tmb issue close <id>`, `tmb issue reopen <id>` | Close or reopen an issue |
-| `tmb note <issue-id> <text> [--decision]` | Add a note, or a decision with `--decision` |
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |
 | `tmb config` | Show the project's settings: host, base branch, review mode, checks and, in a multi-repo workspace, the repos, one per line. In a project where `tmb init` has not run, it says so. |
-| `tmb feature start <name>` | Start a feature branch, cut from the latest commit of the base branch on `origin`, fetched first, and checked out nowhere. tmb cuts from your local base branch when that holds a commit `origin` lacks, when there is no `origin`, or when `origin` is out of reach. Refused: a name git does not accept as a branch name, a name starting with `-` or under `tmb/`, a branch that already exists, a project with no base branch set, and truest mode, where a task is cut from the base branch. In a multi-repo workspace, `--repo <name>` names the repo. |
 | `tmb feature list` | List the feature branches, each with the base branch and commit it was cut from, its state and the ids of its tasks. A branch whose pull request is open is checked on GitHub first, through `gh`: `merged` once the pull request merged, `closed` when it closed without a merge. A `ready` branch (a repo with no remote) shows as `merged` once the local base branch holds its work: merged, squashed or rebased onto it by hand. Its line says how to end it when tmb cannot see its merge. |
-| `tmb task start <issue-id> --kind code\|docs [--feature <name>] --intent <text> --file <path>... --criterion <text>... [--check <command>]...` | Start a task on an open issue. `--kind` says who writes it: `code` for a worker, `docs` for the planner. tmb cuts the branch `tmb/<short id>`, named after the last eight characters of the task id, from the tip of the feature branch, and adds its worktree under `.tmb/worktrees/`. Without `--feature` it uses the only open feature branch. `--feature` can also name a branch whose pull request is open, for a fix, a closed branch, or one ready for a local merge (a repo with no remote), which opens it again. Refused: no open feature branch or several with no `--feature`, a merged branch, no base branch set, no review mode chosen. When a file is also in another open task's spec, the task still starts and tmb names the tasks that share it. In truest mode the task is cut from the base branch and `--feature` is refused. In a multi-repo workspace, `--repo <name>` names the repo. `--replaces <id>` names the dropped task whose work this one takes up another way; it is refused for a task that is not dropped. |
 | `tmb task list [--state open\|in_review\|ready\|closed\|dropped\|all]` | List the open tasks, or those in review, the ready ones (waiting for the Human's local merge in a repo with no remote), the closed ones, each with the commit it closed at, the dropped ones, or all |
 | `tmb task brief <id>` | Show a task's kind, feature branch, spec, branch, worktree and the checks that run when it closes |
-| `tmb task close <id>` | Run the checks on the task's commit; when they all pass, close the task, fold it into its feature branch and push that branch to `origin` ([Closing a task](#closing-a-task)). While the feature branch's pull request is open the push is left out, and tmb says so: the new tip reaches the pull request through `tmb feature pr`, after its review. In truest mode the task is not folded: it goes into review at that commit. |
-| `tmb feature update <name>` | Bring the base branch into a feature branch before its review: tmb fetches the base, merges it in with a merge commit and pushes the branch as a backup. While the branch's pull request is open the push is left out, as for `tmb task close`. A conflict changes nothing and names the files. A merged branch is refused. |
 | `tmb feature brief <name>` | Show a feature branch's tip, its tasks, reviews and waivers |
 | `tmb feature waive <name> --reason <text>` | Waive the review of a feature branch at its tip. The Human only, on a terminal: it asks you to type yes. |
-| `tmb feature pr <name> --title <text> [--body <text>]` | Open the feature branch's pull request into the base branch, once the reviewer passed its tip or you waived the review. When the pull request is already open, it pushes the reviewed tip to it and returns the same pull request. On a closed branch it opens a new one, or records the one already open from the branch. In a repo with no remote nothing is pushed: the branch is recorded ready and tmb prints the command to merge it locally, and how to end the branch with `tmb feature drop` if its work reaches the base branch in a way tmb cannot see. A merged or dropped branch is refused. |
-| `tmb feature drop <name> --reason <text>` | End a feature branch without a merge tmb saw: one nobody will merge, or one whose work reached the base branch another way (say where in the reason). An open, closed or ready branch is dropped; one whose pull request is open is refused, so close the pull request first. Refused while a task on it is open or in review. The branch is recorded as dropped with the reason and kept in git; tmb names the command that deletes it. A dropped branch takes no task and opens no pull request. The planner may drop one too. |
-| `tmb task drop <id> --reason <text>` | End an open task, or a truest task in review, without its work. The task is recorded as dropped with the reason. Its worktree is removed by the rules for a closed task ([Closing a task](#closing-a-task)); its branch is kept while it holds commits, and tmb names it and the command that deletes it. |
 | `tmb task waive <id> --reason <text>` | Waive the review of a truest task at its commit. The Human only, on a terminal: it asks you to type yes. |
-| `tmb task pr <id> --title <text> [--body <text>]` | Open a truest task's pull request into the base branch, once the reviewer passed it or you waived the review. In a repo with no remote nothing is pushed: the task is recorded ready and tmb prints the command to merge its branch locally |
 | `tmb graph map\|find\|symbol\|scope\|concepts\|areas` | Look things up in the code graph ([Code graph lookups](#code-graph-lookups)) |
 | `tmb index [--rebuild]` | Bring the code graph up to date, or build it again from nothing. It prints how many files could not be parsed and how many imports of the repo's own code link to no file |
 | `tmb dashboard [--port <n>] [--project <dir>]` | Open the dashboard, a local web page over the record |
 
-Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host.
+Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host. To record an issue, a note or a task, ask the planner ([PERMISSIONS.md](../architecture/PERMISSIONS.md#2-the-human-holds-a-narrow-set)).
 
 ### Code graph lookups
 
@@ -348,7 +337,7 @@ With neither `--task` nor `--feature`, `scope` reads the repo's only open featur
 
 ### Closing a task
 
-`tmb task close` goes through these steps, and a refusal at any of them leaves the task open, the feature branch where it was and the worktree as it was. The design is in [3_WORKFLOW.md](../flows/3_WORKFLOW.md) and [3_GIT.md](../flows/3_GIT.md).
+A task's close goes through these steps, whoever closes it, and a refusal at any of them leaves the task open, the feature branch where it was and the worktree as it was. The design is in [3_WORKFLOW.md](../flows/3_WORKFLOW.md) and [3_GIT.md](../flows/3_GIT.md).
 
 | Step | Refused when | tmb says |
 |---|---|---|
@@ -414,15 +403,15 @@ It keeps the record in `.tmb/`, because that is your data. It does not remove th
 
 ## Roles and their actions
 
-Each role takes the actions in tmb's [permission table](../architecture/ROLES.md#permissions), changed by your grants and revokes. `tmb role grant worker task.drop` lets the worker drop its own task; `tmb role revoke planner task.waive` takes waiving away from the planner. Each change is recorded with who made it.
+Each role takes the actions in tmb's [permission table](../architecture/PERMISSIONS.md), changed by your grants and revokes. `tmb role grant worker task.drop` lets the worker drop its own task; `tmb role revoke planner task.waive` takes waiving away from the planner. Each change is recorded with who made it.
 
-- A role tmb does not ship can be named too: it starts with reading the record and the code graph only.
+- The planner creates and deletes the project's own roles. A role with no actions granted holds only reading the record and the code graph, and a grant to a role that does not exist is refused.
 - Refused: granting `tmb.uninstall`, `project.remove` or `project.purge`, which stay yours; revoking reading; changing your own actions; an action tmb does not have.
-- Granting `permissions.manage` to the planner lets it make these changes through its tool, when you ask it to.
+- The planner makes these changes too, through its tool, but never grants its own role an action, nor one it does not hold. Those are yours, with `tmb role grant`.
 
 ## Steps only you may take
 
-Some commands are rows of yours in the [permission table](../architecture/ROLES.md#permissions): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, `tmb role grant`, `tmb role revoke`, `tmb remove` and `tmb purge`. `tmb update` is not one. The planner may also waive and set the review mode through tmb's tools, when you ask it to; the record names who waived. The rule is in [ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine).
+Some commands are rows of yours in the [permission table](../architecture/PERMISSIONS.md): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, `tmb role grant`, `tmb role revoke`, `tmb remove` and `tmb purge`. `tmb update` is not one. The planner may also waive and set the review mode through tmb's tools, when you ask it to; the record names who waived. The rule is in [ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine).
 
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.

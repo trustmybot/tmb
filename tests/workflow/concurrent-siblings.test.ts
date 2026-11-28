@@ -13,14 +13,14 @@ setDefaultTimeout(30_000);
 
 const FEATURE = "feat/siblings";
 
-const { scratch, git, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-concurrent-siblings-");
+const { scratch, git, tmbJson, setUpProject, commitFile, connect, cleanup, tool } = tmbProcesses("tmb-concurrent-siblings-");
 afterAll(cleanup);
 
 describe("concurrent sibling tasks: each folds into the feature branch as it stands", () => {
   test("two tasks on one feature branch; each close folds, the second rebased and checked again", async () => {
     const project = setUpProject("true");
     const base = git(project, "rev-parse", "main");
-    const issue = tmbJson(["issue", "create", "Two independent changes"], project);
+    const issue = tool(project, "issue_create", { title: "Two independent changes" });
     // The second task's own check logs each commit it runs on, so the test sees every check run.
     const checkedLog = path.join(scratch, "sibling-b-checked.log");
     const client = await connect(project);

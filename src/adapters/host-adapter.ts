@@ -58,9 +58,14 @@ export interface HostAdapter {
   /**
    * Wires the host to tmb in the project; returns what changed, one line each. `tmbCommand`
    * runs this tmb: its executable, then its entry file when it runs from source. `roles` are
-   * the subagent roles to write, the engine's list unless given.
+   * the subagent roles to write: unless given, the ones tmb ships and the ones the project's record holds.
    */
   setup(projectDir: string, tmbCommand: readonly string[], roles?: readonly SubagentRole[]): string[];
+  /**
+   * Writes the project's subagent roles into the host's agent files and removes tmb's file of a
+   * role no longer listed, as setup does; returns what changed, one line each.
+   */
+  writeRoles?(projectDir: string, roles: readonly SubagentRole[]): string[];
   /** Undoes exactly what init added; returns what changed, one line each. */
   remove(projectDir: string): string[];
   /**
