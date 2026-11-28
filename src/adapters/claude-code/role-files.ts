@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CAPABILITIES, type Capability, type SubagentRole } from "../../engine/index.ts";
+import { inGitWorkTree } from "../../engine/repos.ts";
 import { deleteFile } from "../common/json-file.ts";
 
 const AGENTS_RELATIVE = path.join(".claude", "agents");
@@ -44,11 +45,22 @@ export function isTmbFile(file: string): boolean {
 }
 
 /**
+ * Where Claude Code can make a subagent's worktree: it cuts one only from a git work tree, so a
+ * workspace folder that holds repos and is none gets no worktree from it (trustmybot/tmb#463).
+ */
+export type RoleFileOptions = { hostWorktree: boolean };
+
+/** Whether Claude Code can make a role's worktree in the project, as its agent files are written for. */
+export function roleFileOptions(projectDir: string): RoleFileOptions {
+  return { hostWorktree: inGitWorkTree(projectDir) };
+}
+
+/**
  * The role as a Claude Code agent file. Values are JSON strings, which YAML reads as quoted
  * scalars; the deny list is one comma-separated string, the form Claude Code documents, and
  * a role that lacks no capability has none.
  */
-export function roleFileText(role: SubagentRole): string {
+export function roleFileText(role: SubagentRole, options: RoleFileOptions = { hostWorktree: true }): string {
   const lines = [
     "---",
     MARKER,
@@ -58,7 +70,8 @@ export function roleFileText(role: SubagentRole): string {
   const denied = roleDeniedTools(role);
   if (denied.length > 0) lines.push(`disallowedTools: ${JSON.stringify(denied.join(", "))}`);
   // Claude Code makes the worktree the role's working folder and keeps its edits there; tmb adopts it as the task's.
-  if (role.ownWorktree) lines.push(`isolation: "worktree"`);
+  // Where it cannot make one, the start would fail, so the role starts without and works in the worktree tmb cut.
+  if (role.ownWorktree && options.hostWorktree) lines.push(`isolation: "worktree"`);
   if (role.model) lines.push(`model: ${JSON.stringify(role.model)}`);
   if (role.effort) lines.push(`effort: ${JSON.stringify(role.effort)}`);
   lines.push("---", "", role.prompt.trimEnd(), "");
@@ -70,10 +83,11 @@ export type RoleFilesResult = { written: string[]; current: string[]; notOurs: s
 
 export function writeRoleFiles(projectDir: string, roles: readonly SubagentRole[]): RoleFilesResult {
   const result: RoleFilesResult = { written: [], current: [], notOurs: [], removed: [] };
+  const options = roleFileOptions(projectDir);
   for (const role of roles) {
     if (!ROLE_NAME.test(role.name)) throw new Error(`role name ${JSON.stringify(role.name)} must be lowercase letters, digits and hyphens`);
     const file = roleFilePath(projectDir, role.name);
-    const text = roleFileText(role);
+    const text = roleFileText(role, options);
     if (existsSync(file)) {
       if (!isTmbFile(file)) {
         result.notOurs.push(role.name);
@@ -112,12 +126,13 @@ export function removeRoleFiles(projectDir: string, only: (file: string) => bool
 /** What `tmb doctor` finds wrong with tmb's role files: one line each, none when init would change nothing. Never writes. */
 export function roleFileGaps(projectDir: string, roles: readonly SubagentRole[]): string[] {
   const gaps: string[] = [];
+  const options = roleFileOptions(projectDir);
   for (const role of roles) {
     const file = roleFilePath(projectDir, role.name);
     const shown = path.relative(projectDir, file);
     if (!existsSync(file)) gaps.push(`${shown} is missing: the ${role.name} role is not written`);
     else if (!isTmbFile(file)) gaps.push(`${shown} is not tmb's, so the ${role.name} role is not tmb's either; tmb leaves it alone`);
-    else if (readFileSync(file, "utf8") !== roleFileText(role)) gaps.push(`${shown} is not this version's ${role.name} role`);
+    else if (readFileSync(file, "utf8") !== roleFileText(role, options)) gaps.push(`${shown} is not this version's ${role.name} role`);
   }
   const wanted = new Set(roles.map((role) => roleFilePath(projectDir, role.name)));
   const dir = agentsDir(projectDir);

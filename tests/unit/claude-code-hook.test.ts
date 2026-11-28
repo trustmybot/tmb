@@ -213,12 +213,10 @@ describe("hook post-tool-use-failure (trustmybot/tmb#285)", () => {
     return answerHook("post-tool-use-failure", JSON.stringify({ hook_event_name: "PostToolUseFailure", cwd: project, error: "Cannot create agent worktree: not in a git repository", ...extra }), ATTENDED);
   }
 
-  test("a worker start from the workspace folder is denied before any run opens, telling bro where to start it", () => {
+  test("a worker start from the workspace folder, which is no repo, opens its run on the task's repo (trustmybot/tmb#463)", () => {
     const taskId = openTask();
-    const output = JSON.parse(preToolUse("Agent", { subagent_type: "worker", prompt: `task_id=${taskId}` }));
-    expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
-    expect(output.hookSpecificOutput.permissionDecisionReason).toContain(`Change into ${path.join(project, "api")}`);
-    expect(openWorkerRuns()).toBe(0);
+    expect(preToolUse("Agent", { subagent_type: "worker", prompt: `task_id=${taskId}` })).toBe("");
+    expect(openWorkerRuns()).toBe(1);
   });
 
   test("an Agent call that failed after its start was allowed ends the run the start opened", () => {

@@ -101,9 +101,6 @@ function preToolUse(input: JsonObject): string {
   const toolInput = isObject(input.tool_input) ? input.tool_input : {};
   const role = tool.roleField === undefined ? roleOf(input) : (stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT);
   const event = eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? "", role);
-  // Claude Code cuts a worker's own worktree from the folder the session is in (trustmybot/tmb#285).
-  const folder = stringField(input, "cwd");
-  if (tool.type === "before-agent-start" && folder !== undefined) event.startFolder = folder;
   const answer = decide(event);
   if (answer.decision === "allow") return "";
   return JSON.stringify({
