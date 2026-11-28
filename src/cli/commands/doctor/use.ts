@@ -3,7 +3,7 @@
 // in a workspace, and worktrees a session can work in with none of tmb's wiring. Each reads only
 // and is a warning at most: tmb does not own the repos, and a push typed by hand stays allowed.
 import { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { findPluginDb } from "../../../adapters/index.ts";
 import { detectBaseBranch, inGitWorkTree, parseRemoteUrl, PLUGIN_IMPORT, repoDirOf, runGit, scanRepos, type Settings, type Store, tasksWithNoRepo, unnamedRepos, workingRepos } from "../../../engine/index.ts";
@@ -254,6 +254,15 @@ export function repoOfTasksCheck(env: DoctorEnv, store: Store, settings: Setting
   });
 }
 
+/** A folder's path with every link in it followed, so two spellings of one folder compare equal. */
+function realPath(dir: string): string {
+  try {
+    return realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+}
+
 /** The worktrees git lists for a repo, the repo's own folder left out. */
 function worktreesOf(repoDir: string): string[] {
   const listed = runGit(repoDir, ["worktree", "list", "--porcelain"]);
@@ -277,11 +286,11 @@ export function unwiredWorktreesCheck(env: DoctorEnv, projectDir: string, store:
   const ids = [...new Set([...Object.keys(settings.host_roles ?? {}), ...(settings.host === null ? [] : [settings.host])])];
   const adapters = env.adapters.filter((adapter) => ids.includes(adapter.id) && adapter.wiringGaps !== undefined);
   if (adapters.length === 0) return finding("unwired sessions", { status: "ok", summary: "no host here whose files this tmb can check" });
-  const tasks = new Set(store.listTasks().flatMap((task) => (task.worktree === null ? [] : [path.resolve(task.worktree)])));
+  const tasks = new Set(store.listTasks().flatMap((task) => (task.worktree === null ? [] : [realPath(task.worktree)])));
   const unwired: string[] = [];
   for (const repo of reposOf(projectDir, settings)) {
     for (const dir of worktreesOf(repoDirOf(projectDir, repo))) {
-      if (!existsSync(dir) || tasks.has(path.resolve(dir))) continue;
+      if (!existsSync(dir) || tasks.has(realPath(dir))) continue;
       const missing = adapters.filter((adapter) => adapter.wiringGaps!(dir, command).length > 0).map((adapter) => adapter.name);
       if (missing.length > 0) unwired.push(`${dir}: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not wired there`);
     }
