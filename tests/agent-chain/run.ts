@@ -41,9 +41,9 @@ show("session 2 answer", resumeLog);
 if (recordStatus !== 0) fail(`session 1: claude exited ${recordStatus}`);
 // The list clips each body, so each open issue is read whole, and only its own title or body
 // may match, never its notes.
-const issues = tmb.json<{ id: string }[]>(["issue", "list", "--state", "open"]);
+const issues = tmb.json<{ issues: { id: string }[] }>(["issue", "list", "--state", "open", "--limit", "200"]);
 const needle = goal.toLowerCase();
-const found = issues.data.find(({ id }) => {
+const found = issues.data.issues.find(({ id }) => {
   const { issue } = tmb.json<{ issue: { title: string; body: string } }>(["issue", "show", id]).data;
   return issue.title.toLowerCase().includes(needle) || issue.body.toLowerCase().includes(needle);
 });

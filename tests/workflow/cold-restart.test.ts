@@ -50,6 +50,6 @@ describe("a cold restart: a new session resumes from the record", () => {
     } finally {
       await second.close();
     }
-    expect(tmbJson(["issue", "list", "--state", "open"], project).map((open: any) => open.id)).toEqual([issue.id]);
+    expect(tmbJson(["issue", "list", "--state", "open"], project).issues.map((open: any) => open.id)).toEqual([issue.id]);
   });
 });
