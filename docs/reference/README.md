@@ -177,11 +177,12 @@ The keys, and where they are kept, are in [CONFIG.md](../architecture/CONFIG.md)
 
 - Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
-- Adds six hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
+- Adds seven hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - Two SessionStart hooks start each session. `tmb hook session-start-role` gives the role this host was set up with, the planner unless you chose the reviewer. `tmb hook session-start` gives the open work from the record. They are two because Claude Code caps the text one hook may add.
   - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write and reads no shell command.
   - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
+  - A UserPromptSubmit hook runs `tmb hook user-prompt-submit` when you send the main agent a message. It adds the issues you changed outside the chat, such as on the dashboard, since the planner was last told, and prints nothing when there are none.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Lists the project's shared folders under `worktree.symlinkDirectories` in `.claude/settings.local.json`, beside your own entries, so every worktree Claude Code makes links them; tmb's onboarding and `settings_set` keep the list current, and `tmb remove` takes only tmb's entries away.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
@@ -319,7 +320,7 @@ The planner records work through tmb's tools: issues and notes, feature branches
 | `tmb index [--rebuild]` | Bring the code graph up to date, or build it again from nothing. It prints how many files could not be parsed and how many imports of the repo's own code link to no file |
 | `tmb dashboard [--port <n>] [--project <dir>]` | Open the dashboard, a local web page over the record |
 
-Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host. To record an issue, a note or a task, ask the planner ([PERMISSIONS.md](../architecture/PERMISSIONS.md#2-the-human-holds-a-narrow-set)).
+Add `--json` to any of them for JSON output. A change you make here is recorded as yours, and one made through the tools names the agent's role and host. To record an issue, ask the planner; to change one, add a note or a decision, or close or reopen it, use the dashboard or ask the planner, which is told of each change you make there. A task changes only through the planner ([PERMISSIONS.md](../architecture/PERMISSIONS.md#2-the-human-shares-the-planners-decisions-and-stays-out-of-its-agents-work)).
 
 ### Code graph lookups
 

@@ -4,7 +4,7 @@ Who may take each action in a tmb project, and why. What each role is for is in 
 
 ```mermaid
 flowchart LR
-    H["The Human<br/>command line"] --> C{"One check:<br/>does the caller's role hold the action?"}
+    H["The Human<br/>command line or dashboard"] --> C{"One check:<br/>does the caller's role hold the action?"}
     A["An agent<br/>tool call, with its role"] --> C
     D["tmb's defaults"] --> S["The role's actions"]
     G["The project's grants and revokes, in the record"] --> S
@@ -25,8 +25,8 @@ flowchart LR
 | `permissions.manage` | Grant or revoke a role's actions | ✓ | ✓ | | |
 | `settings.review-mode` | Choose or change the review mode | ✓ | ✓ on the Human's ask | | |
 | `feature.waive`, `task.waive` | Waive a review | ✓ | ✓ on the Human's ask | | |
-| `role.create`, `role.delete` | Create a role, or delete one the project created | | ✓ | | |
-| `settings.set`, `issue.*`, `feature.start`, `feature.update`, `feature.drop`, `feature.pr`, `task.start`, `task.drop`, `task.pr`, `graph.write`, `feedback.send` | Other settings, issues and notes, feature branches, start or drop a task, open a pull request, the code graph's knowledge, feedback to tmb | | ✓ | | |
+| `issue.*`, `feature.start`, `feature.update`, `feature.drop`, `feature.pr`, `settings.set`, `role.create`, `role.delete`, `feedback.send` | Issues and their notes and decisions, feature branches and their pull requests, other settings, the project's roles, feedback to tmb | ✓ | ✓ | | |
+| `task.start`, `task.drop`, `task.pr`, `graph.write` | Start or drop a task, open its pull request, the code graph's knowledge | | ✓ | | |
 | `task.close` | Close a task | | ✓ any task | ✓ its own | |
 | `review.record` | Record a review verdict | | | | ✓ |
 | `record.read`, `graph.read` | Read the record, a brief and the code graph | ✓ | ✓ | ✓ | ✓ |
@@ -35,13 +35,20 @@ flowchart LR
 - **Example 2.** The reviewer reads a task's brief. Reading a brief is reading the record, which every role may do.
 - **Edge case.** An agent names a role that is neither shipped nor created. It holds only what every role may: reading the record and the code graph.
 
-## 2. The Human holds a narrow set
+## 2. The Human shares the planner's decisions, and stays out of its agents' work
 
-**The Human is a role, not a super-role. It holds only the steps that are the Human's call: remove, purge and uninstall, managing roles, the review mode and the waivers.** tmb keeps its demands on the Human's attention small, and the planner acts for the Human on everything else.
+**The Human and the planner hold the same actions on what they decide together: issues, feature branches, settings, roles, feedback and the waivers. The Human holds nothing between the planner and its agents: tasks, review verdicts and the code graph's knowledge, and no grant gives it any.** A Human edit there would change work under an agent that does not know of it, so the Human asks the planner instead. Holding an action is not a command: the Human takes these through the dashboard or the chat with the planner, and the command line keeps only the Human's own steps ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
 
-- **Example 1.** The Human types `tmb task waive T-3 --reason "typo fix"`. The Human holds `task.waive`, and the command runs once the Human types yes on the terminal ([ENGINE.md](ENGINE.md#ways-into-the-engine)).
-- **Example 2.** The Human wants a new issue. They say so in the chat, and the planner records it. There is no command that writes an issue.
-- **Edge case.** The Human wants the planner to stop opening pull requests. They run `tmb role revoke planner feature.pr`.
+```mermaid
+flowchart LR
+    H["The Human"] -- "issues, feature branches, settings, roles, waivers" --- P["The planner"]
+    P -- "tasks, verdicts, the code graph" --- A["Workers, the reviewer, created roles"]
+```
+
+- **Example 1.** The Human closes an issue on the dashboard. The Human holds the action, so the close runs and the record names the Human. The planner is told before its next turn ([ENGINE.md](ENGINE.md#tmbs-own-events)).
+- **Example 2.** The Human wants a task dropped. There is no way to drop it from the dashboard; they tell the planner, which drops it and knows why.
+- **Example 3.** The Human types `tmb task waive T-3 --reason "typo fix"`. A waiver is the Human's call about a review, not a change to the task, and the command runs once the Human types yes on the terminal.
+- **Edge case.** The Human runs `tmb role grant human task.close`. It is refused: the Human's own actions are not granted or revoked.
 
 ## 3. The planner takes the Human's steps only when asked
 
@@ -74,7 +81,7 @@ flowchart LR
 
 - **Example 1.** `tmb role grant planner project.purge` is refused: it is the Human's alone.
 - **Example 2.** The planner asks to grant itself `review.record`. It is refused, and the message names the command the Human runs instead.
-- **Edge case.** Reading, which every role may do, is never revoked, and the Human's own actions do not change.
+- **Edge case.** Reading, which every role may do, is never revoked, and the Human's own actions do not change, so the Human never holds a task, a verdict or the code graph's knowledge.
 
 ## 6. Every close is signed
 
