@@ -16,7 +16,7 @@ setDefaultTimeout(30_000);
 const REPO = REPO_ROOT;
 const WINDOWS = process.platform === "win32";
 const NAME = "tmb-dev";
-const COMMANDS = ["init", "onboard", "config", "remove", "purge", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "feedback", "doctor", "help"];
+const COMMANDS = ["init", "onboard", "config", "remove", "purge", "role", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "feedback", "doctor", "help"];
 // A printed command of plain tmb: `tmb` (not part of a longer name or a path) then a command or a flag.
 const PLAIN = new RegExp(`(?<![\\w./-])tmb (?:(?:${[...COMMANDS, "mcp", "hook", "pre-push"].join("|")})\\b|--)`);
 

@@ -11,7 +11,10 @@ import {
   type NewFeedbackReport,
   type NewGuardDecision,
   type NewImport,
+  type NewRoleChange,
   type NewSettingChange,
+  type RoleChange,
+  RoleChangeRepository,
   type SettingChange,
   SettingChangeRepository,
 } from "./audit.ts";
@@ -54,6 +57,7 @@ export class Store {
   readonly runs: RunRepository;
   readonly reviews: ReviewRepository;
   readonly settingChanges: SettingChangeRepository;
+  readonly roleChanges: RoleChangeRepository;
   readonly audit: AuditRepository;
 
   /** Use openStore; it checks the file and its schema version first. */
@@ -65,6 +69,7 @@ export class Store {
     this.runs = new RunRepository(this.log);
     this.reviews = new ReviewRepository(this.log);
     this.settingChanges = new SettingChangeRepository(this.log);
+    this.roleChanges = new RoleChangeRepository(this.log);
     this.audit = new AuditRepository(this.log);
   }
 
@@ -153,6 +158,8 @@ export class Store {
   recordSettingChange(actor: Actor, change: NewSettingChange): string { return this.settingChanges.recordSettingChange(actor, change); }
   newestSettingChange(key: string, repo: string | null = null, valued = false): SettingChange | null { return this.settingChanges.newestSettingChange(key, repo, valued); }
   listSettingChanges(key?: string): SettingChange[] { return this.settingChanges.listSettingChanges(key); }
+  recordRoleChange(actor: Actor, change: NewRoleChange): string { return this.roleChanges.recordRoleChange(actor, change); }
+  listRoleChanges(): RoleChange[] { return this.roleChanges.listRoleChanges(); }
   recordFreeze(actor: Actor, freeze: { reason: string; sessionId?: string | null }): string { return this.audit.recordFreeze(actor, freeze); }
   liftFreeze(actor: Actor, id: string, at: string): void { this.audit.liftFreeze(actor, id, at); }
   recordFeedbackReport(actor: Actor, report: NewFeedbackReport): string { return this.audit.recordFeedbackReport(actor, report); }

@@ -1,5 +1,6 @@
 // The Human's own steps from the command line: the rows of the permission table the Human may
-// take that change something (both waivers, setting the review mode, `tmb remove` and `tmb purge`).
+// take that change something (both waivers, setting the review mode, granting or revoking a role's
+// action, `tmb remove` and `tmb purge`).
 // The command line records its caller as the Human, so it runs one only on a terminal, after the
 // Human types yes, as an agent's shell has none; and the host's guard reads an agent's shell
 // command and denies one, with the reason, on a host that can deny a shell command.
@@ -34,6 +35,7 @@ export function humanOnlyStep(args: readonly string[]): HumanOnlyStep | null {
   const [command, action] = args;
   if (command === "feature" && action === "waive") return step("feature.waive", "tmb feature waive");
   if (command === "task" && action === "waive") return step("task.waive", "tmb task waive");
+  if (command === "role" && (action === "grant" || action === "revoke")) return step("permissions.manage", `tmb role ${action}`);
   if (command === "remove") return step("project.remove", "tmb remove");
   if (command === "purge") return step("project.purge", "tmb purge");
   if (command === "onboard" && args.some((arg) => arg === REVIEW_MODE_FLAG || arg.startsWith(`${REVIEW_MODE_FLAG}=`))) {

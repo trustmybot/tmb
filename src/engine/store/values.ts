@@ -9,6 +9,8 @@ export const GUARD_DECISIONS = ["allow", "deny"] as const;
 /** What a review mark is for, and what the remote is told (trustmybot/tmb#408). */
 export const MARK_KINDS = ["pass", "fail", "waiver"] as const;
 export const MARK_STATES = ["success", "failure"] as const;
+/** What a project did to one of a role's actions. */
+export const ROLE_CHANGE_KINDS = ["grant", "revoke"] as const;
 
 export class ValueError extends Error {
   override name = "ValueError";

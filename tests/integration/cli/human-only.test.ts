@@ -50,6 +50,8 @@ const steps = (name: string): { args: string[]; command: string }[] => [
   { args: ["remove", name], command: "tmb remove" },
   { args: ["remove", name, "--host", "claude-code"], command: "tmb remove" },
   { args: ["purge", name], command: "tmb purge" },
+  { args: ["role", "grant", "worker", "task.drop"], command: "tmb role grant" },
+  { args: ["role", "revoke", "planner", "task.waive"], command: "tmb role revoke" },
 ];
 
 describe("a step only the Human may take", () => {
@@ -79,6 +81,15 @@ describe("a step only the Human may take", () => {
     expect(snapshot(project)).toEqual(before);
 
     expect(human(["onboard", "--review-mode", "truest", "--yes"], project)).toContain("Recorded 1 change in the record's setting changes.");
+  }, 90_000);
+
+  test("tmb role grant, on a terminal with yes, lets the worker drop a task; tmb role list marks it; a fixed step is refused", () => {
+    const project = setUpProject("true");
+    expect(human(["role", "grant", "worker", "task.drop"], project)).toContain("Granted task.drop to worker.");
+    const listed = tmb(["role", "list"], project);
+    expect(listed).toContain("worker  (changed)");
+    expect(listed).toContain("+task.drop");
+    expect(() => human(["role", "grant", "planner", "project.purge"], project)).toThrow("is the Human's alone");
   }, 90_000);
 
   test("with unattended mode on and no terminal, a run such as CI sets a review mode where none is set, never changes one, and lets nothing else through (trustmybot/tmb#223)", () => {

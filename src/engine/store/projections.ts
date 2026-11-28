@@ -3,7 +3,7 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { type Actor, ROLES } from "./actor.ts";
 import type { ProjectionTable } from "./schema.ts";
-import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, MARK_KINDS, MARK_STATES, REVIEW_TARGET_KINDS, ValueError, assertOneOf } from "./values.ts";
+import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, MARK_KINDS, MARK_STATES, REVIEW_TARGET_KINDS, ROLE_CHANGE_KINDS, ValueError, assertOneOf } from "./values.ts";
 
 export const RECORD_KINDS = [
   "issue",
@@ -20,6 +20,7 @@ export const RECORD_KINDS = [
   "freeze",
   "feedback_report",
   "import",
+  "role_change",
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
@@ -127,6 +128,7 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   freeze: { table: "freezes", columns: ["reason", "session_id"], updatable: ["lifted_by", "lifted_at"], hasUpdatedAt: false, searchable: false },
   feedback_report: { table: "feedback_reports", columns: ["route", "url", "issue_id"], updatable: [], hasUpdatedAt: false, searchable: false },
   import: { table: "imports", columns: ["source", "repo", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
+  role_change: { table: "role_changes", columns: ["role", "action", "change"], updatable: [], hasUpdatedAt: false, searchable: false, lists: { change: ROLE_CHANGE_KINDS } },
 };
 
 /** The record kind `audit` had before version 13: its old events stay, and the fold skips them (trustmybot/tmb#408). */

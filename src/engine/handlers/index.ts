@@ -9,6 +9,7 @@ import * as graph from "./graph.ts";
 import type { InputSchema } from "./input.ts";
 import * as op from "./operations.ts";
 import * as review from "./reviews.ts";
+import * as roles from "./roles.ts";
 import * as settings from "./settings.ts";
 import * as task from "./tasks.ts";
 import * as truest from "./truest.ts";
@@ -204,6 +205,20 @@ const DEFINITIONS = {
     inputSchema: settings.settingsSetSchema,
     run: settings.settingsSet,
   },
+  role_list: {
+    action: "record.read",
+    description:
+      "List each role's actions in this project: tmb's defaults for the Human, planner, worker and reviewer, and every role the project changed, with what was granted or revoked. Use it when the Human asks who may do what.",
+    inputSchema: roles.roleListSchema,
+    run: roles.roleList,
+  },
+  role_change: {
+    action: "permissions.manage",
+    description:
+      "Grant or revoke one action for one role, only when the Human asked for that change; the record names you. Refused unless your role holds permissions.manage, which only the Human has unless they granted it.",
+    inputSchema: roles.roleChangeSchema,
+    run: roles.roleChange,
+  },
   graph_map: {
     action: "graph.read",
     description:
@@ -296,7 +311,10 @@ function guarded(operation: Operation): Operation {
     ...operation,
     run(store, actor, input, context) {
       const actions = typeof operation.action === "function" ? operation.action(input) : [operation.action];
-      for (const action of actions) requirePermission(actor, action);
+      if (actions.length > 0) {
+        const changes = store.listRoleChanges();
+        for (const action of actions) requirePermission(actor, action, changes);
+      }
       return operation.run(store, actor, input, context);
     },
   };
@@ -319,6 +337,7 @@ export * from "./marks.ts";
 export { type PushOutcome, type PushResult } from "./fold.ts";
 export * from "./operations.ts";
 export * from "./reviews.ts";
+export * from "./roles.ts";
 export * from "./settings.ts";
 export * from "./tasks.ts";
 export * from "./truest.ts";

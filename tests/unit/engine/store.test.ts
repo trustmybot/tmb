@@ -61,9 +61,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(13);
+    expect(SCHEMA_VERSION).toBe(14);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 13 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 14 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -451,6 +451,7 @@ describe("events", () => {
     s.liftFreeze(HUMAN, freeze, "2026-11-18T00:00:02.000Z");
     s.recordFeedbackReport(PLANNER, { route: "issue", url: "https://github.com/trustmybot/tmb/issues/1", detail: { title: "t" } });
     s.recordImport(HUMAN, { source: "plugin", repo: "web", detail: { repo: "web", ids: {} } });
+    s.recordRoleChange(HUMAN, { role: "worker", action: "task.drop", change: "grant" });
 
     const before = peek(snapshot);
     for (const table of PROJECTION_TABLES) expect(before[table]!.length).toBeGreaterThan(0);
@@ -886,7 +887,7 @@ describe("the audit trail goes; each entry moves to its own table (trustmybot/tm
     fresh.store.close();
     expect(shape(dbPath)).toEqual(shape(path.join(dir, "fresh.db")));
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 13 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 14 });
       expect(db.query("SELECT name FROM sqlite_master WHERE name = 'audit'").all()).toEqual([]);
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
       const all = db.query("SELECT * FROM events ORDER BY id").all();

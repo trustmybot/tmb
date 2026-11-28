@@ -1,7 +1,8 @@
 // Who may take each action: one list of actions, each role's default actions, one check, default
 // deny (docs/architecture/ROLES.md, "Permissions"). A role is a name, not a closed list: the Human
 // is the command line, an agent's role comes with its tool call, and a role tmb does not ship gets
-// only what every role may do. To add an action, add it to ACTIONS and to the roles that take it.
+// only what every role may do. A project's grants and revokes, kept in the record, change the
+// defaults. To add an action, add it to ACTIONS and to the roles that take it.
 import { HandlerError } from "./handlers/errors.ts";
 import type { Actor } from "./store/index.ts";
 
@@ -111,11 +112,41 @@ export function defaultActions(role: RoleName): ReadonlySet<Action> {
   return new Set([...EVERY_ROLE, ...own, ...carried]);
 }
 
-/** True when `actor` may take `action`; tmb itself takes none, and an action not in the list is denied. */
-export function mayTake(actor: Actor, action: string): boolean {
+/** A project's grant or revoke of one action for one role, oldest first in a list. */
+export type RoleActionChange = { role: RoleName; action: string; change: "grant" | "revoke" };
+
+/** The actions `role` may take in a project: its defaults, plus its grants, minus its revokes; the newest change to an action wins. */
+export function effectiveActions(role: RoleName, changes: readonly RoleActionChange[]): ReadonlySet<Action> {
+  const actions = new Set(defaultActions(role));
+  for (const { role: changed, action, change } of changes) {
+    if (changed !== role || !isAction(action)) continue;
+    if (change === "grant") actions.add(action);
+    else actions.delete(action);
+  }
+  return actions;
+}
+
+/** True when `actor` may take `action` in a project with these `changes`; tmb itself takes none, and an action not in the list is denied. */
+export function mayTake(actor: Actor, action: string, changes: readonly RoleActionChange[] = []): boolean {
   const role = roleOf(actor);
   if (role === null || !isAction(action)) return false;
-  return defaultActions(role).has(action);
+  return effectiveActions(role, changes).has(action);
+}
+
+const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Why a project may not grant or revoke `action` for `role`, or null when it may. The Human's
+ * fixed steps are never granted, what every role may do is never revoked, and the Human's own
+ * actions are not changed.
+ */
+export function roleChangeRefusal(role: string, action: string, change: RoleActionChange["change"]): string | null {
+  if (!ROLE_NAME.test(role)) return `a role is named in lowercase letters, digits and -, got ${JSON.stringify(role)}`;
+  if (!isAction(action)) return `${JSON.stringify(action)} is no action; the actions are ${Object.keys(ACTIONS).join(", ")}`;
+  if (role === HUMAN_ROLE) return "the Human's own actions are not granted or revoked";
+  if ((FIXED_HUMAN_ACTIONS as readonly string[]).includes(action)) return `${action} is the Human's alone (to ${ACTIONS[action]}), so no role is granted it`;
+  if (change === "revoke" && (EVERY_ROLE as readonly string[]).includes(action)) return `${action} is what every role may do, so it is not revoked`;
+  return null;
 }
 
 /** True for one of the Human's steps the command line runs only on a terminal after a typed yes. */
@@ -127,9 +158,9 @@ function named(role: RoleName): string {
   return role === HUMAN_ROLE ? "the Human" : `the ${role}`;
 }
 
-/** Refuses `actor` unless its role may take `action`. */
-export function requirePermission(actor: Actor, action: Action): void {
-  if (mayTake(actor, action)) return;
+/** Refuses `actor` unless its role may take `action` in a project with these `changes`. */
+export function requirePermission(actor: Actor, action: Action, changes: readonly RoleActionChange[] = []): void {
+  if (mayTake(actor, action, changes)) return;
   const role = roleOf(actor);
   throw new HandlerError("refused", `${role === null ? "tmb" : named(role)} may not ${ACTIONS[action]} (${action})`);
 }

@@ -138,7 +138,7 @@ flowchart TD
 | `tmb.uninstall` | Remove tmb from the machine. Planned (trustmybot/tmb#498) | ✓ | | | |
 | `project.remove` | Remove tmb's wiring from a project, keep the record (`tmb remove`) | ✓ | | | |
 | `project.purge` | Remove the wiring and delete the record for good (`tmb purge`) | ✓ | | | |
-| `permissions.manage` | Grant or revoke a role's actions. Planned (trustmybot/tmb#497) | ✓ | | | |
+| `permissions.manage` | Grant or revoke a role's actions (`tmb role`) | ✓ | | | |
 | `settings.review-mode` | Choose or change the review mode | ✓ | ✓ on the Human's ask | | |
 | `feature.waive`, `task.waive` | Waive a review | ✓ | ✓ on the Human's ask | | |
 | `settings.set`, `issue.*`, `feature.start`, `feature.update`, `feature.drop`, `feature.pr`, `task.start`, `task.drop`, `task.pr`, `graph.write`, `feedback.send` | Other settings, issues, features, start or drop a task, open a pull request, the code graph's knowledge, feedback to tmb | | ✓ | | |
@@ -159,12 +159,12 @@ flowchart TD
 
 **The cost: review no longer gates the planner itself.** A planner that waives can open a pull request no reviewer passed. The record of who waived, and why, is what the Human has.
 
-**Planned (trustmybot/tmb#497): a project changes a role's actions.** The table above is tmb's defaults. A project adds a grant or a revoke on top, kept in the record with who made it, so an update that changes a default keeps the project's change. A role's actions are the defaults, plus the project's grants, minus its revokes. Changing them is itself an action, `permissions.manage`, the Human's by default: the Human runs `tmb role list`, `tmb role grant <role> <action>` and `tmb role revoke <role> <action>` on a terminal and types yes.
+**A project changes a role's actions.** The table above is tmb's defaults. A project adds a grant or a revoke on top, kept in the record with who made it, so an update that changes a default keeps the project's change. A role's actions are the defaults, plus the project's grants, minus its revokes; the newest change to one action wins. Changing them is itself an action, `permissions.manage`, the Human's by default and grantable: the Human runs `tmb role list`, then `tmb role grant <role> <action>` or `tmb role revoke <role> <action>` on a terminal and types yes. A planner granted `permissions.manage` makes the same change through its tool, on the Human's ask.
 
-- **Example 1.** `tmb role grant worker task.drop` lets the worker drop its own task.
-- **Example 2.** `tmb role revoke planner task.waive` takes waiving back from the planner.
-- **Example 3.** A designer agent the planner created to design a logo holds `record.read`, `graph.read` and `task.close` only.
-- **Edge case.** `tmb.uninstall`, `project.remove` and `project.purge` are command-line steps with no tool. They stay the Human's, and granting one is refused with that reason.
+- **Example 1.** `tmb role grant worker task.drop` lets the worker drop its own task. `tmb role list` marks the worker as changed.
+- **Example 2.** `tmb role revoke planner task.waive` takes waiving back from the planner. Granting it again puts the default back.
+- **Example 3.** A designer agent created to design a logo is given `task.close`, so it holds reading the record and the code graph, and closing a task, only.
+- **Edge case.** `tmb.uninstall`, `project.remove` and `project.purge` are command-line steps with no tool. They stay the Human's, and granting one is refused with that reason. Reading, which every role may do, is never revoked, and the Human's own actions do not change.
 
 ## Parallel lanes
 
