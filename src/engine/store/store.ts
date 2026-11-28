@@ -34,7 +34,7 @@ import {
   type NewIssue,
   type SearchHit,
 } from "./issues.ts";
-import type { StoredEvent } from "./projections.ts";
+import type { RecordKind, StoredEvent } from "./projections.ts";
 import { type NewReview, type NewReviewMark, type NewWaiver, type Review, type ReviewMark, ReviewRepository, type WaiverEntry } from "./reviews.ts";
 import { type CheckRun, type CheckRunEnd, type NewCheckRun, type NewRun, type Run, type RunEnd, RunRepository } from "./runs.ts";
 import { type NewTask, type Task, type TaskChanges, TaskRepository } from "./tasks.ts";
@@ -49,6 +49,9 @@ export * from "./tasks.ts";
 
 /** The key under which the record names the tmb that wrote its shape. */
 export const SHAPE_WRITER_KEY = "shape_writer";
+/** The key under which the record keeps the newest event the planner was told of as a change made outside its chat. */
+export const PLANNER_TOLD_KEY = "planner_told_through";
+
 /** A tmb as it signs a shape it wrote: its version and the program it ran as. */
 export type ShapeWriter = { version: string; program: string };
 
@@ -90,6 +93,17 @@ export class Store {
     return { version, program };
   }
 
+  /** The id of the newest event the planner was told of; null before it was first told. */
+  plannerToldThrough(): string | null {
+    const row = this.db.query("SELECT value FROM meta WHERE key = ?").get(PLANNER_TOLD_KEY) as { value: string } | null;
+    return row ? (JSON.parse(row.value) as string) : null;
+  }
+
+  /** Marks every event up to `eventId` as told to the planner. Not an event: it changes nothing in the trajectory. */
+  setPlannerToldThrough(eventId: string): void {
+    this.db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(PLANNER_TOLD_KEY, JSON.stringify(eventId));
+  }
+
   /** The pull requests tasks and feature branches opened, by their URLs. */
   pullRequestUrls(): string[] {
     const rows = this.db.query("SELECT pr_url FROM tasks WHERE pr_url IS NOT NULL UNION SELECT pr_url FROM features WHERE pr_url IS NOT NULL").all() as { pr_url: string }[];
@@ -101,6 +115,8 @@ export class Store {
   history(recordId: string): StoredEvent[] { return this.log.history(recordId); }
   recentEventKinds(limit: number): string[] { return this.log.recentEventKinds(limit); }
   firstEntryAt(): string | null { return this.log.firstEntryAt(); }
+  outsideEvents(afterId: string, kinds: readonly RecordKind[]): StoredEvent[] { return this.log.outsideEvents(afterId, kinds); }
+  newestEventId(): string | null { return this.log.newestEventId(); }
   rebuildProjections(): void { this.log.rebuildProjections(); }
   transaction<T>(work: () => T): T { return this.log.transaction(work); }
   backdated<T>(at: string, work: () => T): T { return this.log.backdated(at, work); }

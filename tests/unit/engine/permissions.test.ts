@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACTIONS, DEFAULT_ROLES, FIXED_HUMAN_ACTIONS, HandlerError, mayTake, OPERATIONS, openProjectStore, requirePermission } from "../../../src/engine/index.ts";
+import { ACTIONS, DEFAULT_ROLES, FIXED_HUMAN_ACTIONS, HandlerError, isHumanStep, mayTake, OPERATIONS, openProjectStore, requirePermission, roleChangeRefusal } from "../../../src/engine/index.ts";
 import { settingsSetActions } from "../../../src/engine/handlers/settings.ts";
 import type { Actor, Store } from "../../../src/engine/store/index.ts";
 
@@ -40,11 +40,25 @@ describe("the permission table", () => {
     expect(mayTake(HUMAN, "task.anything")).toBe(false);
   });
 
-  test("the Human holds a narrow set: the fixed steps, managing roles, the review mode and the waivers", () => {
-    for (const action of [...FIXED_HUMAN_ACTIONS, "permissions.manage", "settings.review-mode", "feature.waive", "task.waive"] as const) expect(mayTake(HUMAN, action)).toBe(true);
-    for (const action of ["issue.create", "issue.update", "issue.note", "feature.start", "feature.update", "feature.drop", "feature.pr", "task.start", "task.close", "task.drop", "task.pr", "review.record", "role.create"] as const) {
-      expect(mayTake(HUMAN, action)).toBe(false);
+  test("the Human and the planner share what they decide together: issues, feature branches, settings, roles, feedback and the waivers", () => {
+    const shared = ["issue.create", "issue.update", "issue.note", "feature.start", "feature.update", "feature.drop", "feature.pr", "feature.waive", "task.waive", "settings.set", "settings.review-mode", "role.create", "role.delete", "permissions.manage", "feedback.send"] as const;
+    for (const action of shared) {
+      expect(mayTake(HUMAN, action)).toBe(true);
+      expect(mayTake(agent("planner"), action)).toBe(true);
     }
+  });
+
+  test("the Human holds nothing between the planner and its agents, and is granted none of it", () => {
+    for (const action of ["task.start", "task.close", "task.drop", "task.pr", "review.record", "graph.write"] as const) {
+      expect(mayTake(HUMAN, action)).toBe(false);
+      expect(roleChangeRefusal("human", action, "grant")).toContain("the Human's own actions");
+    }
+    for (const action of ["task.start", "task.close", "task.drop", "task.pr", "graph.write"] as const) expect(mayTake(agent("planner"), action)).toBe(true);
+  });
+
+  test("only the Human's own steps ask for a typed yes on the command line", () => {
+    for (const action of [...FIXED_HUMAN_ACTIONS, "permissions.manage", "settings.review-mode", "feature.waive", "task.waive"] as const) expect(isHumanStep(action)).toBe(true);
+    for (const action of ["issue.update", "issue.note", "feature.start", "settings.set", "role.create"] as const) expect(isHumanStep(action)).toBe(false);
   });
 
   test("the planner creates, changes and deletes roles, and closes any task, by default", () => {

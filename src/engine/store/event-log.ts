@@ -117,6 +117,26 @@ export class EventLog {
     return rows.reverse().map((row) => `${row.record_kind} ${row.type}`);
   }
 
+  /**
+   * The events of these record kinds after `afterId`, oldest first, that a Human or the syncer
+   * wrote: the changes made outside any agent's chat.
+   */
+  outsideEvents(afterId: string, kinds: readonly RecordKind[]): StoredEvent[] {
+    const marks = kinds.map(() => "?").join(", ");
+    const rows = this.db
+      .query(
+        `SELECT * FROM events WHERE id > ? AND record_kind IN (${marks})
+         AND (actor_kind = 'human' OR (actor_kind = 'tmb' AND actor_source = 'syncer')) ORDER BY id`,
+      )
+      .all(afterId, ...kinds) as EventRow[];
+    return rows.map(toEvent);
+  }
+
+  /** The newest event's id; null for an empty record. */
+  newestEventId(): string | null {
+    return (this.db.query("SELECT max(id) AS id FROM events").get() as { id: string | null }).id;
+  }
+
   /** When the record's first entry was written; null for an empty record. */
   firstEntryAt(): string | null {
     return (this.db.query("SELECT min(at) AS at FROM events").get() as { at: string | null }).at;

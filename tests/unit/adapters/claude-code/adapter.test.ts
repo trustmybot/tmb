@@ -62,10 +62,11 @@ const tmbHooks = (tmbCommand: readonly string[]) => ({
   PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: hookCommand(tmbCommand, "pre-tool-use") }] }],
   PostToolUseFailure: [{ matcher: "Agent|Task", hooks: [{ type: "command", command: hookCommand(tmbCommand, "post-tool-use-failure") }] }],
   SubagentStop: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "subagent-stop") }] }],
+  UserPromptSubmit: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "user-prompt-submit") }] }],
   SessionEnd: [{ hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-end") }] }],
 });
 const tmbSettings = { hooks: tmbHooks(BINARY), enabledMcpjsonServers: ["tmb"] };
-const ALL_HOOKS = ["SessionStart", "PreToolUse", "PostToolUseFailure", "SubagentStop", "SessionEnd"];
+const ALL_HOOKS = ["SessionStart", "PreToolUse", "PostToolUseFailure", "SubagentStop", "UserPromptSubmit", "SessionEnd"];
 
 describe("settings: setup", () => {
   test("on a fresh project creates the settings file with tmb's hooks and the enabled server", () => {
@@ -120,6 +121,7 @@ describe("settings: setup", () => {
         PreToolUse: [...prior.hooks.PreToolUse, ...ours.PreToolUse],
         PostToolUseFailure: ours.PostToolUseFailure,
         SubagentStop: [...prior.hooks.SubagentStop, ...ours.SubagentStop],
+        UserPromptSubmit: ours.UserPromptSubmit,
         Stop: prior.hooks.Stop,
         SessionEnd: ours.SessionEnd,
       },
@@ -184,7 +186,7 @@ describe("hook commands", () => {
   });
 
   test("recognises each of tmb's hooks from a binary and from source, quoted or not", () => {
-    for (const name of ["session-start", "pre-tool-use", "post-tool-use-failure", "subagent-stop", "session-end"] as const) {
+    for (const name of ["session-start", "pre-tool-use", "post-tool-use-failure", "subagent-stop", "user-prompt-submit", "session-end"] as const) {
       expect(isTmbHookCommand(hookCommand(BINARY, name))).toBe(true);
       expect(isTmbHookCommand(hookCommand(SOURCE, name), name)).toBe(true);
       expect(isTmbHookCommand(`"/opt/bun/bin/bun" /srv/code/tmb/src/cli.ts hook ${name}`)).toBe(true);

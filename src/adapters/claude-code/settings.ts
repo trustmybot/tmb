@@ -26,6 +26,8 @@ export const TMB_HOOKS = [
   { hookEvent: "PreToolUse", name: "pre-tool-use", matcher: GUARDED_TOOLS.join("|") },
   { hookEvent: "PostToolUseFailure", name: "post-tool-use-failure", matcher: "Agent|Task" },
   { hookEvent: "SubagentStop", name: "subagent-stop" },
+  // Before the main agent's turn: what changed outside its chat, such as the Human's issue changes on the dashboard.
+  { hookEvent: "UserPromptSubmit", name: "user-prompt-submit" },
   { hookEvent: "SessionEnd", name: "session-end" },
 ] as const;
 

@@ -116,6 +116,7 @@ describe("tmb init and remove", () => {
     expect(afterInit.hooks.SessionStart).toEqual([hookCommand("session-start-role"), hookCommand("session-start")].map((command) => ({ hooks: [{ type: "command", command }] })));
     expect(afterInit.hooks.PostToolUseFailure).toEqual([{ matcher: "Agent|Task", hooks: [{ type: "command", command: hookCommand("post-tool-use-failure") }] }]);
     expect(afterInit.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
+    expect(afterInit.hooks.UserPromptSubmit).toEqual([{ hooks: [{ type: "command", command: hookCommand("user-prompt-submit") }] }]);
     expect(afterInit.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
 
     const remove = asHuman(process.execPath, [CLI, "remove", path.basename(project)], { cwd: project, env: testEnv() });

@@ -1,10 +1,10 @@
-// Claude Code's PreToolUse and SubagentStop hooks, translated into tmb events and answered.
+// Claude Code's PreToolUse, SubagentStop and UserPromptSubmit hooks, translated into tmb events and answered.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { AWAITING_REVIEW_HEADING, handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION, writeSetting } from "../../../../src/engine/index.ts";
+import { AWAITING_REVIEW_HEADING, handleEvent, openProjectStore, OUTSIDE_CHANGES_HEADING, projectDbPath, takeOutsideChanges, UNATTENDED_INSTRUCTION, writeSetting } from "../../../../src/engine/index.ts";
 import type { GuardDecision } from "../../../../src/engine/store/index.ts";
 import { adapter } from "../../../../src/adapters/claude-code/index.ts";
 
@@ -296,5 +296,51 @@ describe("hook session-start", () => {
     expect(sessionStartContext(true)).toBe(handleEvent({ type: "session-start", projectDir: project, unattended: true }).context);
     expect(sessionStartContext(true)).toStartWith(`${UNATTENDED_INSTRUCTION}\n\n`);
     expect(attended).not.toContain(UNATTENDED_INSTRUCTION);
+  });
+});
+
+describe("hook user-prompt-submit", () => {
+  const prompt = (extra: Record<string, unknown> = {}) =>
+    adapter.answerHook("user-prompt-submit", JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: project, prompt: "go on", ...extra }), ATTENDED);
+
+  function closeAsHuman(title: string): string {
+    const opened = openProjectStore(project, { create: true });
+    if (!opened.ok) throw opened.error;
+    try {
+      const id = opened.store.createIssue({ kind: "agent", role: "planner", host: "claude-code" }, { title });
+      takeOutsideChanges(opened.store);
+      opened.store.updateIssue({ kind: "human" }, id, { state: "closed" });
+      return id;
+    } finally {
+      opened.store.close();
+    }
+  }
+
+  test("prints nothing when nothing changed outside the chat, or with no record", () => {
+    expect(prompt()).toBe("");
+    createRecord();
+    expect(prompt()).toBe("");
+    expect(prompt()).toBe("");
+  });
+
+  test("adds the Human's changes after the prompt once, in Claude Code's form", () => {
+    const id = closeAsHuman("Add a dark mode toggle");
+    const output = JSON.parse(prompt());
+    expect(output.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
+    expect(output.hookSpecificOutput.additionalContext).toStartWith(OUTSIDE_CHANGES_HEADING);
+    expect(output.hookSpecificOutput.additionalContext).toContain(`${id} "Add a dark mode toggle": closed, by the Human`);
+    expect(prompt()).toBe("");
+  });
+
+  test("tells no subagent, and leaves the change for the planner", () => {
+    const id = closeAsHuman("Fix the login typo");
+    expect(prompt({ agent_type: "worker" })).toBe("");
+    expect(prompt({ agent_type: "reviewer" })).toBe("");
+    expect(prompt()).toContain(id);
+  });
+
+  test("prints nothing when the record cannot be read", () => {
+    breakRecord();
+    expect(prompt()).toBe("");
   });
 });

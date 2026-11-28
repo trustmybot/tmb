@@ -13,6 +13,7 @@ import { detectedSettings, emptySettings } from "./handlers/settings.ts";
 import { ensureHostReviewerRun, isReviewerHost } from "./host-runs.ts";
 import { BASE_LAYER, graphDbPath, layerRow, openGraphDb } from "./graph/db.ts";
 import { UNTRUSTED_NOTE } from "./graph/summary.ts";
+import { takeOutsideChanges } from "./outside-changes.ts";
 import { openProjectStore } from "./project.ts";
 import { refreshPullRequestStates } from "./pull-request-state.ts";
 import { repoDirOf, workspaceRepos } from "./repos.ts";
@@ -252,6 +253,24 @@ function reviewsHere(projectDir: string, host: string | undefined): boolean {
 }
 
 /**
+ * What the planner is told before its next turn: the issues changed outside its chat since it was
+ * last told, or nothing. Empty on a host set up as the reviewer, and when there is no readable
+ * record. Never throws.
+ */
+export function plannerTurnContext(projectDir: string, host?: string): string {
+  if (reviewsHere(projectDir, host)) return "";
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) return "";
+  try {
+    return takeOutsideChanges(opened.store);
+  } catch {
+    return "";
+  } finally {
+    opened.store.close();
+  }
+}
+
+/**
  * How the host takes the session start. `withRole` puts the role in the same text as the state;
  * without it the host takes the role apart, from `sessionRole`. `budget` is the most characters
  * the state's text may have, below the host's cap on one text: tmb shortens its own lists to fit,
@@ -399,7 +418,10 @@ class SessionStart {
       tidyClosedTasks(opened.store, projectDir);
       const ended = endedPullRequests(opened.store, projectDir, host);
       const settings = emptySettingsSection(opened.store, projectDir, unattended);
-      return sizes.map((size) => `${openWork(opened.store, size.work)}${ended}${settings}${projectMapSection(projectDir, opened.store, size.dirs)}`);
+      // Last, as it changes most often: what changed outside the chat since the planner was last told.
+      const outside = takeOutsideChanges(opened.store);
+      const told = outside === "" ? "" : `\n\n${outside}`;
+      return sizes.map((size) => `${openWork(opened.store, size.work)}${ended}${settings}${projectMapSection(projectDir, opened.store, size.dirs)}${told}`);
     } catch (error) {
       return [`tmb could not read the record: ${oneLine(error)}`];
     } finally {
