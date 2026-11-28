@@ -3,7 +3,7 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { type Actor, ROLES } from "./actor.ts";
 import type { ProjectionTable } from "./schema.ts";
-import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, MARK_KINDS, MARK_STATES, REVIEW_TARGET_KINDS, ROLE_CHANGE_KINDS, ROLE_STATES, ValueError, assertOneOf } from "./values.ts";
+import { DISCUSSION_KINDS, GUARD_DECISIONS, ISSUE_STATES, MARK_KINDS, MARK_STATES, MILESTONE_STATES, PULL_REQUEST_STATES, REVIEW_TARGET_KINDS, ROLE_CHANGE_KINDS, ROLE_STATES, ValueError, assertOneOf } from "./values.ts";
 
 export const RECORD_KINDS = [
   "issue",
@@ -22,6 +22,9 @@ export const RECORD_KINDS = [
   "import",
   "role_change",
   "role",
+  "repo",
+  "milestone",
+  "pull_request",
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
@@ -51,11 +54,16 @@ type RecordShape = {
   lists?: Record<string, readonly string[]>;
 };
 
+/** The columns every mirrored row keeps of its item on the remote (trustmybot/tmb#70). */
+const REMOTE_COLUMNS = ["remote", "remote_id", "remote_updated_at", "remote_gone_at"] as const;
+/** What the syncer sets on an issue mirrored from the remote; a local issue leaves them empty. */
+const MIRRORED_ISSUE_COLUMNS = ["state", "state_reason", "milestone_id", "type", "labels", "assignees", "remote_url", ...REMOTE_COLUMNS] as const;
+
 const RECORDS: Record<RecordKind, RecordShape> = {
   issue: {
     table: "issues",
-    columns: ["title", "body", "milestone"],
-    updatable: ["title", "body", "state", "milestone"],
+    columns: ["title", "body", "milestone", ...MIRRORED_ISSUE_COLUMNS],
+    updatable: ["title", "body", "state", "milestone", ...MIRRORED_ISSUE_COLUMNS],
     initial: { state: "open" },
     hasUpdatedAt: true,
     searchable: true,
@@ -63,8 +71,9 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   },
   discussion: {
     table: "discussions",
-    columns: ["issue_id", "kind", "body"],
-    updatable: [],
+    columns: ["issue_id", "kind", "body", "remote_author", "updated_at", ...REMOTE_COLUMNS],
+    // Only a comment mirrored from the remote changes; the store refuses it for a note or a decision.
+    updatable: ["body", "updated_at", ...REMOTE_COLUMNS],
     hasUpdatedAt: false,
     searchable: true,
     lists: { kind: DISCUSSION_KINDS },
@@ -130,6 +139,23 @@ const RECORDS: Record<RecordKind, RecordShape> = {
   feedback_report: { table: "feedback_reports", columns: ["route", "url", "issue_id"], updatable: [], hasUpdatedAt: false, searchable: false },
   import: { table: "imports", columns: ["source", "repo", "detail"], updatable: [], hasUpdatedAt: false, searchable: false },
   role_change: { table: "role_changes", columns: ["role", "action", "change"], updatable: [], hasUpdatedAt: false, searchable: false, lists: { change: ROLE_CHANGE_KINDS } },
+  repo: { table: "repos", columns: ["path"], updatable: [], hasUpdatedAt: false, searchable: false },
+  milestone: {
+    table: "milestones",
+    columns: ["title", "description", "state", "repo_id", ...REMOTE_COLUMNS],
+    updatable: ["title", "description", "state", ...REMOTE_COLUMNS],
+    hasUpdatedAt: true,
+    searchable: false,
+    lists: { state: MILESTONE_STATES },
+  },
+  pull_request: {
+    table: "pull_requests",
+    columns: ["url", "repo_id", "feature_id", "task_id", "author", "head_remote", "state", "draft", "head_commit", ...REMOTE_COLUMNS],
+    updatable: ["url", "feature_id", "task_id", "state", "draft", "head_commit", "head_remote", ...REMOTE_COLUMNS],
+    hasUpdatedAt: true,
+    searchable: false,
+    lists: { state: PULL_REQUEST_STATES },
+  },
   role: {
     table: "roles",
     columns: ["name", "purpose", "prompt"],
@@ -229,6 +255,10 @@ function syncSearch(db: Database, event: StoredEvent): void {
     issue_id: string;
     body: string;
   };
+  if (event.type === "updated") {
+    db.query("UPDATE search SET body = ? WHERE record_kind = 'discussion' AND record_id = ?").run(discussion.body, event.recordId);
+    return;
+  }
   db.query("INSERT INTO search (record_kind, record_id, issue_id, title, body) VALUES ('discussion', ?, ?, '', ?)").run(
     event.recordId,
     discussion.issue_id,

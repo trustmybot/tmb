@@ -74,10 +74,10 @@ export class EventLog {
         const who = actorColumns(actor);
         this.db
           .query(
-            `INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, actor_source, at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO events (id, record_kind, record_id, type, data, actor_kind, actor_role, actor_host, actor_source, actor_remote, at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(event.id, recordKind, recordId, type, JSON.stringify(event.data), who.actor_kind, who.actor_role, who.actor_host, who.actor_source, event.at);
+          .run(event.id, recordKind, recordId, type, JSON.stringify(event.data), who.actor_kind, who.actor_role, who.actor_host, who.actor_source, who.actor_remote ?? null, event.at);
         applyEvent(this.db, { ...event, actor: actorFromColumns(who) });
         return event;
       })

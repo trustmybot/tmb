@@ -94,7 +94,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 | A tool call's `role` is one of the three roles, and defaults to the role the host was set up in | 1 |
 | Feature branch, task start and drop, pull request, settings and areas are the planner's tools alone | 1 |
 | A pull request opens only when a pass or a Human waiver covers the tip | 1 + 2 (push) |
-| Issue sync | Planned (trustmybot/tmb#70) |
+| Issue sync: the remote's issues, comments, milestones and pull requests read in before the planner's issue reads | 1. Planned (trustmybot/tmb#70): the record's changes sent back |
 | Verify-context before answering, voice | 6 only |
 
 ### Worker

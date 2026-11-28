@@ -80,6 +80,9 @@ export {
   type HostRole,
   hostRole,
   type HostRoles,
+  ISSUE_SYNC_MODES,
+  type IssueSync,
+  issueSyncOn,
   validateHostRole,
   readSettings,
   RECOMMENDED_REVIEW_MODE,
@@ -134,7 +137,7 @@ export { pushActorFrom } from "./push-actor.ts";
 export { addToForeignHook, FOREIGN_GAP, foreignHooks, handCallLine, NO_RECORD, otherProjectInRepo, pushGateOffLine, repoTopOf } from "./push-gate.ts";
 export { inGitWorkTree, isManaged, type Repo, repoDirOf, repoOf, repoOfRow, type Scan, scanRepos, scanWorkspace, unnamedRepos, unnamedReposFix, workingRepos, workspaceRepos } from "./repos.ts";
 export { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./settings.ts";
-export { type Actor, type Discussion, type Issue, type IssueSummary, type ModelUsage, type Role, SCHEMA_VERSION, type SearchHit, SHAPE_WRITER_KEY, Store, type StoredEvent, type Task } from "./store/index.ts";
+export { type Actor, type ClaimRefusal, type Discussion, emptySyncRow, type Issue, type IssueSummary, type MirrorKind, type MirroredRow, type ModelUsage, type Role, SCHEMA_VERSION, type SearchHit, SHAPE_WRITER_KEY, Store, type StoredEvent, type SyncRow, type Task } from "./store/index.ts";
 export { giveTasksTheirRepos, PLUGIN_IMPORT, tasksWithNoRepo } from "./task-repos.ts";
-export { type RolesListener, serveTools, type SharedFoldersListener } from "./tool-server.ts";
+export { RECORD_READ_WAIT_MS, type RecordReadListener, type RolesListener, serveTools, type SharedFoldersListener } from "./tool-server.ts";
 export { version, versionLine } from "./version.ts";

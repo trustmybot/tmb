@@ -27,7 +27,7 @@ describe("onboarding at the first session", () => {
     } finally {
       await client.close();
     }
-    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], shared_folders: null, graph_links: null });
+    expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run test"], shared_folders: null, graph_links: null, issue_sync: null });
     expect(sessionStart(project)).not.toContain("## The project's settings are empty");
   });
 });

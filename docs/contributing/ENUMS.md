@@ -38,6 +38,9 @@ A vocabulary is owned in one of three places:
 | `import` | `imports` |
 | `role_change` | `role_changes` |
 | `role` | `roles` |
+| `repo` | `repos` |
+| `milestone` | `milestones` |
+| `pull_request` | `pull_requests` |
 
 The engine checks it.
 
@@ -46,7 +49,7 @@ The engine checks it.
 | Value | Meaning |
 |---|---|
 | `created` | The record's first event; it makes the projection row |
-| `updated` | A change to the columns the record kind allows to change. `discussion`, `review`, `guard_decision`, `waiver`, `setting_change`, `feedback_report`, `import` and `role_change` have none |
+| `updated` | A change to the columns the record kind allows to change. `repo`, `review`, `guard_decision`, `waiver`, `setting_change`, `feedback_report`, `import` and `role_change` have none; a `discussion` changes only when it is a mirrored comment |
 
 Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 
@@ -62,7 +65,7 @@ Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 | `actor_role` | `reviewer` | The agent that judges a branch or a task it did not write |
 | `actor_role` | a created role's name | An agent of a role the project created, in lowercase letters, digits and `-` |
 
-The engine checks it. `runs.role` takes the same values. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`.
+The engine checks it. `runs.role` takes the same values. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`. Only the syncer's events may name a remote account in `actor_remote`.
 
 ### `issues.state` — issue lifecycle
 
@@ -79,6 +82,26 @@ These two states deliberately match GitHub's issue states. The engine checks it.
 |---|---|---|
 | `note` | tmb | Running narrative on an issue |
 | `decision` | tmb | A decision and its reason |
+| `comment` | GitHub | A comment on an issue, mirrored from the remote. Only the syncer writes one |
+
+The engine checks it.
+
+### `milestones.state` — milestone lifecycle
+
+| Value | Source | Meaning |
+|---|---|---|
+| `open` | GitHub | Still taking issues |
+| `closed` | GitHub | Closed on the remote |
+
+The engine checks it.
+
+### `pull_requests.state` — a pull request on the remote
+
+| Value | Source | Meaning |
+|---|---|---|
+| `open` | GitHub | Open, a draft or not |
+| `merged` | GitHub | Merged; final |
+| `closed` | GitHub | Closed without a merge |
 
 The engine checks it.
 

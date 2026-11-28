@@ -15,7 +15,7 @@ setDefaultTimeout(30_000);
 beforeAll(installPinnedTools);
 
 const NO_INPUT_LIMIT_MS = 20_000;
-const EMPTY = { base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null };
+const EMPTY = { base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, issue_sync: null };
 const PLANNER_ROLE = readFileSync(path.join(REPO_ROOT, "roles", "planner.md"), "utf8");
 const { env, newProject, config, sessionStart, cleanup } = tmbProcesses("tmb-flow-install-");
 afterAll(cleanup);

@@ -41,7 +41,7 @@ Each step, who takes it and what it leaves in the record.
 | The shared folders | No detection. The planner names the folders the repo's install step fills, such as `node_modules`, then installs the dependencies in the main folder ([CONFIG.md](../architecture/CONFIG.md#shared-folders-are-linked-not-installed)). | the planner, or `tmb onboard` | the shared folders, per repo in a multi-repo workspace |
 | The areas | Once the code graph is built, the planner names the parts of the project, one line each, and writes them. It asks nothing ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md#when-the-areas-change)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
-| Issue sync | Planned, inside the syncer (trustmybot/tmb#70). | | |
+| Issue sync | No question. On unless the Human turns it off: the syncer then reads nothing from the remote ([when it runs](../architecture/TRAJECTORY.md#when-the-syncer-runs)). | the planner on the Human's word | the issue sync setting |
 
 ## Init asks nothing
 

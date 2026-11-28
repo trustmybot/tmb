@@ -15,7 +15,8 @@ export const TMB_SOURCES = ["syncer", "upgrade"] as const;
 export type TmbSource = (typeof TMB_SOURCES)[number];
 
 /** An agent's role: one tmb ships, or one the project created. Never the Human's. */
-export type Actor = { kind: "human" } | { kind: "agent"; role: string; host: string } | { kind: "tmb"; source: TmbSource };
+/** tmb's syncer also names the remote account that made the change, when the remote says. */
+export type Actor = { kind: "human" } | { kind: "agent"; role: string; host: string } | { kind: "tmb"; source: TmbSource; remote?: string | null };
 
 export class ActorError extends Error {
   override name = "ActorError";
@@ -36,9 +37,12 @@ export function assertActor(actor: unknown): asserts actor is Actor {
 export function assertWriter(actor: unknown): asserts actor is Actor {
   if (actor === undefined || actor === null) throw new ActorError("a write needs an actor: the Human, or a role and a host");
   if (typeof actor !== "object") throw new ActorError(`actor must be an object, got ${typeof actor}`);
-  const { kind, role, host, source } = actor as Record<string, unknown>;
+  const { kind, role, host, source, remote } = actor as Record<string, unknown>;
   if (!ACTOR_KINDS.includes(kind as (typeof ACTOR_KINDS)[number])) throw new ActorError(`actor kind must be one of ${ACTOR_KINDS.join(", ")}, got ${JSON.stringify(kind)}`);
   if (kind !== "tmb" && source !== undefined && source !== null) throw new ActorError("only tmb carries a source");
+  if (remote !== undefined && remote !== null && (kind !== "tmb" || source !== "syncer" || typeof remote !== "string" || remote.trim() === "")) {
+    throw new ActorError("only tmb's syncer names a remote account, as a non-empty text");
+  }
   if (kind === "human") {
     if ((role !== undefined && role !== null) || (host !== undefined && host !== null)) throw new ActorError("the Human carries no role or host");
     return;
@@ -54,16 +58,19 @@ export function assertWriter(actor: unknown): asserts actor is Actor {
   if (typeof host !== "string" || host.trim() === "") throw new ActorError("an agent actor needs a host");
 }
 
-export type ActorColumns = { actor_kind: string; actor_role: string | null; actor_host: string | null; actor_source: string | null };
+export type ActorColumns = { actor_kind: string; actor_role: string | null; actor_host: string | null; actor_source: string | null; actor_remote?: string | null };
 
 export function actorColumns(actor: Actor): ActorColumns {
   if (actor.kind === "human") return { actor_kind: "human", actor_role: null, actor_host: null, actor_source: null };
-  if (actor.kind === "tmb") return { actor_kind: "tmb", actor_role: null, actor_host: null, actor_source: actor.source };
+  if (actor.kind === "tmb") return { actor_kind: "tmb", actor_role: null, actor_host: null, actor_source: actor.source, actor_remote: actor.remote ?? null };
   return { actor_kind: "agent", actor_role: actor.role, actor_host: actor.host, actor_source: null };
 }
 
 export function actorFromColumns(columns: ActorColumns): Actor {
   if (columns.actor_kind === "human") return { kind: "human" };
-  if (columns.actor_kind === "tmb") return { kind: "tmb", source: columns.actor_source as TmbSource };
+  if (columns.actor_kind === "tmb") {
+    const remote = columns.actor_remote ?? null;
+    return remote === null ? { kind: "tmb", source: columns.actor_source as TmbSource } : { kind: "tmb", source: columns.actor_source as TmbSource, remote };
+  }
   return { kind: "agent", role: columns.actor_role ?? "", host: columns.actor_host ?? "" };
 }

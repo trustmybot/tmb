@@ -61,9 +61,9 @@ function snapshot(db: Database): Record<string, unknown[]> {
 describe("openStore", () => {
   test("creates a database at the current schema version with WAL and foreign keys", () => {
     open();
-    expect(SCHEMA_VERSION).toBe(15);
+    expect(SCHEMA_VERSION).toBe(16);
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 15 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 16 });
       expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     });
     const s = store!;
@@ -455,6 +455,14 @@ describe("events", () => {
     const designer = s.createRole(PLANNER, { name: "designer", purpose: "Draws the screens", prompt: "You draw screens." });
     s.createRole(PLANNER, { name: "tester", purpose: "Tests", prompt: "You test." });
     s.deleteRole(PLANNER, designer);
+    const synced: Actor = { kind: "tmb", source: "syncer", remote: "octocat" };
+    const repoId = s.mirror.repoId(synced, ".");
+    const remote = { remote: "github.com/o/r", remote_updated_at: "2026-11-18T00:00:00Z", remote_gone_at: null };
+    const milestoneId = s.mirror.createMirrored(synced, "milestone", { title: "Level 1", description: "", state: "open", repo_id: repoId, remote_id: "M1", ...remote });
+    const mirrored = s.mirror.createMirrored(synced, "issue", { title: "From the remote", body: "b", state: "open", milestone_id: milestoneId, labels: ["bug"], assignees: [], remote_url: "https://github.com/o/r/issues/1", remote_id: "I1", ...remote });
+    const comment = s.mirror.createMirrored(synced, "discussion", { issue_id: mirrored, kind: "comment", body: "first words", remote_author: "octocat", remote_id: "C1", ...remote });
+    s.mirror.updateMirrored({ kind: "tmb", source: "syncer" }, "discussion", comment, { body: "edited words", updated_at: "2026-11-18T00:00:03.000Z" });
+    s.mirror.createMirrored(synced, "pull_request", { url: "https://github.com/o/r/pull/2", repo_id: repoId, author: "octocat", state: "open", draft: false, remote_id: "P2", ...remote });
 
     const before = peek(snapshot);
     for (const table of PROJECTION_TABLES) expect(before[table]!.length).toBeGreaterThan(0);
@@ -890,11 +898,12 @@ describe("the audit trail goes; each entry moves to its own table (trustmybot/tm
     fresh.store.close();
     expect(shape(dbPath)).toEqual(shape(path.join(dir, "fresh.db")));
     peek((db) => {
-      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 15 });
+      expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 16 });
       expect(db.query("SELECT name FROM sqlite_master WHERE name = 'audit'").all()).toEqual([]);
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
       const all = db.query("SELECT * FROM events ORDER BY id").all();
-      expect(all.slice(0, oldEvents.length)).toEqual(oldEvents);
+      // Version 16 gives every event a remote account, empty on the ones before it.
+      expect(all.slice(0, oldEvents.length)).toEqual(oldEvents.map((event) => ({ ...(event as object), actor_remote: null })));
     });
   });
 

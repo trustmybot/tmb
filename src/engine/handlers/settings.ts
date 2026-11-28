@@ -10,6 +10,7 @@ import { inGitWorkTree, repoDirOf, scanRepos } from "../repos.ts";
 import {
   AVAILABLE_REVIEW_MODES,
   chooseReviewMode,
+  ISSUE_SYNC_MODES,
   readSettings,
   type RepoPolicies,
   reviewModeChanges,
@@ -103,6 +104,11 @@ export const settingsSetSchema: InputSchema = {
         "Which way makes the code graph's links: language-tool, the language's own tool (the default; tmb carries the TypeScript compiler), or built-in, tmb's own rules. A language with no tool uses built-in, and the graph's answer says so. In a workspace, the workspace's; a repo's own in repos.",
       enum: LINK_WAYS,
     },
+    issue_sync: {
+      type: "string",
+      description: "Whether the remote's issues, comments, milestones and pull requests are brought into the record: on (the default) or off. Only as the Human asked.",
+      enum: ISSUE_SYNC_MODES,
+    },
     repos: {
       type: "object",
       description:
@@ -133,8 +139,8 @@ export const settingsSetSchema: InputSchema = {
   additionalProperties: false,
 };
 
-type SetName = ProjectSetting | "shared_folders" | "graph_links" | "repos";
-const SET_NAMES: readonly SetName[] = [...PROJECT_SETTINGS, "shared_folders", "graph_links", "repos"];
+type SetName = ProjectSetting | "shared_folders" | "graph_links" | "repos" | "issue_sync";
+const SET_NAMES: readonly SetName[] = [...PROJECT_SETTINGS, "shared_folders", "graph_links", "repos", "issue_sync"];
 
 export type SettingsSetResult = SettingsView & { changed: SetName[] };
 

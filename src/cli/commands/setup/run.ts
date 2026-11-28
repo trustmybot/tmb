@@ -6,7 +6,7 @@ import { HUMAN } from "../../command.ts";
 import { Paint } from "../../help.ts";
 import { type SetupFlags, SetupError, type SetupOptions } from "./options.ts";
 
-export const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null };
+export const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null, issue_sync: null };
 
 export abstract class SetupRun {
   protected readonly projectDir: string;

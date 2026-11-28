@@ -4,6 +4,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { HOST_ADAPTERS } from "../../adapters/index.ts";
+import { syncTrigger } from "../../syncer/index.ts";
 import { openProjectStore, projectRootOf, recordProgramMove, runningProgram, serveTools, type SubagentRole } from "../../engine/index.ts";
 import { HIDDEN, HUMAN, ParsedCommand } from "../command.ts";
 import type { Runtime } from "../runtime.ts";
@@ -83,7 +84,9 @@ export class McpCommand extends ParsedCommand<McpOptions> {
     const onSharedFolders = adapter?.shareFolders === undefined ? undefined : (dir: string, folders: readonly string[]) => void adapter.shareFolders!(dir, folders);
     // A role created or deleted reaches the host's agent files, so the host can start its agent.
     const onRoles = adapter?.writeRoles === undefined ? undefined : (dir: string, roles: readonly SubagentRole[]) => void adapter.writeRoles!(dir, roles);
-    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders, onRoles });
+    // The session's start and the planner's reads of the issues bring the remote's changes in, at most once a floor.
+    const onRecordRead = syncTrigger();
+    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders, onRoles, onRecordRead });
   }
 
   /** A session's front: its engine serves the tools; a session start looks for an update in the background, and the session's end may apply it. */

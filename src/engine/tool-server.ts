@@ -46,6 +46,32 @@ export type SharedFoldersListener = (projectDir: string, folders: readonly strin
  */
 export type RolesListener = (projectDir: string, roles: readonly SubagentRole[]) => void;
 
+/**
+ * Told when the session starts and when the planner reads the record's issues, so the remote's
+ * changes can be brought in first: the command line hands it to the syncer. The engine names no
+ * remote. A read waits for it at most RECORD_READ_WAIT_MS, then answers from the record as it is.
+ */
+export type RecordReadListener = (projectDir: string) => Promise<void> | void;
+
+/** The tools that read the record's issues, which a poll of the remote may refresh first. */
+const RECORD_READ_TOOLS: readonly string[] = ["issue_list", "issue_get", "search"];
+/** The longest a read of the record waits for a poll of the remote. */
+export const RECORD_READ_WAIT_MS = 1_500;
+
+/** Waits for the listener's work up to the cap; its failure or its lateness never fails the call. */
+async function briefly(work: Promise<void> | void): Promise<void> {
+  if (work === undefined) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, RECORD_READ_WAIT_MS);
+  });
+  try {
+    await Promise.race([work.catch(() => undefined), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The tools whose change to the project's roles reaches the host's agent files. */
 const ROLE_TOOLS: readonly string[] = ["role_create", "role_delete"];
 
@@ -66,6 +92,7 @@ export class ToolSession {
     readonly feedback?: FeedbackEnv,
     private readonly onSharedFolders?: SharedFoldersListener,
     private readonly onRoles?: RolesListener,
+    private readonly onRecordRead?: RecordReadListener,
   ) {
     if (host.trim() === "") throw new Error("the tool server needs a host id");
   }
@@ -90,6 +117,7 @@ export class ToolSession {
     if (role !== undefined && (typeof role !== "string" || !isRoleName(role) || role === HUMAN_ROLE)) {
       return textResult(`role must be ${ROLES.join(", ")} or a role the project created, got ${JSON.stringify(role)}`, true);
     }
+    if (RECORD_READ_TOOLS.includes(name)) await this.recordRead();
     try {
       const store = this.openStore();
       const actor: Actor = { kind: "agent", role: (role as string | undefined) ?? hostRole(store, this.host), host: this.host };
@@ -114,6 +142,15 @@ export class ToolSession {
     }
   }
 
+  /** Tells the listener the record is read; never throws. */
+  async recordRead(): Promise<void> {
+    try {
+      await briefly(this.onRecordRead?.(this.projectDir));
+    } catch {
+      // The record answers as it is.
+    }
+  }
+
   close(): void {
     this.store?.close();
     this.store = null;
@@ -129,8 +166,9 @@ export async function serveTools(options: {
   feedback?: FeedbackEnv;
   onSharedFolders?: SharedFoldersListener;
   onRoles?: RolesListener;
+  onRecordRead?: RecordReadListener;
 }): Promise<void> {
-  const session = new ToolSession(options.projectDir, options.host, options.unattended === true, options.feedback, options.onSharedFolders, options.onRoles);
+  const session = new ToolSession(options.projectDir, options.host, options.unattended === true, options.feedback, options.onSharedFolders, options.onRoles, options.onRecordRead);
   const server = new Server({ name: SERVER_NAME, version: options.version }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listTools() }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => session.call(request.params.name, request.params.arguments));
@@ -141,6 +179,8 @@ export async function serveTools(options: {
   // The stdio transport stops reading at stdin's end but does not report it; close here.
   process.stdin.once("end", () => void server.close());
   await server.connect(new StdioServerTransport());
+  // The session starts: a poll of the remote begins in the background and holds up nothing.
+  void session.recordRead();
   await closed;
   session.close();
 }

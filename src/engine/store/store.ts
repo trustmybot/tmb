@@ -34,6 +34,7 @@ import {
   type NewIssue,
   type SearchHit,
 } from "./issues.ts";
+import { MirrorRepository } from "./mirror.ts";
 import type { RecordKind, StoredEvent } from "./projections.ts";
 import { type NewReview, type NewReviewMark, type NewWaiver, type Review, type ReviewMark, ReviewRepository, type WaiverEntry } from "./reviews.ts";
 import { type CheckRun, type CheckRunEnd, type NewCheckRun, type NewRun, type Run, type RunEnd, RunRepository } from "./runs.ts";
@@ -43,6 +44,7 @@ export type { EntryDetail } from "./event-log.ts";
 export * from "./audit.ts";
 export * from "./features.ts";
 export * from "./issues.ts";
+export * from "./mirror.ts";
 export * from "./reviews.ts";
 export * from "./runs.ts";
 export * from "./tasks.ts";
@@ -66,6 +68,8 @@ export class Store {
   readonly roleChanges: RoleChangeRepository;
   readonly projectRoles: ProjectRoleRepository;
   readonly audit: AuditRepository;
+  /** The rows mirrored from the remote and where each poll stopped; only the syncer writes them. */
+  readonly mirror: MirrorRepository;
 
   /** Use openStore; it checks the file and its schema version first. */
   constructor(private readonly db: Database) {
@@ -79,6 +83,7 @@ export class Store {
     this.roleChanges = new RoleChangeRepository(this.log);
     this.projectRoles = new ProjectRoleRepository(this.log);
     this.audit = new AuditRepository(this.log);
+    this.mirror = new MirrorRepository(this.log);
   }
 
   close(): void {

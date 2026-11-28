@@ -143,7 +143,7 @@ export class IssueService {
   }
 
   appendDiscussion(input: unknown): Discussion {
-    const { issue_id: issueId, body, kind } = validateInput<{ issue_id: string; body: string; kind: Discussion["kind"] }>("discussion_append", discussionAppendSchema, input);
+    const { issue_id: issueId, body, kind } = validateInput<{ issue_id: string; body: string; kind: (typeof DISCUSSION_KINDS)[number] }>("discussion_append", discussionAppendSchema, input);
     this.requireIssue(issueId);
     const id = this.store.appendDiscussion(this.actor, { issueId, kind, body });
     return this.store.listDiscussions(issueId).find((discussion) => discussion.id === id)!;

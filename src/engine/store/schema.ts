@@ -17,6 +17,7 @@ export const PROJECTION_TABLES = [
   "feedback_reports",
   "imports",
   "discussions",
+  "pull_requests",
   "check_runs",
   "reviews",
   "runs",
@@ -24,6 +25,8 @@ export const PROJECTION_TABLES = [
   "tasks",
   "features",
   "issues",
+  "milestones",
+  "repos",
 ] as const;
 
 export type ProjectionTable = (typeof PROJECTION_TABLES)[number];
@@ -496,11 +499,109 @@ CREATE TABLE roles (
 CREATE INDEX idx_roles_name ON roles(name, id);
 `;
 
+// Version 16: the remote's issues, comments, milestones and pull requests come into the record
+// through the syncer (trustmybot/tmb#70). Each mirrored row keeps the remote's own id, which a
+// rename or a transfer does not change; a row with none is local. An event the syncer writes names
+// the remote account that made the change. A repo is a row that milestones and pull requests name.
+// sync_state is where each poll of the remote stopped; it is not folded from events.
+const VERSION_16_SQL = `
+ALTER TABLE events ADD COLUMN actor_remote TEXT;
+
+CREATE TABLE repos (
+  id         TEXT PRIMARY KEY,
+  path       TEXT NOT NULL UNIQUE CHECK (length(trim(path)) > 0),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE milestones (
+  id                TEXT PRIMARY KEY,
+  title             TEXT NOT NULL CHECK (length(trim(title)) > 0),
+  description       TEXT NOT NULL DEFAULT '',
+  state             TEXT NOT NULL,
+  repo_id           TEXT NOT NULL REFERENCES repos(id),
+  remote            TEXT,
+  remote_id         TEXT,
+  remote_updated_at TEXT,
+  remote_gone_at    TEXT,
+  created_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_milestones_title ON milestones(repo_id, title);
+CREATE UNIQUE INDEX idx_milestones_remote ON milestones(remote, remote_id);
+
+ALTER TABLE issues ADD COLUMN state_reason TEXT;
+ALTER TABLE issues ADD COLUMN milestone_id TEXT REFERENCES milestones(id);
+ALTER TABLE issues ADD COLUMN type TEXT;
+ALTER TABLE issues ADD COLUMN labels TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(labels));
+ALTER TABLE issues ADD COLUMN assignees TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(assignees));
+ALTER TABLE issues ADD COLUMN remote_url TEXT;
+ALTER TABLE issues ADD COLUMN remote TEXT;
+ALTER TABLE issues ADD COLUMN remote_id TEXT;
+ALTER TABLE issues ADD COLUMN remote_updated_at TEXT;
+ALTER TABLE issues ADD COLUMN remote_gone_at TEXT;
+CREATE INDEX idx_issues_milestone ON issues(milestone_id, id);
+CREATE UNIQUE INDEX idx_issues_remote ON issues(remote, remote_id);
+CREATE UNIQUE INDEX idx_issues_remote_url ON issues(remote_url);
+
+ALTER TABLE discussions ADD COLUMN remote_author TEXT;
+ALTER TABLE discussions ADD COLUMN remote TEXT;
+ALTER TABLE discussions ADD COLUMN remote_id TEXT;
+ALTER TABLE discussions ADD COLUMN remote_updated_at TEXT;
+ALTER TABLE discussions ADD COLUMN remote_gone_at TEXT;
+ALTER TABLE discussions ADD COLUMN updated_at TEXT;
+CREATE UNIQUE INDEX idx_discussions_remote ON discussions(remote, remote_id);
+
+CREATE TABLE pull_requests (
+  id                TEXT PRIMARY KEY,
+  url               TEXT NOT NULL UNIQUE CHECK (length(trim(url)) > 0),
+  repo_id           TEXT NOT NULL REFERENCES repos(id),
+  feature_id        TEXT REFERENCES features(id),
+  task_id           TEXT REFERENCES tasks(id),
+  author            TEXT,
+  closes            TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(closes)),
+  head_remote       TEXT,
+  state             TEXT NOT NULL,
+  draft             INTEGER NOT NULL DEFAULT 0,
+  head_commit       TEXT,
+  review_decision   TEXT,
+  checks            TEXT,
+  remote            TEXT,
+  remote_id         TEXT,
+  remote_updated_at TEXT,
+  remote_gone_at    TEXT,
+  created_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL,
+  CHECK (feature_id IS NULL OR task_id IS NULL)
+);
+CREATE INDEX idx_pull_requests_repo ON pull_requests(repo_id, id);
+CREATE INDEX idx_pull_requests_feature ON pull_requests(feature_id, id);
+CREATE INDEX idx_pull_requests_task ON pull_requests(task_id, id);
+CREATE UNIQUE INDEX idx_pull_requests_remote ON pull_requests(remote, remote_id);
+
+CREATE TABLE sync_state (
+  remote       TEXT NOT NULL,
+  list         TEXT NOT NULL,
+  tag          TEXT,
+  since        TEXT,
+  resume       TEXT,
+  synced_at    TEXT,
+  full_pass_at TEXT,
+  wait_until   TEXT,
+  claimed_by   TEXT,
+  claim_until  TEXT,
+  last_error   TEXT,
+  PRIMARY KEY (remote, list)
+);
+`;
+
 /** One step: SQL, or code for a step SQL alone cannot take. A step's code is frozen with it and never reads today's projections. */
 export type SchemaStep = string | ((db: Database) => void);
 
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL), VERSION_14_SQL, VERSION_15_SQL];
+export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL), VERSION_14_SQL, VERSION_15_SQL, VERSION_16_SQL];
 
 /** Runs one schema step on `db`. */
 export function runStep(db: Database, step: SchemaStep): void {
