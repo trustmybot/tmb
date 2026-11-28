@@ -38,14 +38,14 @@ flowchart LR
     subgraph G["The remote, when there is one"]
         I["Issues, comments, milestones, pull requests"]
     end
-    I -->|"the syncer reads (Planned)"| R
+    I -->|"the syncer reads"| R
     R -->|"a backup push, a pull request, a published issue"| I
 ```
 
 A person working with agents needs a memory that a remote has no place for: which task an agent took, what it cost, which commit a verdict judged, why the gate said no. The record keeps that on the user's machine, whether or not the project has a remote.
 
 - **Example 1, local.** A project has no remote. Its issues, decisions, tasks, runs and verdicts are all in the record. It needs no account and no network, and a new session resumes from it.
-- **Example 2, local with a remote.** Planned (trustmybot/tmb#70). The remote's issues, comments, milestones and pull requests are mirrored into the record. The tasks, runs and verdicts under them stay local.
+- **Example 2, local with a remote.** The remote's issues, comments, milestones and pull requests are mirrored into the record. The tasks, runs and verdicts under them stay local.
 - **Edge case.** The network is down. Work goes on from the record. The copy of the remote is as old as the last poll, and the record says how old.
 - **Edge case.** The remote and the record disagree about a mirrored issue. The remote wins, and the change is written as an event made by tmb.
 
@@ -61,9 +61,30 @@ A person working with agents needs a memory that a remote has no place for: whic
 - **A row with no remote id is local.** Publishing an issue gives it one (Planned, trustmybot/tmb#409).
 - **Teammates see only what is on the remote.** A note or a decision is local. Planned (trustmybot/tmb#409): the Human may publish one as a comment, as the Human publishes an issue.
 
+### When the syncer runs
+
+**The syncer reads the remote when a session starts and when the planner reads the issues, at most once in two minutes, and never holds the work up for it.** There is no daemon and no server.
+
+```mermaid
+flowchart LR
+    T["A session starts, or the planner lists, reads or searches issues"] --> C{"No other poll, past two minutes, past the remote's wait?"}
+    C -->|no| N["The record answers as it is"]
+    C -->|yes| R["Read what changed since the tags it kept"]
+    R --> F["Each change becomes an event by tmb's syncer"]
+    R -->|fails| D["The reason is kept, and tmb doctor shows it"]
+```
+
+- **Example 1.** The planner lists the issues twice in a minute. The first list starts a read; the second answers from the record.
+- **Example 2.** Nothing changed on the remote. The remote answers "not modified" to the tags kept, and no event is written.
+- **Example 3.** Once a week a poll reads the issues, pull requests and milestones whole, to find what was deleted.
+- **Edge case.** The network is slow. The planner's read waits a moment at most, then answers from the record while the poll goes on.
+- **Edge case.** Two sessions start at once. One takes the short claim and the other reads nothing. A claim left by a session that died runs out by itself.
+- **Edge case.** The `gh` program is missing, or no one is signed in. Nothing fails: `tmb doctor` names the reason and its fix.
+- **Edge case.** The Human turns issue sync off ([2_ONBOARD.md](../flows/2_ONBOARD.md)). The syncer reads nothing.
+
 ### Every kind of repo
 
-**The record keeps what happened, a setting keeps the choice, and the remote's own id ties a row to its item on the remote.** Every row marked Planned is trustmybot/tmb#70 or trustmybot/tmb#411.
+**The record keeps what happened, a setting keeps the choice, and the remote's own id ties a row to its item on the remote.**
 
 - **Example 1.** A teammate asks for changes on the user's pull request. The comment is a discussion on that pull request, so the worker is shown it.
 - **Example 2.** A teammate's pull request closes the user's issue. It is a pull request row with an author, no task and no feature branch.
@@ -73,16 +94,16 @@ A person working with agents needs a memory that a remote has no place for: whic
 | The project is | What the record does | |
 |---|---|---|
 | A repo with no remote | Everything is local. The backup push is recorded as not run | |
-| A repo with the user's own remote, worked on alone | Mirrors the remote's issues, comments, milestones and pull requests | Planned (trustmybot/tmb#70) |
+| A repo with the user's own remote, worked on alone | Mirrors the remote's issues, comments, milestones and pull requests. Planned (trustmybot/tmb#411): comments on pull requests | |
 | A repo shared with teammates | The same, and each mirrored row names the account that wrote it. Work assigned to someone else is left alone | Planned (trustmybot/tmb#411) |
 | A fork | Two remotes. Issues come from the upstream, the branch is pushed to the fork, and the pull request names both. Which remote is the upstream is a setting | Planned (trustmybot/tmb#411) |
 | A repo that takes pull requests from other people's forks | Each is a pull request row whose branch is in another remote, with its author and no task | Planned (trustmybot/tmb#405) |
 | A repo whose issues are kept in another repository | Which repository the issues come from is a setting. The issue names its own repository | Planned (trustmybot/tmb#411) |
 | A repo with several remotes, such as a mirror | One remote is the one issues come from, by the same setting. The others only take pushes | Planned (trustmybot/tmb#411) |
-| A multi-repo workspace | One record. Each row names its repo, and each repo is mirrored from its own remote | Planned (trustmybot/tmb#70): the mirror |
-| A remote tmb cannot read: not GitHub, or no sign-in | Works as local. Pushes still go, and the record says the remote is not read | Planned (trustmybot/tmb#70) |
+| A multi-repo workspace | One record. Each repo is mirrored from its own remote. Planned (trustmybot/tmb#466): each row names its repo | |
+| A remote tmb cannot read: not GitHub, or no sign-in | Works as local. Pushes still go, and `tmb doctor` says the remote is not read | |
 | A second clone of the same repo on one machine | A second project with its own record. A task's worktree is not a clone: it shares its project's record | |
-| The same repo on a second machine | The record is per machine and out of git. Mirrored issues come back with the first full pass. Local issues, tasks and runs stay on the first machine | Planned (trustmybot/tmb#70): the mirror |
+| The same repo on a second machine | The record is per machine and out of git. Mirrored issues come back with the first full pass. Local issues, tasks and runs stay on the first machine | |
 
 - **Edge case.** A repo gains a remote later. Its local issues stay local until the Human publishes each one.
 - **Edge case.** A repo loses its remote, or the user loses access. The mirrored rows are kept and marked gone from the remote; nothing is deleted.
@@ -122,8 +143,8 @@ flowchart TD
 | Waiver, review mark, setting change | Each Human waiver, each mark sent to the remote and each change to a setting is its own record, as are a feedback report and an import |
 | Doc | **Planned** (trustmybot/tmb#302). One design document: where it lives, in a repo or outside it such as a wiki, what it is for, and its repo |
 | Session | **Planned** (trustmybot/tmb#63, trustmybot/tmb#254). One host session, with its start, its end and its own cost |
-| Pull request | **Planned** (trustmybot/tmb#405). One pull request, what it carries and its state on the remote |
-| Milestone | **Planned** (trustmybot/tmb#70). One milestone, open or closed, matched to the remote's |
+| Pull request | One pull request, its state on the remote, and the feature branch or task that opened it. **Planned** (trustmybot/tmb#405): what it carries |
+| Milestone | One milestone, open or closed, matched to the remote's |
 
 ### Which work gets a record
 
@@ -138,7 +159,7 @@ flowchart TD
 
 | Work | In the record | On the remote |
 |---|---|---|
-| A remote issue | Issue and tasks | Synced. Planned (trustmybot/tmb#70) |
+| A remote issue | Issue and tasks | Read into the record. Planned (trustmybot/tmb#70): the record's changes sent back |
 | A local issue | Issue and tasks | Nothing, until the Human publishes it. Planned (trustmybot/tmb#409) |
 | Ad hoc work in the chat | Nothing | Nothing |
 
@@ -334,23 +355,23 @@ The file sits inside the project's folder and is left out of git. The engine cre
 
 Everything above is the high level: what the record is for and its rules. From here down is the detail: every table, column, index and trigger, and the rules the data keeps.
 
-The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and left out of git. Its schema is `src/engine/store/schema.ts`, at `SCHEMA_VERSION = 14` (`PRAGMA user_version`). The code graph has its own file and schema ([CODE_GRAPH.md](CODE_GRAPH.md#schema)); no foreign key crosses between the two.
+The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and left out of git. Its schema is `src/engine/store/schema.ts`, at `SCHEMA_VERSION = 16` (`PRAGMA user_version`). The code graph has its own file and schema ([CODE_GRAPH.md](CODE_GRAPH.md#schema)); no foreign key crosses between the two.
 
 **This section is the one schema the record is built to.** A table or column marked Planned, with its issue, is not built yet; one marked "goes" is built and will be removed. Everything unmarked is built. A schema change updates this section in the same pull request. Planned (trustmybot/tmb#440): a generator with a freshness test that fails when it drifts.
 
 The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
-- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`, `role_changes`, `roles`. Planned: `sessions`, `pull_requests`, `milestones`, `repos`, `remotes`, `extensions`, `issue_links`, `docs`.
+- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`, `role_changes`, `roles`, `pull_requests`, `milestones`, `repos`. Planned: `sessions`, `remotes`, `extensions`, `issue_links`, `docs`.
 - **Search** — `search`, one full-text index.
-- **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned, trustmybot/tmb#70), where each poll of the remote stopped.
+- **Not folded from events** — `meta`, the record's own facts, and `sync_state`, where each poll of the remote stopped.
 
 ```mermaid
 flowchart LR
     W["A write"] --> E["events (append-only)"]
     E -->|"same fold, live or rebuild"| P["projections"]
     E -->|"titles and bodies"| S["search"]
-    Y["The syncer (Planned)"] -->|"a change on the remote"| W
+    Y["The syncer"] -->|"a change on the remote"| W
     Y --> T["sync_state"]
 ```
 
@@ -427,7 +448,7 @@ In each table an empty last cell means built.
 | Column | Type | Null | Holds and constraints | Planned |
 |---|---|---|---|---|
 | `id` | TEXT | PK | A ULID |  |
-| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `feature`, `waiver`, `review_mark`, `setting_change`, `freeze`, `feedback_report`, `import`, `role_change`, `role`, checked by the engine | Gains one kind per planned projection. Old `audit` events stay and the fold skips them |
+| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `feature`, `waiver`, `review_mark`, `setting_change`, `freeze`, `feedback_report`, `import`, `role_change`, `role`, `repo`, `milestone`, `pull_request`, checked by the engine | Gains one kind per planned projection. Old `audit` events stay and the fold skips them |
 | `record_id` | TEXT | NOT NULL |  |  |
 | `type` | TEXT | NOT NULL | `created` or `updated` |  |
 | `data` | TEXT | NOT NULL | CHECK `json_valid(data)` |  |
@@ -436,13 +457,14 @@ In each table an empty last cell means built.
 | `actor_host` | TEXT | nullable |  |  |
 | `actor_source` | TEXT | nullable | Which part of tmb wrote it: `syncer` or `upgrade`. Set only for a `tmb` actor |  |
 | `actor_session` | TEXT | nullable | The session that acted. NULL for the Human at a terminal and for tmb | trustmybot/tmb#63 |
-| `actor_remote` | TEXT | nullable | On an event the syncer wrote, the remote account that made the change | trustmybot/tmb#70 |
+| `actor_remote` | TEXT | nullable | On an event the syncer wrote, the remote account that made the change, when the remote says who. Set only for tmb's syncer | Naming who made an update (trustmybot/tmb#70) |
 | `at` | TEXT | NOT NULL |  |  |
 
 Table constraint: a `human` actor has no role and no host; an `agent` actor has both; a `tmb` actor has no role and no host, and has a source. A NULL host on an agent, or a NULL source on tmb, is refused.
 
 - **Example.** An upgrade moves a fact to a new record. It writes the event as `tmb`, source `upgrade`.
-- **Example, Planned (trustmybot/tmb#70).** A pull request is merged in the browser. The syncer writes one `updated` event: actor `tmb`, source `syncer`, `actor_remote` the account that merged it.
+- **Example.** A teammate opens an issue on the remote. The syncer writes one `created` event: actor `tmb`, source `syncer`, `actor_remote` the teammate's account.
+- **Edge case, Planned (trustmybot/tmb#70).** A pull request is merged in the browser. A list does not say who merged it, so today the `updated` event names no account.
 - **Edge case.** A write with an unknown record kind or role is still refused, by the engine.
 - **Edge case.** A tool call or a hook names itself as tmb. The engine refuses it: only the engine's own code writes as tmb. A push hook that names tmb is taken as the Human's.
 
@@ -454,16 +476,16 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `title` | TEXT | NOT NULL | CHECK `length(trim(title)) > 0` |  |
 | `body` | TEXT | NOT NULL | Default `''` |  |
 | `state` | TEXT | NOT NULL | Default `'open'`. `open` or `closed` |  |
-| `state_reason` | TEXT | nullable | Why it closed, in the remote's words, such as completed, not planned or duplicate | trustmybot/tmb#70 |
-| `milestone` | TEXT | nullable | The milestone's name | Goes, for `milestone_id` (trustmybot/tmb#70) |
-| `milestone_id` | TEXT | nullable | FK → `milestones.id` | trustmybot/tmb#70 |
+| `state_reason` | TEXT | nullable | Why it closed, in the remote's words, such as completed, not planned or duplicate |  |
+| `milestone` | TEXT | nullable | The milestone's name, for an issue made in the record. A read shows the `milestones` row's title first | Goes, for `milestone_id` (trustmybot/tmb#70) |
+| `milestone_id` | TEXT | nullable | FK → `milestones.id`. Set by the syncer | Set in the record (trustmybot/tmb#70) |
 | `priority` | TEXT | nullable | `urgent`, `high`, `medium` or `low`. A remote's value outside the list is kept as it is and ordered last | trustmybot/tmb#402 |
-| `type` | TEXT | nullable | The kind of work, such as bug or feature | trustmybot/tmb#402 |
-| `labels` | TEXT | NOT NULL | A JSON list of free labels. Default `'[]'` | trustmybot/tmb#402 |
-| `assignees` | TEXT | NOT NULL | A JSON list of remote accounts. Default `'[]'` | trustmybot/tmb#409 |
+| `type` | TEXT | nullable | The kind of work, such as bug or feature. Mirrored from the remote | Set in the record (trustmybot/tmb#402) |
+| `labels` | TEXT | NOT NULL | A JSON list of free labels. Default `'[]'`. Mirrored from the remote | Set in the record (trustmybot/tmb#402) |
+| `assignees` | TEXT | NOT NULL | A JSON list of remote accounts. Default `'[]'`. Mirrored from the remote | Set in the record (trustmybot/tmb#409) |
 | `repo_id` | TEXT | nullable | FK → `repos.id`. The repo it belongs to | trustmybot/tmb#402 |
-| `remote_url` | TEXT | nullable | Its address on the remote. UNIQUE | trustmybot/tmb#402 |
-| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a local issue | trustmybot/tmb#70 |
+| `remote_url` | TEXT | nullable | Its address on the remote. UNIQUE |  |
+| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a local issue |  |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
 | `updated_at` | TEXT | NOT NULL |  |  |
@@ -489,7 +511,7 @@ Planned (trustmybot/tmb#402). One row per link between two issues. Record kind `
 
 #### `milestones`
 
-Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
+One row per milestone, made by the syncer. Record kind `milestone`.
 
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
@@ -497,7 +519,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 | `title` | TEXT | NOT NULL | UNIQUE with `repo_id` |
 | `description` | TEXT | NOT NULL | Default `''` |
 | `state` | TEXT | NOT NULL | `open` or `closed` |
-| `repo_id` | TEXT | NOT NULL | FK → `repos.id` (trustmybot/tmb#466). A milestone belongs to exactly one repo |
+| `repo_id` | TEXT | NOT NULL | FK → `repos.id`. A milestone belongs to exactly one repo |
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
@@ -507,7 +529,7 @@ Planned (trustmybot/tmb#70). One row per milestone. Record kind `milestone`.
 
 #### `repos`
 
-Planned (trustmybot/tmb#466). **One row per repo tmb works in, so every record that belongs to a repo names it by foreign key and can be joined on it.** A single-repo project has one row. The table is identity only: a repo's policy stays in the settings ([CONFIG.md](CONFIG.md)).
+**One row per repo tmb works in, so every record that belongs to a repo names it by foreign key and can be joined on it.** A single-repo project has one row. The table is identity only: a repo's policy stays in the settings ([CONFIG.md](CONFIG.md)). Built so far: the syncer makes a repo's row the first time it mirrors something into it. Planned (trustmybot/tmb#466): a row for every repo at init, and the other tables naming it.
 
 - **Example.** "Every task and pull request of this milestone's repo" is one join on `repo_id`.
 - **Edge case.** A repo leaves the workspace. Its row stays, because its tasks still point at it.
@@ -516,7 +538,7 @@ Planned (trustmybot/tmb#466). **One row per repo tmb works in, so every record t
 |---|---|---|---|
 | `id` | TEXT | PK |  |
 | `path` | TEXT | NOT NULL | UNIQUE. Relative to the project folder; `.` is the folder itself |
-| `created_at` | TEXT | NOT NULL |  |
+| `created_by`, `created_at` | TEXT | NOT NULL |  |
 
 #### `remotes`
 
@@ -559,20 +581,20 @@ Planned (trustmybot/tmb#468). **One row per thing a project adds to its team: a 
 | `id` | TEXT | PK |  |  |
 | `issue_id` | TEXT | NOT NULL | FK → `issues.id` | Becomes nullable: exactly one of `issue_id` and `pull_request_id` is set (trustmybot/tmb#411) |
 | `pull_request_id` | TEXT | nullable | FK → `pull_requests.id` | trustmybot/tmb#411 |
-| `kind` | TEXT | NOT NULL | `note` or `decision` | Gains `comment`, for one mirrored from the remote (trustmybot/tmb#70) |
-| `body` | TEXT | NOT NULL | CHECK `length(trim(body)) > 0`. A note and a decision never change | A comment's body follows the remote's (trustmybot/tmb#70) |
-| `remote_author` | TEXT | nullable | The remote account that wrote a comment | trustmybot/tmb#70 |
-| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision that was not published | trustmybot/tmb#70 |
+| `kind` | TEXT | NOT NULL | `note`, `decision`, or `comment` for one mirrored from the remote. Only the syncer writes a comment |  |
+| `body` | TEXT | NOT NULL | CHECK `length(trim(body)) > 0`. A note and a decision never change; a comment's body follows the remote's |  |
+| `remote_author` | TEXT | nullable | The remote account that wrote a comment |  |
+| `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision that was not published |  |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
-| `updated_at` | TEXT | nullable | When a comment last changed | trustmybot/tmb#70 |
+| `updated_at` | TEXT | nullable | When a comment last changed |  |
 
 - **Example.** A comment is edited on the remote. The row's body follows it, and each version stays in `events`.
 - **Edge case.** A decision is local even on a mirrored issue. The syncer never sends it, and never changes it.
 
 #### `pull_requests`
 
-Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Record kind `pull_request`.
+One row per pull request, made by the syncer and linked once to the feature branch or task whose pull request it is. Record kind `pull_request`. Planned (trustmybot/tmb#405): `closes`, `review_decision` and `checks` are filled. Planned (trustmybot/tmb#411): its comments.
 
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
@@ -591,7 +613,7 @@ Planned (trustmybot/tmb#405, trustmybot/tmb#411). One row per pull request. Reco
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns) |
 | `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
-- **Example.** tmb opens a pull request: a row made by the planner. The Human merges it in the browser: an update made by tmb, from the syncer.
+- **Example.** tmb opens a pull request, and the next poll makes its row, linked to the feature branch, with no author. The Human merges it in the browser: an update made by tmb, from the syncer.
 - **Edge case.** A contributor opens a pull request from their fork. The row has their account as `author`, their fork as `head_remote`, and no task.
 
 #### `features`
@@ -836,19 +858,19 @@ Planned (trustmybot/tmb#302). One row per design document, so the planner finds 
 
 #### `sync_state`
 
-Planned (trustmybot/tmb#70). One row per remote repository and list. It is not folded from events: a poll that finds nothing writes no event. A lost row costs one full pass.
+One row per remote repository and list. It is not folded from events: a poll that finds nothing writes no event. A lost row costs one full pass.
 
 | Column | Type | Null | Holds and constraints |
 |---|---|---|---|
-| `remote` | TEXT | NOT NULL | FK → `remotes.id` (trustmybot/tmb#467). PK with `list`. A fork has two remotes, so two sets of rows |
+| `remote` | TEXT | NOT NULL | The remote repository, as its host, owner and name. PK with `list`. Planned (trustmybot/tmb#467): FK → `remotes.id`. A fork has two remotes, so two sets of rows |
 | `list` | TEXT | NOT NULL | Issues, comments, review comments, pull requests or milestones |
 | `tag` | TEXT | nullable | The tag the remote gave last time, sent back to ask "has anything changed?" |
 | `since` | TEXT | nullable | The time the next "what changed?" asks from |
 | `resume` | TEXT | nullable | Where a read that was cut short stopped, as the remote's reader gave it. The next read goes on from there. NULL after a complete read |
-| `synced_at`, `full_pass_at` | TEXT | nullable | When the last poll and the last full pass ended, so a reader knows how old the copy is |
+| `synced_at`, `full_pass_at` | TEXT | nullable | When the last poll ended and the last full pass started, so a reader knows how old the copy is |
 | `wait_until` | TEXT | nullable | Set when the remote asks for a wait. No poll runs before it |
 | `claimed_by`, `claim_until` | TEXT | nullable | The short claim one syncer holds, which runs out by itself |
-| `last_error` | TEXT | nullable | Why the last poll failed. NULL after a good one |
+| `last_error` | TEXT | nullable | Why the last poll failed, which `tmb doctor` shows. NULL after a good one |
 
 - **Example.** A first read of a large repo is cut short. The row keeps where the read stopped, and the next read goes on from there. It never starts over.
 - **Edge case.** Milestones are few and come in no order of change. Every read lists them all, and no tag is kept.
@@ -865,20 +887,20 @@ Planned (trustmybot/tmb#70). One row per remote repository and list. It is not f
 
 ### The remote columns
 
-Planned (trustmybot/tmb#70). **Every record the remote also holds carries the remote's own id.** The four mirrored tables are `issues`, `discussions`, `pull_requests` and `milestones`.
+**Every record the remote also holds carries the remote's own id.** The four mirrored tables are `issues`, `discussions`, `pull_requests` and `milestones`.
 
 | Column | Holds |
 |---|---|
-| `remote` | FK → `remotes.id` (trustmybot/tmb#467). The remote repository the row is mirrored from. For a fork it is the upstream |
+| `remote` | The remote repository the row is mirrored from, as its host, owner and name. Planned (trustmybot/tmb#467): FK → `remotes.id`. For a fork it is the upstream |
 | `remote_id` | The remote's own id for the item, which a rename does not change. UNIQUE with `remote`. NULL for a local row, which the syncer leaves alone |
 | `remote_updated_at` | The remote's time of last change, so an unchanged item is skipped |
 | `remote_gone_at` | When the syncer found it deleted or out of reach. NULL while it is there |
 
-- **Example 1.** An issue is closed in the browser. The syncer finds its row by `remote_id` and writes one `updated` event, made by tmb, naming the account that closed it.
+- **Example 1.** An issue is closed in the browser. The syncer finds its row by `remote_id` and writes one `updated` event, made by tmb. Planned (trustmybot/tmb#70): naming the account that closed it.
 - **Example 2.** Nothing changed since the last poll. The syncer sends back the tag it kept in `sync_state`, the remote answers "not modified", and no event is written.
 - **Example 3.** A comment names its issue or pull request by number, not by id. The syncer finds the parent row by its remote and number.
-- **Example 4.** A list answer leaves out the priority, the links between issues, what a pull request closes, and its review decision and checks. The syncer asks for these in one batched ask, only for the items a list showed as changed.
-- **Edge case.** An issue is transferred to another repo. Where the remote keeps its id, the row is kept and its `remote` and address updated. Where it does not, the old row is marked gone and the new one links to it as a duplicate.
+- **Example 4, Planned (trustmybot/tmb#70).** A list answer leaves out the priority, the links between issues, what a pull request closes, and its review decision and checks. The syncer asks for these in one batched ask, only for the items a list showed as changed.
+- **Edge case.** An issue is transferred to another repo. Where the remote keeps its id, the row is kept and its `remote` and address updated. Planned (trustmybot/tmb#70): where it does not, the old row is marked gone and the new one links to it as a duplicate.
 - **Edge case.** An issue is deleted on the remote. The full pass sets `remote_gone_at`; the row and its history stay.
 
 ### What the record takes from a GitHub issue
@@ -914,7 +936,7 @@ One FTS5 virtual table.
 |---|---|---|---|
 | `search` | `title`, `body` | `record_kind`, `record_id`, `issue_id` | `porter unicode61 remove_diacritics 2` |
 
-It covers issues and discussions. Planned: a task's title and spec (trustmybot/tmb#406), a doc's title, purpose and body (trustmybot/tmb#302), and a mirrored comment like any discussion (trustmybot/tmb#70). There are no embedding tables: search is ranked word search plus the code graph.
+It covers issues and discussions. Planned: a task's title and spec (trustmybot/tmb#406), a doc's title, purpose and body (trustmybot/tmb#302). A mirrored comment is searched like any discussion. There are no embedding tables: search is ranked word search plus the code graph.
 
 ### Indexes
 
@@ -934,6 +956,11 @@ It covers issues and discussions. Planned: a task's title and spec (trustmybot/t
 | `idx_reviews_feature` | `reviews` | `feature_id, id` | no |
 | `idx_role_changes_role` | `role_changes` | `role, id` | no |
 | `idx_roles_name` | `roles` | `name, id` | no |
+| `idx_issues_milestone` | `issues` | `milestone_id, id` | no |
+| `idx_issues_remote_url` | `issues` | `remote_url` | yes |
+| `idx_milestones_title` | `milestones` | `repo_id, title` | yes |
+| `idx_pull_requests_repo`, `_feature`, `_task` | `pull_requests` | the column, then `id` | no |
+| `idx_issues_remote`, `idx_discussions_remote`, `idx_milestones_remote`, `idx_pull_requests_remote` | each mirrored table | `remote, remote_id` | yes |
 
 Planned, with each table above: one index per new foreign key column, in the same shape (the column, then `id`), and the unique indexes its table names.
 
@@ -957,7 +984,7 @@ Planned, with each table above: one index per new foreign key column, in the sam
 
 - **Events are append-only.** Two triggers refuse any UPDATE or DELETE on `events`.
 - **Current state is a fold.** The live write path and the rebuild apply the same function to each event, so a rebuilt projection matches the live one.
-- **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions`, `waivers`, `setting_changes`, `feedback_reports`, `imports` and `role_changes` rows never change. Planned (trustmybot/tmb#70): a mirrored comment is the one discussion that may.
+- **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions`, `waivers`, `setting_changes`, `feedback_reports`, `imports` and `role_changes` rows never change, except a mirrored comment, the one discussion that may.
 - **Every write has an actor.** The Human, or an agent named by its role and host. A human actor carries no role or host; an agent actor carries both. Or tmb, named by its source.
 - **The remote is the truth for what it holds.** Planned (trustmybot/tmb#70). A mirrored row changes only by an event the syncer wrote, or by a write tmb first made on the remote at the Human's word.
 - **Verdicts are append-only.** A new review adds a row. A review names the exact commit it judged, so a later commit is never taken as reviewed.
