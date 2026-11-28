@@ -1,7 +1,7 @@
 // What `tmb doctor` works with: the program that runs it, the project it looks at, and the
 // outside calls a test replaces (trustmybot/tmb#160).
 import type { HostAdapter } from "../../../adapters/index.ts";
-import type { Program } from "../../../engine/index.ts";
+import type { Program, Settings, Store } from "../../../engine/index.ts";
 
 export type Status = "ok" | "warn" | "fail";
 export type Scope = "machine" | "project";
@@ -56,3 +56,15 @@ export type DoctorEnv = {
 
 /** Checks a session start skips: they start other programs, or bring themselves up to date anyway. */
 export const SLOW_CHECKS: ReadonlySet<string> = new Set(["other programs", "code graph", "gh"]);
+
+/** One of doctor's checks: the name its findings, a skip and its own failure go by, and its run over what it reads. */
+export interface Check<Context> {
+  readonly name: string;
+  run(context: Context): Finding | Finding[];
+}
+
+/** Where a project's checks look: the project holding the folder doctor runs in. */
+export type ProjectPlace = { readonly env: DoctorEnv; readonly projectDir: string };
+
+/** What the checks that read the record work with, once it opened. */
+export type RecordContext = ProjectPlace & { readonly store: Store; readonly settings: Settings };

@@ -4,7 +4,7 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathS
 import path from "node:path";
 import { formatBytes, keptBuilds, sessionEntries } from "../../builds.ts";
 import { CHANNELS, programName } from "../../../engine/index.ts";
-import type { DoctorEnv, Finding } from "./types.ts";
+import type { Check, DoctorEnv, Finding } from "./types.ts";
 
 const INSTALLER = {
   unix: "https://github.com/trustmybot/tmb-releases/releases/download/dev/install.sh",
@@ -323,7 +323,7 @@ function stateFolderCheck(env: DoctorEnv): Finding {
 }
 
 /** The machine's checks, in the order they print. */
-export const MACHINE_CHECKS: { name: string; run: (env: DoctorEnv) => Finding | Finding[] }[] = [
+export const MACHINE_CHECKS: readonly Check<DoctorEnv>[] = [
   { name: "program", run: programCheck },
   { name: "old builds", run: oldBuildChecks },
   { name: "update", run: updateCheck },

@@ -6,7 +6,7 @@ import { existsSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { sessionEntries } from "../../builds.ts";
 import { addToForeignHook, BASE_LAYER, baseCommit, detectBaseBranch, emptySettings, EXTRACTOR_VERSION, FOREIGN_GAP, foreignHooks, graphDbPath, handCallLine, keptCheckouts, MINIFIED, PROJECT_DIR_NAME, projectDbPath, projectRootOf, pushGateGaps, readSettings, removeTaskCheckout, repoDirOf, reviewModeOf, runningName, SCHEMA_VERSION, type Settings, SHAPE_WRITER_KEY, Store, type Task, tiedProgram, unnamedRepos, unnamedReposFix, workingRepos } from "../../../engine/index.ts";
-import type { DoctorEnv, Finding } from "./types.ts";
+import type { Check, DoctorEnv, Finding, ProjectPlace, RecordContext } from "./types.ts";
 import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "./use.ts";
 
 const finding = (check: string, rest: Omit<Finding, "check" | "scope">): Finding => ({ check, scope: "project", ...rest });
@@ -411,6 +411,33 @@ export function guarded(check: string, scope: Finding["scope"], run: () => Findi
   }
 }
 
+/** Runs each check not in `skip`, in order, each one guarded. */
+export function runEach<Context>(checks: readonly Check<Context>[], scope: Finding["scope"], context: Context, skip: ReadonlySet<string>): Finding[] {
+  return checks.filter((check) => !skip.has(check.name)).flatMap((check) => guarded(check.name, scope, () => check.run(context)));
+}
+
+/** The checks that read the project's record, in the order they print. */
+const RECORD_CHECKS: readonly Check<RecordContext>[] = [
+  { name: "host files", run: ({ env, projectDir, store, settings }) => hostFilesChecks(env, projectDir, { store, settings }) },
+  { name: "program tie", run: ({ env, projectDir, store }) => programTieCheck(env, projectDir, store) },
+  { name: "settings", run: ({ env, projectDir, settings }) => settingsCheck(env, projectDir, settings) },
+  { name: "unfinished work", run: ({ store }) => unfinishedCheck(store) },
+  { name: "closed tasks", run: ({ env, projectDir, store }) => checkoutChecks(env, projectDir, store) },
+  { name: "code graph", run: ({ env, projectDir, settings }) => graphChecks(env, projectDir, settings) },
+  // Whether tmb is used and its record is whole (trustmybot/tmb#257).
+  { name: "work around tmb", run: ({ env, projectDir, store, settings }) => workAroundCheck(env, projectDir, store, settings) },
+  { name: "plugin history", run: ({ env, projectDir, store, settings }) => pluginHistoryCheck(env, projectDir, store, settings) },
+  { name: "run costs", run: ({ store }) => costCheck(store) },
+  { name: "task repos", run: ({ env, store, settings }) => repoOfTasksCheck(env, store, settings) },
+  { name: "unwired sessions", run: ({ env, projectDir, store, settings }) => unwiredWorktreesCheck(env, projectDir, store, settings, wiredCommand(env, store)) },
+];
+
+/** The project's checks that need no record, after the record's. */
+const PLACE_CHECKS: readonly Check<ProjectPlace>[] = [
+  { name: "gh", run: ({ env }) => ghCheck(env) },
+  { name: "other records", run: ({ projectDir }) => otherRecordsCheck(projectDir) },
+];
+
 /** The project's checks, in the order they print; `skip` names checks to leave out. */
 export function projectFindings(env: DoctorEnv, skip: ReadonlySet<string> = new Set()): Finding[] {
   const start = path.resolve(env.cwd);
@@ -419,9 +446,6 @@ export function projectFindings(env: DoctorEnv, skip: ReadonlySet<string> = new 
     return [finding("record", { status: "ok", summary: `no tmb record in ${start} or above it: the project's checks are skipped`, fix: { say: `\`${env.program.name} init\` sets one up` } })];
   }
   const findings: Finding[] = [];
-  const add = (check: string, run: () => Finding | Finding[]) => {
-    if (!skip.has(check)) findings.push(...guarded(check, "project", run));
-  };
   let state: RecordState = { store: null, why: "the record check failed" };
   findings.push(
     ...guarded("record", "project", () => {
@@ -433,26 +457,13 @@ export function projectFindings(env: DoctorEnv, skip: ReadonlySet<string> = new 
   try {
     const current = state as RecordState;
     if (current.store !== null) {
-      const { store, settings } = current;
-      add("host files", () => hostFilesChecks(env, projectDir, { store, settings }));
-      add("program tie", () => programTieCheck(env, projectDir, store));
-      add("settings", () => settingsCheck(env, projectDir, settings));
-      add("unfinished work", () => unfinishedCheck(store));
-      add("closed tasks", () => checkoutChecks(env, projectDir, store));
-      add("code graph", () => graphChecks(env, projectDir, settings));
-      // Whether tmb is used and its record is whole (trustmybot/tmb#257).
-      add("work around tmb", () => workAroundCheck(env, projectDir, store, settings));
-      add("plugin history", () => pluginHistoryCheck(env, projectDir, store, settings));
-      add("run costs", () => costCheck(store));
-      add("task repos", () => repoOfTasksCheck(env, store, settings));
-      add("unwired sessions", () => unwiredWorktreesCheck(env, projectDir, store, settings, wiredCommand(env, store)));
+      findings.push(...runEach(RECORD_CHECKS, "project", { env, projectDir, store: current.store, settings: current.settings }, skip));
     } else {
       findings.push(finding("record checks", { status: "ok", summary: `the checks that read the record are skipped: ${current.why}` }));
     }
   } finally {
     (state as RecordState).store?.close();
   }
-  add("gh", () => ghCheck(env));
-  add("other records", () => otherRecordsCheck(projectDir));
+  findings.push(...runEach(PLACE_CHECKS, "project", { env, projectDir }, skip));
   return findings;
 }
