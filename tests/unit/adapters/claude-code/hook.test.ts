@@ -89,10 +89,10 @@ describe("hook pre-tool-use", () => {
 
   test("takes the role from agent_type inside a subagent, and records under it and the host", () => {
     createRecord();
-    expect(JSON.parse(preToolUse("Bash", { command: "tmb remove" }, { agent_id: "a1", agent_type: "worker" })).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(preToolUse("mcp__tmb__task_brief", { id: "t-1" }, { agent_id: "a1", agent_type: "worker" })).toBe("");
     const [recorded] = guardDecisions();
     expect(recorded!.createdBy).toEqual({ kind: "agent", role: "worker", host: "claude-code" });
-    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-shell-command", role: "worker", action: "tmb remove" });
+    expect(JSON.parse(recorded!.event)).toMatchObject({ type: "worker-in-folder", role: "worker" });
   });
 
   test("answers nothing and records nothing for a tool it does not guard", () => {
@@ -109,6 +109,7 @@ describe("hook pre-tool-use", () => {
       const extra = agent_type === undefined ? {} : { agent_id: "a1", agent_type };
       expect(preToolUse("Bash", { command: "git push --no-verify origin dev" }, extra)).toBe("");
       expect(preToolUse("Bash", { command: "gh pr create --title x --body y" }, extra)).toBe("");
+      expect(preToolUse("Bash", { command: "tmb task waive T-1 --reason r" }, extra)).toBe("");
     }
     expect(guardDecisions()).toHaveLength(0);
   });
@@ -265,13 +266,6 @@ describe("Claude Code set up as the reviewer", () => {
       opened.store.close();
     }
   }
-
-  test("its main agent is guarded and recorded as the reviewer", () => {
-    setUpAsReviewer();
-    const input = { hook_event_name: "PreToolUse", cwd: project, tool_name: "Bash", tool_input: { command: "tmb task waive T-1 --reason r" } };
-    expect(JSON.parse(adapter.answerHook("pre-tool-use", JSON.stringify(input), ATTENDED)).hookSpecificOutput.permissionDecision).toBe("deny");
-    expect(guardDecisions()[0]!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
-  });
 
   test("its session start briefs the reviewer and opens its run; its session end closes it", () => {
     setUpAsReviewer();
