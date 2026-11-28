@@ -384,12 +384,18 @@ export class Updater {
 
   /**
    * The build a running session pins `projectDir` to, when it is not this tmb's: every tmb call
-   * there runs that build until the session moves or ends. Null when nothing pins it.
+   * there runs that build until the session moves or ends. Null when nothing pins it, or when
+   * another session there already runs this tmb.
    */
   pinOf(projectDir: string): string | null {
     const project = path.resolve(projectDir);
-    const lease = this.leases().find((candidate) => path.resolve(candidate.project) === project && (candidate.build ?? this.options.version) !== this.options.version);
-    return lease?.build ?? null;
+    const builds = this.leases()
+      .filter((candidate) => path.resolve(candidate.project) === project)
+      .map((candidate) => candidate.build ?? this.options.version);
+    // A session already on this build may have moved the record on, which an older build cannot
+    // read: the project then runs this build, and its other sessions move at their next tool call.
+    if (builds.includes(this.options.version)) return null;
+    return builds[0] ?? null;
   }
 
   /** Where the build of `version` is kept while sessions run it, under the program's own name. */

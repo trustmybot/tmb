@@ -158,6 +158,7 @@ flowchart TD
 - **Example 1.** The session has no task open. At its next tool call its tool server moves to the new build by itself, says so, and keeps its conversation.
 - **Example 2.** A task is open. The session stays on its build. `tmb update` names each session still on an old build, with its folder, title and start time, and why it waits.
 - **Edge case.** The move fails. The session keeps its build and says how to reconnect the tool server in Claude Code.
+- **Edge case.** Several sessions run in one project and one of them moves. The project runs the new build from then on, since the moved session may have upgraded the record; each other session moves at its own next tool call.
 
 ### The record follows the program
 
