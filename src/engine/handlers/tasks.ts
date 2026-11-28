@@ -5,7 +5,7 @@ import { runningName } from "../program.ts";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";
-import { gitFailure, runGit } from "../git.ts";
+import { type Git, gitFailure, runGit, SYSTEM_GIT } from "../git.ts";
 import { newId } from "../ids.ts";
 import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../docs-files.ts";
 import { languageOf } from "../linguist/index.ts";
@@ -209,38 +209,6 @@ export function pathsOverlap(a: string, b: string): boolean {
 /** A file a starting task shares with another open task: information for the planner, never a refusal. */
 export type SharedFile = { task: string; title: string; file: string; theirs: string };
 
-/**
- * The open tasks that hold one of these files. Two tasks may share a file: each works on its
- * own branch, git merges changes to different lines, and a clash on the same lines stops the
- * later merge, which reopens that task to settle it.
- */
-function sharedFiles(store: Store, files: readonly string[], repo: string | null): SharedFile[] {
-  const shared: SharedFile[] = [];
-  // Paths are relative to a repo, so only tasks in the same repo can share one.
-  for (const task of [...store.listTasks(OPEN), ...store.listTasks(IN_REVIEW)].filter((other) => other.repo === repo)) {
-    for (const theirs of specOf(task).files) {
-      const mine = files.find((file) => pathsOverlap(file, theirs));
-      if (mine !== undefined) shared.push({ task: task.id, title: task.title, file: mine, theirs });
-    }
-  }
-  return shared;
-}
-
-function requireOpenIssue(store: Store, issueId: string): void {
-  const issue = store.getIssue(issueId);
-  if (!issue) throw new HandlerError("not_found", `no issue ${issueId} in the record`);
-  if (issue.state !== OPEN) throw new HandlerError("refused", `issue ${issueId} is closed; reopen it before starting a task on it`);
-}
-
-/** Refuses a `replaces` that names no dropped task: a task replaces one only once that one is dropped, with its reason. */
-function requireDropped(store: Store, id: string): void {
-  const old = store.getTask(id);
-  if (!old) throw new HandlerError("not_found", `no task ${id} in the record, so the new task cannot replace it`);
-  if (old.state !== DROPPED) {
-    throw new HandlerError("refused", `task ${id} is ${old.state}, not dropped; drop it with task_drop and the reason first, then start the task that replaces it`);
-  }
-}
-
 /** The folder of the repo a task was cut in. */
 export function taskDir(store: Store, projectDir: string, task: Task): string {
   return repoOfRow(store, projectDir, task).dir;
@@ -331,152 +299,9 @@ export const taskStartSchema: InputSchema = {
 /** sharedFiles names the open tasks that already hold one of this task's files, as information. */
 export type TaskStartResult = { id: string; branch: string; worktree: string; brief: TaskBrief; sharedFiles: SharedFile[] };
 
-/** Cuts the task's branch from `baseCommit` into a new worktree; on failure removes what it made and says why. */
-function addWorktree(projectDir: string, branch: string, worktree: string, baseCommit: string): void {
-  if (runGit(projectDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).ok) {
-    throw new HandlerError("refused", `branch ${branch} already exists; remove it or start the task again for a new id`);
-  }
-  if (existsSync(worktree)) throw new HandlerError("refused", `${worktree} already exists; move it away and start the task again`);
-  const added = runGit(projectDir, ["worktree", "add", "-b", branch, worktree, baseCommit]);
-  if (!added.ok) {
-    removeWorktree(projectDir, branch, worktree);
-    throw new HandlerError("refused", `git could not add the task's worktree, so nothing was recorded: ${gitFailure(added)}`);
-  }
-}
-
-/** Undoes addWorktree as far as it got. */
-function removeWorktree(projectDir: string, branch: string, worktree: string): void {
-  runGit(projectDir, ["worktree", "remove", "--force", worktree]);
-  runGit(projectDir, ["worktree", "prune"]);
-  runGit(projectDir, ["branch", "-D", branch]);
-}
-
 /** The title a task is listed under: the intent's first line, cut short. */
 function titleOf(intent: string): string {
   return clip(intent.trim().split("\n")[0]!);
-}
-
-/**
- * The review mode a task start follows, and the repo it is that repo's mode for. A repo named, or
- * the named feature branch's repo, gives its own mode. With neither, every repo the task may be cut
- * in must follow the same mode; when they differ the start is refused until it names its repo, as
- * tmb never picks a repo, or a mode, for the planner.
- */
-function taskReviewMode(
-  store: Store,
-  settings: Settings,
-  projectDir: string,
-  repo: string | undefined,
-  feature: string | undefined,
-): { repo: string | null; reviewMode: ReviewMode | null } {
-  if (settings.repos === null) return { repo: null, reviewMode: settings.review_mode };
-  if (repo !== undefined) {
-    const name = resolveRepo(store, projectDir, repo).name;
-    return { repo: name, reviewMode: reviewModeOf(settings, name) };
-  }
-  const named = feature === undefined ? undefined : store.findFeature(feature);
-  if (named) return { repo: named.repo, reviewMode: reviewModeOf(settings, named.repo) };
-  const working = workingRepos(settings.repos);
-  const modes = new Set(working.map((name) => reviewModeOf(settings, name)));
-  if (modes.size > 1) {
-    const each = working.map((name) => `${name} ${reviewModeOf(settings, name) ?? "(no mode chosen)"}`).join(", ");
-    throw new HandlerError("refused", `the repos of this workspace follow different review modes (${each}); name the repo this task works in with repo`);
-  }
-  return { repo: working.length === 1 ? working[0]! : null, reviewMode: working.length === 0 ? settings.review_mode : [...modes][0]! };
-}
-
-export function taskStart(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskStartResult {
-  const request = validateInput<{
-    issue_id: string;
-    kind: TaskKind;
-    feature?: string;
-    repo?: string;
-    intent: string;
-    files: string[];
-    criteria: string[];
-    checks?: string[];
-    replaces?: string;
-  }>("task_start", taskStartSchema, input);
-  requireRole(actor, "task_start", ["planner"]);
-  const spec: TaskSpec = {
-    intent: request.intent,
-    files: [...new Set(request.files.map(normalizeSpecPath))],
-    checks: (request.checks ?? []).map((check) => check.trim()),
-    criteria: request.criteria,
-  };
-  requireOpenIssue(store, request.issue_id);
-  if (request.replaces !== undefined) requireDropped(store, request.replaces);
-  const settings = readSettings(store);
-  // The review mode decides how many tokens the project uses, so no task starts until the Human chose it.
-  // In a workspace each repo follows its own mode, or the workspace's (trustmybot/tmb#216).
-  const mode = taskReviewMode(store, settings, context.projectDir, request.repo, request.feature);
-  const truest = mode.reviewMode === TRUEST;
-  if (truest && request.feature !== undefined) {
-    const base = resolveRepo(store, context.projectDir, request.repo).baseBranch ?? "base branch";
-    throw new HandlerError(
-      "refused",
-      `${mode.repo === null ? "the project is" : `the repo ${mode.repo} is`} in truest mode, which has no feature branches: each task is cut from the base branch ${base} and reaches it through its own pull request. Start the task without feature.`,
-    );
-  }
-  let feature: Feature | null = null;
-  let repo;
-  if (truest || mode.reviewMode === null) {
-    repo = resolveRepo(store, context.projectDir, request.repo);
-  } else {
-    // The repo named, when it is registered, narrows which open feature branch is meant.
-    const named = request.repo === undefined ? undefined : resolveRepo(store, context.projectDir, request.repo).name ?? undefined;
-    // A ready branch the Human already merged locally is merged, and takes no task (trustmybot/tmb#183).
-    refreshLocalMerges(store, actor, context.projectDir);
-    feature = featureForTask(store, request.feature, named);
-    repo = repoOfRow(store, context.projectDir, feature);
-    if (named !== undefined && feature.repo !== named) {
-      throw new HandlerError("refused", `the feature branch ${feature.name} is in the repo ${feature.repo ?? "(the project folder)"}, not ${named}; a task works in its feature branch's repo`);
-    }
-  }
-  const baseBranch = repo.baseBranch;
-  if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
-  if (mode.reviewMode === null) throw new HandlerError("refused", noReviewMode());
-  const dir = repo.dir;
-
-  const id = newId();
-  const branch = `${TASK_BRANCH_PREFIX}${shortTaskId(id)}`;
-  const worktree = taskWorktreePath(context.projectDir, id);
-  const baseCommit = feature === null ? truestBase(dir, baseBranch, `task ${id}`) : featureTip(dir, feature);
-  addWorktree(dir, branch, worktree, baseCommit);
-  const mainSnapshot = snapshotMainFolder(dir, id);
-  let shared: SharedFile[] = [];
-  try {
-    store.transaction(() => {
-      requireOpenIssue(store, request.issue_id);
-      if (request.replaces !== undefined) requireDropped(store, request.replaces);
-      shared = sharedFiles(store, spec.files, repo.name);
-      // Rework on a branch whose pull request closed reopens it, so review and a new pull request run as before (trustmybot/tmb#152).
-      // So does a fix task on a branch ready for a local merge: its tip will move, so it is not ready until covered again (trustmybot/tmb#183).
-      if (feature !== null && (feature.state === CLOSED_UNMERGED || feature.state === READY)) store.updateFeature(actor, feature.id, { state: OPEN });
-      store.appendTask(actor, {
-        id,
-        issueId: request.issue_id,
-        title: titleOf(spec.intent),
-        spec: JSON.stringify(spec),
-        state: OPEN,
-        branch,
-        worktree,
-        baseCommit,
-        featureId: feature?.id ?? null,
-        kind: request.kind,
-        mainSnapshot,
-        repo: repo.name,
-        replaces: request.replaces ?? null,
-      });
-      // A task keeps the mode of its start, so a mode change cannot strand it halfway.
-      store.updateTask(actor, id, { reviewMode: truest ? TRUEST : DEFAULT_REVIEW_MODE });
-    });
-  } catch (error) {
-    removeWorktree(dir, branch, worktree);
-    dropMainFolderSnapshot(dir, id);
-    throw error;
-  }
-  return { id, branch, worktree, brief: briefOf(store, requireTask(store, id), context.projectDir), sharedFiles: shared };
 }
 
 // --- task_brief ---------------------------------------------------------------------------
@@ -487,11 +312,6 @@ export const taskBriefSchema: InputSchema = {
   required: ["id"],
   additionalProperties: false,
 };
-
-export function taskBrief(store: Store, _actor: Actor, input: unknown, context: OperationContext): TaskBrief {
-  const { id } = validateInput<{ id: string }>("task_brief", taskBriefSchema, input);
-  return briefOf(store, requireTask(store, id), context.projectDir);
-}
 
 // --- task_list ----------------------------------------------------------------------------
 
@@ -506,28 +326,6 @@ export const taskListSchema: InputSchema = {
   required: [],
   additionalProperties: false,
 };
-
-export function taskList(store: Store, actor: Actor, input: unknown, context?: OperationContext): TaskSummary[] {
-  const { state = OPEN } = validateInput<{ state?: TaskListState }>("task_list", taskListSchema, input);
-  // A ready task the Human merged locally moves on first (trustmybot/tmb#183).
-  if (context !== undefined) refreshLocalMerges(store, actor, context.projectDir);
-  return store.listTasks(state === "all" ? undefined : state).map((task) => ({
-    id: task.id,
-    issueId: task.issueId,
-    state: task.state,
-    title: task.title,
-    feature: featureName(store, task),
-    repo: task.repo,
-    kind: task.kind,
-    branch: task.branch,
-    worktree: task.worktree,
-    commitSha: task.commitSha,
-    files: specOf(task).files,
-    prUrl: task.prUrl,
-    dropReason: task.dropReason,
-    replaces: task.replaces,
-  }));
-}
 
 // --- task_close ---------------------------------------------------------------------------
 
@@ -720,114 +518,6 @@ export function closeChecks(store: Store, task: Task): string[] {
   return commands;
 }
 
-/**
- * Closes a task whose commit the feature branch already holds at its tip, folded by an earlier close that
- * stopped before it recorded the task closed: records the close, then cleans up and pushes as a fold does.
- */
-function finishFold(
-  store: Store,
-  actor: Actor,
-  task: Task,
-  head: string,
-  reviewMode: string,
-  featureName: string,
-  runs: CheckRunOutcome[],
-  findings: CloseFindings,
-  context: OperationContext,
-): TaskCloseResult {
-  const id = task.id;
-  const worktree = task.worktree!;
-  store.transaction(() => {
-    if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
-    requireHeadAt(worktree, head);
-    store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
-  });
-  const dir = taskDir(store, context.projectDir, task);
-  recordFindings(task, dir);
-  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = backupPush(store, dir, featureName, actor);
-  store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, context.projectDir, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
-}
-
-export async function taskClose(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> {
-  const { id } = validateInput<{ id: string }>("task_close", taskCloseSchema, input);
-  requireRole(actor, "task_close", ["worker", "planner"]);
-  const task = requireTask(store, id);
-  if (task.state !== OPEN) throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task closes`);
-  if (!worktreeReady(task)) throw new HandlerError("refused", `task ${id}'s worktree ${task.worktree ?? "(none)"} is missing, so there is nothing to check`);
-  const worktree = task.worktree!;
-
-  if (task.reviewMode === TRUEST) return truestClose(store, actor, task, context);
-
-  const dir = taskDir(store, context.projectDir, task);
-  const head = committedHead(task, store);
-  const commands = closeChecks(store, task);
-  const runs = [await checkCommit(store, actor, task, head, commands, context)];
-  // Before the fold, which can move the main folder's branch, and on the task's own commit, before any rebase.
-  const findings = closeFindings(task, head, dir);
-  // A task with no mode recorded was started before tasks kept one, when agile was the only mode.
-  const reviewMode = task.reviewMode ?? DEFAULT_REVIEW_MODE;
-
-  const feature = task.featureId === null ? null : store.getFeature(task.featureId);
-  if (feature === null) {
-    // A task started before feature branches has nothing to fold into: it closes where it is.
-    store.transaction(() => {
-      if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
-      requireHeadAt(worktree, head);
-      store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
-    });
-    recordFindings(task, dir);
-    return closeResult(store, context.projectDir, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
-  }
-
-  // Fold: fast-forward the feature branch to the task's commit, rebasing it and checking it again first when the feature moved.
-  requireHeadAt(worktree, head);
-  const from = featureTip(dir, feature);
-  const rebased = !isAncestor(worktree, from, head);
-  // A fold that adds no commit would record the feature's tip, another task's commit, as this task's.
-  const alreadyOnFeature = () =>
-    new HandlerError("refused", `the task's work is already on the feature branch ${feature.name} at ${from}, so folding it would add no commit of the task's own, and task ${id} stays open`);
-  if (head === from) {
-    // The tip is this task's own commit when an earlier close moved the feature branch and stopped before
-    // it recorded the task closed. Only another task recording the commit makes it not the task's own.
-    if (store.listTasks().some((other) => other.id !== id && other.commitSha === head)) throw alreadyOnFeature();
-    return finishFold(store, actor, task, head, reviewMode, feature.name, runs, findings, context);
-  }
-  let folded = head;
-  if (rebased) {
-    folded = rebaseOnto(worktree, feature.name, from, id);
-    try {
-      // git drops a commit whose change the tip already holds, so the rebase can leave nothing of the task's own.
-      if (folded === from) throw alreadyOnFeature();
-      runs.push(await checkCommit(store, actor, task, folded, commands, context, ` on the task rebased onto the feature branch ${feature.name} at ${from}`));
-    } catch (error) {
-      undoRebaseAndRethrow(error, worktree, folded, head);
-    }
-  }
-
-  const moved: { undo?: () => void } = {};
-  try {
-    store.transaction(() => {
-      if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
-      requireHeadAt(worktree, folded);
-      store.updateTask(actor, id, { state: CLOSED, commitSha: folded, reviewMode });
-      // Last, so a refused move rolls the close back; undone below if the close cannot be written.
-      moved.undo = moveFeature(dir, feature.name, from, folded, `tmb: fold task ${id} into ${feature.name}`);
-    });
-  } catch (error) {
-    moved.undo?.();
-    if (rebased) undoRebaseAndRethrow(error, worktree, folded, head);
-    throw error;
-  }
-
-  recordFindings(task, dir);
-  const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
-  const push = backupPush(store, dir, feature.name, actor);
-  store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
-  return closeResult(store, context.projectDir, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
-}
-
 // --- task_drop ----------------------------------------------------------------------------
 
 export const taskDropSchema: InputSchema = {
@@ -850,29 +540,354 @@ export type TaskDropResult = {
   keptBranch: string | null;
 };
 
-/**
- * Ends an open task, or a truest task in review or ready, without its work, with the reason. The task's
- * worktree goes as a closed task's does, unless it holds work nobody committed; its branch stays
- * while it holds commits past the task's base, so nothing committed is lost.
- */
-export function taskDrop(store: Store, actor: Actor, input: unknown, context: OperationContext): TaskDropResult {
-  const { id, reason } = validateInput<{ id: string; reason: string }>("task_drop", taskDropSchema, input);
-  requireRole(actor, "task_drop", ["planner"]);
-  store.transaction(() => {
-    const task = requireTask(store, id);
-    // A ready task the Human will not merge as it is (a squash, say, which tmb cannot see) is ended here too (trustmybot/tmb#183).
-    if (task.state !== OPEN && task.state !== IN_REVIEW && task.state !== READY) {
-      throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task, one in review or a ready one is dropped`);
+
+/** The task flow for one caller: start, brief, list, close and drop. */
+export class TaskService {
+  constructor(
+    private readonly store: Store,
+    private readonly actor: Actor,
+    private readonly context: OperationContext | undefined,
+    private readonly git: Git = SYSTEM_GIT,
+  ) {}
+
+  start(input: unknown): TaskStartResult {
+    const { store, actor } = this;
+    const projectDir = this.projectDir();
+    const request = validateInput<{
+      issue_id: string;
+      kind: TaskKind;
+      feature?: string;
+      repo?: string;
+      intent: string;
+      files: string[];
+      criteria: string[];
+      checks?: string[];
+      replaces?: string;
+    }>("task_start", taskStartSchema, input);
+    requireRole(actor, "task_start", ["planner"]);
+    const spec: TaskSpec = {
+      intent: request.intent,
+      files: [...new Set(request.files.map(normalizeSpecPath))],
+      checks: (request.checks ?? []).map((check) => check.trim()),
+      criteria: request.criteria,
+    };
+    this.requireOpenIssue(request.issue_id);
+    if (request.replaces !== undefined) this.requireDropped(request.replaces);
+    const settings = readSettings(store);
+    // The review mode decides how many tokens the project uses, so no task starts until the Human chose it.
+    // In a workspace each repo follows its own mode, or the workspace's (trustmybot/tmb#216).
+    const mode = this.reviewModeFor(settings, request.repo, request.feature);
+    const truest = mode.reviewMode === TRUEST;
+    if (truest && request.feature !== undefined) {
+      const base = resolveRepo(store, projectDir, request.repo).baseBranch ?? "base branch";
+      throw new HandlerError(
+        "refused",
+        `${mode.repo === null ? "the project is" : `the repo ${mode.repo} is`} in truest mode, which has no feature branches: each task is cut from the base branch ${base} and reaches it through its own pull request. Start the task without feature.`,
+      );
     }
-    store.updateTask(actor, id, { state: DROPPED, dropReason: reason.trim() });
-  });
-  const task = requireTask(store, id);
-  const dir = taskDir(store, context.projectDir, task);
-  dropMainFolderSnapshot(dir, id);
-  const holdsWork = branchHoldsWork(dir, task);
-  const keptBranch = holdsWork
-    ? `the branch ${task.branch} was kept: it holds the dropped task's commits. Delete it once nothing there is needed: git branch -D ${task.branch}`
-    : null;
-  const cleanup = task.worktree === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, task.worktree, holdsWork ? null : task.branch);
-  return { brief: briefOf(store, task, context.projectDir), cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, keptBranch };
+    let feature: Feature | null = null;
+    let repo;
+    if (truest || mode.reviewMode === null) {
+      repo = resolveRepo(store, projectDir, request.repo);
+    } else {
+      // The repo named, when it is registered, narrows which open feature branch is meant.
+      const named = request.repo === undefined ? undefined : resolveRepo(store, projectDir, request.repo).name ?? undefined;
+      // A ready branch the Human already merged locally is merged, and takes no task (trustmybot/tmb#183).
+      refreshLocalMerges(store, actor, projectDir);
+      feature = featureForTask(store, request.feature, named);
+      repo = repoOfRow(store, projectDir, feature);
+      if (named !== undefined && feature.repo !== named) {
+        throw new HandlerError("refused", `the feature branch ${feature.name} is in the repo ${feature.repo ?? "(the project folder)"}, not ${named}; a task works in its feature branch's repo`);
+      }
+    }
+    const baseBranch = repo.baseBranch;
+    if (baseBranch === null) throw new HandlerError("refused", noBaseBranch(repo.name));
+    if (mode.reviewMode === null) throw new HandlerError("refused", noReviewMode());
+    const dir = repo.dir;
+
+    const id = newId();
+    const branch = `${TASK_BRANCH_PREFIX}${shortTaskId(id)}`;
+    const worktree = taskWorktreePath(projectDir, id);
+    const baseCommit = feature === null ? truestBase(dir, baseBranch, `task ${id}`) : featureTip(dir, feature);
+    this.addWorktree(dir, branch, worktree, baseCommit);
+    const mainSnapshot = snapshotMainFolder(dir, id);
+    let shared: SharedFile[] = [];
+    try {
+      store.transaction(() => {
+        this.requireOpenIssue(request.issue_id);
+        if (request.replaces !== undefined) this.requireDropped(request.replaces);
+        shared = this.sharedFiles(spec.files, repo.name);
+        // Rework on a branch whose pull request closed reopens it, so review and a new pull request run as before (trustmybot/tmb#152).
+        // So does a fix task on a branch ready for a local merge: its tip will move, so it is not ready until covered again (trustmybot/tmb#183).
+        if (feature !== null && (feature.state === CLOSED_UNMERGED || feature.state === READY)) store.updateFeature(actor, feature.id, { state: OPEN });
+        store.appendTask(actor, {
+          id,
+          issueId: request.issue_id,
+          title: titleOf(spec.intent),
+          spec: JSON.stringify(spec),
+          state: OPEN,
+          branch,
+          worktree,
+          baseCommit,
+          featureId: feature?.id ?? null,
+          kind: request.kind,
+          mainSnapshot,
+          repo: repo.name,
+          replaces: request.replaces ?? null,
+        });
+        // A task keeps the mode of its start, so a mode change cannot strand it halfway.
+        store.updateTask(actor, id, { reviewMode: truest ? TRUEST : DEFAULT_REVIEW_MODE });
+      });
+    } catch (error) {
+      this.removeWorktree(dir, branch, worktree);
+      dropMainFolderSnapshot(dir, id);
+      throw error;
+    }
+    return { id, branch, worktree, brief: briefOf(store, requireTask(store, id), projectDir), sharedFiles: shared };
+  }
+
+  brief(input: unknown): TaskBrief {
+    const { id } = validateInput<{ id: string }>("task_brief", taskBriefSchema, input);
+    return briefOf(this.store, requireTask(this.store, id), this.projectDir());
+  }
+
+  list(input: unknown): TaskSummary[] {
+    const { store } = this;
+    const { state = OPEN } = validateInput<{ state?: TaskListState }>("task_list", taskListSchema, input);
+    // A ready task the Human merged locally moves on first (trustmybot/tmb#183).
+    if (this.context !== undefined) refreshLocalMerges(store, this.actor, this.context.projectDir);
+    return store.listTasks(state === "all" ? undefined : state).map((task) => ({
+      id: task.id,
+      issueId: task.issueId,
+      state: task.state,
+      title: task.title,
+      feature: featureName(store, task),
+      repo: task.repo,
+      kind: task.kind,
+      branch: task.branch,
+      worktree: task.worktree,
+      commitSha: task.commitSha,
+      files: specOf(task).files,
+      prUrl: task.prUrl,
+      dropReason: task.dropReason,
+      replaces: task.replaces,
+    }));
+  }
+
+  async close(input: unknown): Promise<TaskCloseResult> {
+    const { store, actor } = this;
+    const context = this.context!;
+    const { id } = validateInput<{ id: string }>("task_close", taskCloseSchema, input);
+    requireRole(actor, "task_close", ["worker", "planner"]);
+    const task = requireTask(store, id);
+    if (task.state !== OPEN) throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task closes`);
+    if (!worktreeReady(task)) throw new HandlerError("refused", `task ${id}'s worktree ${task.worktree ?? "(none)"} is missing, so there is nothing to check`);
+    const worktree = task.worktree!;
+
+    if (task.reviewMode === TRUEST) return truestClose(store, actor, task, context);
+
+    const dir = taskDir(store, context.projectDir, task);
+    const head = committedHead(task, store);
+    const commands = closeChecks(store, task);
+    const runs = [await checkCommit(store, actor, task, head, commands, context)];
+    // Before the fold, which can move the main folder's branch, and on the task's own commit, before any rebase.
+    const findings = closeFindings(task, head, dir);
+    // A task with no mode recorded was started before tasks kept one, when agile was the only mode.
+    const reviewMode = task.reviewMode ?? DEFAULT_REVIEW_MODE;
+
+    const feature = task.featureId === null ? null : store.getFeature(task.featureId);
+    if (feature === null) {
+      // A task started before feature branches has nothing to fold into: it closes where it is.
+      store.transaction(() => {
+        if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
+        requireHeadAt(worktree, head);
+        store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
+      });
+      recordFindings(task, dir);
+      return closeResult(store, context.projectDir, id, runs, { fold: null, push: null, cleanupProblems: [], ...findings });
+    }
+
+    // Fold: fast-forward the feature branch to the task's commit, rebasing it and checking it again first when the feature moved.
+    requireHeadAt(worktree, head);
+    const from = featureTip(dir, feature);
+    const rebased = !isAncestor(worktree, from, head);
+    // A fold that adds no commit would record the feature's tip, another task's commit, as this task's.
+    const alreadyOnFeature = () =>
+      new HandlerError("refused", `the task's work is already on the feature branch ${feature.name} at ${from}, so folding it would add no commit of the task's own, and task ${id} stays open`);
+    if (head === from) {
+      // The tip is this task's own commit when an earlier close moved the feature branch and stopped before
+      // it recorded the task closed. Only another task recording the commit makes it not the task's own.
+      if (store.listTasks().some((other) => other.id !== id && other.commitSha === head)) throw alreadyOnFeature();
+      return this.finishFold(task, head, reviewMode, feature.name, runs, findings);
+    }
+    let folded = head;
+    if (rebased) {
+      folded = rebaseOnto(worktree, feature.name, from, id);
+      try {
+        // git drops a commit whose change the tip already holds, so the rebase can leave nothing of the task's own.
+        if (folded === from) throw alreadyOnFeature();
+        runs.push(await checkCommit(store, actor, task, folded, commands, context, ` on the task rebased onto the feature branch ${feature.name} at ${from}`));
+      } catch (error) {
+        undoRebaseAndRethrow(error, worktree, folded, head);
+      }
+    }
+
+    const moved: { undo?: () => void } = {};
+    try {
+      store.transaction(() => {
+        if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
+        requireHeadAt(worktree, folded);
+        store.updateTask(actor, id, { state: CLOSED, commitSha: folded, reviewMode });
+        // Last, so a refused move rolls the close back; undone below if the close cannot be written.
+        moved.undo = moveFeature(dir, feature.name, from, folded, `tmb: fold task ${id} into ${feature.name}`);
+      });
+    } catch (error) {
+      moved.undo?.();
+      if (rebased) undoRebaseAndRethrow(error, worktree, folded, head);
+      throw error;
+    }
+
+    recordFindings(task, dir);
+    const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
+    const push = backupPush(store, dir, feature.name, actor);
+    store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
+    return closeResult(store, context.projectDir, id, runs, { fold: { feature: feature.name, from, to: folded, rebased }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
+  }
+
+  /**
+   * Ends an open task, or a truest task in review or ready, without its work, with the reason. The task's
+   * worktree goes as a closed task's does, unless it holds work nobody committed; its branch stays
+   * while it holds commits past the task's base, so nothing committed is lost.
+   */
+  drop(input: unknown): TaskDropResult {
+    const { store, actor } = this;
+    const { id, reason } = validateInput<{ id: string; reason: string }>("task_drop", taskDropSchema, input);
+    requireRole(actor, "task_drop", ["planner"]);
+    store.transaction(() => {
+      const task = requireTask(store, id);
+      // A ready task the Human will not merge as it is (a squash, say, which tmb cannot see) is ended here too (trustmybot/tmb#183).
+      if (task.state !== OPEN && task.state !== IN_REVIEW && task.state !== READY) {
+        throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task, one in review or a ready one is dropped`);
+      }
+      store.updateTask(actor, id, { state: DROPPED, dropReason: reason.trim() });
+    });
+    const task = requireTask(store, id);
+    const dir = taskDir(store, this.projectDir(), task);
+    dropMainFolderSnapshot(dir, id);
+    const holdsWork = branchHoldsWork(dir, task);
+    const keptBranch = holdsWork
+      ? `the branch ${task.branch} was kept: it holds the dropped task's commits. Delete it once nothing there is needed: git branch -D ${task.branch}`
+      : null;
+    const cleanup = task.worktree === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, task.worktree, holdsWork ? null : task.branch);
+    return { brief: briefOf(store, task, this.projectDir()), cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, keptBranch };
+  }
+
+  /** The project folder; every operation but a list needs one. */
+  private projectDir(): string {
+    return this.context!.projectDir;
+  }
+
+  private requireOpenIssue(issueId: string): void {
+    const issue = this.store.getIssue(issueId);
+    if (!issue) throw new HandlerError("not_found", `no issue ${issueId} in the record`);
+    if (issue.state !== OPEN) throw new HandlerError("refused", `issue ${issueId} is closed; reopen it before starting a task on it`);
+  }
+
+  /** Refuses a `replaces` that names no dropped task: a task replaces one only once that one is dropped, with its reason. */
+  private requireDropped(id: string): void {
+    const old = this.store.getTask(id);
+    if (!old) throw new HandlerError("not_found", `no task ${id} in the record, so the new task cannot replace it`);
+    if (old.state !== DROPPED) {
+      throw new HandlerError("refused", `task ${id} is ${old.state}, not dropped; drop it with task_drop and the reason first, then start the task that replaces it`);
+    }
+  }
+
+  /**
+   * The open tasks that hold one of these files. Two tasks may share a file: each works on its
+   * own branch, git merges changes to different lines, and a clash on the same lines stops the
+   * later merge, which reopens that task to settle it.
+   */
+  private sharedFiles(files: readonly string[], repo: string | null): SharedFile[] {
+    const shared: SharedFile[] = [];
+    // Paths are relative to a repo, so only tasks in the same repo can share one.
+    for (const task of [...this.store.listTasks(OPEN), ...this.store.listTasks(IN_REVIEW)].filter((other) => other.repo === repo)) {
+      for (const theirs of specOf(task).files) {
+        const mine = files.find((file) => pathsOverlap(file, theirs));
+        if (mine !== undefined) shared.push({ task: task.id, title: task.title, file: mine, theirs });
+      }
+    }
+    return shared;
+  }
+
+  /**
+   * The review mode a task start follows, and the repo it is that repo's mode for. A repo named, or
+   * the named feature branch's repo, gives its own mode. With neither, every repo the task may be cut
+   * in must follow the same mode; when they differ the start is refused until it names its repo, as
+   * tmb never picks a repo, or a mode, for the planner.
+   */
+  private reviewModeFor(settings: Settings, repo: string | undefined, feature: string | undefined): { repo: string | null; reviewMode: ReviewMode | null } {
+    if (settings.repos === null) return { repo: null, reviewMode: settings.review_mode };
+    if (repo !== undefined) {
+      const name = resolveRepo(this.store, this.projectDir(), repo).name;
+      return { repo: name, reviewMode: reviewModeOf(settings, name) };
+    }
+    const named = feature === undefined ? undefined : this.store.findFeature(feature);
+    if (named) return { repo: named.repo, reviewMode: reviewModeOf(settings, named.repo) };
+    const working = workingRepos(settings.repos);
+    const modes = new Set(working.map((name) => reviewModeOf(settings, name)));
+    if (modes.size > 1) {
+      const each = working.map((name) => `${name} ${reviewModeOf(settings, name) ?? "(no mode chosen)"}`).join(", ");
+      throw new HandlerError("refused", `the repos of this workspace follow different review modes (${each}); name the repo this task works in with repo`);
+    }
+    return { repo: working.length === 1 ? working[0]! : null, reviewMode: working.length === 0 ? settings.review_mode : [...modes][0]! };
+  }
+
+  /** Cuts the task's branch from `baseCommit` into a new worktree; on failure removes what it made and says why. */
+  private addWorktree(dir: string, branch: string, worktree: string, baseCommit: string): void {
+    if (this.git.run(dir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).ok) {
+      throw new HandlerError("refused", `branch ${branch} already exists; remove it or start the task again for a new id`);
+    }
+    if (existsSync(worktree)) throw new HandlerError("refused", `${worktree} already exists; move it away and start the task again`);
+    const added = this.git.run(dir, ["worktree", "add", "-b", branch, worktree, baseCommit]);
+    if (!added.ok) {
+      this.removeWorktree(dir, branch, worktree);
+      throw new HandlerError("refused", `git could not add the task's worktree, so nothing was recorded: ${gitFailure(added)}`);
+    }
+  }
+
+  /** Undoes addWorktree as far as it got. */
+  private removeWorktree(dir: string, branch: string, worktree: string): void {
+    this.git.run(dir, ["worktree", "remove", "--force", worktree]);
+    this.git.run(dir, ["worktree", "prune"]);
+    this.git.run(dir, ["branch", "-D", branch]);
+  }
+
+  /**
+   * Closes a task whose commit the feature branch already holds at its tip, folded by an earlier close that
+   * stopped before it recorded the task closed: records the close, then cleans up and pushes as a fold does.
+   */
+  private finishFold(task: Task, head: string, reviewMode: string, featureName: string, runs: CheckRunOutcome[], findings: CloseFindings): TaskCloseResult {
+    const { store, actor } = this;
+    const projectDir = this.projectDir();
+    const id = task.id;
+    const worktree = task.worktree!;
+    store.transaction(() => {
+      if (requireTask(store, id).state !== OPEN) throw new HandlerError("refused", `task ${id} was closed while its checks ran`);
+      requireHeadAt(worktree, head);
+      store.updateTask(actor, id, { state: CLOSED, commitSha: head, reviewMode });
+    });
+    const dir = taskDir(store, projectDir, task);
+    recordFindings(task, dir);
+    const cleanup = task.branch === null ? { problems: [], dropped: [] } : removeTaskCheckout(dir, worktree, task.branch);
+    const push = backupPush(store, dir, featureName, actor);
+    store.updateTask(actor, id, { pushResult: push.result, pushDetail: push.detail });
+    return closeResult(store, projectDir, id, runs, { fold: { feature: featureName, from: head, to: head, rebased: false }, push, cleanupProblems: cleanup.problems, cleanedUp: cleanup.dropped, ...findings });
+  }
 }
+
+// The operations as the operation table and the command line call them.
+export const taskStart = (store: Store, actor: Actor, input: unknown, context: OperationContext): TaskStartResult => new TaskService(store, actor, context).start(input);
+export const taskBrief = (store: Store, actor: Actor, input: unknown, context: OperationContext): TaskBrief => new TaskService(store, actor, context).brief(input);
+export const taskList = (store: Store, actor: Actor, input: unknown, context?: OperationContext): TaskSummary[] => new TaskService(store, actor, context).list(input);
+export const taskClose = (store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<TaskCloseResult> => new TaskService(store, actor, context).close(input);
+export const taskDrop = (store: Store, actor: Actor, input: unknown, context: OperationContext): TaskDropResult => new TaskService(store, actor, context).drop(input);
