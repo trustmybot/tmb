@@ -208,7 +208,7 @@ describe("tool server", () => {
       expect(byWorker.content[0]?.text).toContain("the worker may not record an issue (issue.create)");
       const issue = await callJson(client, "issue_create", { title: "Served issue", body: "From the tool server", role: "planner" });
       expect(issue.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
-      expect((await callJson<any[]>(client, "issue_list", { state: "open" })).map((summary) => summary.id)).toEqual([issue.id]);
+      expect((await callJson<any>(client, "issue_list", {})).issues.map((summary: { id: string }) => summary.id)).toEqual([issue.id]);
       const decision = await callJson(client, "discussion_append", { issue_id: issue.id, kind: "decision", body: "Serve over stdio" });
       expect(decision.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
       expect((await callJson(client, "issue_get", { id: issue.id })).newestDecision.id).toBe(decision.id);
@@ -224,7 +224,7 @@ describe("tool server", () => {
       expect(human.content[0]?.text).toContain("role must be planner, worker, reviewer or a role the project created");
       const invalid = await call(client, "issue_list", { state: "done" });
       expect(invalid.isError).toBe(true);
-      expect(invalid.content[0]?.text).toContain("state must be one of open, closed");
+      expect(invalid.content[0]?.text).toContain("state must be one of open, closed, all");
     } finally {
       await client.close();
     }
@@ -272,7 +272,7 @@ describe("command line", () => {
       await client.close();
     }
     expect(tmb(["issue", "list"], project)).toContain(`${id}  open    Command line issue  [Level 1]`);
-    expect(tmbJson(["issue", "list", "--state", "closed"], project)).toEqual([]);
+    expect(tmbJson(["issue", "list", "--state", "closed"], project)).toEqual({ issues: [], total: 0 });
     const shown = tmbJson(["issue", "show", id], project);
     expect(shown.issue.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
     expect(shown.newestDecision.body).toBe("Pick the plain way");
@@ -298,7 +298,10 @@ describe("command line", () => {
     tmb(["onboard", "--yes"], project);
     const badState = run(["issue", "list", "--state", "done"], project);
     expect(badState.status).toBe(1);
-    expect(badState.stderr).toContain("state must be one of open, closed");
+    expect(badState.stderr).toContain("state must be one of open, closed, all");
+    const badOffset = run(["issue", "list", "--offset", "two"], project);
+    expect(badOffset.status).toBe(2);
+    expect(badOffset.stderr).toContain("--offset takes a whole number, got two");
     const badFlag = run(["issue", "list", "--colour", "red"], project);
     expect(badFlag.status).toBe(2);
     expect(badFlag.stderr).toContain("--colour");

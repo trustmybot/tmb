@@ -305,7 +305,7 @@ The planner records work through tmb's tools: issues and notes, feature branches
 
 | Command | Does |
 |---|---|
-| `tmb issue list [--state open\|closed]` | List issues |
+| `tmb issue list [--state open\|closed\|all] [--limit <n>] [--offset <n>]` | List the open issues, newest first, or the closed ones or all, one page at a time. When more remain, the last line says how many and the `--offset` that reads them. |
 | `tmb issue show <id>` | Show an issue with its notes and decisions |
 | `tmb search <query>` | Search issues, notes and decisions |
 | `tmb history <id>` | Show every recorded change to an issue or note |

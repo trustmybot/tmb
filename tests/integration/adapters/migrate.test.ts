@@ -116,7 +116,8 @@ describe("a plugin project's records carry over", () => {
   });
 
   test("issues keep their title, body, state, milestone and time, with a note naming the plugin and GitHub numbers", () => {
-    const issues = t.tmbJson<{ id: string; title: string; state: string; milestone: string | null }[]>(["issue", "list"], project);
+    // Newest first, so reversed to the plugin's order.
+    const issues = t.tmbJson<{ issues: { id: string; title: string; state: string; milestone: string | null }[] }>(["issue", "list", "--state", "all"], project).issues.reverse();
     expect(issues.map((issue) => [issue.title, issue.state, issue.milestone])).toEqual([
       ["Dark mode toggle", "closed", "Level 1"],
       ["Faster search", "open", null],
@@ -297,7 +298,7 @@ describe("tmb migrate refuses", () => {
     const refused = t.run(["migrate"], project);
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain(`the nearest tmb record, ${path.join(outer, ".tmb", "trajectory.db")}, belongs to a folder above this repo`);
-    expect(t.tmbJson<unknown[]>(["issue", "list"], outer)).toEqual([]);
+    expect(t.tmbJson<{ issues: unknown[] }>(["issue", "list", "--state", "all"], outer).issues).toEqual([]);
     // Once init has made the repo's own record, the records go there.
     t.tmb(["init"], project);
     expect(t.tmb(["migrate"], project)).toContain(`into ${path.join(project, ".tmb", "trajectory.db")}`);
@@ -346,7 +347,7 @@ describe("a multi-repo plugin project into a workspace", () => {
     expect(output).toContain("(repo other)");
     expect(tasksByRepo(workspace)).toEqual({ app: ["docs/dark-mode", "feat/dark-mode", "perf/search"], other: ["other/x"] });
     // The plugin's issue of no repo is copied once.
-    const titles = t.tmbJson<{ title: string }[]>(["issue", "list"], workspace).map((issue) => issue.title);
+    const titles = t.tmbJson<{ issues: { title: string }[] }>(["issue", "list", "--state", "all"], workspace).issues.map((issue) => issue.title);
     expect(titles.filter((title) => title === "Shared docs")).toHaveLength(1);
     expect(titles).toHaveLength(4);
 
@@ -366,7 +367,7 @@ describe("a multi-repo plugin project into a workspace", () => {
     expect(second).toContain("(repo other)");
     expect(second).toContain("1 issues, 1 notes and decisions, 1 tasks");
     expect(second).toContain("Not copied: the plugin's repo app: already migrated into this record.");
-    expect(t.tmbJson<unknown[]>(["issue", "list"], workspace)).toHaveLength(4);
+    expect(t.tmbJson<{ issues: unknown[] }>(["issue", "list", "--state", "all"], workspace).issues).toHaveLength(4);
   });
 
   test("a plugin repo with no workspace repo of its name is named with the flag that maps it, and --into maps it", () => {

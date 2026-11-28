@@ -125,7 +125,7 @@ export { DEFAULT_LINK_WAY } from "./graph/ways.ts";
 export { endReadyLine, type OperationContext, type RemoteIssueAnswer, type RemoteIssueEdit, type RemoteIssueState, type RemoteIssueTarget, type RemoteIssueWriter } from "./handlers/common.ts";
 export { HandlerError } from "./handlers/errors.ts";
 export { keptCheckouts, removeTaskCheckout } from "./handlers/fold.ts";
-export { type FeatureBrief, type FeatureDropResult, type FeaturePrResult, type FeatureSummary, type FeatureUpdateResult, type GraphAnswer, type IssueDetail, type IssueUpdateResult, markLine, markRequiredLine, type OperationName, type RoleChangeResult, type RoleView, type TaskBrief, type TaskCloseResult, type TaskDropResult, type TaskPrResult, type TaskStartResult, type TaskSummary, type TaskWaiveResult, type WaiveResult } from "./handlers/index.ts";
+export { type FeatureBrief, type FeatureDropResult, type FeaturePrResult, type FeatureSummary, type FeatureUpdateResult, type GraphAnswer, type IssueDetail, type IssueList, type IssueUpdateResult, markLine, markRequiredLine, type OperationName, type RoleChangeResult, type RoleView, type TaskBrief, type TaskCloseResult, type TaskDropResult, type TaskPrResult, type TaskStartResult, type TaskSummary, type TaskWaiveResult, type WaiveResult } from "./handlers/index.ts";
 export { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./handlers/marks.ts";
 export { emptySettings } from "./handlers/settings.ts";
 export { ACTIONS, type Action, DEFAULT_ROLES, defaultActions, effectiveActions, EVERY_ROLE, FIXED_HUMAN_ACTIONS, HUMAN_ROLE, isAction, isHumanStep, mayTake, requirePermission, type RoleActionChange, roleChangeRefusal, type RoleName } from "./permissions.ts";
@@ -139,5 +139,5 @@ export { inGitWorkTree, isManaged, type Repo, repoDirOf, repoOf, repoOfRow, type
 export { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./settings.ts";
 export { type Actor, type ClaimRefusal, type Discussion, emptySyncRow, type Issue, type IssueSummary, type MirrorKind, type MirroredRow, type ModelUsage, type Role, SCHEMA_VERSION, type SearchHit, SHAPE_WRITER_KEY, Store, type StoredEvent, type SyncRow, type Task } from "./store/index.ts";
 export { giveTasksTheirRepos, PLUGIN_IMPORT, tasksWithNoRepo } from "./task-repos.ts";
-export { RECORD_READ_WAIT_MS, type RecordReadListener, type RolesListener, serveTools, type SharedFoldersListener } from "./tool-server.ts";
+export { RECORD_READ_WAIT_MS, type RecordReadListener, SYNC_RUNNING_NOTE, type RolesListener, serveTools, type SharedFoldersListener } from "./tool-server.ts";
 export { version, versionLine } from "./version.ts";

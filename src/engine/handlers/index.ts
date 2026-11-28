@@ -37,7 +37,7 @@ const DEFINITIONS = {
   issue_list: {
     action: "record.read",
     description:
-      "List the issues in the project's tmb record, newest last, optionally only the open or the closed ones. Use it when the Human asks what work is recorded or open, or before planning new work.",
+      "List the open issues in the project's tmb record, newest first, or the closed ones or all when you ask for them. Use it when the Human asks what work is recorded or open, or before planning new work. One call returns at most one page, so a long list stays readable; when more remain, the answer says how many and which offset reads the next page.",
     inputSchema: op.issueListSchema,
     run: op.issueList,
   },

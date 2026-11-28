@@ -14,7 +14,7 @@ import {
   search,
 } from "../../../src/engine/handlers/index.ts";
 import { openProjectStore, projectDbPath } from "../../../src/engine/index.ts";
-import { type Actor, SEARCH_LIMIT_MAX, type Store } from "../../../src/engine/store/index.ts";
+import { type Actor, ISSUE_PAGE_DEFAULT, ISSUE_PAGE_MAX, SEARCH_LIMIT_MAX, type Store } from "../../../src/engine/store/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -144,16 +144,37 @@ describe("issue_create", () => {
 });
 
 describe("issue_list", () => {
-  test("returns summaries, filtered by state", async () => {
+  test("returns the open issues by default, and the closed ones or all only when asked", async () => {
     const open = issueCreate(store, HUMAN, { title: "Open one", body: "a long body" });
     const closed = issueCreate(store, HUMAN, { title: "Closed one" });
     await issueUpdate(store, HUMAN, { id: closed.id, state: "closed" });
 
-    expect(issueList(store, HUMAN, {}).map((issue) => issue.id)).toEqual([open.id, closed.id]);
-    expect(issueList(store, HUMAN, { state: "open" })).toEqual([
-      { id: open.id, title: "Open one", state: "open", milestone: null, snippet: "a long body" },
-    ]);
-    expect(issueList(store, HUMAN, { state: "closed" }).map((issue) => issue.id)).toEqual([closed.id]);
+    expect(issueList(store, HUMAN, {})).toEqual({
+      issues: [{ id: open.id, title: "Open one", state: "open", milestone: null, snippet: "a long body" }],
+      total: 1,
+    });
+    expect(issueList(store, HUMAN, { state: "open" })).toEqual(issueList(store, HUMAN, {}));
+    expect(issueList(store, HUMAN, { state: "closed" }).issues.map((issue) => issue.id)).toEqual([closed.id]);
+    expect(issueList(store, HUMAN, { state: "all" }).issues.map((issue) => issue.id)).toEqual([closed.id, open.id]);
+  });
+
+  test("answers one page, newest first, and says how many more there are and how to read them", () => {
+    const ids = Array.from({ length: ISSUE_PAGE_DEFAULT + 5 }, (_, n) => issueCreate(store, HUMAN, { title: `Issue ${n}` }).id).reverse();
+
+    const first = issueList(store, HUMAN, {});
+    expect(first.issues.map((issue) => issue.id)).toEqual(ids.slice(0, ISSUE_PAGE_DEFAULT));
+    expect(first.total).toBe(ISSUE_PAGE_DEFAULT + 5);
+    expect(first.more).toBe(`5 more open issues are not shown; list again with offset ${ISSUE_PAGE_DEFAULT} for the next ones.`);
+    expect(first.nextOffset).toBe(ISSUE_PAGE_DEFAULT);
+
+    const last = issueList(store, HUMAN, { offset: ISSUE_PAGE_DEFAULT });
+    expect(last.issues.map((issue) => issue.id)).toEqual(ids.slice(ISSUE_PAGE_DEFAULT));
+    expect(last.more).toBeUndefined();
+
+    const two = issueList(store, HUMAN, { state: "all", limit: 2 });
+    expect(two.issues).toHaveLength(2);
+    expect(two.more).toStartWith(`${ISSUE_PAGE_DEFAULT + 3} more issues are not shown`);
+    expect(refusal(() => issueList(store, HUMAN, { limit: ISSUE_PAGE_MAX + 1 })).code).toBe("invalid_input");
   });
 });
 

@@ -28,6 +28,7 @@ import {
   type Issue,
   type IssueChanges,
   IssueRepository,
+  type IssuePage,
   type IssueState,
   type IssueSummary,
   type NewDiscussion,
@@ -132,6 +133,7 @@ export class Store {
   updateIssue(actor: Actor, id: string, changes: IssueChanges): void { this.issues.updateIssue(actor, id, changes); }
   getIssue(id: string): Issue | null { return this.issues.getIssue(id); }
   listIssues(filter: { state?: IssueState } = {}): IssueSummary[] { return this.issues.listIssues(filter); }
+  pageIssues(filter: { state?: IssueState; limit: number; offset: number }): IssuePage { return this.issues.pageIssues(filter); }
   appendDiscussion(actor: Actor, discussion: NewDiscussion): string { return this.issues.appendDiscussion(actor, discussion); }
   listDiscussions(issueId: string): Discussion[] { return this.issues.listDiscussions(issueId); }
   newestDecision(issueId: string): Discussion | null { return this.issues.newestDecision(issueId); }

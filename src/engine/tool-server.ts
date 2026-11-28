@@ -59,15 +59,23 @@ const RECORD_READ_TOOLS: readonly string[] = ["issue_list", "issue_get", "search
 /** The longest a read of the record waits for a poll of the remote. */
 export const RECORD_READ_WAIT_MS = 1_500;
 
-/** Waits for the listener's work up to the cap; its failure or its lateness never fails the call. */
-async function briefly(work: Promise<void> | void): Promise<void> {
-  if (work === undefined) return;
+/** The reads whose answer says so when a poll of the remote is still running after the wait. */
+const LIST_READ_TOOLS: readonly string[] = ["issue_list", "search"];
+/** Said after a list or search answered while a poll of the remote, above all a first import, still runs. */
+export const SYNC_RUNNING_NOTE = "A sync with the remote is still running, so issues from it may be missing here; ask again shortly.";
+
+/**
+ * Waits for the listener's work up to the cap; its failure or its lateness never fails the call.
+ * Returns false when the work is still running at the cap.
+ */
+async function briefly(work: Promise<void> | void): Promise<boolean> {
+  if (work === undefined) return true;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, RECORD_READ_WAIT_MS);
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), RECORD_READ_WAIT_MS);
   });
   try {
-    await Promise.race([work.catch(() => undefined), late]);
+    return await Promise.race([work.then(() => true, () => true), late]);
   } finally {
     clearTimeout(timer);
   }
@@ -120,7 +128,7 @@ export class ToolSession {
     if (role !== undefined && (typeof role !== "string" || !isRoleName(role) || role === HUMAN_ROLE)) {
       return textResult(`role must be ${ROLES.join(", ")} or a role the project created, got ${JSON.stringify(role)}`, true);
     }
-    if (RECORD_READ_TOOLS.includes(name)) await this.recordRead();
+    const settled = RECORD_READ_TOOLS.includes(name) ? await this.recordRead() : true;
     try {
       const store = this.openStore();
       const actor: Actor = { kind: "agent", role: (role as string | undefined) ?? hostRole(store, this.host), host: this.host };
@@ -139,18 +147,21 @@ export class ToolSession {
           // The role is recorded either way; tmb doctor's host-files check names an agent file left behind.
         }
       }
-      return textResult(JSON.stringify(result));
+      const answer = textResult(JSON.stringify(result));
+      if (!settled && LIST_READ_TOOLS.includes(name)) answer.content.push({ type: "text", text: SYNC_RUNNING_NOTE });
+      return answer;
     } catch (error) {
       return textResult(error instanceof HandlerError ? error.message : describe(error), true);
     }
   }
 
-  /** Tells the listener the record is read; never throws. */
-  async recordRead(): Promise<void> {
+  /** Tells the listener the record is read; never throws. False while its poll still runs after the wait. */
+  async recordRead(): Promise<boolean> {
     try {
-      await briefly(this.onRecordRead?.(this.projectDir));
+      return await briefly(this.onRecordRead?.(this.projectDir));
     } catch {
       // The record answers as it is.
+      return true;
     }
   }
 

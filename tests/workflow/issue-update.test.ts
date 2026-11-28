@@ -29,7 +29,7 @@ describe("an issue update: each change is recorded with who made it", () => {
 
       const read = await callJson(client, "issue_get", { id });
       expect(read.issue).toMatchObject({ id, title: "Rewritten title", body: "Rewritten body.", milestone: "5. Code graph", state: "open" });
-      expect(await callJson(client, "issue_list", {})).toMatchObject([{ id, title: "Rewritten title", milestone: "5. Code graph" }]);
+      expect(await callJson(client, "issue_list", {})).toMatchObject({ issues: [{ id, title: "Rewritten title", milestone: "5. Code graph" }], total: 1 });
 
       // Refused: an update naming no field. Recorded as nothing: one that changes nothing.
       expect(await callRefused(client, "issue_update", { id })).toContain("issue_update needs at least one of state, title, body, milestone");

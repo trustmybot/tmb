@@ -61,6 +61,14 @@ A person working with agents needs a memory that a remote has no place for: whic
 - **A row with no remote id is local.** Publishing an issue gives it one (Planned, trustmybot/tmb#409).
 - **Teammates see only what is on the remote.** A note or a decision is local. Planned (trustmybot/tmb#409): the Human may publish one as a comment, as the Human publishes an issue.
 
+### A list of issues is one page of the open ones
+
+**A list of the record's issues shows the open ones, newest first, one page at a time; the closed ones or all come only when asked. When more remain, the answer says how many and how to read the next page.** A mirrored repo holds hundreds of issues, and most are closed, so a whole list is too long to read.
+
+- **Example 1.** The planner lists the issues of a repo with 96 open and 165 closed. It gets the newest 50 open ones and a line saying 46 more are not shown and which offset reads them.
+- **Example 2.** The Human asks what was closed last week. The planner lists the closed ones.
+- **Edge case.** The dashboard is not a list of this kind: it shows every issue, and the closed ones on its own filter.
+
 ### When the syncer runs
 
 **The syncer reads the remote when a session starts and when the planner reads the issues, at most once in two minutes, and never holds the work up for it.** There is no daemon and no server.
@@ -78,6 +86,7 @@ flowchart LR
 - **Example 2.** Nothing changed on the remote. The remote answers "not modified" to the tags kept, and no event is written.
 - **Example 3.** Once a week a poll reads the issues, pull requests and milestones whole, to find what was deleted.
 - **Edge case.** The network is slow. The planner's read waits a moment at most, then answers from the record while the poll goes on.
+- **Edge case.** A new project's first import takes longer than that moment. The planner's list or search answers from the record and adds one line: a sync with the remote is still running, so ask again shortly. An empty list then does not read as "no issues".
 - **Edge case.** Two sessions start at once. One takes the short claim and the other reads nothing. A claim left by a session that died runs out by itself.
 - **Edge case.** The `gh` program is missing, or no one is signed in. Nothing fails: `tmb doctor` names the reason and its fix.
 - **Edge case.** The Human turns issue sync off ([2_ONBOARD.md](../flows/2_ONBOARD.md)). The syncer reads nothing.
