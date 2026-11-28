@@ -59,6 +59,18 @@ describe("a running session pins its project (trustmybot/tmb#159)", () => {
     expect(installed.pinOf(project)).toBeNull();
   });
 
+  test("once one session of a project is on the installed build, the others no longer pin it", () => {
+    const project = path.join(scratch, "a");
+    const old = updater("0.1.0-dev.1");
+    const lagging = liveProcess();
+    old.startSession(project, lagging);
+    old.startSession(project, process.ppid);
+    const installed = updater("0.1.0-dev.2");
+    expect(installed.pinOf(project)).toBe("0.1.0-dev.1");
+    installed.updateSession(process.ppid, { build: "0.1.0-dev.2" });
+    expect(installed.pinOf(project)).toBeNull();
+  });
+
   test("a kept build lives under the program's own name, by version, and says whether a session uses it", () => {
     const installed = updater("0.1.0-dev.2");
     const kept = installed.keptFile("0.1.0-dev.1");
