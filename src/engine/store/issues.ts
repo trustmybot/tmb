@@ -1,6 +1,7 @@
 // Issues, their discussions, and the word search over both.
 import type { Actor } from "./actor.ts";
 import { type EventLog, actorOf } from "./event-log.ts";
+import { ValueError } from "./values.ts";
 
 export const SNIPPET_MAX = 200;
 export const SEARCH_LIMIT_MAX = 50;
@@ -8,7 +9,8 @@ export const SEARCH_LIMIT_MAX = 50;
 export const SEARCH_LIMIT_DEFAULT = 10;
 
 export type IssueState = "open" | "closed";
-export type DiscussionKind = "note" | "decision";
+/** A note and a decision are local; a comment is mirrored from the remote. */
+export type DiscussionKind = "note" | "decision" | "comment";
 
 export type Issue = {
   id: string;
@@ -16,6 +18,12 @@ export type Issue = {
   body: string;
   state: IssueState;
   milestone: string | null;
+  /** The remote's labels on a mirrored issue; empty for a local one. */
+  labels: string[];
+  /** Where the issue lives on the remote; null while it is local. */
+  remoteUrl: string | null;
+  /** When the syncer found the issue deleted or out of reach on the remote. */
+  remoteGoneAt: string | null;
   createdBy: Actor;
   createdAt: string;
   updatedAt: string;
@@ -29,6 +37,8 @@ export type Discussion = {
   issueId: string;
   kind: DiscussionKind;
   body: string;
+  /** The remote account that wrote a mirrored comment. */
+  remoteAuthor: string | null;
   createdBy: Actor;
   createdAt: string;
 };
@@ -45,7 +55,7 @@ export type SearchHit = {
 /** `id` is for a record copied from elsewhere, such as a migration, that keeps an id made for it beforehand. */
 export type NewIssue = { id?: string; title: string; body?: string; milestone?: string | null };
 export type IssueChanges = { title?: string; body?: string; state?: IssueState; milestone?: string | null };
-export type NewDiscussion = { id?: string; issueId: string; kind: DiscussionKind; body: string };
+export type NewDiscussion = { id?: string; issueId: string; kind: Exclude<DiscussionKind, "comment">; body: string };
 
 type IssueRow = {
   id: string;
@@ -53,11 +63,19 @@ type IssueRow = {
   body: string;
   state: IssueState;
   milestone: string | null;
+  labels: string;
+  remote_url: string | null;
+  remote_gone_at: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
 };
-type DiscussionRow = { id: string; issue_id: string; kind: DiscussionKind; body: string; created_by: string; created_at: string };
+type DiscussionRow = { id: string; issue_id: string; kind: DiscussionKind; body: string; remote_author: string | null; created_by: string; created_at: string };
+
+/** An issue's milestone by name: a mirrored milestone's title, else the name the issue was given. */
+const ISSUE_COLUMNS = "issues.id, issues.title, issues.body, issues.state, COALESCE(milestones.title, issues.milestone) AS milestone, issues.labels, issues.remote_url, issues.remote_gone_at, issues.created_by, issues.created_at, issues.updated_at";
+const SUMMARY_COLUMNS = "issues.id, issues.title, issues.state, COALESCE(milestones.title, issues.milestone) AS milestone, issues.body";
+const ISSUES_FROM = "issues LEFT JOIN milestones ON milestones.id = issues.milestone_id";
 
 /** Flattens whitespace and cuts text to at most SNIPPET_MAX characters, marking a cut with an ellipsis. */
 export function clip(text: string): string {
@@ -79,6 +97,9 @@ function toIssue(row: IssueRow): Issue {
     body: row.body,
     state: row.state,
     milestone: row.milestone,
+    labels: JSON.parse(row.labels) as string[],
+    remoteUrl: row.remote_url,
+    remoteGoneAt: row.remote_gone_at,
     createdBy: actorOf(row.created_by),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -91,6 +112,7 @@ function toDiscussion(row: DiscussionRow): Discussion {
     issueId: row.issue_id,
     kind: row.kind,
     body: row.body,
+    remoteAuthor: row.remote_author,
     createdBy: actorOf(row.created_by),
     createdAt: row.created_at,
   };
@@ -108,20 +130,22 @@ export class IssueRepository {
   }
 
   getIssue(id: string): Issue | null {
-    const row = this.log.db.query("SELECT * FROM issues WHERE id = ?").get(id) as IssueRow | null;
+    const row = this.log.db.query(`SELECT ${ISSUE_COLUMNS} FROM ${ISSUES_FROM} WHERE issues.id = ?`).get(id) as IssueRow | null;
     return row ? toIssue(row) : null;
   }
 
   listIssues(filter: { state?: IssueState } = {}): IssueSummary[] {
     const rows = (
       filter.state === undefined
-        ? this.log.db.query("SELECT id, title, state, milestone, body FROM issues ORDER BY id").all()
-        : this.log.db.query("SELECT id, title, state, milestone, body FROM issues WHERE state = ? ORDER BY id").all(filter.state)
+        ? this.log.db.query(`SELECT ${SUMMARY_COLUMNS} FROM ${ISSUES_FROM} ORDER BY issues.id`).all()
+        : this.log.db.query(`SELECT ${SUMMARY_COLUMNS} FROM ${ISSUES_FROM} WHERE issues.state = ? ORDER BY issues.id`).all(filter.state)
     ) as Pick<IssueRow, "id" | "title" | "state" | "milestone" | "body">[];
     return rows.map(({ body, ...summary }) => ({ ...summary, snippet: clip(body) }));
   }
 
+  /** A note or a decision; a comment comes only from the remote, through the syncer. */
   appendDiscussion(actor: Actor, discussion: NewDiscussion): string {
+    if (discussion.kind !== "note" && discussion.kind !== "decision") throw new ValueError(`a discussion appended in the record is a note or a decision, got ${JSON.stringify(discussion.kind)}`);
     return this.log.create(actor, "discussion", { issue_id: discussion.issueId, kind: discussion.kind, body: discussion.body }, discussion.id);
   }
 

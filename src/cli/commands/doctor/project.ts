@@ -5,7 +5,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { sessionEntries } from "../../builds.ts";
-import { addToForeignHook, BASE_LAYER, baseCommit, detectBaseBranch, emptySettings, EXTRACTOR_VERSION, FOREIGN_GAP, foreignHooks, graphDbPath, handCallLine, keptCheckouts, MINIFIED, PROJECT_DIR_NAME, projectDbPath, projectRootOf, pushGateGaps, readSettings, removeTaskCheckout, repoDirOf, reviewModeOf, runningName, SCHEMA_VERSION, type Settings, SHAPE_WRITER_KEY, sharedFoldersOf, Store, type Task, tiedProgram, unnamedRepos, unnamedReposFix, workingRepos } from "../../../engine/index.ts";
+import { addToForeignHook, BASE_LAYER, baseCommit, detectBaseBranch, emptySettings, EXTRACTOR_VERSION, FOREIGN_GAP, foreignHooks, githubRepoOf, graphDbPath, handCallLine, issueSyncOn, keptCheckouts, MINIFIED, PROJECT_DIR_NAME, projectDbPath, projectRootOf, pushGateGaps, readSettings, removeTaskCheckout, repoDirOf, reviewModeOf, runningName, SCHEMA_VERSION, type Settings, SHAPE_WRITER_KEY, sharedFoldersOf, Store, type Task, tiedProgram, unnamedRepos, unnamedReposFix, workingRepos } from "../../../engine/index.ts";
 import type { Check, DoctorEnv, Finding, ProjectPlace, RecordContext } from "./types.ts";
 import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "./use.ts";
 
@@ -416,6 +416,37 @@ export function runEach<Context>(checks: readonly Check<Context>[], scope: Findi
   return checks.filter((check) => !skip.has(check.name)).flatMap((check) => guarded(check.name, scope, () => check.run(context)));
 }
 
+/** How a failed poll of the remote is fixed, by the reason it kept; most need nothing but time. */
+function syncFix(error: string): Finding["fix"] {
+  if (error.startsWith("no_client")) return { say: "install GitHub's CLI from https://cli.github.com, then `gh auth login`" };
+  if (error.startsWith("no_sign_in")) return { say: "`gh auth login`" };
+  return { say: "shown only: the next session start, or the planner's next read of the issues, tries again" };
+}
+
+/**
+ * Whether each repo's remote is brought into the record (trustmybot/tmb#70). A poll that cannot
+ * run is never an error: the record is used as it is, and this says why.
+ */
+function remoteSyncCheck(env: DoctorEnv, projectDir: string, store: Store, settings: Settings): Finding[] {
+  if (!issueSyncOn(settings)) return [finding("remote sync", { status: "ok", summary: "issue sync is off: the remote's changes are not brought in" })];
+  const repos = settings.repos === null ? [{ label: "the project", dir: projectDir }] : workingRepos(settings.repos).map((name) => ({ label: name, dir: repoDirOf(projectDir, name) }));
+  const now = env.now().toISOString();
+  return repos.map(({ label, dir }) => {
+    const repo = githubRepoOf(dir);
+    if (repo === null) return finding("remote sync", { status: "ok", summary: `${label}: origin names no GitHub repository, so the record is all there is` });
+    const remote = `${repo.host}/${repo.owner}/${repo.name}`;
+    const rows = store.mirror.syncRows(remote);
+    const error = rows.find((row) => row.lastError !== null)?.lastError ?? null;
+    const synced = rows.map((row) => row.syncedAt).filter((at): at is string => at !== null).sort().at(-1) ?? null;
+    const wait = rows.map((row) => row.waitUntil).filter((at): at is string => at !== null && at > now).sort().at(-1) ?? null;
+    const last = synced === null ? "never synced" : `last synced ${synced}`;
+    if (error !== null) return finding("remote sync", { status: "warn", summary: `${label}: the last read of ${remote} did not run (${error}); the record is used as it is, ${last}`, fix: syncFix(error) });
+    if (wait !== null) return finding("remote sync", { status: "ok", summary: `${label}: ${remote} asked tmb to wait until ${wait}; ${last}` });
+    if (synced === null) return finding("remote sync", { status: "ok", summary: `${label}: ${remote} is not synced yet; the next session start brings it in` });
+    return finding("remote sync", { status: "ok", summary: `${label}: ${remote} ${last}` });
+  });
+}
+
 /** The checks that read the project's record, in the order they print. */
 const RECORD_CHECKS: readonly Check<RecordContext>[] = [
   { name: "host files", run: ({ env, projectDir, store, settings }) => hostFilesChecks(env, projectDir, { store, settings }) },
@@ -424,6 +455,7 @@ const RECORD_CHECKS: readonly Check<RecordContext>[] = [
   { name: "unfinished work", run: ({ store }) => unfinishedCheck(store) },
   { name: "closed tasks", run: ({ env, projectDir, store }) => checkoutChecks(env, projectDir, store) },
   { name: "code graph", run: ({ env, projectDir, settings }) => graphChecks(env, projectDir, settings) },
+  { name: "remote sync", run: ({ env, projectDir, store, settings }) => remoteSyncCheck(env, projectDir, store, settings) },
   // Whether tmb is used and its record is whole (trustmybot/tmb#257).
   { name: "work around tmb", run: ({ env, projectDir, store, settings }) => workAroundCheck(env, projectDir, store, settings) },
   { name: "plugin history", run: ({ env, projectDir, store, settings }) => pluginHistoryCheck(env, projectDir, store, settings) },

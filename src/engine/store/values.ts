@@ -3,7 +3,12 @@
 // reshaped table (trustmybot/tmb#404). docs/contributing/ENUMS.md lists every one.
 
 export const ISSUE_STATES = ["open", "closed"] as const;
-export const DISCUSSION_KINDS = ["note", "decision"] as const;
+/** A note and a decision are local; a comment is mirrored from the remote. */
+export const DISCUSSION_KINDS = ["note", "decision", "comment"] as const;
+/** A milestone on the remote is open or closed. */
+export const MILESTONE_STATES = ["open", "closed"] as const;
+/** A pull request on the remote: open, merged, or closed without a merge. */
+export const PULL_REQUEST_STATES = ["open", "merged", "closed"] as const;
 export const REVIEW_TARGET_KINDS = ["commit", "branch"] as const;
 export const GUARD_DECISIONS = ["allow", "deny"] as const;
 /** What a review mark is for, and what the remote is told (trustmybot/tmb#408). */

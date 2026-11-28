@@ -1,5 +1,5 @@
-// The syncer's reading half: what changed on a repository's remote since the last read
-// (trustmybot/tmb#70). It reads only. Writing what it finds into the record is not here.
+// The syncer: what changed on each repo's remote since the last read, folded into the record as
+// events by tmb's syncer (trustmybot/tmb#70). It only reads the remote; it never writes to it.
 import { githubRepoOf } from "../engine/index.ts";
 import { readItem, readRemote } from "./reader.ts";
 import type { ItemKind } from "./github.ts";
@@ -11,6 +11,8 @@ export type { Cannot, Changes, ItemAnswer, Kept, ListKept, ListName, ReadAnswer,
 export { FLOOR_MS, readItem, readRemote } from "./reader.ts";
 export type { ReadOptions } from "./reader.ts";
 export { askThroughGh } from "./transport.ts";
+export { Folder, type FoldCount, syncerActor, UNTITLED } from "./fold.ts";
+export { FULL_PASS_MS, GONE_CHECKS_MAX, keptOf, type SyncOptions, type SyncOutcome, syncProject, syncTrigger } from "./sync.ts";
 export type { Answer, Ask, Request } from "./transport.ts";
 export type { ItemKind, Repo } from "./github.ts";
 

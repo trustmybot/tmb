@@ -4,8 +4,12 @@ import { runningName } from "./program.ts";
 import { DEFAULT_LINK_WAY, LINK_WAYS, type LinkWay } from "./graph/ways.ts";
 import type { Actor, Role, Store } from "./store/index.ts";
 
-export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "shared_folders", "graph_links", "repos"] as const;
+export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "shared_folders", "graph_links", "repos", "issue_sync"] as const;
 export type SettingName = (typeof SETTING_NAMES)[number];
+
+/** Whether the syncer brings the remote's changes into the record; unset is on. */
+export const ISSUE_SYNC_MODES = ["on", "off"] as const;
+export type IssueSync = (typeof ISSUE_SYNC_MODES)[number];
 
 export const REVIEW_MODES = ["agile", "truest"] as const;
 export type ReviewMode = (typeof REVIEW_MODES)[number];
@@ -40,6 +44,7 @@ export type SettingValues = {
   shared_folders: string[];
   graph_links: LinkWay;
   repos: RepoPolicies;
+  issue_sync: IssueSync;
 };
 /** Each setting's current value, null while it has never been set. */
 export type Settings = { [N in SettingName]: SettingValues[N] | null };
@@ -161,6 +166,9 @@ export function validateSetting<N extends SettingName>(name: N, value: unknown):
       return graphLinks(value) as SettingValues[N];
     case "repos":
       return repoPolicies(value) as SettingValues[N];
+    case "issue_sync":
+      if (!ISSUE_SYNC_MODES.includes(value as IssueSync)) throw new SettingError(`issue sync must be ${ISSUE_SYNC_MODES.join(" or ")}, got ${JSON.stringify(value)}`);
+      return value as SettingValues[N];
   }
   throw new SettingError(`unknown setting ${JSON.stringify(name)}; the settings are ${SETTING_NAMES.join(", ")}`);
 }
@@ -215,6 +223,11 @@ export function sharedFoldersOf(settings: Settings, repo: string | null): string
   return repo === null ? (settings.shared_folders ?? []) : (settings.repos?.[repo]?.shared_folders ?? []);
 }
 
+/** Whether the syncer runs: on unless the Human turned it off. */
+export function issueSyncOn(settings: Settings): boolean {
+  return settings.issue_sync !== "off";
+}
+
 /** The role the host's main agent takes in the project: its role in the record, else the planner. */
 export function hostRole(store: Store, host: string): HostRole {
   const change = store.newestSettingChange("host_roles", null, true);
@@ -231,6 +244,7 @@ const LABELS: Record<SettingName, string> = {
   shared_folders: "shared folders",
   graph_links: "graph links",
   repos: "repos",
+  issue_sync: "issue sync",
 };
 
 /**
@@ -262,6 +276,7 @@ export function settingLines(settings: Settings): string[] {
       const entries = Object.entries(value as HostRoles);
       return `${LABELS[name]}: ${entries.length === 0 ? "(none)" : entries.map(([host, role]) => `${host} ${role}`).join(", ")}`;
     }
+    if (name === "issue_sync" && value === null) return `${LABELS[name]}: on (not set)`;
     const shown =
       value === null ? "(not set)" : Array.isArray(value) ? (value.length === 0 ? "(none)" : value.map((check) => JSON.stringify(check)).join(", ")) : value;
     return `${LABELS[name]}: ${shown}`;
