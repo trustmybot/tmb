@@ -14,7 +14,7 @@ import { fakeGh } from "../lib/fake-gh.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } =
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup, tool } =
   tmbProcesses("tmb-workflow-truest-");
 afterAll(cleanup);
 
@@ -61,7 +61,7 @@ function handPush(cwd: string, ref: string): { status: number | null; stderr: st
 describe("Truest mode: every task is reviewed before its push", () => {
   test("a task cannot be pushed unreviewed; fail reopens, pass opens its own pull request with the review carried over a rebase", async () => {
     const project = truestProject();
-    const issue = tmbJson(["issue", "create", "Fix the lines"], project);
+    const issue = tool(project, "issue_create", { title: "Fix the lines" });
     const client = await connect(project);
     const startTask = (intent: string, files = ["src"]) =>
       callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent, files, criteria: ["SC1: it works"] });
@@ -141,7 +141,7 @@ describe("Truest mode: every task is reviewed before its push", () => {
 
   test("a changed patch needs a new review, a conflict reopens the task, and the Human's waiver lets a task through", async () => {
     const project = truestProject();
-    const issue = tmbJson(["issue", "create", "More lines"], project);
+    const issue = tool(project, "issue_create", { title: "More lines" });
     const client = await connect(project);
     const startTask = (intent: string, files = ["src"]) =>
       callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent, files, criteria: ["SC1: it works"] });
@@ -182,7 +182,7 @@ describe("Truest mode: every task is reviewed before its push", () => {
       expect(human(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(`at ${waivedCommit}`);
       // gh pr create fails because the pull request is already open: task_pr takes that one.
       writeFileSync(ghFailOnce, "");
-      expect(tmb(["task", "pr", waived.id, "--title", "New file"], project)).toContain("https://github.com/example/project/pull/9");
+      expect((await callJson(client, "task_pr", { id: waived.id, title: "New file" })).url).toBe("https://github.com/example/project/pull/9");
       expect(readFileSync(ghLog, "utf8")).toContain(`pr list --head ${waived.branch} --state open`);
       expect(readFileSync(ghLog, "utf8")).toContain(`Review waived by the Human at ${waivedCommit}: A file the Human read`);
       expect(git(project, "ls-remote", "origin", `refs/heads/${waived.branch}`)).toStartWith(waivedCommit);

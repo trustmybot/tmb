@@ -14,7 +14,7 @@ import { fakeGh } from "../lib/fake-gh.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } = tmbProcesses("tmb-workflow-no-remote-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup, tool } = tmbProcesses("tmb-workflow-no-remote-");
 afterAll(cleanup);
 
 const PR = "https://github.com/example/project/pull/4";
@@ -37,7 +37,7 @@ const ghCalled = (): boolean => existsSync(ghLog) && readFileSync(ghLog, "utf8")
 describe("a project with no remote ends with a local merge by the Human", () => {
   test("agile: the close skips the backup push, a passed branch is ready, and the Human's merge makes it merged", async () => {
     const project = setUpProject("true");
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/greet" });
@@ -88,7 +88,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
   test("truest: a passed task is rebased onto the local base, ready, and closed once the Human merges it", async () => {
     const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": "one\ntwo\n" });
     human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
-    const issue = tmbJson(["issue", "create", "Fix the lines"], project);
+    const issue = tool(project, "issue_create", { title: "Fix the lines" });
     const client = await connect(project, "claude-code");
     try {
       const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Fix line two", files: ["src"], criteria: ["SC1: it works"] });
@@ -149,7 +149,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
   }, 60_000);
   test("a squash or a rebase merge by hand counts as merged too (trustmybot/tmb#214)", async () => {
     const project = setUpProject("true");
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/squash" });
@@ -185,7 +185,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
 
   test("the known limit: after a squash the base changed the same lines again, so the branch stays ready until it is dropped", async () => {
     const project = setUpProject("true");
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/limit" });
@@ -195,8 +195,8 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       human(["feature", "waive", "feat/limit", "--reason", "The Human read it"], project);
       const ready = await callJson(client, "feature_pr", { feature: "feat/limit", title: "Limit" });
       // The answer that names the ready branch says how to end it when tmb cannot see its merge.
-      expect(ready.localMerge.otherwise).toContain('tmb feature drop feat/limit --reason "<where the work went>"');
-      expect(tmb(["feature", "list"], project)).toContain("tmb feature drop feat/limit");
+      expect(ready.localMerge.otherwise).toContain("the planner ends feat/limit with feature_drop");
+      expect(tmb(["feature", "list"], project)).toContain("feat/limit with feature_drop");
 
       // The Human squashes it onto main, then main changes the same line again: tmb cannot tell.
       git(project, "merge", "--squash", "feat/limit");
@@ -206,9 +206,8 @@ describe("a project with no remote ends with a local merge by the Human", () => 
       expect(await list()).toMatchObject({ state: "ready" });
 
       // The Human ends it with the reason saying where the work went; the branch is kept.
-      const dropped = tmb(["feature", "drop", "feat/limit", "--reason", "squashed onto main, then changed there"], project);
-      expect(dropped).toContain("Dropped feature branch feat/limit: squashed onto main, then changed there");
-      expect(dropped).toContain("git branch -D feat/limit");
+      const dropped = await callJson(client, "feature_drop", { feature: "feat/limit", reason: "squashed onto main, then changed there" });
+      expect(JSON.stringify(dropped)).toContain("git branch -D feat/limit");
       expect(await list()).toMatchObject({ state: "dropped", dropReason: "squashed onto main, then changed there" });
       expect(await callRefused(client, "feature_pr", { feature: "feat/limit", title: "Limit" })).toContain("is dropped");
       expect(git(project, "rev-parse", "--verify", "feat/limit")).not.toBe("");
@@ -220,7 +219,7 @@ describe("a project with no remote ends with a local merge by the Human", () => 
   test("a truest task cherry-picked onto the base branch by hand is closed", async () => {
     const project = setUpProject("true", { "README.md": "hello\n", "src/lines.txt": "one\ntwo\n" });
     human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
-    const issue = tmbJson(["issue", "create", "Fix the lines"], project);
+    const issue = tool(project, "issue_create", { title: "Fix the lines" });
     const client = await connect(project, "claude-code");
     try {
       const task = await callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent: "Fix line two", files: ["src"], criteria: ["SC1: it works"] });

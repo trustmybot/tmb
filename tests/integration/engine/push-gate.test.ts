@@ -13,7 +13,7 @@ import { BASE_BRANCH, CLI, callJson, tmbProcesses } from "../../lib/tmb-processe
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, sessionStart, startSubagent, hook, connect, cleanup } = tmbProcesses("tmb-push-gate-");
+const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, sessionStart, startSubagent, hook, connect, cleanup, tool } = tmbProcesses("tmb-push-gate-");
 afterAll(cleanup);
 
 /** A push typed by hand: git runs the pre-push hook; returns its exit status and what it said. */
@@ -95,7 +95,7 @@ describe("the push gate", () => {
 
   test("lets the base branch take a feature branch once the reviewer passed its tip, and not before", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/greet" });
@@ -194,7 +194,7 @@ describe("the push gate of a project below its repo's top", () => {
 
   test("a task's checks run in the project folder, and its spec's paths are the project's", async () => {
     const { project } = setUpSubfolderProject();
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/greet" });

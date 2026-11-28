@@ -12,7 +12,10 @@ import {
   type NewGuardDecision,
   type NewImport,
   type NewRoleChange,
+  type NewProjectRole,
   type NewSettingChange,
+  type ProjectRole,
+  ProjectRoleRepository,
   type RoleChange,
   RoleChangeRepository,
   type SettingChange,
@@ -58,6 +61,7 @@ export class Store {
   readonly reviews: ReviewRepository;
   readonly settingChanges: SettingChangeRepository;
   readonly roleChanges: RoleChangeRepository;
+  readonly projectRoles: ProjectRoleRepository;
   readonly audit: AuditRepository;
 
   /** Use openStore; it checks the file and its schema version first. */
@@ -70,6 +74,7 @@ export class Store {
     this.reviews = new ReviewRepository(this.log);
     this.settingChanges = new SettingChangeRepository(this.log);
     this.roleChanges = new RoleChangeRepository(this.log);
+    this.projectRoles = new ProjectRoleRepository(this.log);
     this.audit = new AuditRepository(this.log);
   }
 
@@ -160,6 +165,9 @@ export class Store {
   listSettingChanges(key?: string): SettingChange[] { return this.settingChanges.listSettingChanges(key); }
   recordRoleChange(actor: Actor, change: NewRoleChange): string { return this.roleChanges.recordRoleChange(actor, change); }
   listRoleChanges(): RoleChange[] { return this.roleChanges.listRoleChanges(); }
+  createRole(actor: Actor, role: NewProjectRole): string { return this.projectRoles.createRole(actor, role); }
+  deleteRole(actor: Actor, id: string): void { this.projectRoles.deleteRole(actor, id); }
+  listRoles(): ProjectRole[] { return this.projectRoles.listRoles(); }
   recordFreeze(actor: Actor, freeze: { reason: string; sessionId?: string | null }): string { return this.audit.recordFreeze(actor, freeze); }
   liftFreeze(actor: Actor, id: string, at: string): void { this.audit.liftFreeze(actor, id, at); }
   recordFeedbackReport(actor: Actor, report: NewFeedbackReport): string { return this.audit.recordFeedbackReport(actor, report); }

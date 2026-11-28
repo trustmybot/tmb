@@ -1,8 +1,7 @@
-// Workflow simulation of a difficult task: before any task, the
-// planner records its open questions as notes, the Human answers each on the record, and the
-// planner records the decision they reach; the issue reads back in that order, with the decision
-// in force, and only then does the task start. Scripted as tool calls through the tool server and
-// the Human's command line, with no model.
+// Workflow simulation of a difficult task: before any task, the planner records its open
+// questions as notes, then each answer the Human gives in the chat, and the decision they reach;
+// the issue reads back in that order, with the decision in force, and only then does the task
+// start. Scripted as tool calls through the tool server, with no model.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 
@@ -10,9 +9,8 @@ import { callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 setDefaultTimeout(30_000);
 
 const PLANNER = { kind: "agent", role: "planner", host: "test" };
-const HUMAN = { kind: "human" };
 
-const { tmb, setUpProject, connect, cleanup } = tmbProcesses("tmb-difficult-task-");
+const { setUpProject, connect, cleanup } = tmbProcesses("tmb-difficult-task-");
 afterAll(cleanup);
 
 describe("a difficult task: its questions, answers and decision are on the record before it starts", () => {
@@ -22,13 +20,13 @@ describe("a difficult task: its questions, answers and decision are on the recor
     try {
       const issue = await callJson(client, "issue_create", { title: "Switch us to JWT auth", body: "Touches the auth module across handlers." });
       const ask = (body: string) => callJson(client, "discussion_append", { issue_id: issue.id, kind: "note", body });
-      // The Human answers from the command line, so the record names the Human, not an agent.
-      const answer = (body: string) => tmb(["note", issue.id, body], project);
+      // The Human answers in the chat; the planner records each answer as the Human gave it.
+      const answer = (body: string) => callJson(client, "discussion_append", { issue_id: issue.id, kind: "note", body: `The Human answered: ${body}` });
 
       await ask("Question: sign with HS256 and a shared secret, or RS256 with key rotation?");
-      answer("RS256 with rotation; compliance needs it.");
+      await answer("RS256 with rotation; compliance needs it.");
       await ask("Question: migrate existing sessions, or force a new login at cutover?");
-      answer("Force a new login.");
+      await answer("Force a new login.");
       const decision = await callJson(client, "discussion_append", {
         issue_id: issue.id,
         kind: "decision",
@@ -38,9 +36,9 @@ describe("a difficult task: its questions, answers and decision are on the recor
       const read = await callJson(client, "issue_get", { id: issue.id });
       expect(read.discussions.map((entry: any) => [entry.kind, entry.createdBy, entry.body])).toEqual([
         ["note", PLANNER, "Question: sign with HS256 and a shared secret, or RS256 with key rotation?"],
-        ["note", HUMAN, "RS256 with rotation; compliance needs it."],
+        ["note", PLANNER, "The Human answered: RS256 with rotation; compliance needs it."],
         ["note", PLANNER, "Question: migrate existing sessions, or force a new login at cutover?"],
-        ["note", HUMAN, "Force a new login."],
+        ["note", PLANNER, "The Human answered: Force a new login."],
         ["decision", PLANNER, "RS256 with key rotation, and a forced new login at cutover."],
       ]);
       expect(read.newestDecision).toEqual(decision);

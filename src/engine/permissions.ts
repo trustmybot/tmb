@@ -1,9 +1,11 @@
 // Who may take each action: one list of actions, each role's default actions, one check, default
-// deny (docs/architecture/ROLES.md, "Permissions"). A role is a name, not a closed list: the Human
-// is the command line, an agent's role comes with its tool call, and a role tmb does not ship gets
-// only what every role may do. A project's grants and revokes, kept in the record, change the
-// defaults. To add an action, add it to ACTIONS and to the roles that take it.
+// deny (docs/architecture/PERMISSIONS.md). A role is a name, not a closed list: the Human
+// is the command line, an agent's role comes with its tool call, and a role the project created is
+// a row in the record. A project's grants and revokes, kept in the record, change the defaults; a
+// role that is neither shipped nor created gets only what every role may do. To add an action, add
+// it to ACTIONS and to the roles that take it.
 import { HandlerError } from "./handlers/errors.ts";
+import { runningName } from "./program.ts";
 import type { Actor } from "./store/index.ts";
 
 /** Every action, by resource, with what it does in a few words for a message. */
@@ -12,6 +14,8 @@ export const ACTIONS = {
   "project.remove": "remove tmb's wiring from this project, keeping its record",
   "project.purge": "remove tmb's wiring from this project and delete its record for good, so its trajectory cannot be recovered",
   "permissions.manage": "grant or revoke a role's actions",
+  "role.create": "create a role, with its prompt and its actions",
+  "role.delete": "delete a role the project created",
   "settings.review-mode": "set the review mode",
   "settings.set": "set the project's other settings",
   "issue.create": "record an issue",
@@ -70,30 +74,15 @@ export const DEFAULT_ROLES: Readonly<Record<RoleName, readonly Action[]>> = {
     "task.pr",
     "graph.write",
     "feedback.send",
-    // A docs task, which the planner writes and closes itself.
+    // Any task, as a recovery: the close records the planner's reason as a note on the task's issue.
     "task.close",
+    "role.create",
+    "role.delete",
+    "permissions.manage",
   ],
   worker: ["task.close"],
   reviewer: ["review.record"],
 };
-
-/**
- * Record actions the command line still runs for the Human outside the Human's defaults, as it did
- * before the table. Each stays until it is decided whether the Human keeps it.
- */
-const COMMAND_LINE_CARRY_OVER: readonly Action[] = [
-  "issue.create",
-  "issue.update",
-  "issue.note",
-  "feature.start",
-  "feature.update",
-  "feature.drop",
-  "feature.pr",
-  "task.start",
-  "task.close",
-  "task.drop",
-  "task.pr",
-];
 
 export function isAction(name: string): name is Action {
   return Object.hasOwn(ACTIONS, name);
@@ -108,8 +97,7 @@ export function roleOf(actor: Actor): RoleName | null {
 /** The actions `role` may take by default: tmb's defaults for a role it ships, plus what every role may do. */
 export function defaultActions(role: RoleName): ReadonlySet<Action> {
   const own = Object.hasOwn(DEFAULT_ROLES, role) ? DEFAULT_ROLES[role]! : [];
-  const carried = role === HUMAN_ROLE ? COMMAND_LINE_CARRY_OVER : [];
-  return new Set([...EVERY_ROLE, ...own, ...carried]);
+  return new Set([...EVERY_ROLE, ...own]);
 }
 
 /** A project's grant or revoke of one action for one role, oldest first in a list. */
@@ -135,6 +123,16 @@ export function mayTake(actor: Actor, action: string, changes: readonly RoleActi
 
 const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
 
+/** True for a well-formed role name: lowercase letters, digits and -, starting with a letter. */
+export function isRoleName(name: string): boolean {
+  return ROLE_NAME.test(name);
+}
+
+/** True for a role tmb ships: the Human, planner, worker or reviewer. */
+export function isShippedRole(role: RoleName): boolean {
+  return Object.hasOwn(DEFAULT_ROLES, role);
+}
+
 /**
  * Why a project may not grant or revoke `action` for `role`, or null when it may. The Human's
  * fixed steps are never granted, what every role may do is never revoked, and the Human's own
@@ -146,6 +144,19 @@ export function roleChangeRefusal(role: string, action: string, change: RoleActi
   if (role === HUMAN_ROLE) return "the Human's own actions are not granted or revoked";
   if ((FIXED_HUMAN_ACTIONS as readonly string[]).includes(action)) return `${action} is the Human's alone (to ${ACTIONS[action]}), so no role is granted it`;
   if (change === "revoke" && (EVERY_ROLE as readonly string[]).includes(action)) return `${action} is what every role may do, so it is not revoked`;
+  return null;
+}
+
+/**
+ * Why an agent may not make this grant, or null when it may. No agent grants an action to its own
+ * role, and none grants an action its own role does not hold, so no agent raises its own reach,
+ * even through a role it created: the Human does that with the command line.
+ */
+export function agentGrantRefusal(actor: Actor, role: RoleName, action: Action, changes: readonly RoleActionChange[]): string | null {
+  const own = roleOf(actor);
+  if (actor.kind !== "agent" || own === null) return null;
+  if (own === role) return `an agent does not grant actions to its own role; the Human grants ${action} to the ${role} with \`${runningName()} role grant ${role} ${action}\``;
+  if (!effectiveActions(own, changes).has(action)) return `the ${own} does not hold ${action}, so it does not grant it; the Human grants it with \`${runningName()} role grant ${role} ${action}\``;
   return null;
 }
 

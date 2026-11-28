@@ -12,7 +12,7 @@ import { fakeGh } from "../lib/fake-gh.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-review-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup, tool } = tmbProcesses("tmb-workflow-review-");
 afterAll(cleanup);
 
 // A fake gh: it logs its arguments and prints a pull request address, as `gh pr create` does.
@@ -22,7 +22,7 @@ env.PATH = `${fakeBin}${path.delimiter}${env.PATH}`;
 describe("the review of a feature branch", () => {
   test("review, fail, rework, pass, then the pull request; and a waiver on a second branch", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     const startTask = async (intent: string) =>
       callJson(client, "task_start", { issue_id: issue.id, kind: "code", intent, files: ["src"], criteria: ["SC1: it works"] });
@@ -106,7 +106,7 @@ describe("the review of a feature branch", () => {
         coveredBy: "waiver",
         waivers: [{ commit: waveTip, reason: "A one-line change the Human read" }],
       });
-      expect(tmb(["feature", "pr", "feat/wave", "--title", "Wave"], project)).toContain("https://github.com/example/project/pull/7");
+      expect((await callJson(client, "feature_pr", { feature: "feat/wave", title: "Wave" })).url).toBe("https://github.com/example/project/pull/7");
       expect(readFileSync(ghLog, "utf8")).toContain(`Review waived by the Human at ${waveTip}: A one-line change the Human read`);
     } finally {
       await client.close();

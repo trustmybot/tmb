@@ -93,7 +93,7 @@ const DEFINITIONS = {
   feature_drop: {
     action: "feature.drop",
     description:
-      "End a feature branch without a merge tmb saw, with the reason: one nobody will merge, or one whose work reached the base branch in a way tmb cannot tell (say where it went). An open, closed or ready branch is dropped; one whose pull request is open is refused, since GitHub could still merge it: the Human closes the pull request first. Refused while a task on it is open or in review. The branch is kept, and the answer says how to delete it. A dropped branch takes no task and opens no pull request. For the planner and the Human.",
+      "End a feature branch without a merge tmb saw, with the reason: one nobody will merge, or one whose work reached the base branch in a way tmb cannot tell (say where it went). An open, closed or ready branch is dropped; one whose pull request is open is refused, since GitHub could still merge it: the Human closes the pull request first. Refused while a task on it is open or in review. The branch is kept, and the answer says how to delete it. A dropped branch takes no task and opens no pull request. For the planner.",
     inputSchema: feature.featureDropSchema,
     run: feature.featureDrop,
   },
@@ -150,7 +150,7 @@ const DEFINITIONS = {
   task_close: {
     action: "task.close",
     description:
-      "Close a task once its work is committed in its worktree. tmb runs the project's checks and the task's own on the worktree's commit and closes the task only when all pass; otherwise it refuses, naming the failing check and the end of its output. On a pass it folds the commit into the feature branch, first rebasing it and running the checks again when the feature branch moved, removes the task's branch and worktree, and pushes the feature branch to origin as a backup. In truest mode a pass instead leaves the task in review at its commit, worktree kept, for the reviewer and then task_pr. For the worker or the planner.",
+      "Close a task once its work is committed in its worktree. tmb runs the project's checks and the task's own on the worktree's commit and closes the task only when all pass; otherwise it refuses, naming the failing check and the end of its output. On a pass it folds the commit into the feature branch, first rebasing it and running the checks again when the feature branch moved, removes the task's branch and worktree, and pushes the feature branch to origin as a backup. In truest mode a pass instead leaves the task in review at its commit, worktree kept, for the reviewer and then task_pr. For the worker, which closes its own task. The planner closes its own docs tasks, and may close a worker's task, such as one whose worker ended without closing; then it must pass reason: tmb keeps it as a note on the task's issue, and the record names who closed.",
     inputSchema: task.taskCloseSchema,
     run: task.taskClose,
   },
@@ -178,9 +178,8 @@ const DEFINITIONS = {
   },
   task_drop: {
     action: "task.drop",
-    get description() {
-      return `Drop a task whose approach is wrong or that nobody will finish, with the reason: it ends without its work, as an open task or a truest task in review. tmb removes its worktree as at a close, unless it holds work nobody committed, and keeps its branch while that holds commits. A new task can name it in task_start's replaces. For the planner, or the Human (\`${runningName()} task drop <id> --reason <text>\`).`;
-    },
+    description:
+      "Drop a task whose approach is wrong or that nobody will finish, with the reason: it ends without its work, as an open task or a truest task in review. tmb removes its worktree as at a close, unless it holds work nobody committed, and keeps its branch while that holds commits. A new task can name it in task_start's replaces. For the planner.",
     inputSchema: task.taskDropSchema,
     run: task.taskDrop,
   },
@@ -208,16 +207,30 @@ const DEFINITIONS = {
   role_list: {
     action: "record.read",
     description:
-      "List each role's actions in this project: tmb's defaults for the Human, planner, worker and reviewer, and every role the project changed, with what was granted or revoked. Use it when the Human asks who may do what.",
+      "List each role's actions in this project: tmb's defaults for the Human, planner, worker and reviewer, with what the project granted or revoked, and every role the project created with what it is for. Use it when the Human asks who may do what, and before role_create or role_change.",
     inputSchema: roles.roleListSchema,
     run: roles.roleList,
   },
   role_change: {
     action: "permissions.manage",
     description:
-      "Grant or revoke one action for one role, only when the Human asked for that change; the record names you. Refused unless your role holds permissions.manage, which only the Human has unless they granted it.",
+      "Grant or revoke one action for one role, as worker or a role the project created; the record names you. Use it when the Human asks for the change, or to give a role you created an action it turns out to need. Refused for the Human's own actions, for removing tmb, for your own role, and for an action your role does not hold: the Human grants those from the command line.",
     inputSchema: roles.roleChangeSchema,
     run: roles.roleChange,
+  },
+  role_create: {
+    action: "role.create",
+    description:
+      "Create a role for an agent the project needs, such as a designer for a logo: its name, what it is for, its prompt, and the actions it may take beyond reading the record and the code graph. tmb records it and writes its agent file into the host, so you can start that agent by its name; its tool calls pass its name as their role. Refused for a name tmb keeps, a role that exists, and an action you may not grant (see role_change). The record names you.",
+    inputSchema: roles.roleCreateSchema,
+    run: roles.roleCreate,
+  },
+  role_delete: {
+    action: "role.delete",
+    description:
+      "Delete a role the project created when its work is over or it was a mistake: tmb revokes its actions, marks it deleted in the record and removes its agent file from the host. The roles tmb ships are never deleted.",
+    inputSchema: roles.roleDeleteSchema,
+    run: roles.roleDelete,
   },
   graph_map: {
     action: "graph.read",
@@ -312,7 +325,7 @@ function guarded(operation: Operation): Operation {
     run(store, actor, input, context) {
       const actions = typeof operation.action === "function" ? operation.action(input) : [operation.action];
       if (actions.length > 0) {
-        const changes = store.listRoleChanges();
+        const changes = roles.changesInForce(store);
         for (const action of actions) requirePermission(actor, action, changes);
       }
       return operation.run(store, actor, input, context);

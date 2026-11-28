@@ -7,14 +7,15 @@ import { runningName } from "./program.ts";
 import type { FeedbackEnv } from "./feedback/index.ts";
 import { HandlerError, isOperationName, OPERATIONS } from "./handlers/index.ts";
 import { openProjectStore } from "./project.ts";
+import { HUMAN_ROLE, isRoleName } from "./permissions.ts";
+import { type SubagentRole, subagentRolesOf } from "./roles.ts";
 import { hostRole, readSettings, sharedFoldersOf } from "./settings.ts";
-import { type Actor, ROLES, type Role, type Store } from "./store/index.ts";
+import { type Actor, ROLES, type Store } from "./store/index.ts";
 
 export const SERVER_NAME = "tmb";
 const ROLE_FIELD = {
   type: "string",
-  description: `Your role in tmb's workflow: ${ROLES.join(", ")}. Defaults to the role this host was set up in, the planner unless init or onboard named another; a worker or a reviewer subagent passes its own.`,
-  enum: ROLES,
+  description: `Your role in tmb's workflow: ${ROLES.join(", ")}, or a role the project created. Defaults to the role this host was set up in, the planner unless init or onboard named another; a subagent passes its own.`,
 } as const;
 
 export function listTools(): Tool[] {
@@ -39,6 +40,15 @@ function textResult(text: string, isError = false): CallToolResult {
  */
 export type SharedFoldersListener = (projectDir: string, folders: readonly string[]) => void;
 
+/**
+ * Told the project's subagent roles each time a role is created or deleted, so the host's agent
+ * files catch up: the command line hands it to the host's adapter. The engine names no host.
+ */
+export type RolesListener = (projectDir: string, roles: readonly SubagentRole[]) => void;
+
+/** The tools whose change to the project's roles reaches the host's agent files. */
+const ROLE_TOOLS: readonly string[] = ["role_create", "role_delete"];
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -55,6 +65,7 @@ export class ToolSession {
     /** The feedback program's environment, for the planner's feedback tools. */
     readonly feedback?: FeedbackEnv,
     private readonly onSharedFolders?: SharedFoldersListener,
+    private readonly onRoles?: RolesListener,
   ) {
     if (host.trim() === "") throw new Error("the tool server needs a host id");
   }
@@ -76,16 +87,25 @@ export class ToolSession {
   async call(name: string, args: Record<string, unknown> | undefined): Promise<CallToolResult> {
     if (!isOperationName(name)) return textResult(`unknown tool ${name}; the tools are ${Object.keys(OPERATIONS).join(", ")}`, true);
     const { role, ...input } = args ?? {};
-    if (role !== undefined && !ROLES.includes(role as Role)) return textResult(`role must be one of ${ROLES.join(", ")}, got ${JSON.stringify(role)}`, true);
+    if (role !== undefined && (typeof role !== "string" || !isRoleName(role) || role === HUMAN_ROLE)) {
+      return textResult(`role must be ${ROLES.join(", ")} or a role the project created, got ${JSON.stringify(role)}`, true);
+    }
     try {
       const store = this.openStore();
-      const actor: Actor = { kind: "agent", role: (role as Role | undefined) ?? hostRole(store, this.host), host: this.host };
+      const actor: Actor = { kind: "agent", role: (role as string | undefined) ?? hostRole(store, this.host), host: this.host };
       const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir, unattended: this.unattended, feedback: this.feedback });
       if (name === "settings_set" && (result as { changed: string[] }).changed.includes("shared_folders")) {
         try {
           this.onSharedFolders?.(this.projectDir, sharedFoldersOf(readSettings(store), null));
         } catch {
           // The setting is recorded either way; tmb doctor's host-files check names a host file left behind.
+        }
+      }
+      if (ROLE_TOOLS.includes(name)) {
+        try {
+          this.onRoles?.(this.projectDir, subagentRolesOf(store));
+        } catch {
+          // The role is recorded either way; tmb doctor's host-files check names an agent file left behind.
         }
       }
       return textResult(JSON.stringify(result));
@@ -108,8 +128,9 @@ export async function serveTools(options: {
   unattended?: boolean;
   feedback?: FeedbackEnv;
   onSharedFolders?: SharedFoldersListener;
+  onRoles?: RolesListener;
 }): Promise<void> {
-  const session = new ToolSession(options.projectDir, options.host, options.unattended === true, options.feedback, options.onSharedFolders);
+  const session = new ToolSession(options.projectDir, options.host, options.unattended === true, options.feedback, options.onSharedFolders, options.onRoles);
   const server = new Server({ name: SERVER_NAME, version: options.version }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listTools() }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => session.call(request.params.name, request.params.arguments));

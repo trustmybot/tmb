@@ -219,44 +219,25 @@ describe("the Human's changes", () => {
     expect((await api(`issues/${ids.issueId}`)).discussions).toHaveLength(before.discussions.length);
   });
 
-  test("records a note and a decision as the Human", async () => {
+  test("refuses the Human's note, decision, edit, close and reopen: the planner records those", async () => {
     const t = await token();
-    expect((await post(`issues/${ids.issueId}/comment`, { body: "A note from the page." }, { "x-tmb-token": t })).status).toBe(200);
-    expect((await post(`issues/${ids.issueId}/comment`, { body: "Ship it behind a flag.", kind: "decision" }, { "x-tmb-token": t })).status).toBe(200);
-    const detail = await api(`issues/${ids.issueId}`);
-    const [note, decision] = detail.discussions.slice(-2);
-    expect(note).toMatchObject({ kind: "note", body: "A note from the page.", author: "human" });
-    expect(decision).toMatchObject({ kind: "decision", author: "human" });
-    expect(detail.decision_in_force).toBe(decision.id);
-  });
-
-  test("an invalid change is refused by the engine's own rule", async () => {
-    const res = await post(`issues/${ids.issueId}/comment`, { body: "x", kind: "verdict" }, { "x-tmb-token": await token() });
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as any).error).toBe("invalid_input");
-  });
-
-  test("edits an issue, and refuses an edit made from a stale page", async () => {
-    const t = await token();
-    const { issue } = await api(`issues/${ids.issueId}`);
-    const edit = await post(`issues/${ids.issueId}/edit`, { title: "Add a dark mode switch", updated_at: issue.updated_at }, { "x-tmb-token": t });
-    expect(edit.status).toBe(200);
-    const stale = await post(`issues/${ids.issueId}/edit`, { title: "Stale title", updated_at: issue.updated_at }, { "x-tmb-token": t });
-    expect(stale.status).toBe(409);
-    expect(((await stale.json()) as any).error).toBe("stale");
-    expect((await api(`issues/${ids.issueId}`)).issue.title).toBe("Add a dark mode switch");
-  });
-
-  test("closes and reopens an issue", async () => {
-    const t = await token();
-    const read = async () => (await api(`issues/${ids.closedIssueId}`)).issue;
-    expect((await post(`issues/${ids.closedIssueId}/reopen`, { updated_at: (await read()).updated_at }, { "x-tmb-token": t })).status).toBe(200);
-    expect((await read()).state).toBe("open");
-    expect((await post(`issues/${ids.closedIssueId}/close`, { updated_at: (await read()).updated_at }, { "x-tmb-token": t })).status).toBe(200);
-    expect((await read()).state).toBe("closed");
-    expect((await post("issues/missing/close", { updated_at: "x" }, { "x-tmb-token": t })).status).toBe(404);
-    // A change to the issue itself must say which version the page read.
-    expect((await post(`issues/${ids.closedIssueId}/reopen`, {}, { "x-tmb-token": t })).status).toBe(400);
+    const before = await api(`issues/${ids.issueId}`);
+    const closed = (await api(`issues/${ids.closedIssueId}`)).issue;
+    const tries = [
+      post(`issues/${ids.issueId}/comment`, { body: "A note from the page." }, { "x-tmb-token": t }),
+      post(`issues/${ids.issueId}/comment`, { body: "Ship it behind a flag.", kind: "decision" }, { "x-tmb-token": t }),
+      post(`issues/${ids.issueId}/edit`, { title: "Add a dark mode switch", updated_at: before.issue.updated_at }, { "x-tmb-token": t }),
+      post(`issues/${ids.closedIssueId}/reopen`, { updated_at: closed.updated_at }, { "x-tmb-token": t }),
+      post(`issues/${ids.issueId}/close`, { updated_at: before.issue.updated_at }, { "x-tmb-token": t }),
+    ];
+    for (const res of await Promise.all(tries)) {
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as any).error).toBe("refused");
+    }
+    const after = await api(`issues/${ids.issueId}`);
+    expect(after.issue).toMatchObject({ title: before.issue.title, state: "open" });
+    expect(after.discussions).toHaveLength(before.discussions.length);
+    expect((await api(`issues/${ids.closedIssueId}`)).issue.state).toBe("closed");
   });
 });
 
@@ -295,16 +276,16 @@ describe("every page shows its data", () => {
   }
 
   test("overview", async () => {
-    await show("#/overview", "Open Issues", "Open Feature Branches", "Add a dark mode switch", "Recent Agent Runs", SEED.taskTitle);
+    await show("#/overview", "Open Issues", "Open Feature Branches", SEED.issueTitle, "Recent Agent Runs", SEED.taskTitle);
   });
 
   test("issues, open and closed", async () => {
-    await show("#/issues", "Add a dark mode switch", SEED.milestone);
+    await show("#/issues", SEED.issueTitle, SEED.milestone);
     await show("#/issues?state=closed", SEED.closedIssueTitle);
   });
 
   test("one issue: body, notes, the decision in force, tasks and feature branch", async () => {
-    await show(`#/issues/${ids.issueId}`, "Add a dark mode switch", "dark mode", SEED.note, SEED.oldDecision, "Earlier decision", "Decision in force", SEED.taskTitle, SEED.featureName, "0 / 1");
+    await show(`#/issues/${ids.issueId}`, SEED.issueTitle, "dark mode", SEED.note, SEED.oldDecision, "Earlier decision", "Decision in force", SEED.taskTitle, SEED.featureName, "0 / 1");
   });
 
   test("tasks", async () => {

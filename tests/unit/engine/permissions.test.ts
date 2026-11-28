@@ -1,4 +1,4 @@
-// One permission table, one check, default deny (docs/architecture/ROLES.md, "Permissions").
+// One permission table, one check, default deny (docs/architecture/PERMISSIONS.md).
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,9 +40,16 @@ describe("the permission table", () => {
     expect(mayTake(HUMAN, "task.anything")).toBe(false);
   });
 
-  test("the command line keeps the Human's record commands", () => {
-    for (const action of ["issue.create", "feature.start", "task.start", "task.close", "task.drop"] as const) expect(mayTake(HUMAN, action)).toBe(true);
-    expect(mayTake(HUMAN, "review.record")).toBe(false);
+  test("the Human holds a narrow set: the fixed steps, managing roles, the review mode and the waivers", () => {
+    for (const action of [...FIXED_HUMAN_ACTIONS, "permissions.manage", "settings.review-mode", "feature.waive", "task.waive"] as const) expect(mayTake(HUMAN, action)).toBe(true);
+    for (const action of ["issue.create", "issue.update", "issue.note", "feature.start", "feature.update", "feature.drop", "feature.pr", "task.start", "task.close", "task.drop", "task.pr", "review.record", "role.create"] as const) {
+      expect(mayTake(HUMAN, action)).toBe(false);
+    }
+  });
+
+  test("the planner creates, changes and deletes roles, and closes any task, by default", () => {
+    for (const action of ["role.create", "role.delete", "permissions.manage", "task.close"] as const) expect(mayTake(agent("planner"), action)).toBe(true);
+    expect(mayTake(agent("worker"), "role.create")).toBe(false);
   });
 
   test("a refusal names the role, what it may not do and the action", () => {
@@ -105,9 +112,11 @@ describe("a project's grants and revokes", () => {
     expect(OPERATIONS.role_list.run(store, HUMAN, {}, context()).find((view) => view.role === "planner")).toMatchObject({ granted: [], revoked: [] });
   });
 
-  test("a designer role gets read and close; it is listed once changed", () => {
-    OPERATIONS.role_change.run(store, HUMAN, { for_role: "designer", action: "task.close", change: "grant" }, context());
-    expect(OPERATIONS.role_list.run(store, HUMAN, {}, context()).find((view) => view.role === "designer")?.actions).toEqual(["task.close", "record.read", "graph.read"]);
+  test("a role is granted actions only once it is created", () => {
+    expect(refusal(() => OPERATIONS.role_change.run(store, HUMAN, { for_role: "designer", action: "task.close", change: "grant" }, context())).message).toContain(
+      "there is no role designer; create it first with role_create",
+    );
+    expect(store.listRoleChanges()).toEqual([]);
   });
 
   test("the fixed steps, what every role may do, the Human's own actions and an unknown action are refused, writing nothing", () => {
@@ -121,11 +130,96 @@ describe("a project's grants and revokes", () => {
     expect(store.listRoleChanges()).toEqual([]);
   });
 
-  test("only a role holding permissions.manage changes one; the Human may grant it to the planner", () => {
+  test("only a role holding permissions.manage changes one; the Human may take it from the planner", () => {
     const planner = agent("planner");
-    expect(refusal(() => OPERATIONS.role_change.run(store, planner, { for_role: "worker", action: "task.drop", change: "grant" }, context())).message).toContain("(permissions.manage)");
-    OPERATIONS.role_change.run(store, HUMAN, { for_role: "planner", action: "permissions.manage", change: "grant" }, context());
     OPERATIONS.role_change.run(store, planner, { for_role: "worker", action: "task.drop", change: "grant" }, context());
     expect(store.listRoleChanges().at(-1)).toMatchObject({ role: "worker", createdBy: planner });
+    expect(refusal(() => OPERATIONS.role_change.run(store, agent("worker"), { for_role: "worker", action: "task.pr", change: "grant" }, context())).message).toContain("(permissions.manage)");
+    OPERATIONS.role_change.run(store, HUMAN, { for_role: "planner", action: "permissions.manage", change: "revoke" }, context());
+    expect(refusal(() => OPERATIONS.role_change.run(store, planner, { for_role: "worker", action: "task.pr", change: "grant" }, context())).message).toContain("(permissions.manage)");
   });
+
+  test("the planner does not grant to its own role, nor an action it does not hold; the Human grants either", () => {
+    const planner = agent("planner");
+    expect(refusal(() => OPERATIONS.role_change.run(store, planner, { for_role: "planner", action: "review.record", change: "grant" }, context())).message).toContain(
+      "an agent does not grant actions to its own role",
+    );
+    expect(refusal(() => OPERATIONS.role_change.run(store, planner, { for_role: "worker", action: "review.record", change: "grant" }, context())).message).toContain("review.record");
+    expect(store.listRoleChanges()).toEqual([]);
+    OPERATIONS.role_change.run(store, HUMAN, { for_role: "planner", action: "review.record", change: "grant" }, context());
+    expect(mayTake(planner, "review.record", store.listRoleChanges())).toBe(true);
+  });
+});
+
+describe("roles a project creates", () => {
+  let scratch: string;
+  let store: Store;
+  beforeEach(() => {
+    scratch = mkdtempSync(path.join(tmpdir(), "tmb-created-roles-"));
+    const opened = openProjectStore(scratch, { create: true });
+    if (!opened.ok) throw opened.error;
+    store = opened.store;
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(scratch, { recursive: true, force: true });
+  });
+  const context = () => ({ projectDir: scratch });
+  const planner = agent("planner");
+  const designer = { name: "designer", purpose: "Draws the screens a task needs", prompt: "You are the designer.", actions: ["task.close"] };
+  const refused = (name: "role_create" | "role_delete" | "role_change", input: unknown, actor: Actor = planner): string => {
+    try {
+      OPERATIONS[name].run(store, actor, input, context());
+    } catch (error) {
+      if (error instanceof HandlerError) return error.message;
+      throw error;
+    }
+    throw new Error("expected a refusal");
+  };
+
+  test("the planner creates a role with its prompt and actions; its agent's calls are judged by them; the record names the planner", () => {
+    const created = OPERATIONS.role_create.run(store, planner, designer, context());
+    expect(created.role).toMatchObject({ role: "designer", purpose: designer.purpose, actions: ["task.close", "record.read", "graph.read"], granted: ["task.close"] });
+    expect(store.listRoles()).toMatchObject([{ name: "designer", prompt: "You are the designer.", createdBy: planner }]);
+    expect(store.listRoleChanges()).toMatchObject([{ role: "designer", action: "task.close", change: "grant", createdBy: planner }]);
+    expect(OPERATIONS.role_list.run(store, HUMAN, {}, context()).map((view) => view.role)).toEqual(["human", "planner", "worker", "reviewer", "designer"]);
+    // The one check: granted task.close is taken, task.start is refused.
+    expect(() => requirePermission(agent("designer"), "task.close", store.listRoleChanges())).not.toThrow();
+    expect(() => requirePermission(agent("designer"), "task.start", store.listRoleChanges())).toThrow("the designer may not");
+  });
+
+  test("a role with no row reads only", () => {
+    expect(mayTake(agent("stranger"), "record.read", store.listRoleChanges())).toBe(true);
+    expect(mayTake(agent("stranger"), "task.close", store.listRoleChanges())).toBe(false);
+  });
+
+  test("a bad name, a name tmb keeps, a name in use, a fixed step or an action the planner lacks is refused, writing nothing", () => {
+    expect(refused("role_create", { ...designer, name: "Designer" })).toContain("lowercase");
+    for (const name of ["planner", "worker", "reviewer", "human", "bro", "main-agent", "unnamed-agent"]) expect(refused("role_create", { ...designer, name })).toContain("is a name tmb keeps");
+    expect(refused("role_create", { ...designer, purpose: " " })).toContain("purpose");
+    expect(refused("role_create", { ...designer, actions: ["project.purge"] })).toContain("is the Human's alone");
+    expect(refused("role_create", { ...designer, actions: ["review.record"] })).toContain("review.record");
+    expect(refused("role_create", designer, agent("worker"))).toContain("(role.create)");
+    expect(store.listRoles()).toEqual([]);
+    expect(store.listRoleChanges()).toEqual([]);
+    OPERATIONS.role_create.run(store, planner, designer, context());
+    expect(refused("role_create", designer)).toContain("already exists");
+  });
+
+  test("the planner changes a created role's actions later, and deletes it; a role made again under its name starts with none", () => {
+    OPERATIONS.role_create.run(store, planner, designer, context());
+    OPERATIONS.role_change.run(store, planner, { for_role: "designer", action: "issue.note", change: "grant" }, context());
+    expect(OPERATIONS.role_delete.run(store, planner, { name: "designer" }, context())).toMatchObject({ name: "designer", revoked: ["task.close", "issue.note"] });
+    expect(store.listRoles()).toEqual([]);
+    expect(mayTake(agent("designer"), "task.close", store.listRoleChanges())).toBe(false);
+    expect(refused("role_delete", { name: "designer" })).toContain("there is no role designer");
+    const again = OPERATIONS.role_create.run(store, planner, { ...designer, actions: [] }, context());
+    expect(again.role).toMatchObject({ actions: ["record.read", "graph.read"], granted: [] });
+  });
+
+  test("a role tmb ships is not deleted", () => {
+    for (const name of ["planner", "worker", "reviewer"]) expect(refused("role_delete", { name })).toContain("is a role tmb ships");
+    expect(refused("role_delete", { name: "human" })).toContain("tmb ships");
+  });
+
 });

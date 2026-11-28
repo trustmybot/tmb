@@ -28,6 +28,8 @@ const TOOLS = [
   "settings_set",
   "role_list",
   "role_change",
+  "role_create",
+  "role_delete",
   "feature_start",
   "feature_update",
   "feature_drop",
@@ -216,7 +218,10 @@ describe("tool server", () => {
 
       const refused = await call(client, "issue_create", { title: "x", role: "boss" });
       expect(refused.isError).toBe(true);
-      expect(refused.content[0]?.text).toContain("role must be one of planner, worker, reviewer");
+      expect(refused.content[0]?.text).toContain("the boss may not record an issue (issue.create)");
+      const human = await call(client, "issue_list", { role: "human" });
+      expect(human.isError).toBe(true);
+      expect(human.content[0]?.text).toContain("role must be planner, worker, reviewer or a role the project created");
       const invalid = await call(client, "issue_list", { state: "done" });
       expect(invalid.isError).toBe(true);
       expect(invalid.content[0]?.text).toContain("state must be one of open, closed");
@@ -253,30 +258,34 @@ describe("tool server", () => {
 });
 
 describe("command line", () => {
-  test("runs each record command as the Human", () => {
+  test("reads the record an agent writes, and keeps no command that writes an issue", async () => {
     const project = newGitProject();
     tmb(["init"], project);
     tmb(["onboard", "--yes"], project);
 
-    const created = tmb(["issue", "create", "Command", "line", "issue", "--body", "Typed by hand", "--milestone", "Level 1"], project);
-    const id = /Created issue (\S+): Command line issue/.exec(created)?.[1];
-    expect(id).toBeDefined();
+    const client = await connect(project);
+    let id: string;
+    try {
+      id = (await callJson(client, "issue_create", { title: "Command line issue", body: "Written by the planner", milestone: "Level 1" })).id;
+      await callJson(client, "discussion_append", { issue_id: id, kind: "decision", body: "Pick the plain way" });
+    } finally {
+      await client.close();
+    }
     expect(tmb(["issue", "list"], project)).toContain(`${id}  open    Command line issue  [Level 1]`);
     expect(tmbJson(["issue", "list", "--state", "closed"], project)).toEqual([]);
-
-    expect(tmb(["note", id!, "Pick", "the", "plain", "way", "--decision"], project)).toContain(`Added a decision to issue ${id}`);
-    const shown = tmbJson(["issue", "show", id!], project);
-    expect(shown.issue.createdBy).toEqual({ kind: "human" });
+    const shown = tmbJson(["issue", "show", id], project);
+    expect(shown.issue.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
     expect(shown.newestDecision.body).toBe("Pick the plain way");
-    expect(tmb(["issue", "show", id!], project)).toContain("Decision in force: Pick the plain way");
+    expect(tmb(["issue", "show", id], project)).toContain("Decision in force: Pick the plain way");
 
-    expect(tmb(["search", "plain"], project)).toContain(id!);
+    expect(tmb(["search", "plain"], project)).toContain(id);
     expect(tmbJson<any[]>(["search", "plain"], project)[0].issueId).toBe(id);
+    expect(tmbJson<any[]>(["history", id], project).map((event) => event.data.state ?? "created")).toEqual(["created"]);
 
-    expect(tmb(["issue", "close", id!], project)).toContain(`Closed issue ${id}`);
-    expect(tmb(["issue", "close", id!], project)).toContain("already closed");
-    expect(tmb(["issue", "reopen", id!.toLowerCase()], project)).toContain(`Reopened issue ${id}`);
-    expect(tmbJson<any[]>(["history", id!], project).map((event) => event.data.state ?? "created")).toEqual(["created", "closed", "open"]);
+    // The planner writes issues, notes, features and tasks with its tools; the Human reads them.
+    for (const args of [["issue", "create", "x"], ["issue", "close", id], ["issue", "reopen", id], ["note", id, "x"], ["feature", "start", "feat/x"], ["task", "close", "T-1"]]) {
+      expect(run(args, project).status).toBe(2);
+    }
   });
 
   test("refuses bad input with what is allowed, and a project with no record", () => {
@@ -290,12 +299,9 @@ describe("command line", () => {
     const badState = run(["issue", "list", "--state", "done"], project);
     expect(badState.status).toBe(1);
     expect(badState.stderr).toContain("state must be one of open, closed");
-    const badFlag = run(["issue", "create", "x", "--colour", "red"], project);
+    const badFlag = run(["issue", "list", "--colour", "red"], project);
     expect(badFlag.status).toBe(2);
     expect(badFlag.stderr).toContain("--colour");
-    const noTitle = run(["issue", "create"], project);
-    expect(noTitle.status).toBe(2);
-    expect(noTitle.stderr).toContain("missing title");
   });
 });
 
@@ -304,13 +310,13 @@ describe("one record, two doors", () => {
     const project = newGitProject();
     tmb(["init"], project);
     tmb(["onboard", "--yes"], project);
-    const created = tmbJson(["issue", "create", "Written on the command line"], project);
-
     const client = await connect(project);
+    let created: any;
     let agentNote: any;
     try {
+      created = await callJson(client, "issue_create", { title: "Written by an agent" });
       const detail = await callJson(client, "issue_get", { id: created.id });
-      expect(detail.issue).toMatchObject({ title: "Written on the command line", createdBy: { kind: "human" } });
+      expect(detail.issue).toMatchObject({ title: "Written by an agent", createdBy: { kind: "agent", role: "planner" } });
       agentNote = await callJson(client, "discussion_append", { issue_id: created.id, kind: "note", body: "Written by an agent", role: "planner" });
     } finally {
       await client.close();
@@ -323,12 +329,18 @@ describe("one record, two doors", () => {
 });
 
 describe("session start", () => {
-  test("lists an issue created through the command line", () => {
+  test("lists an open issue and its decision", async () => {
     const project = newGitProject();
     tmb(["init"], project);
     tmb(["onboard", "--yes"], project);
-    const created = tmbJson(["issue", "create", "Resume this next session"], project);
-    tmb(["note", created.id, "Start with the doors", "--decision"], project);
+    const client = await connect(project);
+    let created: any;
+    try {
+      created = await callJson(client, "issue_create", { title: "Resume this next session" });
+      await callJson(client, "discussion_append", { issue_id: created.id, kind: "decision", body: "Start with the doors" });
+    } finally {
+      await client.close();
+    }
 
     // init wires two hooks to the session start, so the role and the project's state are two texts.
     const [role, work] = ["session-start-role", "session-start"].map((name) => {

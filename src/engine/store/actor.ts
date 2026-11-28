@@ -1,8 +1,12 @@
 // Who made a record: the Human, an agent named by its role and the host it ran on, or tmb itself,
 // named by the part of tmb that wrote it, for a write no person or agent made (trustmybot/tmb#404).
 
+/** The agent roles tmb ships. A project may create more, each a row in the record. */
 export const ROLES = ["planner", "worker", "reviewer"] as const;
 export type Role = (typeof ROLES)[number];
+
+/** How an agent's role is named: lowercase letters, digits and -, starting with a letter. */
+const AGENT_ROLE = /^[a-z][a-z0-9-]*$/;
 
 export const ACTOR_KINDS = ["human", "agent", "tmb"] as const;
 
@@ -10,7 +14,8 @@ export const ACTOR_KINDS = ["human", "agent", "tmb"] as const;
 export const TMB_SOURCES = ["syncer", "upgrade"] as const;
 export type TmbSource = (typeof TMB_SOURCES)[number];
 
-export type Actor = { kind: "human" } | { kind: "agent"; role: Role; host: string } | { kind: "tmb"; source: TmbSource };
+/** An agent's role: one tmb ships, or one the project created. Never the Human's. */
+export type Actor = { kind: "human" } | { kind: "agent"; role: string; host: string } | { kind: "tmb"; source: TmbSource };
 
 export class ActorError extends Error {
   override name = "ActorError";
@@ -43,7 +48,9 @@ export function assertWriter(actor: unknown): asserts actor is Actor {
     if (!TMB_SOURCES.includes(source as TmbSource)) throw new ActorError(`tmb's source must be one of ${TMB_SOURCES.join(", ")}, got ${JSON.stringify(source)}`);
     return;
   }
-  if (!ROLES.includes(role as Role)) throw new ActorError(`agent role must be one of ${ROLES.join(", ")}, got ${JSON.stringify(role)}`);
+  if (typeof role !== "string" || !AGENT_ROLE.test(role) || role === "human") {
+    throw new ActorError(`agent role must be ${ROLES.join(", ")} or a role the project created, named in lowercase letters, digits and -, got ${JSON.stringify(role)}`);
+  }
   if (typeof host !== "string" || host.trim() === "") throw new ActorError("an agent actor needs a host");
 }
 
@@ -58,5 +65,5 @@ export function actorColumns(actor: Actor): ActorColumns {
 export function actorFromColumns(columns: ActorColumns): Actor {
   if (columns.actor_kind === "human") return { kind: "human" };
   if (columns.actor_kind === "tmb") return { kind: "tmb", source: columns.actor_source as TmbSource };
-  return { kind: "agent", role: columns.actor_role as Role, host: columns.actor_host ?? "" };
+  return { kind: "agent", role: columns.actor_role ?? "", host: columns.actor_host ?? "" };
 }

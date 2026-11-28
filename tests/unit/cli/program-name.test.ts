@@ -113,7 +113,7 @@ describe(`a tmb installed as ${NAME}`, () => {
     expect(run(repo, ["init"], withHost)).toContain(`${NAME} onboard`);
     run(repo, ["onboard", "--base", "main", "--check", "true", "--yes"], withHost);
     run(repo, ["doctor"], withHost);
-    run(repo, ["task", "start", "--help"], withHost);
+    run(repo, ["task", "waive", "--help"], withHost);
     writeFileSync(path.join(repo, "f"), "x");
     git(repo, "add", "f");
     git(repo, "commit", "-q", "-m", "f");

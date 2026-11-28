@@ -10,7 +10,7 @@ import { callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-workflow-mark-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup, tool } = tmbProcesses("tmb-workflow-mark-");
 afterAll(cleanup);
 const github = githubStandIn(scratch, env, git);
 
@@ -21,7 +21,7 @@ describe("a new commit has no mark until it is reviewed", () => {
   test("agile: a task folded onto a passed feature branch moves its tip to an unmarked commit", async () => {
     const project = setUpProject("true", undefined, { origin: true });
     github.point(project);
-    const issue = tmbJson(["issue", "create", "Greet"], project).id as string;
+    const issue = tool(project, "issue_create", { title: "Greet" }).id as string;
     const client = await connect(project, "claude-code");
     const landTask = async (intent: string, file: string) => {
       const task = await callJson(client, "task_start", { issue_id: issue, kind: "code", intent, files: ["src"], criteria: ["SC1: it works"] });
@@ -57,7 +57,7 @@ describe("a new commit has no mark until it is reviewed", () => {
     human(["onboard", "--base", "main", "--review-mode", "truest", "--check", "true", "--yes"], project);
     const bare = git(project, "config", "--get", "remote.origin.url");
     github.point(project);
-    const issue = tmbJson(["issue", "create", "Lines"], project).id as string;
+    const issue = tool(project, "issue_create", { title: "Lines" }).id as string;
     const client = await connect(project);
     const reviewAt = async (id: string, commit: string, verdict: "pass" | "fail") => {
       expect(startSubagent(project, "reviewer", `review_task=${id}`)).toBeNull();

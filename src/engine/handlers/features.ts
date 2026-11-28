@@ -26,7 +26,7 @@ export type FeatureSummary = {
 };
 
 function howToStart(): string {
-  return `start one with feature_start (\`${runningName()} feature start <name>\` from the command line)`;
+  return `start one with feature_start`;
 }
 
 function summaryOf(store: Store, feature: Feature): FeatureSummary {

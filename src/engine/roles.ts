@@ -3,6 +3,8 @@
 import reviewerPrompt from "../../roles/reviewer.md" with { type: "text" };
 import workerPrompt from "../../roles/worker.md" with { type: "text" };
 import { namingProgram } from "./program.ts";
+import { openProjectStore } from "./project.ts";
+import type { ProjectRole, Store } from "./store/index.ts";
 
 /** What a role may do, in host-neutral terms; each adapter maps these onto its host's tools. Every role also gets tmb's own tools. */
 export const CAPABILITIES = ["read-files", "edit-files", "run-commands"] as const;
@@ -45,3 +47,39 @@ export const SUBAGENT_ROLES: readonly SubagentRole[] = [
     capabilities: ["read-files", "run-commands"],
   },
 ];
+
+/**
+ * A role the project created, as its agent file is written: the prompt the planner wrote, then the
+ * one line every tmb role carries, so its tool calls name it. It keeps every host tool: a role file
+ * takes away only what the role must never use.
+ */
+export function createdSubagentRole(role: ProjectRole): SubagentRole {
+  return {
+    name: role.name,
+    description: role.purpose,
+    prompt: `${role.prompt.trimEnd()}\n\nPass \`role: "${role.name}"\` on every call to tmb's tools.\n`,
+    capabilities: CAPABILITIES,
+  };
+}
+
+/** Every subagent role in a project: the ones tmb ships, then the ones the project created. */
+export function subagentRolesOf(store: Store): SubagentRole[] {
+  return [...SUBAGENT_ROLES, ...store.listRoles().map(createdSubagentRole)];
+}
+
+/**
+ * The project's subagent roles, read from its record; only the ones tmb ships before it has one.
+ * Throws when the record cannot be read, so no created role's file is taken for one tmb no longer has.
+ */
+export function projectSubagentRoles(projectDir: string): SubagentRole[] {
+  const opened = openProjectStore(projectDir, { create: false });
+  if (!opened.ok) {
+    if (opened.error.failure === "missing") return [...SUBAGENT_ROLES];
+    throw new Error(`tmb cannot read the record for its roles: ${opened.error.message}`);
+  }
+  try {
+    return subagentRolesOf(opened.store);
+  } finally {
+    opened.store.close();
+  }
+}

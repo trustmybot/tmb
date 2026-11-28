@@ -74,7 +74,7 @@ class PushJudge {
     return [
       `it brings ${found.lines.length} commit${found.lines.length === 1 ? "" : "s"} onto the base branch ${base} at ${short(ref.localSha)} that no feature branch tip the reviewer passed, or the Human waived, holds:`,
       ...shown,
-      `In agile mode work reaches the base branch through a feature branch: the reviewer passes it at its tip (or the Human runs \`${runningName()} feature waive <name> --reason <text>\`), then its pull request opens with feature_pr (\`${runningName()} feature pr <name> --title <text>\`).`,
+      `In agile mode work reaches the base branch through a feature branch: the reviewer passes it at its tip (or the Human runs \`${runningName()} feature waive <name> --reason <text>\`), then its pull request opens with feature_pr.`,
     ].join("\n");
   }
 
@@ -100,7 +100,7 @@ class PushJudge {
     return [
       `it brings ${lines.length} commit${lines.length === 1 ? "" : "s"} ${what} at ${short(ref.localSha)} that no task commit the reviewer passed, or the Human waived, holds:`,
       ...shown,
-      `In truest mode every task is reviewed before its push: the reviewer passes the task at its commit (or the Human runs \`${runningName()} task waive <id> --reason <text>\`), then tmb pushes it and opens its pull request with task_pr (\`${runningName()} task pr <id> --title <text>\`).`,
+      `In truest mode every task is reviewed before its push: the reviewer passes the task at its commit (or the Human runs \`${runningName()} task waive <id> --reason <text>\`), then tmb pushes it and opens its pull request with task_pr.`,
     ].join("\n");
   }
 

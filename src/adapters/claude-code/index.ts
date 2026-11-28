@@ -1,6 +1,6 @@
 // The Claude Code adapter: one class over small collaborators, each owning one of the host's files
 // or formats. Its names, paths and caps are in host.ts.
-import { type ModelUsage, SKILLS, SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
+import { type ModelUsage, projectSubagentRoles, SKILLS, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
 import { detectProgram } from "../common/detect.ts";
 import { keptRecordLine, listed, setUpRecord, shown } from "../common/record.ts";
 import type { HookRun, HostAdapter, HostDetection, HostLimits, SessionTextLimit } from "../host-adapter.ts";
@@ -68,9 +68,11 @@ export class ClaudeCodeAdapter implements HostAdapter {
     }
   }
 
-  setup(projectDir: string, tmbCommand: readonly string[], roles: readonly SubagentRole[] = SUBAGENT_ROLES): string[] {
+  setup(projectDir: string, tmbCommand: readonly string[], given?: readonly SubagentRole[]): string[] {
     const { toolServer, settings, roleFiles, skillFiles } = this.parts;
     const lines = setUpRecord(projectDir);
+    // Read once the record is set up, so a record tmb cannot read is refused as one.
+    const roles = given ?? projectSubagentRoles(projectDir);
 
     const server = toolServer.register(projectDir, tmbCommand);
     const mcpFile = shown(projectDir, server.file);
@@ -89,6 +91,10 @@ export class ClaudeCodeAdapter implements HostAdapter {
 
     lines.push(...roleFiles.setUp(projectDir, roles), ...skillFiles.setUp(projectDir, SKILLS));
     return lines;
+  }
+
+  writeRoles(projectDir: string, roles: readonly SubagentRole[]): string[] {
+    return this.parts.roleFiles.setUp(projectDir, roles);
   }
 
   remove(projectDir: string): string[] {
@@ -128,7 +134,7 @@ export class ClaudeCodeAdapter implements HostAdapter {
       ...(server === null ? [] : [server]),
       ...settings.gaps(projectDir, tmbCommand),
       ...worktreeLinks.gaps(projectDir, sharedFolders),
-      ...roleFiles.gaps(projectDir, SUBAGENT_ROLES),
+      ...roleFiles.gaps(projectDir, projectSubagentRoles(projectDir)),
       ...skillFiles.gaps(projectDir, SKILLS),
     ];
   }

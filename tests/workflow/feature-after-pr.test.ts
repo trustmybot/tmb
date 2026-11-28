@@ -13,7 +13,7 @@ import { fakeGh } from "../lib/fake-gh.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, connect, cleanup } = tmbProcesses("tmb-workflow-after-pr-");
+const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, connect, cleanup, tool } = tmbProcesses("tmb-workflow-after-pr-");
 afterAll(cleanup);
 
 const ghDir = path.join(scratch, "gh-state");
@@ -45,7 +45,7 @@ const PR_3 = "https://github.com/example/project/pull/3";
 describe("a feature branch after its pull request", () => {
   test("closed takes a new pull request or a rework task; a pull request already open is reused; merged is final", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    const issue = tmbJson(["issue", "create", "Greet the user"], project);
+    const issue = tool(project, "issue_create", { title: "Greet the user" });
     const client = await connect(project, "claude-code");
     const brief = () => callJson(client, "feature_brief", { feature: "feat/greet" });
     const list = async () => (await callJson(client, "feature_list", {})).find((f: { name: string }) => f.name === "feat/greet");
@@ -97,7 +97,7 @@ describe("a feature branch after its pull request", () => {
 
   test("a branch whose pull request is open takes a fix task; the reviewed new tip updates the same pull request", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    const issue = tmbJson(["issue", "create", "Wave"], project);
+    const issue = tool(project, "issue_create", { title: "Wave" });
     const client = await connect(project, "claude-code");
     const brief = () => callJson(client, "feature_brief", { feature: "feat/wave" });
     const onOrigin = () => git(project, "ls-remote", "origin", "refs/heads/feat/wave").split(/\s/)[0];
@@ -140,7 +140,7 @@ describe("a feature branch after its pull request", () => {
 
   test("a task open when the pull request opened folds without a push; its tip waits for a review (trustmybot/tmb#181)", async () => {
     const project = setUpProject("true", undefined, { origin: true });
-    const issue = tmbJson(["issue", "create", "Nod"], project);
+    const issue = tool(project, "issue_create", { title: "Nod" });
     const client = await connect(project, "claude-code");
     const onOrigin = () => git(project, "ls-remote", "origin", "refs/heads/feat/nod").split(/\s/)[0];
     try {

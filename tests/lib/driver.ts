@@ -196,6 +196,15 @@ export class Tmb {
     return result.stdout;
   }
 
+  /** Makes one tool call on the project's tool server, as the planner unless `args` names a role; fails the test on an error. */
+  tool<T = unknown>(name: string, args: Record<string, unknown>): T {
+    const result = run(process.execPath, [path.join(import.meta.dir, "call-tool.ts"), this.bin, this.project, name, JSON.stringify(args)], { cwd: this.project });
+    if (result.status !== 0) fail(`the ${name} call failed: ${result.output}`);
+    const answer = JSON.parse(result.stdout) as { isError: boolean; text: string };
+    if (answer.isError) fail(`${name} refused: ${answer.text}`);
+    return JSON.parse(answer.text) as T;
+  }
+
   /** Runs `tmb <args> --json` and returns the parsed answer and its text. */
   json<T = unknown>(args: string[]): { data: T; text: string } {
     const text = this.text([...args, "--json"]);

@@ -12,7 +12,7 @@ import { callJson, tmbProcesses } from "../../lib/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup } = tmbProcesses("tmb-review-mark-");
+const { scratch, env, git, run, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, cleanup, tool } = tmbProcesses("tmb-review-mark-");
 afterAll(cleanup);
 const github = githubStandIn(scratch, env, git);
 
@@ -53,7 +53,7 @@ function onOrigin(bare: string, project: string, branch: string): void {
 describe("the mark on GitHub, in truest mode", () => {
   test("a pass, a fail and a waiver each end up as the mark on the reviewed commit, once GitHub has the commit", async () => {
     const { project, bare } = truestProject();
-    const issue = tmbJson(["issue", "create", "Marks"], project).id as string;
+    const issue = tool(project, "issue_create", { title: "Marks" }).id as string;
     const client = await connect(project);
     try {
       // The reviewed commit is not on GitHub until task_pr pushes it: GitHub refuses the mark, which is recorded unsent.
@@ -77,7 +77,7 @@ describe("the mark on GitHub, in truest mode", () => {
         `GitHub does not have ${waived.sha.slice(0, 12)} yet; tmb sends its mark tmb/review success once it pushes the commit.`,
       );
       expect(github.statuses(failed.sha)).toEqual([{ state: "failure", context: "tmb/review", description: "Failed tmb's review: 1 blocking finding" }]);
-      tmb(["task", "pr", waived.id, "--title", "Waived"], project);
+      await callJson(client, "task_pr", { id: waived.id, title: "Waived" });
       expect(github.statuses(waived.sha)).toEqual([
         { state: "success", context: "tmb/review", description: "Passed: review waived by the Human: A file the Human read" },
       ]);
@@ -93,7 +93,7 @@ describe("the mark on GitHub, in truest mode", () => {
 
   test("with GitHub down a mark is recorded unsent; the next waiver or pull request sends it; the pull request says whether main requires the mark", async () => {
     const { project, bare } = truestProject();
-    const issue = tmbJson(["issue", "create", "Down"], project).id as string;
+    const issue = tool(project, "issue_create", { title: "Down" }).id as string;
     const client = await connect(project);
     try {
       // A mark that could not be sent never fails the review.
@@ -124,7 +124,7 @@ describe("the mark on GitHub, in truest mode", () => {
       expect(github.statuses(third.sha)).toEqual([{ state: "success", context: "tmb/review", description: "Passed: review waived by the Human: small too" }]);
       expect(github.statuses(second.sha)).toEqual([]);
       // Each mark is sent once: a later occasion does not send it again.
-      tmb(["task", "pr", second.id, "--title", "Second"], project);
+      await callJson(client, "task_pr", { id: second.id, title: "Second" });
       expect(github.statuses(second.sha)).toEqual([{ state: "success", context: "tmb/review", description: "Passed: review waived by the Human: small" }]);
       expect(github.statuses(first.sha)).toHaveLength(1);
       expect(github.statuses(third.sha)).toHaveLength(1);
@@ -133,14 +133,12 @@ describe("the mark on GitHub, in truest mode", () => {
       const fourth = await closedTask(client, issue, "fourth.txt");
       await review(client, project, fourth, "pass");
       github.protect("main", ["ci", "tmb/review"]);
-      expect(tmb(["task", "pr", fourth.id, "--title", "Fourth"], project)).toContain("Branch protection on main requires tmb/review.");
+      expect(await callJson(client, "task_pr", { id: fourth.id, title: "Fourth" })).toMatchObject({ markRequired: true });
       expect(github.statuses(fourth.sha)).toEqual([PASSED]);
       github.protect("main", null);
       const fifth = await closedTask(client, issue, "fifth.txt");
       await review(client, project, fifth, "pass");
-      expect(tmb(["task", "pr", fifth.id, "--title", "Fifth"], project)).toContain(
-        "Branch protection on main does not require tmb/review; to require it, turn on 'Require status checks to pass' for main on GitHub and add tmb/review. tmb never changes this setting.",
-      );
+      expect(await callJson(client, "task_pr", { id: fifth.id, title: "Fifth" })).toMatchObject({ markRequired: false });
 
       // A rebase that keeps the patch carries the pass to a new commit, which is pushed and marked; the old one never reaches GitHub.
       const sixth = await closedTask(client, issue, "sixth.txt");
@@ -165,7 +163,7 @@ describe("the mark on GitHub, in agile mode", () => {
   test("a pass of the feature branch marks its tip; feature_pr says whether main requires the mark", async () => {
     const project = setUpProject("true", undefined, { origin: true });
     github.point(project);
-    const issue = tmbJson(["issue", "create", "Agile"], project).id as string;
+    const issue = tool(project, "issue_create", { title: "Agile" }).id as string;
     const client = await connect(project, "claude-code");
     try {
       await callJson(client, "feature_start", { name: "feat/mark" });

@@ -8,6 +8,7 @@ import { upgradeAudit } from "./upgrade-audit.ts";
 
 /** Projection tables, children before parents so they can be emptied in this order. */
 export const PROJECTION_TABLES = [
+  "roles",
   "role_changes",
   "waivers",
   "review_marks",
@@ -464,7 +465,7 @@ CREATE TABLE imports (
 `;
 
 // Version 14: a project's own grants and revokes of a role's actions, each with who made it
-// (docs/architecture/ROLES.md, "Permissions"). A row never changes; the newest for a role and an
+// (docs/architecture/PERMISSIONS.md). A row never changes; the newest for a role and an
 // action is the one in force.
 const VERSION_14_SQL = `
 CREATE TABLE role_changes (
@@ -478,11 +479,28 @@ CREATE TABLE role_changes (
 CREATE INDEX idx_role_changes_role ON role_changes(role, id);
 `;
 
+// Version 15: the roles a project creates, each with what it is for and its prompt
+// (docs/architecture/PERMISSIONS.md, "Roles are data"). Its actions stay in role_changes. A
+// deleted role keeps its row, so the records its agents wrote still name it.
+const VERSION_15_SQL = `
+CREATE TABLE roles (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL CHECK (length(trim(name)) > 0),
+  purpose    TEXT NOT NULL CHECK (length(trim(purpose)) > 0),
+  prompt     TEXT NOT NULL CHECK (length(trim(prompt)) > 0),
+  state      TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_roles_name ON roles(name, id);
+`;
+
 /** One step: SQL, or code for a step SQL alone cannot take. A step's code is frozen with it and never reads today's projections. */
 export type SchemaStep = string | ((db: Database) => void);
 
 /** The step to each version, in order: the step at index i takes a database from version i to version i + 1. */
-export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL), VERSION_14_SQL];
+export const SCHEMA_STEPS: readonly SchemaStep[] = [SCHEMA_SQL, VERSION_2_SQL, VERSION_3_SQL, VERSION_4_SQL, VERSION_5_SQL, VERSION_6_SQL, VERSION_7_SQL, VERSION_8_SQL, VERSION_9_SQL, VERSION_10_SQL, VERSION_11_SQL, VERSION_12_SQL, (db) => upgradeAudit(db, VERSION_13_SQL), VERSION_14_SQL, VERSION_15_SQL];
 
 /** Runs one schema step on `db`. */
 export function runStep(db: Database, step: SchemaStep): void {

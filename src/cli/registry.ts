@@ -15,7 +15,6 @@ import { InitCommand } from "./commands/init.ts";
 import { IssueCommand } from "./commands/issue.ts";
 import { McpCommand } from "./commands/mcp.ts";
 import { MigrateCommand } from "./commands/migrate.ts";
-import { NoteCommand } from "./commands/note.ts";
 import { OnboardCommand } from "./commands/onboard.ts";
 import { PrePushCommand } from "./commands/pre-push.ts";
 import { PurgeCommand, RemoveCommand } from "./commands/remove.ts";
@@ -45,7 +44,6 @@ export class CommandTable implements CommandList {
       new MigrateCommand(runtime),
       // Work
       new IssueCommand(runtime),
-      new NoteCommand(runtime),
       new FeatureCommand(runtime),
       new TaskCommand(runtime),
       new SearchCommand(runtime),

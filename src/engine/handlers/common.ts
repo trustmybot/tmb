@@ -1,6 +1,5 @@
 // What the feature and task operations share: where they run, who may call them, and the
 // states and branch names they use.
-import { runningName } from "../program.ts";
 import type { FeedbackEnv } from "../feedback/index.ts";
 import type { Actor, Role } from "../store/index.ts";
 import { HandlerError } from "./errors.ts";
@@ -39,7 +38,7 @@ export type LocalMerge = { dir: string; command: string; otherwise: string };
  * rebase by hand, but not one after which the base changed the same lines again.
  */
 export function endReadyLine(kind: "feature" | "task", name: string): string {
-  return `If its work reached the base branch another way and tmb still shows it ready, end it with: ${runningName()} ${kind} drop ${name} --reason "<where the work went>"`;
+  return `If its work reached the base branch another way and tmb still shows it ready, the planner ends ${name} with ${kind}_drop, its reason saying where the work went`;
 }
 export const TRUEST = "truest";
 /** Task branches live under this prefix, so no feature branch may take it. */
