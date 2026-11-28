@@ -106,7 +106,8 @@ export const settingsSetSchema: InputSchema = {
     },
     issue_sync: {
       type: "string",
-      description: "Whether the remote's issues, comments, milestones and pull requests are brought into the record: on (the default) or off. Only as the Human asked.",
+      description:
+        "How much of the remote's issues is brought into the record: open, the issues open on the remote and their later closes (the default); all, open and closed; or off, nothing from the remote. Only the Human's answer.",
       enum: ISSUE_SYNC_MODES,
     },
     repos: {

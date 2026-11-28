@@ -45,7 +45,7 @@ flowchart LR
 A person working with agents needs a memory that a remote has no place for: which task an agent took, what it cost, which commit a verdict judged, why the gate said no. The record keeps that on the user's machine, whether or not the project has a remote.
 
 - **Example 1, local.** A project has no remote. Its issues, decisions, tasks, runs and verdicts are all in the record. It needs no account and no network, and a new session resumes from it.
-- **Example 2, local with a remote.** The remote's issues, comments, milestones and pull requests are mirrored into the record. The tasks, runs and verdicts under them stay local.
+- **Example 2, local with a remote.** The remote's issues, comments, milestones and pull requests are mirrored into the record, the issues as far as the Human chose ([how much comes in](#how-much-of-the-remote-comes-in)). The tasks, runs and verdicts under them stay local.
 - **Edge case.** The network is down. Work goes on from the record. The copy of the remote is as old as the last poll, and the record says how old.
 - **Edge case.** The remote and the record disagree about a mirrored issue. The remote wins, and the change is written as an event made by tmb.
 
@@ -90,7 +90,22 @@ flowchart LR
 - **Edge case.** Two sessions start at once. One takes the short claim and the other reads nothing. A claim left by a session that died runs out by itself.
 - **Edge case.** A session starts inside another session's two minutes. Its first read is held; its next read after those two minutes polls, without waiting two minutes of its own.
 - **Edge case.** The `gh` program is missing, or no one is signed in. Nothing fails: `tmb doctor` names the reason and its fix.
-- **Edge case.** The Human turns issue sync off ([2_ONBOARD.md](../flows/2_ONBOARD.md)). The syncer reads nothing.
+- **Edge case.** The Human turns issue sync off ([2_ONBOARD.md](../flows/2_ONBOARD.md#issue-sync-is-the-humans-choice)). The syncer reads nothing.
+
+### How much of the remote comes in
+
+**The Human chooses the open issues, all of them, or none ([2_ONBOARD.md](../flows/2_ONBOARD.md#issue-sync-is-the-humans-choice)). Under open, the first import asks the remote for its open issues only; every later poll asks for every issue changed since the last, and copies a change only to an issue the record holds.** So a held issue that closes on the remote is closed in the record by the next poll, and a closed issue the record never held is never copied in.
+
+| Choice | First import | Later polls | The weekly whole read |
+|---|---|---|---|
+| Open | The open issues | Changes to held issues; new open issues | The open issues; a held open one it no longer lists is asked after alone |
+| All | Every issue, a few pages each poll, carrying on where the last stopped | Every change | Every issue |
+| Off | Nothing | Nothing | Nothing |
+
+- **Example 1.** A repo has 200 open and 9,000 closed issues. Under open the import brings in 200; under all it brings in 9,200 over several polls, the record answering with what it has meanwhile.
+- **Example 2.** The Human changes open to all. The next poll reads whole and brings the closed issues in.
+- **Edge case.** The Human changes all to open. Nothing is removed; the closed issues already held stay.
+- **Edge case.** Comments, pull requests and milestones are read as before under open and all. A comment on an issue the record does not hold is not copied.
 
 ### A change to a mirrored issue goes to the remote first
 

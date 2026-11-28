@@ -9,6 +9,7 @@ import {
   handCallLine,
   HOST_ROLES,
   type HostRole,
+  type IssueSync,
   MARK_CONTEXT,
   openProjectStore,
   repoDirOf,
@@ -27,7 +28,7 @@ import type { HostAdapter } from "../../../adapters/index.ts";
 import type { Ask } from "../../terminal.ts";
 import { hostName, noReviewModeLine, notInitialised, reviewModeMissing } from "./lines.ts";
 import { type Answered, DEFAULT_PROGRAM_NAME, FALLBACK_BASE_BRANCH, repoModeFlag, SetupError, validatedFlags } from "./options.ts";
-import { askChecks, askModePerRepo, askRepoReviewMode, askReviewMode, askSharedFolders, askText, askValid } from "./questions.ts";
+import { askChecks, askIssueSync, askModePerRepo, askRepoReviewMode, askReviewMode, askSharedFolders, askText, askValid } from "./questions.ts";
 import { SetupRun } from "./run.ts";
 
 /** What onboard stored, for the lines that close the run. */
@@ -73,8 +74,8 @@ export class OnboardRun extends SetupRun {
     const ask = this.ask();
     if (!ask) {
       out(
-        `${flags.yes === true ? "--yes was given" : "There is no terminal to ask on"}, so each question takes its default, except the review mode, which is yours to choose; ` +
-          "--role, --base, --review-mode, --check and --shared-folder set them.",
+        `${flags.yes === true ? "--yes was given" : "There is no terminal to ask on"}, so each question takes its default, except the review mode, which is yours to choose, and issue sync, which stays as it is; ` +
+          "--role, --base, --review-mode, --issue-sync, --check and --shared-folder set them.",
       );
     }
 
@@ -93,9 +94,10 @@ export class OnboardRun extends SetupRun {
     // tmb detects no shared folders: with no one to ask and no --shared-folder, they stay as they are; none given for none set records nothing.
     const askedFolders = answered.shared_folders ?? (ask ? await askSharedFolders(ask, stored.shared_folders ?? [], "Stored", out) : undefined);
     const sharedFolders = stored.shared_folders === null && askedFolders?.length === 0 ? undefined : askedFolders;
+    const issueSync = await this.issueSync(stored, answered, ask);
 
     const hostRoles = { ...(stored.host_roles ?? {}), [hostId]: role };
-    const recorded = this.storeAnswers({ host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode ?? undefined, checks, shared_folders: sharedFolders }, "onboard");
+    const recorded = this.storeAnswers({ host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode ?? undefined, checks, shared_folders: sharedFolders, issue_sync: issueSync }, "onboard");
     if (sharedFolders !== undefined) this.shareFolders(this.hostAdapters(stored), sharedFolders);
     // A new base branch has its own code graph; init indexed the old one.
     if (base !== null && base !== stored.base_branch) await this.indexCodeGraph();
@@ -106,6 +108,11 @@ export class OnboardRun extends SetupRun {
   private hostAdapters(stored: Settings): HostAdapter[] {
     const ids = new Set([...Object.keys(stored.host_roles ?? {}), ...(stored.host === null ? [] : [stored.host])]);
     return this.options.adapters.filter((adapter) => ids.has(adapter.id));
+  }
+
+  /** How much of the remote's issues the record copies in: --issue-sync, else asked last, else as it is. */
+  private async issueSync(stored: Settings, answered: Answered, ask: Ask | null): Promise<IssueSync | undefined> {
+    return answered.issue_sync ?? (ask ? ((await askIssueSync(ask, stored.issue_sync, this.out)) ?? undefined) : undefined);
   }
 
   /** The role of the host's main agent: --role, else asked, else the stored one or the default. */
@@ -170,8 +177,9 @@ export class OnboardRun extends SetupRun {
       };
     }
 
+    const issueSync = await this.issueSync(stored, answered, ask);
     const hostRoles = { ...(stored.host_roles ?? {}), [host.id]: role };
-    const recorded = this.storeAnswers({ host_roles: hostRoles, review_mode: reviewMode ?? undefined, repos }, "onboard");
+    const recorded = this.storeAnswers({ host_roles: hostRoles, review_mode: reviewMode ?? undefined, repos, issue_sync: issueSync }, "onboard");
     // A repo with a new base branch, or newly worked in, has its own code graph to index.
     for (const repo of workingRepos(repos)) {
       if (repos[repo]!.base_branch !== before[repo]?.base_branch || before[repo]?.exempt === true) {

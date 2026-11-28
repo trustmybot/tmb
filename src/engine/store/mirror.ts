@@ -101,11 +101,11 @@ export class MirrorRepository {
   }
 
   /** The rows of a kind mirrored from one remote that are not marked gone, with their address. */
-  presentMirrored(kind: Exclude<MirrorKind, "discussion">, remote: string): { id: string; remoteId: string; url: string | null }[] {
+  presentMirrored(kind: Exclude<MirrorKind, "discussion">, remote: string): { id: string; remoteId: string; url: string | null; state: string }[] {
     const url = kind === "issue" ? "remote_url" : kind === "pull_request" ? "url" : "NULL";
     return this.log.db
-      .query(`SELECT id, remote_id AS remoteId, ${url} AS url FROM ${tableOf(kind)} WHERE remote = ? AND remote_id IS NOT NULL AND remote_gone_at IS NULL ORDER BY id`)
-      .all(remote) as { id: string; remoteId: string; url: string | null }[];
+      .query(`SELECT id, remote_id AS remoteId, ${url} AS url, state FROM ${tableOf(kind)} WHERE remote = ? AND remote_id IS NOT NULL AND remote_gone_at IS NULL ORDER BY id`)
+      .all(remote) as { id: string; remoteId: string; url: string | null; state: string }[];
   }
 
   createMirrored(actor: Actor, kind: MirrorKind, data: Record<string, unknown>): string {

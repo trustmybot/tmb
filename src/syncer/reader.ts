@@ -22,7 +22,12 @@ export type ReadOptions = {
   force?: boolean;
   /** The most pages one list may take in one read. */
   pageLimit?: number;
+  /** Imports only the issues open on the remote; a read after the import still sees their closes. */
+  openIssuesOnly?: boolean;
 };
+
+/** The resume mark of an issues list whose import of the open issues alone is not finished. */
+const OPEN_IMPORT = "open";
 
 type Refusal = { cannot: Cannot; why: string; waitUntil: string | null };
 type Raw = Record<string, any>;
@@ -49,7 +54,7 @@ export async function readRemote(options: ReadOptions): Promise<ReadAnswer> {
 
   for (const list of LISTS) {
     const before = kept.lists[list] ?? { tag: null, since: null };
-    const read = await readList(repo, list, before, ask, now, pageLimit);
+    const read = await readList(repo, list, before, ask, now, pageLimit, options.openIssuesOnly === true);
     requests += read.requests;
     if ("refusal" in read) {
       // Nothing is half kept: the lists stay where they were, so the next read asks again.
@@ -73,8 +78,11 @@ export async function readRemote(options: ReadOptions): Promise<ReadAnswer> {
 
 type ListRead = { requests: number } & ({ refusal: Refusal } | { modified: boolean; complete: boolean; items: Raw[]; keep: ListKept });
 
-async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, now: Date, pageLimit: number): Promise<ListRead> {
+async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, now: Date, pageLimit: number, openIssuesOnly: boolean): Promise<ListRead> {
   let requests = 0;
+  // Only the open issues are imported when the Human chose so: from the start, and until that
+  // import is done. Every later read lists all issues changed since it, so a close comes in.
+  const openOnly = list === "issues" && openIssuesOnly && (before.since === null || before.resume === OPEN_IMPORT);
   const page = async (path: string, tag: string | null): Promise<Page> => {
     const answer = await ask({ host: repo.host, path, tag });
     if (answer.sent && answer.status === 304) return { notModified: true };
@@ -99,7 +107,7 @@ async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, 
     return { requests, ...read };
   }
 
-  const first = await page(firstPage(repo, list), before.tag);
+  const first = await page(firstPage(repo, list, openOnly), before.tag);
   if ("refusal" in first) return { requests, refusal: first.refusal };
   if ("notModified" in first) return { requests, modified: false, complete: true, items: [], keep: before };
 
@@ -107,12 +115,12 @@ async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, 
   const holdsAll = first.next === null || (newestFirst(list) && before.since !== null && oldest !== null && oldest < before.since);
   if (holdsAll) {
     const items = fresh(first.items);
-    return { requests, modified: true, complete: true, items, keep: { tag: first.tag, since: latest(items) } };
+    return { requests, modified: true, complete: true, items, keep: { tag: first.tag, since: latest(items), resume: null } };
   }
 
   // More than one page changed. A list that takes "updated since" is read oldest change first,
   // so a read cut short moves its since-time forward and the next one carries on from there.
-  const resumable = sincePage(repo, list, before.since);
+  const resumable = sincePage(repo, list, before.since, openOnly);
   const items: Raw[] = resumable === null ? [...first.items] : [];
   let next: string | null = resumable ?? first.next;
   let pages = 1;
@@ -126,7 +134,9 @@ async function readList(repo: Repo, list: ListName, before: ListKept, ask: Ask, 
   }
   const complete = next === null;
   const kept = fresh(items);
-  if (resumable !== null) return { requests, modified: true, complete, items: kept, keep: { tag: complete ? first.tag : null, since: latest(kept) } };
+  if (resumable !== null) {
+    return { requests, modified: true, complete, items: kept, keep: { tag: complete ? first.tag : null, since: latest(kept), resume: openOnly && !complete ? OPEN_IMPORT : null } };
+  }
   // A list in no order of change spans pages its first page's tag does not cover: no tag is
   // kept, every read lists it all, and a read cut short does not move its since-time.
   return { requests, modified: true, complete, items: kept, keep: { tag: null, since: complete ? latest(kept) : before.since } };

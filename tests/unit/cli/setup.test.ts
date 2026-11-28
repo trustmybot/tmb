@@ -296,7 +296,7 @@ describe("the questions", () => {
     await initAndOnboardOutsideGit();
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: null, review_mode: null, checks: ["go test ./..."], shared_folders: null, graph_links: null, repos: null, issue_sync: null });
     expect(output).toContain(
-      "There is no terminal to ask on, so each question takes its default, except the review mode, which is yours to choose; --role, --base, --review-mode, --check and --shared-folder set them.",
+      "There is no terminal to ask on, so each question takes its default, except the review mode, which is yours to choose, and issue sync, which stays as it is; --role, --base, --review-mode, --issue-sync, --check and --shared-folder set them.",
     );
     expect(output).toContain("Settings in the record:");
     expect(output).toContain("  host: a");
@@ -309,7 +309,7 @@ describe("the questions", () => {
 
   test("on a terminal, are asked in turn showing their default, and the answers stored", async () => {
     writeFileSync(path.join(project, "Cargo.toml"), "");
-    const ask = scripted(["", "trunk", "", "cargo test", "cargo clippy", "", "target"]);
+    const ask = scripted(["", "trunk", "", "cargo test", "cargo clippy", "", "target", "all"]);
     await initAndOnboardOutsideGit({ ask });
     expect(ask.prompts).toEqual([
       "Role of Host A's main agent, one of: planner, reviewer [planner]: ",
@@ -319,11 +319,13 @@ describe("the questions", () => {
       "> ",
       "> ",
       "> ",
+      "Issue sync, one of: open, all, off [open]: ",
     ]);
+    expect(output).toContain("  all: open and closed issues; a big repo with thousands of closed issues takes longer and makes a bigger record");
     expect(output).toContain("  Detected:");
     expect(output).toContain("    cargo test");
     expect(output).toContain("  Stored: none.");
-    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["cargo test", "cargo clippy"], shared_folders: ["target"], graph_links: null, repos: null, issue_sync: null });
+    expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["cargo test", "cargo clippy"], shared_folders: ["target"], graph_links: null, repos: null, issue_sync: "all" });
   });
 
   test("with no detected base branch, asks again until it gets one", async () => {
@@ -408,7 +410,7 @@ describe("flags", () => {
     await onboard({ ask, flags: { base: "release", checks: ["make lint", "make test"], yes: true } });
     expect(ask.prompts).toEqual([]);
     expect(output).toContain(
-      "--yes was given, so each question takes its default, except the review mode, which is yours to choose; --role, --base, --review-mode, --check and --shared-folder set them.",
+      "--yes was given, so each question takes its default, except the review mode, which is yours to choose, and issue sync, which stays as it is; --role, --base, --review-mode, --issue-sync, --check and --shared-folder set them.",
     );
     expect(settings()).toEqual({ host: "a", host_roles: { a: "planner" }, base_branch: "release", review_mode: null, checks: ["make lint", "make test"], shared_folders: null, graph_links: null, repos: null, issue_sync: null });
     expect(output.at(-1)).toBe(NO_REVIEW_MODE_LINE);
@@ -424,9 +426,19 @@ describe("flags", () => {
     await init();
     const ask = scripted([""]);
     await onboard({ ask, flags: { base: "main", reviewMode: "agile", role: "planner" } });
-    // The checks and the shared folders.
-    expect(ask.prompts).toEqual(["> ", "> "]);
+    // The checks, the shared folders and issue sync, whose end of input keeps it unset.
+    expect(ask.prompts).toEqual(["> ", "> ", "Issue sync, one of: open, all, off [open]: "]);
     expect(settings().base_branch).toBe("main");
+    expect(settings().issue_sync).toBeNull();
+  });
+
+  test("--issue-sync sets issue sync without asking, and an unknown value is refused", async () => {
+    await init();
+    const ask = scripted([""]);
+    await onboard({ ask, flags: { base: "main", reviewMode: "agile", role: "planner", issueSync: "off" } });
+    expect(ask.prompts).toEqual(["> ", "> "]);
+    expect(settings().issue_sync).toBe("off");
+    await expect(onboard({ flags: { issueSync: "on" } })).rejects.toThrow(SettingError);
   });
 
   test("refuse an unknown review mode and a blank check before anything is written", async () => {
