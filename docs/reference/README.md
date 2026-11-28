@@ -179,7 +179,7 @@ The keys, and where they are kept, are in [CONFIG.md](../architecture/CONFIG.md)
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
 - Adds six hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
   - Two SessionStart hooks start each session. `tmb hook session-start-role` gives the role this host was set up with, the planner unless you chose the reviewer. `tmb hook session-start` gives the open work from the record. They are two because Claude Code caps the text one hook may add.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write. **Planned (trustmybot/tmb#457):** the hook no longer runs before a shell command.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write and reads no shell command.
   - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.

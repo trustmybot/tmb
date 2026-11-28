@@ -12,7 +12,6 @@ import { type HookName, type SettingsFile, TASK_NAMING_TOOLS } from "./settings.
 const TOOL_EVENTS: Readonly<Record<string, { readonly type: TmbEventType; readonly actionField: string; readonly roleField?: string }>> = {
   Agent: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
   Task: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
-  Bash: { type: "before-shell-command", actionField: "command" },
 };
 
 function stringField(object: JsonObject, key: string): string | undefined {

@@ -140,7 +140,6 @@ for (const harness of HARNESSES) {
         "agent-start-failed": { type: "agent-start-failed", role: "reviewer", prompt: "review" },
         "after-agent-stop": { type: "after-agent-stop", role: "reviewer" },
         "worker-in-folder": { type: "worker-in-folder", task: "01ARZ3NDEKTSV4RRFFQ69G5FAV", folder: project },
-        "before-shell-command": { type: "before-shell-command", role: "planner", command: "ls" },
       };
       for (const type of TMB_EVENT_TYPES) {
         const raised = harness.hookCall(project, samples[type]!) !== null;
@@ -202,16 +201,11 @@ for (const harness of HARNESSES) {
     test("a guarded action is denied in the host's own terms, an allowed one goes through, and both are recorded under this host", () => {
       const project = newProject();
       setUp(project);
-      // tmb reads a shell command only for a step only the Human may take: a push that skips git's hook is neither refused nor recorded, from any role.
-      for (const role of ["planner", "worker", "reviewer"]) {
-        expect(raise(project, { type: "before-shell-command", role, command: "git push --no-verify origin main" }).deny).toBeNull();
-      }
-      expect(withStore(project, (store) => store.listGuardDecisions())).toHaveLength(0);
-      // A step only the Human may take is denied from any role, in the host's own terms, and recorded (trustmybot/tmb#179).
-      for (const role of ["planner", "worker", "reviewer"]) {
-        expect(raise(project, { type: "before-shell-command", role, command: "tmb task waive T-1 --reason fine" }).deny).toContain("only the Human may take");
-      }
-      expect(withStore(project, (store) => store.listGuardDecisions().filter((row) => row.decision === "deny"))).toHaveLength(3);
+      if (!adapter.limits.events.includes("before-agent-start")) return;
+      // A worker whose start names no open task is denied in the host's own terms; a reviewer goes through.
+      expect(raise(project, { type: "before-agent-start", role: "worker", prompt: "fix the bug" }).deny).toContain("task_id=<id>");
+      expect(raise(project, { type: "before-agent-start", role: "reviewer", prompt: "Review the branch." }).deny).toBeNull();
+      expect(withStore(project, (store) => store.listGuardDecisions().map((row) => row.decision))).toEqual(["deny", "allow"]);
       const decisions = withStore(project, (store) => store.listGuardDecisions());
       expect(decisions.length).toBeGreaterThan(0);
       for (const decision of decisions) expect(decision.createdBy).toMatchObject({ kind: "agent", host: adapter.id });

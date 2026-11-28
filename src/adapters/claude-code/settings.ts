@@ -10,10 +10,10 @@ import { ENABLED_SERVERS_KEY, FILES, SERVER_KEY } from "./host.ts";
 export const TASK_NAMING_TOOLS = [`mcp__${SERVER_KEY}__task_brief`, `mcp__${SERVER_KEY}__task_close`] as const;
 
 /**
- * The tools whose calls raise a tmb event: subagent starts, a worker naming its task, and a
- * shell command, which tmb reads only for a step only the Human may take (trustmybot/tmb#179).
+ * The tools whose calls raise a tmb event: subagent starts and a worker naming its task. tmb
+ * reads no shell command.
  */
-export const GUARDED_TOOLS = ["Agent", "Task", "Bash", ...TASK_NAMING_TOOLS] as const;
+export const GUARDED_TOOLS = ["Agent", "Task", ...TASK_NAMING_TOOLS] as const;
 
 /**
  * Each Claude Code hook tmb wires: the hook event, its matcher, and the `tmb hook` name it runs.

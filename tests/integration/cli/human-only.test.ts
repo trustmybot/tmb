@@ -12,7 +12,7 @@ import { BASE_BRANCH, CLI, tmbProcesses } from "../../lib/tmb-processes.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const { scratch, env, git, run, tmb, human, setUpProject, hook, cleanup } = tmbProcesses("tmb-human-only-");
+const { scratch, env, git, run, tmb, human, setUpProject, cleanup } = tmbProcesses("tmb-human-only-");
 afterAll(cleanup);
 
 /** Each file under the project, git's own objects aside, by a hash of its bytes. */
@@ -121,14 +121,5 @@ describe("a step only the Human may take", () => {
     const removed = Bun.spawnSync([process.execPath, CLI, "remove", path.basename(fresh)], { cwd: fresh, env: unattended });
     expect(removed.exitCode).toBe(1);
     expect(removed.stderr.toString()).toContain("tmb remove is a step only the Human may take");
-  }, 90_000);
-
-  test("the host's guard denies it in an agent's Bash call, with the reason, before it runs", () => {
-    const project = setUpProject("true");
-    const out = hook(project, "pre-tool-use", { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "tmb task waive T-1 --reason fine" } });
-    const answer = JSON.parse(out).hookSpecificOutput;
-    expect(answer.permissionDecision).toBe("deny");
-    expect(answer.permissionDecisionReason).toContain("tmb task waive is a step only the Human may take");
-    expect(hook(project, "pre-tool-use", { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "tmb task list" } })).toBe("");
   }, 90_000);
 });

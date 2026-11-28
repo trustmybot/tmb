@@ -53,7 +53,7 @@ function gitInit(dir: string): void {
   expect(result.status).toBe(0);
 }
 
-const GUARDED_MATCHER = "Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close";
+const GUARDED_MATCHER = "Agent|Task|mcp__tmb__task_brief|mcp__tmb__task_close";
 const tmbHooks = (tmbCommand: readonly string[]) => ({
   SessionStart: [
     { hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start-role") }] },
@@ -80,7 +80,7 @@ describe("settings: setup", () => {
   test("the PreToolUse matcher covers the subagent starts, the shell, and the tools a worker names its task with, and no file write", () => {
     settingsFile.install(project, BINARY);
     const [group] = (readJson(settingsFile.path(project)) as { hooks: { PreToolUse: { matcher: string }[] } }).hooks.PreToolUse;
-    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Bash", "Task", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
+    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Task", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
   });
 
   test("a project an older tmb wired with the file-write matcher loses it on the next init, and doctor and init agree on the gap", () => {
