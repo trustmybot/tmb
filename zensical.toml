@@ -1,0 +1,65 @@
+# The docs site. It is built from docs/ by .github/workflows/docs.yml and
+# published on every merge to dev. docs/ is the one source.
+
+[project]
+site_name = "tmb docs"
+site_description = "The design docs of tmb, the harness around a Claude Code session."
+site_url = "https://trustmybot.github.io/tmb/"
+repo_url = "https://github.com/trustmybot/tmb"
+repo_name = "trustmybot/tmb"
+edit_uri = "edit/dev/docs/"
+docs_dir = "docs"
+
+[project.theme]
+language = "en"
+features = [
+  "content.action.edit",
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+footnotes = {}
+md_in_html = {}
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.magiclink = {}
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+pymdownx.tasklist.custom_checkbox = true
+
+# Heading anchors follow GitHub's rule, so one link works on GitHub and on the site.
+[project.markdown_extensions.toc]
+permalink = true
+slugify = { object = "pymdownx.slugs.slugify", kwds = { case = "lower" } }
