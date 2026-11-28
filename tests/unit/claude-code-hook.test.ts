@@ -4,9 +4,9 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { answerHook } from "../../src/adapters/claude-code/hook.ts";
 import { AWAITING_REVIEW_HEADING, handleEvent, openProjectStore, projectDbPath, UNATTENDED_INSTRUCTION, writeSetting } from "../../src/engine/index.ts";
 import type { GuardDecision } from "../../src/engine/store/index.ts";
+import { adapter } from "../../src/adapters/claude-code/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -55,7 +55,7 @@ function guardDecisions(): GuardDecision[] {
 }
 
 function preToolUse(toolName: string, toolInput: Record<string, unknown>, extra: Record<string, unknown> = {}): string {
-  return answerHook(
+  return adapter.answerHook(
     "pre-tool-use",
     JSON.stringify({ hook_event_name: "PreToolUse", cwd: project, tool_name: toolName, tool_input: toolInput, ...extra }),
     ATTENDED,
@@ -176,7 +176,7 @@ describe("hook pre-tool-use", () => {
   });
 
   test("still throws on input that is not JSON", () => {
-    expect(() => answerHook("pre-tool-use", "{ not json", ATTENDED)).toThrow();
+    expect(() => adapter.answerHook("pre-tool-use", "{ not json", ATTENDED)).toThrow();
   });
 });
 
@@ -210,7 +210,7 @@ describe("hook post-tool-use-failure (trustmybot/tmb#285)", () => {
   }
 
   function failure(extra: Record<string, unknown>): string {
-    return answerHook("post-tool-use-failure", JSON.stringify({ hook_event_name: "PostToolUseFailure", cwd: project, error: "Cannot create agent worktree: not in a git repository", ...extra }), ATTENDED);
+    return adapter.answerHook("post-tool-use-failure", JSON.stringify({ hook_event_name: "PostToolUseFailure", cwd: project, error: "Cannot create agent worktree: not in a git repository", ...extra }), ATTENDED);
   }
 
   test("a worker start from the workspace folder, which is no repo, opens its run on the task's repo (trustmybot/tmb#463)", () => {
@@ -242,7 +242,7 @@ describe("hook subagent-stop", () => {
   test("records an after-agent-stop under the stopped agent's role and answers nothing", () => {
     createRecord();
     const input = { hook_event_name: "SubagentStop", cwd: project, agent_id: "a1", agent_type: "reviewer", stop_hook_active: false };
-    expect(answerHook("subagent-stop", JSON.stringify(input), ATTENDED)).toBe("");
+    expect(adapter.answerHook("subagent-stop", JSON.stringify(input), ATTENDED)).toBe("");
     const [recorded] = guardDecisions();
     expect(recorded!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
     expect(JSON.parse(recorded!.event)).toEqual({ type: "after-agent-stop", role: "reviewer", action: "reviewer" });
@@ -250,12 +250,12 @@ describe("hook subagent-stop", () => {
 
   test("answers nothing even when the record cannot be read", () => {
     breakRecord();
-    expect(answerHook("subagent-stop", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
+    expect(adapter.answerHook("subagent-stop", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
   });
 
   test("records the stop from a subfolder of the project", () => {
     createRecord();
-    expect(answerHook("subagent-stop", JSON.stringify({ cwd: subfolder(), agent_type: "worker" }), ATTENDED)).toBe("");
+    expect(adapter.answerHook("subagent-stop", JSON.stringify({ cwd: subfolder(), agent_type: "worker" }), ATTENDED)).toBe("");
     expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
       { type: "after-agent-stop", role: "worker", action: "worker" },
     ]);
@@ -283,29 +283,29 @@ describe("Claude Code set up as the reviewer", () => {
   test("its main agent is guarded and recorded as the reviewer", () => {
     setUpAsReviewer();
     const input = { hook_event_name: "PreToolUse", cwd: project, tool_name: "Write", tool_input: { file_path: "src/a.ts", content: "x" } };
-    expect(JSON.parse(answerHook("pre-tool-use", JSON.stringify(input), ATTENDED)).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(JSON.parse(adapter.answerHook("pre-tool-use", JSON.stringify(input), ATTENDED)).hookSpecificOutput.permissionDecision).toBe("deny");
     expect(guardDecisions()[0]!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
   });
 
   test("its session start briefs the reviewer and opens its run; its session end closes it", () => {
     setUpAsReviewer();
-    const started = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", cwd: project }), ATTENDED));
+    const started = JSON.parse(adapter.answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", cwd: project }), ATTENDED));
     expect(started.hookSpecificOutput.additionalContext).toContain(AWAITING_REVIEW_HEADING);
     expect(openReviewerRuns()).toBe(1);
-    expect(answerHook("session-end", JSON.stringify({ hook_event_name: "SessionEnd", cwd: project, reason: "exit" }), ATTENDED)).toBe("");
+    expect(adapter.answerHook("session-end", JSON.stringify({ hook_event_name: "SessionEnd", cwd: project, reason: "exit" }), ATTENDED)).toBe("");
     expect(openReviewerRuns()).toBe(0);
   });
 
   test("a session end answers nothing even when the record cannot be read", () => {
     breakRecord();
-    expect(answerHook("session-end", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
+    expect(adapter.answerHook("session-end", JSON.stringify({ cwd: project }), ATTENDED)).toBe("");
   });
 });
 
 describe("hook session-start", () => {
   function sessionStartContext(unattended: boolean): string {
     const input = JSON.stringify({ hook_event_name: "SessionStart", cwd: project });
-    const output = JSON.parse(answerHook("session-start", input, { unattended }));
+    const output = JSON.parse(adapter.answerHook("session-start", input, { unattended }));
     return output.hookSpecificOutput.additionalContext as string;
   }
 

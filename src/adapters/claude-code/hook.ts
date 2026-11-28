@@ -1,18 +1,15 @@
-import { decide, handleEvent, MAIN_AGENT, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
+// Claude Code's hooks in, the engine's events out; the engine's answers back as Claude Code's hook output.
+import { decide, handleEvent, MAIN_AGENT, type ModelUsage, projectRootOf, type TmbEvent, type TmbEventType } from "../../engine/index.ts";
 import type { HookRun } from "../host-adapter.ts";
 import { isObject, type JsonObject } from "../common/json-file.ts";
-import { HOST_ID } from "./mcp-json.ts";
-import { usageOfTranscriptFile } from "./usage.ts";
-import { type HookName, TASK_NAMING_TOOLS, wiresHook } from "./settings.ts";
-
-/** The subagent Claude Code starts when the call names no subagent_type. */
-const DEFAULT_SUBAGENT = "general-purpose";
+import { DEFAULT_SUBAGENT, HOST_ID, SESSION_TEXT_BUDGET } from "./host.ts";
+import { type HookName, type SettingsFile, TASK_NAMING_TOOLS } from "./settings.ts";
 
 /**
  * Each guarded tool: the tmb event its call raises, the tool input field that names the
  * action and, for a subagent start, the field that names the role of the agent starting.
  */
-const TOOL_EVENTS: Record<string, { type: TmbEventType; actionField: string; roleField?: string }> = {
+const TOOL_EVENTS: Readonly<Record<string, { readonly type: TmbEventType; readonly actionField: string; readonly roleField?: string }>> = {
   Write: { type: "before-file-write", actionField: "file_path" },
   Edit: { type: "before-file-write", actionField: "file_path" },
   MultiEdit: { type: "before-file-write", actionField: "file_path" },
@@ -46,118 +43,121 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
   return { type, projectDir: projectDirOf(input), host: HOST_ID, role, action };
 }
 
-/**
- * Claude Code's cap on one text a hook gives it, in characters. Over it, the model sees a path and
- * the first 2,000 characters only; the cap is per text, and cannot be raised.
- */
-export const HOOK_TEXT_CAP = 10_000;
-/** The most each session-start text may have: below the cap, so a text tmb fits is never cut by Claude Code. */
-export const SESSION_TEXT_BUDGET = 8_000;
-
 /** Claude Code's answer adding one text to the session; empty when there is no text. */
 function sessionText(context: string): string {
   return context === "" ? "" : JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } });
 }
 
-/**
- * The project's state, fitted to its budget. Settings an older tmb wired have no role hook yet:
- * the role then comes in this text too, until the refresh below wires it for the next session.
- */
-function sessionStart(input: JsonObject, run: HookRun): string {
-  const projectDir = projectDirOf(input);
-  const withRole = !wiresHook(projectDir, "session-start-role");
-  const refreshed = run.refresh?.(projectDir) ?? null;
-  const texts = { withRole, budget: SESSION_TEXT_BUDGET };
-  const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed, doctor: run.doctor, texts });
-  return sessionText(answer.context);
-}
+/** Reads the tokens a subagent's transcript holds, or null when it cannot. */
+export type UsageReader = (transcriptFile: string | undefined) => ModelUsage[] | null;
 
-/** The role, its own text. Claude Code runs it beside the state's hook, so it only reads. */
-function sessionStartRole(input: JsonObject): string {
-  return sessionText(handleEvent({ type: "session-role", projectDir: projectDirOf(input), host: HOST_ID }).context);
-}
+/** Translates each Claude Code hook tmb wires; one instance per adapter. */
+export class HookTranslator {
+  private readonly answers: Readonly<Record<HookName, (input: JsonObject, run: HookRun) => string>> = {
+    "session-start-role": (input) => this.sessionStartRole(input),
+    "session-start": (input, run) => this.sessionStart(input, run),
+    "pre-tool-use": (input) => this.preToolUse(input),
+    "post-tool-use-failure": (input) => this.postToolUseFailure(input),
+    "subagent-stop": (input) => this.subagentStop(input),
+    "session-end": (input) => this.sessionEnd(input),
+  };
 
-/**
- * A worker naming its task with one of tmb's tools: inside a worker Claude Code gives the folder
- * it works in as the input's cwd, which is the worktree Claude Code made for it. The engine adopts
- * that worktree as the task's; the call itself always goes on.
- */
-function workerInFolder(input: JsonObject, toolInput: JsonObject): string {
-  const folder = stringField(input, "cwd");
-  const task = stringField(toolInput, "id");
-  if (roleOf(input) !== "worker" || folder === undefined || task === undefined) return "";
-  decide({ ...eventOf(input, "worker-in-folder", folder), task: task.toUpperCase() });
-  return "";
-}
+  constructor(
+    private readonly settings: SettingsFile,
+    private readonly readUsage: UsageReader,
+  ) {}
 
-/** A deny becomes Claude Code's deny; an allow says nothing, so Claude Code's own permission prompts still apply. */
-function preToolUse(input: JsonObject): string {
-  const toolName = stringField(input, "tool_name");
-  if (toolName !== undefined && (TASK_NAMING_TOOLS as readonly string[]).includes(toolName)) {
-    return workerInFolder(input, isObject(input.tool_input) ? input.tool_input : {});
+  /**
+   * The project's state, fitted to its budget. Settings an older tmb wired have no role hook yet:
+   * the role then comes in this text too, until the refresh below wires it for the next session.
+   */
+  private sessionStart(input: JsonObject, run: HookRun): string {
+    const projectDir = projectDirOf(input);
+    const withRole = !this.settings.wiresHook(projectDir, "session-start-role");
+    const refreshed = run.refresh?.(projectDir) ?? null;
+    const texts = { withRole, budget: SESSION_TEXT_BUDGET };
+    const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed, doctor: run.doctor, texts });
+    return sessionText(answer.context);
   }
-  const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
-  if (!tool) return "";
-  const toolInput = isObject(input.tool_input) ? input.tool_input : {};
-  const role = tool.roleField === undefined ? roleOf(input) : (stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT);
-  const event = eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? "", role);
-  const answer = decide(event);
-  if (answer.decision === "allow") return "";
-  return JSON.stringify({
-    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: answer.reason },
-  });
-}
 
-/**
- * An Agent call that failed after the gate allowed it, such as a worktree Claude Code could not
- * make (trustmybot/tmb#285): no subagent ran, so no stop will come, and the engine ends the run
- * the start opened. Claude Code takes no answer.
- */
-function postToolUseFailure(input: JsonObject): string {
-  const toolName = stringField(input, "tool_name");
-  const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
-  if (tool?.type !== "before-agent-start" || tool.roleField === undefined) return "";
-  // A call the user stopped may have started its subagent, whose stop then ends the run.
-  if (input.is_interrupt === true) return "";
-  const toolInput = isObject(input.tool_input) ? input.tool_input : {};
-  const role = stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT;
-  decide(eventOf(input, "agent-start-failed", stringField(toolInput, tool.actionField) ?? "", role));
-  return "";
-}
+  /** The role, its own text. Claude Code runs it beside the state's hook, so it only reads. */
+  private sessionStartRole(input: JsonObject): string {
+    return sessionText(handleEvent({ type: "session-role", projectDir: projectDirOf(input), host: HOST_ID }).context);
+  }
 
-/** Claude Code takes no answer to a subagent's stop; the engine records it. */
-function subagentStop(input: JsonObject): string {
-  const agentType = stringField(input, "agent_type");
-  // A stop that names no agent cannot be matched to a run; read as the main agent's, it would end the host's own.
-  if (agentType === undefined) return "";
-  // The subagent's own transcript holds its usage; the input's transcript_path is the main session's.
-  decide({ ...eventOf(input, "after-agent-stop", agentType), cost: usageOfTranscriptFile(stringField(input, "agent_transcript_path")) });
-  return "";
-}
+  /**
+   * A worker naming its task with one of tmb's tools: inside a worker Claude Code gives the folder
+   * it works in as the input's cwd, which is the worktree Claude Code made for it. The engine adopts
+   * that worktree as the task's; the call itself always goes on.
+   */
+  private workerInFolder(input: JsonObject, toolInput: JsonObject): string {
+    const folder = stringField(input, "cwd");
+    const task = stringField(toolInput, "id");
+    if (roleOf(input) !== "worker" || folder === undefined || task === undefined) return "";
+    decide({ ...eventOf(input, "worker-in-folder", folder), task: task.toUpperCase() });
+    return "";
+  }
 
-/** Claude Code takes no answer to a session's end; a reviewer host's run without a verdict ends with it. */
-function sessionEnd(input: JsonObject): string {
-  handleEvent({ type: "session-end", projectDir: projectDirOf(input), host: HOST_ID });
-  return "";
-}
+  /** A deny becomes Claude Code's deny; an allow says nothing, so Claude Code's own permission prompts still apply. */
+  private preToolUse(input: JsonObject): string {
+    const toolName = stringField(input, "tool_name");
+    if (toolName !== undefined && (TASK_NAMING_TOOLS as readonly string[]).includes(toolName)) {
+      return this.workerInFolder(input, isObject(input.tool_input) ? input.tool_input : {});
+    }
+    const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
+    if (!tool) return "";
+    const toolInput = isObject(input.tool_input) ? input.tool_input : {};
+    const role = tool.roleField === undefined ? roleOf(input) : (stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT);
+    const event = eventOf(input, tool.type, stringField(toolInput, tool.actionField) ?? "", role);
+    const answer = decide(event);
+    if (answer.decision === "allow") return "";
+    return JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: answer.reason },
+    });
+  }
 
-const ANSWERS: Record<HookName, (input: JsonObject, run: HookRun) => string> = {
-  "session-start-role": sessionStartRole,
-  "session-start": sessionStart,
-  "pre-tool-use": preToolUse,
-  "post-tool-use-failure": postToolUseFailure,
-  "subagent-stop": subagentStop,
-  "session-end": sessionEnd,
-};
+  /**
+   * An Agent call that failed after the gate allowed it, such as a worktree Claude Code could not
+   * make (trustmybot/tmb#285): no subagent ran, so no stop will come, and the engine ends the run
+   * the start opened. Claude Code takes no answer.
+   */
+  private postToolUseFailure(input: JsonObject): string {
+    const toolName = stringField(input, "tool_name");
+    const tool = toolName === undefined ? undefined : TOOL_EVENTS[toolName];
+    if (tool?.type !== "before-agent-start" || tool.roleField === undefined) return "";
+    // A call the user stopped may have started its subagent, whose stop then ends the run.
+    if (input.is_interrupt === true) return "";
+    const toolInput = isObject(input.tool_input) ? input.tool_input : {};
+    const role = stringField(toolInput, tool.roleField) ?? DEFAULT_SUBAGENT;
+    decide(eventOf(input, "agent-start-failed", stringField(toolInput, tool.actionField) ?? "", role));
+    return "";
+  }
 
-/**
- * Turns Claude Code's hook input into the engine's event and the engine's answer into
- * Claude Code's hook output; `run` is what the command line read about the run. Returns the
- * stdout text, empty when there is nothing to say, or throws on bad input.
- */
-export function answerHook(event: string, stdinText: string, run: HookRun): string {
-  const answer = Object.hasOwn(ANSWERS, event) ? ANSWERS[event as HookName] : undefined;
-  if (!answer) throw new Error(`unknown hook event '${event}'`);
-  const input: unknown = stdinText.trim() === "" ? {} : JSON.parse(stdinText);
-  return answer(isObject(input) ? input : {}, run);
+  /** Claude Code takes no answer to a subagent's stop; the engine records it. */
+  private subagentStop(input: JsonObject): string {
+    const agentType = stringField(input, "agent_type");
+    // A stop that names no agent cannot be matched to a run; read as the main agent's, it would end the host's own.
+    if (agentType === undefined) return "";
+    // The subagent's own transcript holds its usage; the input's transcript_path is the main session's.
+    decide({ ...eventOf(input, "after-agent-stop", agentType), cost: this.readUsage(stringField(input, "agent_transcript_path")) });
+    return "";
+  }
+
+  /** Claude Code takes no answer to a session's end; a reviewer host's run without a verdict ends with it. */
+  private sessionEnd(input: JsonObject): string {
+    handleEvent({ type: "session-end", projectDir: projectDirOf(input), host: HOST_ID });
+    return "";
+  }
+
+  /**
+   * Turns Claude Code's hook input into the engine's event and the engine's answer into
+   * Claude Code's hook output; `run` is what the command line read about the run. Returns the
+   * stdout text, empty when there is nothing to say, or throws on bad input.
+   */
+  answer(event: string, stdinText: string, run: HookRun): string {
+    const answer = Object.hasOwn(this.answers, event) ? this.answers[event as HookName] : undefined;
+    if (!answer) throw new Error(`unknown hook event '${event}'`);
+    const input: unknown = stdinText.trim() === "" ? {} : JSON.parse(stdinText);
+    return answer(isObject(input) ? input : {}, run);
+  }
 }

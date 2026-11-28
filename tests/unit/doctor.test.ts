@@ -7,8 +7,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { adapter as claudeCode } from "../../src/adapters/claude-code/index.ts";
-import { roleFilePath } from "../../src/adapters/claude-code/role-files.ts";
+import { adapter as claudeCode, roleFiles } from "../../src/adapters/claude-code/index.ts";
 import { adapter as codex } from "../../src/adapters/codex/index.ts";
 import { HOST_ADAPTERS } from "../../src/adapters/index.ts";
 import { exitCode, findingsJson, formatFindings, runChecks, runDoctorCommand, sessionStartLine } from "../../src/cli/commands/doctor/index.ts";
@@ -330,7 +329,7 @@ describe("the project", () => {
   });
 
   test("a host file that differs is found, with `tmb init --host`", () => {
-    rmSync(roleFilePath(project, "worker"));
+    rmSync(roleFiles.filePath(project, "worker"));
     const [files] = notOk(of(runChecks(env()), "host files"));
     expect(files!.summary).toContain("Claude Code's files differ");
     expect(files!.details!.join("\n")).toContain("worker");

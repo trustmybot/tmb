@@ -4,11 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { ignoreInGit } from "../common/git.ts";
 import { deleteFile, isObject, type JsonObject, readJsonObject, writeJsonObject } from "../common/json-file.ts";
-import { SERVER_KEY } from "./mcp-json.ts";
-
-const SETTINGS_RELATIVE = path.join(".claude", "settings.local.json");
-const GITIGNORE_ENTRY = ".claude/settings.local.json";
-const ENABLED_SERVERS_KEY = "enabledMcpjsonServers";
+import { ENABLED_SERVERS_KEY, FILES, SERVER_KEY } from "./host.ts";
 
 /** tmb's own tools a worker names its task with, as Claude Code names them; the first call tells tmb the worker's folder. */
 export const TASK_NAMING_TOOLS = [`mcp__${SERVER_KEY}__task_brief`, `mcp__${SERVER_KEY}__task_close`] as const;
@@ -53,10 +49,6 @@ const SOURCE_HOOK_COMMAND = new RegExp(
   String.raw`^"[^"]*"\s+(?:"[^"]*[\\/]src[\\/]cli(?:[\\/]index)?\.ts"|[^"\s]*[\\/]src[\\/]cli(?:[\\/]index)?\.ts)\s+hook\s+(${HOOK_NAMES})$`,
   "i",
 );
-
-export function settingsPath(projectDir: string): string {
-  return path.join(projectDir, SETTINGS_RELATIVE);
-}
 
 /** The hook's shell command: each part of the tmb command quoted, then the hook arguments. */
 export function hookCommand(tmbCommand: readonly string[], name: HookName): string {
@@ -175,84 +167,90 @@ function removeStrayHooks(settings: JsonObject): string[] {
   return changed;
 }
 
-/** Whether the project's settings wire one of tmb's hooks, from any tmb, under its event. Reads only; false when the file cannot be read. */
-export function wiresHook(projectDir: string, name: HookName): boolean {
-  try {
-    const hooks = readJsonObject(settingsPath(projectDir)).hooks;
-    const event = TMB_HOOKS.find((hook) => hook.name === name)!.hookEvent;
-    const groups = isObject(hooks) && Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
-    return groups.some((group) => hooksOf(group).some(isTmbHookOf(name)));
-  } catch {
-    return false;
-  }
-}
-
 /** `hooksAdded` and `hooksRemoved` name the Claude Code hook events tmb changed, in wiring order. */
 export type SetupResult = { settingsFile: string; hooksAdded: string[]; hooksRemoved: string[]; serverEnabled: boolean; gitignoreChanged: boolean };
-
-export function install(projectDir: string, tmbCommand: readonly string[]): SetupResult {
-  const file = settingsPath(projectDir);
-  const settings = readJsonObject(file);
-  const enabled = enabledServers(settings, file);
-
-  const hooksRemoved = removeStrayHooks(settings);
-  const hooksAdded = [...new Set(TMB_HOOKS.filter((hook) => addHook(settings, hook, hookCommand(tmbCommand, hook.name))).map((hook) => hook.hookEvent))];
-  const serverEnabled = !enabled.includes(SERVER_KEY);
-  if (serverEnabled) settings[ENABLED_SERVERS_KEY] = [...enabled, SERVER_KEY];
-  if (hooksAdded.length > 0 || hooksRemoved.length > 0 || serverEnabled) writeJsonObject(file, settings);
-
-  return { settingsFile: file, hooksAdded, hooksRemoved, serverEnabled, gitignoreChanged: ignoreInGit(projectDir, GITIGNORE_ENTRY) };
-}
-
 export type RemoveResult = { settingsFile: string; hooksRemoved: string[]; serverDisabled: boolean; fileDeleted: boolean };
 
-export function remove(projectDir: string): RemoveResult {
-  const file = settingsPath(projectDir);
-  const unchanged: RemoveResult = { settingsFile: file, hooksRemoved: [], serverDisabled: false, fileDeleted: false };
-  if (!existsSync(file)) return unchanged;
-
-  const settings = readJsonObject(file);
-  const enabled = enabledServers(settings, file);
-  const stray = removeStrayHooks(settings);
-  const hooksRemoved = [...new Set([...stray, ...TMB_HOOKS.filter((hook) => removeHook(settings, hook)).map((hook) => hook.hookEvent)])];
-  const serverDisabled = enabled.includes(SERVER_KEY);
-  if (serverDisabled) {
-    const remaining = enabled.filter((name) => name !== SERVER_KEY);
-    if (remaining.length > 0) settings[ENABLED_SERVERS_KEY] = remaining;
-    else delete settings[ENABLED_SERVERS_KEY];
+/** tmb's hooks and enabled tool server in the Human's own settings file for the project. */
+export class SettingsFile {
+  path(projectDir: string): string {
+    return path.join(projectDir, FILES.settings);
   }
-  if (hooksRemoved.length === 0 && !serverDisabled) return unchanged;
 
-  if (Object.keys(settings).length === 0) {
-    deleteFile(file, projectDir);
-    return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: true };
+  /** Whether the project's settings wire one of tmb's hooks, from any tmb, under its event. Reads only; false when the file cannot be read. */
+  wiresHook(projectDir: string, name: HookName): boolean {
+    try {
+      const hooks = readJsonObject(this.path(projectDir)).hooks;
+      const event = TMB_HOOKS.find((hook) => hook.name === name)!.hookEvent;
+      const groups = isObject(hooks) && Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
+      return groups.some((group) => hooksOf(group).some(isTmbHookOf(name)));
+    } catch {
+      return false;
+    }
   }
-  writeJsonObject(file, settings);
-  return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: false };
-}
 
-/** What `tmb doctor` finds wrong with tmb's hooks and tool server in the settings file: one line each, none when init would change nothing. Never writes. */
-export function settingsGaps(projectDir: string, tmbCommand: readonly string[]): string[] {
-  const file = settingsPath(projectDir);
-  const shown = SETTINGS_RELATIVE;
-  try {
+  install(projectDir: string, tmbCommand: readonly string[]): SetupResult {
+    const file = this.path(projectDir);
     const settings = readJsonObject(file);
-    const gaps: string[] = [];
-    const hooks = isObject(settings.hooks) ? settings.hooks : {};
-    const missing = [
-      ...new Set(
-        TMB_HOOKS.filter((hook) => {
-          const groups = Array.isArray(hooks[hook.hookEvent]) ? (hooks[hook.hookEvent] as unknown[]) : [];
-          return !isWired(groups, hook, hookCommand(tmbCommand, hook.name));
-        }).map((hook) => hook.hookEvent),
-      ),
-    ];
-    if (missing.length > 0) gaps.push(`${shown} lacks tmb's current ${missing.join(", ")} hook${missing.length === 1 ? "" : "s"}`);
-    const stray = removeStrayHooks(structuredClone(settings));
-    if (stray.length > 0) gaps.push(`${shown} holds tmb hooks this version no longer wires under ${stray.join(", ")}`);
-    if (!enabledServers(settings, file).includes(SERVER_KEY)) gaps.push(`${shown} does not enable the tmb tool server`);
-    return gaps;
-  } catch (error) {
-    return [`${shown} cannot be read: ${error instanceof Error ? error.message : String(error)}`];
+    const enabled = enabledServers(settings, file);
+
+    const hooksRemoved = removeStrayHooks(settings);
+    const hooksAdded = [...new Set(TMB_HOOKS.filter((hook) => addHook(settings, hook, hookCommand(tmbCommand, hook.name))).map((hook) => hook.hookEvent))];
+    const serverEnabled = !enabled.includes(SERVER_KEY);
+    if (serverEnabled) settings[ENABLED_SERVERS_KEY] = [...enabled, SERVER_KEY];
+    if (hooksAdded.length > 0 || hooksRemoved.length > 0 || serverEnabled) writeJsonObject(file, settings);
+
+    return { settingsFile: file, hooksAdded, hooksRemoved, serverEnabled, gitignoreChanged: ignoreInGit(projectDir, FILES.settingsGitignoreEntry) };
+  }
+
+  remove(projectDir: string): RemoveResult {
+    const file = this.path(projectDir);
+    const unchanged: RemoveResult = { settingsFile: file, hooksRemoved: [], serverDisabled: false, fileDeleted: false };
+    if (!existsSync(file)) return unchanged;
+
+    const settings = readJsonObject(file);
+    const enabled = enabledServers(settings, file);
+    const stray = removeStrayHooks(settings);
+    const hooksRemoved = [...new Set([...stray, ...TMB_HOOKS.filter((hook) => removeHook(settings, hook)).map((hook) => hook.hookEvent)])];
+    const serverDisabled = enabled.includes(SERVER_KEY);
+    if (serverDisabled) {
+      const remaining = enabled.filter((name) => name !== SERVER_KEY);
+      if (remaining.length > 0) settings[ENABLED_SERVERS_KEY] = remaining;
+      else delete settings[ENABLED_SERVERS_KEY];
+    }
+    if (hooksRemoved.length === 0 && !serverDisabled) return unchanged;
+
+    if (Object.keys(settings).length === 0) {
+      deleteFile(file, projectDir);
+      return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: true };
+    }
+    writeJsonObject(file, settings);
+    return { settingsFile: file, hooksRemoved, serverDisabled, fileDeleted: false };
+  }
+
+  /** What `tmb doctor` finds wrong with tmb's hooks and tool server in the settings file: one line each, none when init would change nothing. Never writes. */
+  gaps(projectDir: string, tmbCommand: readonly string[]): string[] {
+    const file = this.path(projectDir);
+    const shown = FILES.settings;
+    try {
+      const settings = readJsonObject(file);
+      const gaps: string[] = [];
+      const hooks = isObject(settings.hooks) ? settings.hooks : {};
+      const missing = [
+        ...new Set(
+          TMB_HOOKS.filter((hook) => {
+            const groups = Array.isArray(hooks[hook.hookEvent]) ? (hooks[hook.hookEvent] as unknown[]) : [];
+            return !isWired(groups, hook, hookCommand(tmbCommand, hook.name));
+          }).map((hook) => hook.hookEvent),
+        ),
+      ];
+      if (missing.length > 0) gaps.push(`${shown} lacks tmb's current ${missing.join(", ")} hook${missing.length === 1 ? "" : "s"}`);
+      const stray = removeStrayHooks(structuredClone(settings));
+      if (stray.length > 0) gaps.push(`${shown} holds tmb hooks this version no longer wires under ${stray.join(", ")}`);
+      if (!enabledServers(settings, file).includes(SERVER_KEY)) gaps.push(`${shown} does not enable the tmb tool server`);
+      return gaps;
+    } catch (error) {
+      return [`${shown} cannot be read: ${error instanceof Error ? error.message : String(error)}`];
+    }
   }
 }

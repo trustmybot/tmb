@@ -3,13 +3,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { answerHook, HOOK_TEXT_CAP, SESSION_TEXT_BUDGET } from "../../src/adapters/claude-code/hook.ts";
-import { adapter } from "../../src/adapters/claude-code/index.ts";
-import { mcpJsonPath, registerServer, serverEntry, unregisterServer } from "../../src/adapters/claude-code/mcp-json.ts";
+import { adapter, settingsFile, toolServer } from "../../src/adapters/claude-code/index.ts";
+import { serverEntry } from "../../src/adapters/claude-code/mcp-json.ts";
 import { setUpRecord } from "../../src/adapters/common/record.ts";
-import { hookCommand, install, isTmbHookCommand, remove, settingsGaps, settingsPath } from "../../src/adapters/claude-code/settings.ts";
+import { hookCommand, isTmbHookCommand } from "../../src/adapters/claude-code/settings.ts";
 import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath, reviewerRole, UNATTENDED_INSTRUCTION } from "../../src/engine/index.ts";
 import { namingProgram } from "../../src/engine/program.ts";
+import { HOOK_TEXT_CAP, SESSION_TEXT_BUDGET } from "../../src/adapters/claude-code/host.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -68,17 +68,17 @@ const ALL_HOOKS = ["SessionStart", "PreToolUse", "PostToolUseFailure", "Subagent
 
 describe("settings: setup", () => {
   test("on a fresh project creates the settings file with tmb's hooks and the enabled server", () => {
-    const result = install(project, BINARY);
+    const result = settingsFile.install(project, BINARY);
     expect(result).toMatchObject({ hooksAdded: ALL_HOOKS, serverEnabled: true });
-    expect(readJson(settingsPath(project))).toEqual(tmbSettings);
+    expect(readJson(settingsFile.path(project))).toEqual(tmbSettings);
     expect(hookCommand(BINARY, "session-start")).toBe(`"${EXE}" hook session-start`);
     expect(hookCommand(BINARY, "pre-tool-use")).toBe(`"${EXE}" hook pre-tool-use`);
     expect(hookCommand(BINARY, "subagent-stop")).toBe(`"${EXE}" hook subagent-stop`);
   });
 
   test("the PreToolUse matcher covers the six guarded tools, the shell, and the tools a worker names its task with", () => {
-    install(project, BINARY);
-    const [group] = (readJson(settingsPath(project)) as { hooks: { PreToolUse: { matcher: string }[] } }).hooks.PreToolUse;
+    settingsFile.install(project, BINARY);
+    const [group] = (readJson(settingsFile.path(project)) as { hooks: { PreToolUse: { matcher: string }[] } }).hooks.PreToolUse;
     expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
   });
 
@@ -94,12 +94,12 @@ describe("settings: setup", () => {
       },
     };
     mkdirSync(path.join(project, ".claude"));
-    writeFileSync(settingsPath(project), JSON.stringify(prior));
+    writeFileSync(settingsFile.path(project), JSON.stringify(prior));
 
-    install(project, BINARY);
+    settingsFile.install(project, BINARY);
 
     const ours = tmbHooks(BINARY);
-    expect(readJson(settingsPath(project))).toEqual({
+    expect(readJson(settingsFile.path(project))).toEqual({
       permissions: prior.permissions,
       enabledMcpjsonServers: ["other", "tmb"],
       hooks: {
@@ -114,54 +114,54 @@ describe("settings: setup", () => {
   });
 
   test("is idempotent", () => {
-    install(project, BINARY);
-    const first = readFileSync(settingsPath(project), "utf8");
-    const second = install(project, BINARY);
+    settingsFile.install(project, BINARY);
+    const first = readFileSync(settingsFile.path(project), "utf8");
+    const second = settingsFile.install(project, BINARY);
     expect(second).toMatchObject({ hooksAdded: [], serverEnabled: false });
-    expect(readFileSync(settingsPath(project), "utf8")).toBe(first);
+    expect(readFileSync(settingsFile.path(project), "utf8")).toBe(first);
   });
 
   test("replaces a tmb hook that points at another executable", () => {
-    install(project, [path.join(project, "old", "tmb")]);
-    install(project, BINARY);
-    expect(readJson(settingsPath(project))).toEqual(tmbSettings);
+    settingsFile.install(project, [path.join(project, "old", "tmb")]);
+    settingsFile.install(project, BINARY);
+    expect(readJson(settingsFile.path(project))).toEqual(tmbSettings);
   });
 
   test("replaces a source-run hook with a binary one", () => {
-    install(project, SOURCE);
-    install(project, BINARY);
-    expect(readJson(settingsPath(project))).toEqual(tmbSettings);
+    settingsFile.install(project, SOURCE);
+    settingsFile.install(project, BINARY);
+    expect(readJson(settingsFile.path(project))).toEqual(tmbSettings);
   });
 
   test("replaces only the stale kind, and a PreToolUse hook whose matcher is out of date", () => {
-    install(project, BINARY);
-    const settings = readJson(settingsPath(project)) as { hooks: Record<string, { matcher?: string; hooks: { command: string }[] }[]> };
+    settingsFile.install(project, BINARY);
+    const settings = readJson(settingsFile.path(project)) as { hooks: Record<string, { matcher?: string; hooks: { command: string }[] }[]> };
     settings.hooks.SubagentStop![0]!.hooks[0]!.command = hookCommand([path.join(project, "old", "tmb")], "subagent-stop");
     settings.hooks.PreToolUse![0]!.matcher = "Write|Bash";
-    writeFileSync(settingsPath(project), JSON.stringify(settings));
+    writeFileSync(settingsFile.path(project), JSON.stringify(settings));
 
-    expect(install(project, BINARY).hooksAdded).toEqual(["PreToolUse", "SubagentStop"]);
-    expect(readJson(settingsPath(project))).toEqual(tmbSettings);
+    expect(settingsFile.install(project, BINARY).hooksAdded).toEqual(["PreToolUse", "SubagentStop"]);
+    expect(readJson(settingsFile.path(project))).toEqual(tmbSettings);
   });
 
   test("quotes a Windows executable path", () => {
     const winExe = "C:\\Users\\Jo Doe\\AppData\\Local\\tmb\\bin\\tmb.exe";
-    install(project, [winExe]);
-    expect(readJson(settingsPath(project))).toMatchObject({
+    settingsFile.install(project, [winExe]);
+    expect(readJson(settingsFile.path(project))).toMatchObject({
       hooks: {
         SessionStart: [{ hooks: [{ type: "command", command: `"${winExe}" hook session-start-role` }] }, { hooks: [{ type: "command", command: `"${winExe}" hook session-start` }] }],
         PreToolUse: [{ hooks: [{ type: "command", command: `"${winExe}" hook pre-tool-use` }] }],
         SubagentStop: [{ hooks: [{ type: "command", command: `"${winExe}" hook subagent-stop` }] }],
       },
     });
-    expect(remove(project).hooksRemoved).toEqual(ALL_HOOKS);
+    expect(settingsFile.remove(project).hooksRemoved).toEqual(ALL_HOOKS);
   });
 
   test("refuses to overwrite a settings file that is not valid JSON", () => {
     mkdirSync(path.join(project, ".claude"));
-    writeFileSync(settingsPath(project), "{ not json");
-    expect(() => install(project, BINARY)).toThrow();
-    expect(readFileSync(settingsPath(project), "utf8")).toBe("{ not json");
+    writeFileSync(settingsFile.path(project), "{ not json");
+    expect(() => settingsFile.install(project, BINARY)).toThrow();
+    expect(readFileSync(settingsFile.path(project), "utf8")).toBe("{ not json");
   });
 });
 
@@ -187,19 +187,19 @@ describe("hook commands", () => {
   });
 
   test("remove finds the hooks a source-run setup wrote", () => {
-    install(project, SOURCE);
-    expect(remove(project)).toMatchObject({ hooksRemoved: ALL_HOOKS, serverDisabled: true, fileDeleted: true });
+    settingsFile.install(project, SOURCE);
+    expect(settingsFile.remove(project)).toMatchObject({ hooksRemoved: ALL_HOOKS, serverDisabled: true, fileDeleted: true });
   });
 });
 
 describe(".mcp.json", () => {
   test("a fresh project gets a file with the tmb server, which remove deletes again", () => {
-    const result = registerServer(project, BINARY);
+    const result = toolServer.register(project, BINARY);
     expect(result).toMatchObject({ changed: true, created: true });
-    expect(readJson(mcpJsonPath(project))).toEqual({ mcpServers: { tmb: { command: EXE, args: ["mcp", "--host", "claude-code"] } } });
+    expect(readJson(toolServer.path(project))).toEqual({ mcpServers: { tmb: { command: EXE, args: ["mcp", "--host", "claude-code"] } } });
 
-    expect(unregisterServer(project)).toMatchObject({ removed: true, fileDeleted: true });
-    expect(existsSync(mcpJsonPath(project))).toBe(false);
+    expect(toolServer.unregister(project)).toMatchObject({ removed: true, fileDeleted: true });
+    expect(existsSync(toolServer.path(project))).toBe(false);
   });
 
   test("a source run registers Bun with the entry file before the arguments", () => {
@@ -208,40 +208,40 @@ describe(".mcp.json", () => {
 
   test("merges into an existing file and never drops other servers; remove keeps the file", () => {
     const prior = { mcpServers: { other: { command: "other-server", args: ["--x"] } } };
-    writeFileSync(mcpJsonPath(project), JSON.stringify(prior));
+    writeFileSync(toolServer.path(project), JSON.stringify(prior));
 
-    expect(registerServer(project, BINARY)).toMatchObject({ changed: true, created: false });
-    expect(readJson(mcpJsonPath(project))).toEqual({ mcpServers: { ...prior.mcpServers, tmb: serverEntry(BINARY) } });
-    expect(registerServer(project, BINARY).changed).toBe(false);
+    expect(toolServer.register(project, BINARY)).toMatchObject({ changed: true, created: false });
+    expect(readJson(toolServer.path(project))).toEqual({ mcpServers: { ...prior.mcpServers, tmb: serverEntry(BINARY) } });
+    expect(toolServer.register(project, BINARY).changed).toBe(false);
 
-    expect(unregisterServer(project)).toMatchObject({ removed: true, fileDeleted: false });
-    expect(readJson(mcpJsonPath(project))).toEqual(prior);
+    expect(toolServer.unregister(project)).toMatchObject({ removed: true, fileDeleted: false });
+    expect(readJson(toolServer.path(project))).toEqual(prior);
   });
 
   test("keeps a file the Human made even when tmb's entry was its only server", () => {
-    writeFileSync(mcpJsonPath(project), JSON.stringify({ mcpServers: {} }));
-    registerServer(project, BINARY);
-    expect(unregisterServer(project)).toMatchObject({ removed: true, fileDeleted: false });
-    expect(readJson(mcpJsonPath(project))).toEqual({ mcpServers: {} });
+    writeFileSync(toolServer.path(project), JSON.stringify({ mcpServers: {} }));
+    toolServer.register(project, BINARY);
+    expect(toolServer.unregister(project)).toMatchObject({ removed: true, fileDeleted: false });
+    expect(readJson(toolServer.path(project))).toEqual({ mcpServers: {} });
   });
 
   test("ignores the file in git only when tmb created it", () => {
     gitInit(project);
-    expect(registerServer(project, BINARY).gitignoreChanged).toBe(true);
+    expect(toolServer.register(project, BINARY).gitignoreChanged).toBe(true);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe(".mcp.json\n");
-    expect(registerServer(project, BINARY).gitignoreChanged).toBe(false);
+    expect(toolServer.register(project, BINARY).gitignoreChanged).toBe(false);
 
     const other = mkdtempSync(path.join(project, "other-"));
     gitInit(other);
-    writeFileSync(mcpJsonPath(other), "{}");
-    expect(registerServer(other, BINARY).gitignoreChanged).toBe(false);
+    writeFileSync(toolServer.path(other), "{}");
+    expect(toolServer.register(other, BINARY).gitignoreChanged).toBe(false);
     expect(existsSync(path.join(other, ".gitignore"))).toBe(false);
   });
 
   test("refuses a file that is not a JSON object", () => {
-    writeFileSync(mcpJsonPath(project), "[1]");
-    expect(() => registerServer(project, BINARY)).toThrow();
-    expect(readFileSync(mcpJsonPath(project), "utf8")).toBe("[1]");
+    writeFileSync(toolServer.path(project), "[1]");
+    expect(() => toolServer.register(project, BINARY)).toThrow();
+    expect(readFileSync(toolServer.path(project), "utf8")).toBe("[1]");
   });
 });
 
@@ -249,17 +249,17 @@ describe(".gitignore", () => {
   test("appends the settings file in a git work tree that does not ignore it", () => {
     gitInit(project);
     writeFileSync(path.join(project, ".gitignore"), "node_modules/");
-    expect(install(project, BINARY).gitignoreChanged).toBe(true);
+    expect(settingsFile.install(project, BINARY).gitignoreChanged).toBe(true);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe("node_modules/\n.claude/settings.local.json\n");
 
-    expect(install(project, BINARY).gitignoreChanged).toBe(false);
+    expect(settingsFile.install(project, BINARY).gitignoreChanged).toBe(false);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe("node_modules/\n.claude/settings.local.json\n");
   });
 
   test("leaves .gitignore alone when the file is already ignored", () => {
     gitInit(project);
     writeFileSync(path.join(project, ".gitignore"), "*.local.json\n");
-    expect(install(project, BINARY).gitignoreChanged).toBe(false);
+    expect(settingsFile.install(project, BINARY).gitignoreChanged).toBe(false);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe("*.local.json\n");
   });
 
@@ -277,7 +277,7 @@ describe(".gitignore", () => {
   });
 
   test("creates nothing outside a git work tree", () => {
-    expect(install(project, BINARY).gitignoreChanged).toBe(false);
+    expect(settingsFile.install(project, BINARY).gitignoreChanged).toBe(false);
     expect(existsSync(path.join(project, ".gitignore"))).toBe(false);
   });
 });
@@ -294,45 +294,45 @@ describe("settings: remove", () => {
       },
     };
     mkdirSync(path.join(project, ".claude"));
-    writeFileSync(settingsPath(project), JSON.stringify(prior));
+    writeFileSync(settingsFile.path(project), JSON.stringify(prior));
 
-    install(project, BINARY);
-    expect(remove(project)).toMatchObject({ hooksRemoved: ALL_HOOKS, serverDisabled: true, fileDeleted: false });
-    expect(readJson(settingsPath(project))).toEqual(prior);
+    settingsFile.install(project, BINARY);
+    expect(settingsFile.remove(project)).toMatchObject({ hooksRemoved: ALL_HOOKS, serverDisabled: true, fileDeleted: false });
+    expect(readJson(settingsFile.path(project))).toEqual(prior);
   });
 
   test("keeps the Human's hooks that share a group with tmb's", () => {
-    install(project, BINARY);
-    const settings = readJson(settingsPath(project)) as { hooks: Record<string, { hooks: unknown[] }[]> };
+    settingsFile.install(project, BINARY);
+    const settings = readJson(settingsFile.path(project)) as { hooks: Record<string, { hooks: unknown[] }[]> };
     settings.hooks.PreToolUse![0]!.hooks.push({ type: "command", command: "guard.sh" });
-    writeFileSync(settingsPath(project), JSON.stringify(settings));
+    writeFileSync(settingsFile.path(project), JSON.stringify(settings));
 
-    remove(project);
-    expect(readJson(settingsPath(project))).toEqual({
+    settingsFile.remove(project);
+    expect(readJson(settingsFile.path(project))).toEqual({
       hooks: { PreToolUse: [{ matcher: GUARDED_MATCHER, hooks: [{ type: "command", command: "guard.sh" }] }] },
     });
   });
 
   test("drops the containers it emptied and keeps other keys", () => {
     mkdirSync(path.join(project, ".claude"));
-    writeFileSync(settingsPath(project), JSON.stringify({ permissions: { allow: [] } }));
-    install(project, BINARY);
-    remove(project);
-    expect(readJson(settingsPath(project))).toEqual({ permissions: { allow: [] } });
+    writeFileSync(settingsFile.path(project), JSON.stringify({ permissions: { allow: [] } }));
+    settingsFile.install(project, BINARY);
+    settingsFile.remove(project);
+    expect(readJson(settingsFile.path(project))).toEqual({ permissions: { allow: [] } });
   });
 
   test("deletes the file it created on a fresh project", () => {
-    install(project, BINARY);
-    expect(remove(project).fileDeleted).toBe(true);
+    settingsFile.install(project, BINARY);
+    expect(settingsFile.remove(project).fileDeleted).toBe(true);
     expect(existsSync(path.join(project, ".claude"))).toBe(false);
   });
 
   test("changes nothing when no tmb hook or server is present", () => {
     mkdirSync(path.join(project, ".claude"));
     const text = JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: '"/bin/other" hook session-start' }] }] } });
-    writeFileSync(settingsPath(project), text);
-    expect(remove(project)).toMatchObject({ hooksRemoved: [], serverDisabled: false });
-    expect(readFileSync(settingsPath(project), "utf8")).toBe(text);
+    writeFileSync(settingsFile.path(project), text);
+    expect(settingsFile.remove(project)).toMatchObject({ hooksRemoved: [], serverDisabled: false });
+    expect(readFileSync(settingsFile.path(project), "utf8")).toBe(text);
   });
 });
 
@@ -343,7 +343,7 @@ describe("adapter setup and remove", () => {
     expect(first.join("\n")).toContain("Created the record at");
     expect(existsSync(projectDbPath(project))).toBe(true);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe(".tmb/\n.mcp.json\n.claude/settings.local.json\n");
-    const files = [mcpJsonPath(project), settingsPath(project), path.join(project, ".gitignore")];
+    const files = [toolServer.path(project), settingsFile.path(project), path.join(project, ".gitignore")];
     const before = files.map((file) => readFileSync(file, "utf8"));
 
     const second = adapter.setup(project, BINARY);
@@ -355,14 +355,14 @@ describe("adapter setup and remove", () => {
     mkdirSync(path.dirname(projectDbPath(project)), { recursive: true });
     writeFileSync(projectDbPath(project), "not a database at all, just some text that is long enough");
     expect(() => adapter.setup(project, BINARY)).toThrow(/cannot set up the record/);
-    expect(existsSync(mcpJsonPath(project))).toBe(false);
-    expect(existsSync(settingsPath(project))).toBe(false);
+    expect(existsSync(toolServer.path(project))).toBe(false);
+    expect(existsSync(settingsFile.path(project))).toBe(false);
   });
 
   test("remove undoes setup and keeps the record, saying so", () => {
     adapter.setup(project, SOURCE);
     const lines = adapter.remove(project);
-    expect(existsSync(mcpJsonPath(project))).toBe(false);
+    expect(existsSync(toolServer.path(project))).toBe(false);
     expect(existsSync(path.join(project, ".claude"))).toBe(false);
     expect(existsSync(projectDbPath(project))).toBe(true);
     expect(lines.filter((line) => line.includes("Kept the record"))).toHaveLength(1);
@@ -373,7 +373,7 @@ describe("hook session-start", () => {
   const roleOnly = { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: plannerRole } };
 
   test("answers with the planner role alone when the project has no record", () => {
-    const output = JSON.parse(answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", source: "startup", cwd: project }), ATTENDED));
+    const output = JSON.parse(adapter.answerHook("session-start", JSON.stringify({ hook_event_name: "SessionStart", source: "startup", cwd: project }), ATTENDED));
     expect(output).toEqual(roleOnly);
     expect(output.hookSpecificOutput.additionalContext).toStartWith("# You are bro, the planner");
   });
@@ -386,22 +386,22 @@ describe("hook session-start", () => {
     const sub = path.join(project, "src", "deep");
     mkdirSync(sub, { recursive: true });
 
-    const fromCwd = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: sub }), ATTENDED));
+    const fromCwd = JSON.parse(adapter.answerHook("session-start", JSON.stringify({ cwd: sub }), ATTENDED));
     expect(fromCwd.hookSpecificOutput.additionalContext).toContain(OPEN_WORK_HEADING);
     expect(fromCwd.hookSpecificOutput.additionalContext).toContain("Resume me");
 
     process.env.CLAUDE_PROJECT_DIR = sub;
-    const fromEnv = JSON.parse(answerHook("session-start", JSON.stringify({ cwd: tmpdir() }), ATTENDED));
+    const fromEnv = JSON.parse(adapter.answerHook("session-start", JSON.stringify({ cwd: tmpdir() }), ATTENDED));
     expect(fromEnv.hookSpecificOutput.additionalContext).toContain("Resume me");
   });
 
   const textOf = (event: string, run = ATTENDED) => {
-    const answer = answerHook(event, JSON.stringify({ hook_event_name: "SessionStart", cwd: project }), run);
+    const answer = adapter.answerHook(event, JSON.stringify({ hook_event_name: "SessionStart", cwd: project }), run);
     return answer === "" ? "" : (JSON.parse(answer).hookSpecificOutput.additionalContext as string);
   };
 
   test("with both hooks wired, the role and the project's state are two texts", () => {
-    install(project, BINARY);
+    settingsFile.install(project, BINARY);
     const opened = openProjectStore(project, { create: true });
     if (!opened.ok) throw opened.error;
     opened.store.createIssue({ kind: "human" }, { title: "Resume me" });
@@ -417,19 +417,19 @@ describe("hook session-start", () => {
   test("settings an older tmb wired, with no role hook, get the role in the state's text, and doctor and init agree on the gap", () => {
     const old = tmbHooks(BINARY);
     old.SessionStart = old.SessionStart.filter((group) => !group.hooks[0]!.command.endsWith("session-start-role"));
-    mkdirSync(path.dirname(settingsPath(project)), { recursive: true });
-    writeFileSync(settingsPath(project), JSON.stringify({ hooks: old, enabledMcpjsonServers: ["tmb"] }));
+    mkdirSync(path.dirname(settingsFile.path(project)), { recursive: true });
+    writeFileSync(settingsFile.path(project), JSON.stringify({ hooks: old, enabledMcpjsonServers: ["tmb"] }));
 
     expect(textOf("session-start")).toStartWith("# You are bro, the planner");
-    expect(settingsGaps(project, BINARY)).toEqual([".claude/settings.local.json lacks tmb's current SessionStart hook"]);
-    expect(install(project, BINARY).hooksAdded).toEqual(["SessionStart"]);
-    expect(settingsGaps(project, BINARY)).toEqual([]);
+    expect(settingsFile.gaps(project, BINARY)).toEqual([".claude/settings.local.json lacks tmb's current SessionStart hook"]);
+    expect(settingsFile.install(project, BINARY).hooksAdded).toEqual(["SessionStart"]);
+    expect(settingsFile.gaps(project, BINARY)).toEqual([]);
     expect(textOf("session-start")).not.toContain("# You are bro");
   });
 
   test("tmb cuts the state to its budget, below Claude Code's cap, listing the newest and naming the tool for the rest", () => {
     expect(SESSION_TEXT_BUDGET).toBeLessThan(HOOK_TEXT_CAP);
-    install(project, BINARY);
+    settingsFile.install(project, BINARY);
     const opened = openProjectStore(project, { create: true });
     if (!opened.ok) throw opened.error;
     for (let i = 1; i <= 30; i++) opened.store.createIssue({ kind: "human" }, { title: `Issue ${i} ${"long words ".repeat(50)}` });
@@ -453,7 +453,7 @@ describe("hook session-start", () => {
   });
 
   test("rejects an unknown event", () => {
-    expect(() => answerHook("nope", "", ATTENDED)).toThrow();
+    expect(() => adapter.answerHook("nope", "", ATTENDED)).toThrow();
   });
 });
 

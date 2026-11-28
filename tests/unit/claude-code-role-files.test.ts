@@ -3,9 +3,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { adapter } from "../../src/adapters/claude-code/index.ts";
-import { agentsDir, removeRoleFiles, roleFilePath, roleFileText, writeRoleFiles } from "../../src/adapters/claude-code/role-files.ts";
-import { settingsPath } from "../../src/adapters/claude-code/settings.ts";
+import { adapter, roleFiles, settingsFile } from "../../src/adapters/claude-code/index.ts";
+import { roleFileText } from "../../src/adapters/claude-code/role-files.ts";
 import type { SubagentRole } from "../../src/engine/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -41,7 +40,7 @@ function deniedIn(agentFileText: string): string[] {
 }
 
 function writeHumanAgent(name: string, text: string): string {
-  const file = roleFilePath(project, name);
+  const file = roleFiles.filePath(project, name);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, text);
   return file;
@@ -49,9 +48,9 @@ function writeHumanAgent(name: string, text: string): string {
 
 describe("role files", () => {
   test("write each role as a Claude Code agent file with its frontmatter and prompt, marked as tmb's", () => {
-    expect(writeRoleFiles(project, [FIXTURE, PLAIN])).toEqual({ written: ["fixture-worker", "plain"], current: [], notOurs: [], removed: [] });
+    expect(roleFiles.write(project, [FIXTURE, PLAIN])).toEqual({ written: ["fixture-worker", "plain"], current: [], notOurs: [], removed: [] });
 
-    const text = readFileSync(roleFilePath(project, "fixture-worker"), "utf8");
+    const text = readFileSync(roleFiles.filePath(project, "fixture-worker"), "utf8");
     expect(text).toBe(roleFileText(FIXTURE));
     const [, frontmatter, body] = text.split(/^---$/m);
     expect(frontmatter).toContain("# Written by tmb init");
@@ -61,7 +60,7 @@ describe("role files", () => {
     expect(frontmatter).toContain('effort: "high"');
     expect(body!.trim()).toBe(FIXTURE.prompt.trim());
 
-    const plain = readFileSync(roleFilePath(project, "plain"), "utf8");
+    const plain = readFileSync(roleFiles.filePath(project, "plain"), "utf8");
     expect(plain).not.toContain("model:");
     expect(plain).not.toContain("effort:");
   });
@@ -73,59 +72,59 @@ describe("role files", () => {
   });
 
   test("a second write changes nothing, and a changed role rewrites tmb's own file", () => {
-    writeRoleFiles(project, [FIXTURE]);
-    expect(writeRoleFiles(project, [FIXTURE])).toEqual({ written: [], current: ["fixture-worker"], notOurs: [], removed: [] });
+    roleFiles.write(project, [FIXTURE]);
+    expect(roleFiles.write(project, [FIXTURE])).toEqual({ written: [], current: ["fixture-worker"], notOurs: [], removed: [] });
 
     const changed = { ...FIXTURE, model: "opus" };
-    expect(writeRoleFiles(project, [changed]).written).toEqual(["fixture-worker"]);
-    expect(readFileSync(roleFilePath(project, "fixture-worker"), "utf8")).toBe(roleFileText(changed));
+    expect(roleFiles.write(project, [changed]).written).toEqual(["fixture-worker"]);
+    expect(readFileSync(roleFiles.filePath(project, "fixture-worker"), "utf8")).toBe(roleFileText(changed));
   });
 
   test("never overwrite an agent file tmb did not write", () => {
     const human = "---\nname: fixture-worker\ndescription: mine\n---\n\nThe Human's own agent.\n";
     const file = writeHumanAgent("fixture-worker", human);
-    expect(writeRoleFiles(project, [FIXTURE])).toEqual({ written: [], current: [], notOurs: ["fixture-worker"], removed: [] });
+    expect(roleFiles.write(project, [FIXTURE])).toEqual({ written: [], current: [], notOurs: ["fixture-worker"], removed: [] });
     expect(readFileSync(file, "utf8")).toBe(human);
   });
 
   test("a role this version no longer has loses its file of tmb's, and a file of the Human's stays", () => {
     const human = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
-    writeRoleFiles(project, [FIXTURE, PLAIN]);
+    roleFiles.write(project, [FIXTURE, PLAIN]);
 
-    expect(writeRoleFiles(project, [PLAIN])).toEqual({ written: [], current: ["plain"], notOurs: [], removed: [roleFilePath(project, "fixture-worker")] });
-    expect(existsSync(roleFilePath(project, "fixture-worker"))).toBe(false);
+    expect(roleFiles.write(project, [PLAIN])).toEqual({ written: [], current: ["plain"], notOurs: [], removed: [roleFiles.filePath(project, "fixture-worker")] });
+    expect(existsSync(roleFiles.filePath(project, "fixture-worker"))).toBe(false);
     expect(existsSync(human)).toBe(true);
-    expect(writeRoleFiles(project, [PLAIN]).removed).toEqual([]);
+    expect(roleFiles.write(project, [PLAIN]).removed).toEqual([]);
   });
 
   test("remove deletes only tmb's files, and the folder once it is empty", () => {
     const human = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
-    writeRoleFiles(project, [FIXTURE, PLAIN]);
+    roleFiles.write(project, [FIXTURE, PLAIN]);
 
-    expect(removeRoleFiles(project)).toEqual([roleFilePath(project, "fixture-worker"), roleFilePath(project, "plain")]);
+    expect(roleFiles.remove(project)).toEqual([roleFiles.filePath(project, "fixture-worker"), roleFiles.filePath(project, "plain")]);
     expect(existsSync(human)).toBe(true);
-    expect(removeRoleFiles(project)).toEqual([]);
+    expect(roleFiles.remove(project)).toEqual([]);
 
     rmSync(human);
-    writeRoleFiles(project, [PLAIN]);
-    removeRoleFiles(project);
-    expect(existsSync(agentsDir(project))).toBe(false);
+    roleFiles.write(project, [PLAIN]);
+    roleFiles.remove(project);
+    expect(existsSync(roleFiles.dir(project))).toBe(false);
   });
 
   test("recognise a file an earlier build marked as written by tmb setup: init replaces it and remove deletes it", () => {
-    mkdirSync(agentsDir(project), { recursive: true });
+    mkdirSync(roleFiles.dir(project), { recursive: true });
     const earlier = roleFileText(PLAIN).replace("# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.", "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.");
     expect(earlier).not.toBe(roleFileText(PLAIN));
-    writeFileSync(roleFilePath(project, "plain"), earlier);
-    expect(writeRoleFiles(project, [PLAIN])).toEqual({ written: ["plain"], current: [], notOurs: [], removed: [] });
-    expect(readFileSync(roleFilePath(project, "plain"), "utf8")).toBe(roleFileText(PLAIN));
-    writeFileSync(roleFilePath(project, "plain"), earlier);
-    removeRoleFiles(project);
-    expect(existsSync(agentsDir(project))).toBe(false);
+    writeFileSync(roleFiles.filePath(project, "plain"), earlier);
+    expect(roleFiles.write(project, [PLAIN])).toEqual({ written: ["plain"], current: [], notOurs: [], removed: [] });
+    expect(readFileSync(roleFiles.filePath(project, "plain"), "utf8")).toBe(roleFileText(PLAIN));
+    writeFileSync(roleFiles.filePath(project, "plain"), earlier);
+    roleFiles.remove(project);
+    expect(existsSync(roleFiles.dir(project))).toBe(false);
   });
 
   test("refuse a role name that is not a plain file name", () => {
-    expect(() => writeRoleFiles(project, [{ ...PLAIN, name: "../escape" }])).toThrow(/role name/);
+    expect(() => roleFiles.write(project, [{ ...PLAIN, name: "../escape" }])).toThrow(/role name/);
   });
 });
 
@@ -133,15 +132,15 @@ describe("adapter setup and remove with roles", () => {
   test("setup writes the given roles, says so, and changes nothing the second time; remove deletes them", () => {
     const first = adapter.setup(project, BINARY, [FIXTURE]);
     expect(first).toContain(`Wrote the fixture-worker role to ${path.join(".claude", "agents", "fixture-worker.md")}.`);
-    const text = readFileSync(roleFilePath(project, "fixture-worker"), "utf8");
+    const text = readFileSync(roleFiles.filePath(project, "fixture-worker"), "utf8");
 
     const second = adapter.setup(project, BINARY, [FIXTURE]);
     expect(second.every((line) => /already|kept/.test(line))).toBe(true);
-    expect(readFileSync(roleFilePath(project, "fixture-worker"), "utf8")).toBe(text);
+    expect(readFileSync(roleFiles.filePath(project, "fixture-worker"), "utf8")).toBe(text);
 
     const removed = adapter.remove(project);
     expect(removed).toContain(`Removed tmb's role file ${path.join(".claude", "agents", "fixture-worker.md")}.`);
-    expect(existsSync(settingsPath(project))).toBe(false);
+    expect(existsSync(settingsFile.path(project))).toBe(false);
     expect(existsSync(path.join(project, ".claude"))).toBe(false);
   });
 
@@ -159,10 +158,10 @@ describe("adapter setup and remove with roles", () => {
     expect(spawnSync("git", ["init", "-q"], { cwd: project, timeout: 10_000 }).status).toBe(0);
     const helper = writeHumanAgent("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
     adapter.setup(project, BINARY);
-    expect(readdirSync(agentsDir(project)).sort()).toEqual(["helper.md", "reviewer.md", "worker.md"]);
+    expect(readdirSync(roleFiles.dir(project)).sort()).toEqual(["helper.md", "reviewer.md", "worker.md"]);
 
-    const worker = readFileSync(roleFilePath(project, "worker"), "utf8");
-    const reviewer = readFileSync(roleFilePath(project, "reviewer"), "utf8");
+    const worker = readFileSync(roleFiles.filePath(project, "worker"), "utf8");
+    const reviewer = readFileSync(roleFiles.filePath(project, "reviewer"), "utf8");
     expect(worker).toContain('name: "worker"');
     expect(reviewer).toContain('name: "reviewer"');
     expect(worker).toContain("# You are a worker");
@@ -174,8 +173,8 @@ describe("adapter setup and remove with roles", () => {
     expect(reviewer).not.toContain("isolation");
 
     expect(adapter.setup(project, BINARY).filter((line) => !/already|kept/.test(line))).toEqual([]);
-    expect(readFileSync(roleFilePath(project, "worker"), "utf8")).toBe(worker);
-    expect(readFileSync(roleFilePath(project, "reviewer"), "utf8")).toBe(reviewer);
+    expect(readFileSync(roleFiles.filePath(project, "worker"), "utf8")).toBe(worker);
+    expect(readFileSync(roleFiles.filePath(project, "reviewer"), "utf8")).toBe(reviewer);
 
     expect(adapter.remove(project)).toEqual(
       expect.arrayContaining([
@@ -183,13 +182,13 @@ describe("adapter setup and remove with roles", () => {
         `Removed tmb's role file ${path.join(".claude", "agents", "worker.md")}.`,
       ]),
     );
-    expect(readdirSync(agentsDir(project))).toEqual(["helper.md"]);
+    expect(readdirSync(roleFiles.dir(project))).toEqual(["helper.md"]);
     expect(readFileSync(helper, "utf8")).toBe("---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
   });
 
   test("in a workspace folder that is no git work tree the worker starts without the host's worktree, and doctor finds no gap (trustmybot/tmb#463)", () => {
     adapter.setup(project, BINARY);
-    const worker = readFileSync(roleFilePath(project, "worker"), "utf8");
+    const worker = readFileSync(roleFiles.filePath(project, "worker"), "utf8");
     expect(worker).toContain('name: "worker"');
     expect(worker).not.toContain("isolation");
     expect(adapter.wiringGaps!(project, BINARY).filter((gap) => gap.includes("role"))).toEqual([]);
@@ -198,6 +197,6 @@ describe("adapter setup and remove with roles", () => {
     expect(spawnSync("git", ["init", "-q"], { cwd: project, timeout: 10_000 }).status).toBe(0);
     expect(adapter.wiringGaps!(project, BINARY)).toContain(`${path.join(".claude", "agents", "worker.md")} is not this version's worker role`);
     adapter.setup(project, BINARY);
-    expect(readFileSync(roleFilePath(project, "worker"), "utf8")).toMatch(/^isolation: "worktree"$/m);
+    expect(readFileSync(roleFiles.filePath(project, "worker"), "utf8")).toMatch(/^isolation: "worktree"$/m);
   });
 });

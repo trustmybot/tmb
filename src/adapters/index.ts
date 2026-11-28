@@ -3,23 +3,22 @@
 import { adapter as claudeCode } from "./claude-code/index.ts";
 import { adapter as codex } from "./codex/index.ts";
 import type { HostAdapter } from "./host-adapter.ts";
-
-export const HOST_ADAPTERS: readonly HostAdapter[] = [claudeCode, codex];
+import { HostRegistry } from "./registry.ts";
 
 /**
- * The hosts this release supports. Another host can be set up so its work can be tried, but
- * init says it is not supported yet: mixed agent support is out of v1 (trustmybot/tmb#18).
+ * The hosts this release supports are Claude Code's. Another host can be set up so its work can be
+ * tried, but init says it is not supported yet: mixed agent support is out of v1 (trustmybot/tmb#18).
+ * A hook that names no host comes from Claude Code, the first host tmb wired.
  */
-export const SUPPORTED_HOST_IDS: readonly string[] = [claudeCode.id];
+const registry = new HostRegistry([claudeCode, codex], [claudeCode.id], claudeCode.id);
 
-/** The host a hook that names none comes from: Claude Code, the first host tmb wired. */
-export const DEFAULT_HOST_ID = claudeCode.id;
+export const HOST_ADAPTERS: readonly HostAdapter[] = registry.all;
+export const SUPPORTED_HOST_IDS: readonly string[] = registry.supportedIds;
+export const DEFAULT_HOST_ID: string = registry.defaultId;
 
 /** The adapter with the id; throws, naming the hosts tmb knows, when there is none. */
 export function adapterById(id: string): HostAdapter {
-  const found = HOST_ADAPTERS.find((adapter) => adapter.id === id);
-  if (!found) throw new Error(`unknown host '${id}'; tmb knows ${HOST_ADAPTERS.map((adapter) => adapter.id).join(", ")}`);
-  return found;
+  return registry.byId(id);
 }
 
 // The plugin tmb replaces ran on Claude Code only, so migrating from it is that adapter's.
@@ -31,4 +30,5 @@ export {
   type MigrationResult,
   type WorkspaceMigration,
 } from "./claude-code/migrate-plugin.ts";
-export type { HookRun, HostAdapter, HostDetection, HostLimits } from "./host-adapter.ts";
+export type { HookRun, HostAdapter, HostDetection, HostLimits, SessionTextLimit } from "./host-adapter.ts";
+export { HostRegistry } from "./registry.ts";

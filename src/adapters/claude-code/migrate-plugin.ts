@@ -6,7 +6,7 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type Actor, createIdFactory, isManaged, PLUGIN_IMPORT, type RepoPolicies, type Role, type Store } from "../../engine/index.ts";
-import { HOST_ID } from "./mcp-json.ts";
+import { HOST_ID } from "./host.ts";
 
 /** The plugin schema this tool reads: the last one the plugin shipped before tmb. */
 export const PLUGIN_SCHEMA_VERSION = 76;

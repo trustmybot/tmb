@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { adapter } from "../../src/adapters/claude-code/index.ts";
-import { removeSkillFiles, skillFileGaps, skillFilePath, skillFileText, skillsDir, writeSkillFiles } from "../../src/adapters/claude-code/skill-files.ts";
+import { adapter, skillFiles } from "../../src/adapters/claude-code/index.ts";
+import { skillFileText } from "../../src/adapters/claude-code/skill-files.ts";
 import { type Skill, SKILLS } from "../../src/engine/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 function writeHumanSkill(name: string, text: string): string {
-  const file = skillFilePath(project, name);
+  const file = skillFiles.filePath(project, name);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, text);
   return file;
@@ -32,10 +32,10 @@ function writeHumanSkill(name: string, text: string): string {
 
 describe("skill files", () => {
   test("write each skill as SKILL.md in its own folder, with its name, description and procedure, marked as tmb's", () => {
-    expect(writeSkillFiles(project, [FIXTURE, OTHER])).toEqual({ written: ["tmb-fixture", "tmb-other"], current: [], notOurs: [], removed: [] });
-    expect(skillFilePath(project, "tmb-fixture")).toBe(path.join(project, ".claude", "skills", "tmb-fixture", "SKILL.md"));
+    expect(skillFiles.write(project, [FIXTURE, OTHER])).toEqual({ written: ["tmb-fixture", "tmb-other"], current: [], notOurs: [], removed: [] });
+    expect(skillFiles.filePath(project, "tmb-fixture")).toBe(path.join(project, ".claude", "skills", "tmb-fixture", "SKILL.md"));
 
-    const text = readFileSync(skillFilePath(project, "tmb-fixture"), "utf8");
+    const text = readFileSync(skillFiles.filePath(project, "tmb-fixture"), "utf8");
     expect(text).toBe(skillFileText(FIXTURE));
     const [, frontmatter, body] = text.split(/^---$/m);
     expect(frontmatter).toContain("# Written by tmb init");
@@ -45,59 +45,59 @@ describe("skill files", () => {
   });
 
   test("a second write changes nothing, and a changed skill rewrites tmb's own file", () => {
-    writeSkillFiles(project, [FIXTURE]);
-    expect(writeSkillFiles(project, [FIXTURE])).toEqual({ written: [], current: ["tmb-fixture"], notOurs: [], removed: [] });
+    skillFiles.write(project, [FIXTURE]);
+    expect(skillFiles.write(project, [FIXTURE])).toEqual({ written: [], current: ["tmb-fixture"], notOurs: [], removed: [] });
 
     const changed = { ...FIXTURE, prompt: "Changed." };
-    expect(writeSkillFiles(project, [changed]).written).toEqual(["tmb-fixture"]);
-    expect(readFileSync(skillFilePath(project, "tmb-fixture"), "utf8")).toBe(skillFileText(changed));
+    expect(skillFiles.write(project, [changed]).written).toEqual(["tmb-fixture"]);
+    expect(readFileSync(skillFiles.filePath(project, "tmb-fixture"), "utf8")).toBe(skillFileText(changed));
   });
 
   test("never overwrite or remove a skill file tmb did not write", () => {
     const human = "---\nname: tmb-fixture\ndescription: mine\n---\n\nThe Human's own skill.\n";
     const file = writeHumanSkill("tmb-fixture", human);
-    expect(writeSkillFiles(project, [FIXTURE])).toEqual({ written: [], current: [], notOurs: ["tmb-fixture"], removed: [] });
-    expect(removeSkillFiles(project)).toEqual([]);
+    expect(skillFiles.write(project, [FIXTURE])).toEqual({ written: [], current: [], notOurs: ["tmb-fixture"], removed: [] });
+    expect(skillFiles.remove(project)).toEqual([]);
     expect(readFileSync(file, "utf8")).toBe(human);
   });
 
   test("a skill this version no longer has loses its file of tmb's, and a skill of the Human's stays", () => {
     const human = writeHumanSkill("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
-    writeSkillFiles(project, [FIXTURE, OTHER]);
+    skillFiles.write(project, [FIXTURE, OTHER]);
 
-    expect(writeSkillFiles(project, [OTHER])).toEqual({ written: [], current: ["tmb-other"], notOurs: [], removed: [skillFilePath(project, "tmb-fixture")] });
-    expect(existsSync(path.dirname(skillFilePath(project, "tmb-fixture")))).toBe(false);
+    expect(skillFiles.write(project, [OTHER])).toEqual({ written: [], current: ["tmb-other"], notOurs: [], removed: [skillFiles.filePath(project, "tmb-fixture")] });
+    expect(existsSync(path.dirname(skillFiles.filePath(project, "tmb-fixture")))).toBe(false);
     expect(existsSync(human)).toBe(true);
   });
 
   test("remove deletes only tmb's files and folders, and the skills folder once it is empty", () => {
     const human = writeHumanSkill("helper", "---\nname: helper\ndescription: mine\n---\n\nHelp.\n");
-    writeSkillFiles(project, [FIXTURE, OTHER]);
+    skillFiles.write(project, [FIXTURE, OTHER]);
 
-    expect(removeSkillFiles(project)).toEqual([skillFilePath(project, "tmb-fixture"), skillFilePath(project, "tmb-other")]);
-    expect(readdirSync(skillsDir(project))).toEqual(["helper"]);
+    expect(skillFiles.remove(project)).toEqual([skillFiles.filePath(project, "tmb-fixture"), skillFiles.filePath(project, "tmb-other")]);
+    expect(readdirSync(skillFiles.dir(project))).toEqual(["helper"]);
     expect(existsSync(human)).toBe(true);
 
     rmSync(path.dirname(human), { recursive: true });
-    writeSkillFiles(project, [OTHER]);
-    removeSkillFiles(project);
-    expect(existsSync(skillsDir(project))).toBe(false);
+    skillFiles.write(project, [OTHER]);
+    skillFiles.remove(project);
+    expect(existsSync(skillFiles.dir(project))).toBe(false);
   });
 
   test("doctor names a missing, changed, foreign or left-over skill file, and nothing once init wrote them", () => {
-    expect(skillFileGaps(project, [FIXTURE])).toEqual([`${path.join(".claude", "skills", "tmb-fixture", "SKILL.md")} is missing: the tmb-fixture skill is not written`]);
-    writeSkillFiles(project, [FIXTURE, OTHER]);
-    expect(skillFileGaps(project, [FIXTURE, OTHER])).toEqual([]);
-    expect(skillFileGaps(project, [{ ...FIXTURE, prompt: "New." }, OTHER])).toEqual([
+    expect(skillFiles.gaps(project, [FIXTURE])).toEqual([`${path.join(".claude", "skills", "tmb-fixture", "SKILL.md")} is missing: the tmb-fixture skill is not written`]);
+    skillFiles.write(project, [FIXTURE, OTHER]);
+    expect(skillFiles.gaps(project, [FIXTURE, OTHER])).toEqual([]);
+    expect(skillFiles.gaps(project, [{ ...FIXTURE, prompt: "New." }, OTHER])).toEqual([
       `${path.join(".claude", "skills", "tmb-fixture", "SKILL.md")} is not this version's tmb-fixture skill`,
     ]);
-    expect(skillFileGaps(project, [FIXTURE])).toEqual([
+    expect(skillFiles.gaps(project, [FIXTURE])).toEqual([
       `${path.join(".claude", "skills", "tmb-other", "SKILL.md")} is tmb's skill file for a skill this version no longer has`,
     ]);
   });
 
   test("refuse a skill name that is not a plain folder name", () => {
-    expect(() => writeSkillFiles(project, [{ ...OTHER, name: "../escape" }])).toThrow(/skill name/);
+    expect(() => skillFiles.write(project, [{ ...OTHER, name: "../escape" }])).toThrow(/skill name/);
   });
 });
 
@@ -107,14 +107,14 @@ describe("adapter setup, doctor and remove with skills", () => {
     const first = adapter.setup(project, BINARY);
     for (const skill of SKILLS) {
       expect(first).toContain(`Wrote the ${skill.name} skill to ${path.join(".claude", "skills", skill.name, "SKILL.md")}.`);
-      expect(readFileSync(skillFilePath(project, skill.name), "utf8")).toBe(skillFileText(skill));
+      expect(readFileSync(skillFiles.filePath(project, skill.name), "utf8")).toBe(skillFileText(skill));
     }
     expect(adapter.setup(project, BINARY).filter((line) => !/already|kept/.test(line))).toEqual([]);
     expect(adapter.wiringGaps!(project, BINARY)).toEqual([]);
 
     const removed = adapter.remove(project);
     for (const skill of SKILLS) expect(removed).toContain(`Removed tmb's skill file ${path.join(".claude", "skills", skill.name, "SKILL.md")}.`);
-    expect(readdirSync(skillsDir(project))).toEqual(["helper"]);
+    expect(readdirSync(skillFiles.dir(project))).toEqual(["helper"]);
     expect(existsSync(human)).toBe(true);
   });
 
