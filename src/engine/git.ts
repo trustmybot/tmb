@@ -20,3 +20,11 @@ export function gitFailure(result: GitResult): string {
   const said = (result.stderr || result.stdout).replace(/\s+/g, " ").trim();
   return said === "" ? "git failed without saying why" : said;
 }
+
+/** How the engine runs git: a service takes one, so a test can pass a fake instead of patching this module. */
+export interface Git {
+  run(cwd: string, args: readonly string[], env?: Record<string, string>): GitResult;
+}
+
+/** The git on this machine. */
+export const SYSTEM_GIT: Git = { run: runGit };
