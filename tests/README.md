@@ -32,6 +32,31 @@ Two more folders run beside the layers:
 - The layers from Lint to Install use no model and cost nothing. An agent run and an agent chain use the host under a subscription login, so they cost time and usage.
 - The prompts of an agent run are written by the Human, in the words a real user would type ([agent-run](agent-run/README.md#prompts)). An agent never edits one to make a test pass.
 
+## Where a test file sits
+
+**Within the Unit and Integration layers, a test file sits under the component it tests, named by what it tests.** The components are the folders of `src/`: `engine`, `cli`, `dashboard`, `adapters` and `syncer`. A test of a script under `scripts/` sits under `scripts`.
+
+- **Example 1.** The unit test of Claude Code's hook is [unit/adapters/claude-code/hook.test.ts](unit/adapters/claude-code/hook.test.ts); the code graph's tests are under [unit/engine/graph/](unit/engine/graph/graph.test.ts).
+- **Example 2.** A test's fixture sits beside it: the syncer's recorded answers are in [unit/syncer/fixtures/](unit/syncer/fixtures/README.md).
+- **Edge case 1.** The Workflow simulation layer is not split by component: each of its tests walks one flow through every component.
+- **Edge case 2.** A test of another test's fixture tests no component, so it sits at its layer's root: [integration/worker-fixture.test.ts](integration/worker-fixture.test.ts).
+
+Setup that more than one test needs lives once in [tests/lib](lib/), and a test imports it rather than keeping a copy:
+
+| Module | Gives |
+|---|---|
+| [paths.ts](lib/paths.ts) | The repo's root, `src/`, and tmb run from source |
+| [values.ts](lib/values.ts) | Fixed values, such as the author of every test commit |
+| [git.ts](lib/git.ts) | git run in a folder as that author |
+| [project.ts](lib/project.ts) | Files written and committed, and a new repo with its first commit |
+| [env.ts](lib/env.ts) | An environment variable set for one test and put back after it |
+| [tmb-processes.ts](lib/tmb-processes.ts) | tmb, its tool server and its hooks run as separate processes on a prepared project |
+| [fake-host.ts](lib/fake-host.ts), [fake-gh.ts](lib/fake-gh.ts), [github-stand-in.ts](lib/github-stand-in.ts) | A fake Claude Code on PATH, a fake `gh` that logs its calls, and a stand-in for GitHub's API |
+| [as-human.ts](lib/as-human.ts), [human-terminal.ts](lib/human-terminal.ts) | A step only the Human may take, run on a pseudo-terminal |
+| [isolate-state.ts](lib/isolate-state.ts) | Each test run's own state folder, removed after the run |
+| [driver.ts](lib/driver.ts) | The plain scripts' shared runner ([below](#rules-for-every-test)) |
+| [pinned-repo.ts](lib/pinned-repo.ts), [pinned-tools.ts](lib/pinned-tools.ts) | The public repos and the language tools at their pins |
+
 ## When each layer runs
 
 | When | Layers |

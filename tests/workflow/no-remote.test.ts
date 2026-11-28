@@ -6,9 +6,10 @@
 // only once a remote was added.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
+import { fakeGh } from "../lib/fake-gh.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -16,11 +17,8 @@ setDefaultTimeout(30_000);
 const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startSubagent, stopSubagent, connect, sessionStart, cleanup } = tmbProcesses("tmb-workflow-no-remote-");
 afterAll(cleanup);
 
-const ghLog = path.join(scratch, "gh.log");
 const PR = "https://github.com/example/project/pull/4";
-const fakeBin = path.join(scratch, "fake-gh");
-mkdirSync(fakeBin, { recursive: true });
-writeFileSync(path.join(fakeBin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$1 $2" = "pr create" ]; then echo "${PR}"; exit 0; fi\nexit 1\n`, { mode: 0o755 });
+const { bin: fakeBin, log: ghLog } = fakeGh(scratch, { answer: `if [ "$1 $2" = "pr create" ]; then echo "${PR}"; exit 0; fi\nexit 1` });
 env.PATH = `${fakeBin}${path.delimiter}${env.PATH}`;
 
 /** Runs the merge command tmb gave, in its folder, as the Human would. */

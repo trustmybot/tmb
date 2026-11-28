@@ -6,7 +6,7 @@ import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { CLI, callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+import { CLI, callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

@@ -1,4 +1,3 @@
-| [`.dependency-cruiser.json`](../../.dependency-cruiser.json), `bun run lint:boundaries` | src/ holds one folder per component: engine, cli, dashboard, adapters, syncer. The engine imports none of the others; dashboard, adapters and syncer import only the engine; nothing imports the cli; and a component is reached only through its `index.ts`. Checked by dependency-cruiser. |
 # Lint tests
 
 Static checks on code and docs. They run on every pull request ([all layers](../README.md)).

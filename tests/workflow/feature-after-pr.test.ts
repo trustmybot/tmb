@@ -7,7 +7,8 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
+import { fakeGh } from "../lib/fake-gh.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -16,25 +17,17 @@ const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, connec
 afterAll(cleanup);
 
 const ghDir = path.join(scratch, "gh-state");
-const ghLog = path.join(scratch, "gh.log");
-const fakeBin = path.join(scratch, "fake-gh");
 mkdirSync(ghDir, { recursive: true });
-mkdirSync(fakeBin, { recursive: true });
 // `gh pr view` prints the state in gh-state/view; `gh pr create` prints gh-state/create, or fails
 // when that file is missing; `gh pr list` prints gh-state/existing when there is one.
-writeFileSync(
-  path.join(fakeBin, "gh"),
-  `#!/bin/sh
-printf '%s\\n' "$*" >> '${ghLog}'
-case "$1 $2" in
+const { bin: fakeBin, log: ghLog } = fakeGh(scratch, {
+  answer: `case "$1 $2" in
   "pr view") cat '${ghDir}/view' ;;
   "pr create") [ -f '${ghDir}/create' ] || { echo "a pull request for this branch already exists" >&2; exit 1; }; cat '${ghDir}/create' ;;
   "pr list") [ -f '${ghDir}/existing' ] && cat '${ghDir}/existing' ;;
   *) exit 0 ;;
-esac
-`,
-  { mode: 0o755 },
-);
+esac`,
+});
 env.PATH = `${fakeBin}${path.delimiter}${env.PATH}`;
 
 function github(answers: { view?: string; create?: string | null; existing?: string | null }): void {
