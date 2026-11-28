@@ -10,7 +10,7 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Decision } from "./decide.ts";
-import { runGit } from "./git.ts";
+import { type Git, runGit, SYSTEM_GIT } from "./git.ts";
 import { coveredCommits } from "./handlers/reviews.ts";
 import { truestTaskCommits } from "./handlers/truest.ts";
 import { runningName } from "./program.ts";
@@ -41,69 +41,91 @@ export function parsePushRefs(stdin: string): PushRef[] | null {
   return refs;
 }
 
-function commitOf(projectDir: string, rev: string): string | null {
-  const resolved = runGit(projectDir, ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`]);
-  return resolved.ok ? resolved.stdout : null;
-}
-
 const short = (sha: string): string => sha.slice(0, 12);
 
-/**
- * The commits a push to the base branch brings that no reviewed or waived feature branch tip
- * holds. Only what the remote says it holds, the sha git read from it, counts as already there:
- * a local ref, the remote-tracking one or the base a feature was cut from, can hold commits
- * that never reached the remote. Merge commits are left out: they bring no change of their own.
- */
-function uncovered(store: Store, projectDir: string, ref: PushRef): { lines: string[]; shas: string[]; error: string | null } {
-  const known = [
-    ZERO_SHA.test(ref.remoteSha) ? null : commitOf(projectDir, ref.remoteSha),
-    ...coveredCommits(store).map((commit) => commitOf(projectDir, commit)),
-  ].filter((sha): sha is string => sha !== null);
-  const listed = runGit(projectDir, ["rev-list", "--no-merges", "--format=%H %h %s", ref.localSha, "--not", ...new Set(known)]);
-  if (!listed.ok) return { lines: [], shas: [], error: `git could not list the commits the push brings: ${listed.stderr || "no reason given"}` };
-  const rows = listed.stdout.split("\n").filter((line) => line !== "" && !line.startsWith("commit "));
-  const at = (row: string) => row.indexOf(" ");
-  return { lines: rows.map((row) => row.slice(at(row) + 1)), shas: rows.map((row) => row.slice(0, at(row))), error: null };
-}
+/** The review a repo's push answers to: agile judges only the base branch, truest every task commit of the repo's. */
+type PushMode = { kind: "agile" } | { kind: "truest"; repo: string | null };
 
-function judgeRef(store: Store, projectDir: string, remote: string, base: string, ref: PushRef): string | null {
-  if (ref.remoteRef !== `refs/heads/${base}`) return null;
-  if (ZERO_SHA.test(ref.localSha)) return `it deletes the base branch ${base} on ${remote}, and tmb never lets the base branch go`;
-  const found = uncovered(store, projectDir, ref);
-  if (found.error !== null) return found.error;
-  if (found.lines.length === 0) return null;
-  const shown = found.lines.slice(0, SHOWN_COMMITS).map((line) => `  ${line}`);
-  if (found.lines.length > SHOWN_COMMITS) shown.push(`  and ${found.lines.length - SHOWN_COMMITS} more`);
-  return [
-    `it brings ${found.lines.length} commit${found.lines.length === 1 ? "" : "s"} onto the base branch ${base} at ${short(ref.localSha)} that no feature branch tip the reviewer passed, or the Human waived, holds:`,
-    ...shown,
-    `In agile mode work reaches the base branch through a feature branch: the reviewer passes it at its tip (or the Human runs \`${runningName()} feature waive <name> --reason <text>\`), then its pull request opens with feature_pr (\`${runningName()} feature pr <name> --title <text>\`).`,
-  ].join("\n");
-}
+/** How one repo's push is judged: its record, its folder, the remote and the base branch, and the review mode it follows. */
+class PushJudge {
+  constructor(
+    private readonly store: Store,
+    private readonly dir: string,
+    private readonly remote: string,
+    private readonly base: string,
+    private readonly mode: PushMode,
+    private readonly git: Git = SYSTEM_GIT,
+  ) {}
 
-/**
- * In truest mode the base branch is judged as in agile mode, and every other ref too: a task's
- * commit it brings must be held by a reviewed or waived task commit. A commit of no task passes.
- */
-function judgeTruestRef(store: Store, projectDir: string, remote: string, base: string, ref: PushRef, repo: string | null): string | null {
-  if (ZERO_SHA.test(ref.localSha)) {
-    return ref.remoteRef === `refs/heads/${base}` ? `it deletes the base branch ${base} on ${remote}, and tmb never lets the base branch go` : null;
+  /** Why the push of `ref` is refused, or null when it may go. */
+  judge(ref: PushRef): string | null {
+    return this.mode.kind === "truest" ? this.judgeTruest(ref, this.mode.repo) : this.judgeAgile(ref);
   }
-  const toBase = ref.remoteRef === `refs/heads/${base}`;
-  // Only what the remote reported holds counts as there: a local remote-tracking ref can be moved by hand.
-  const found = uncovered(store, projectDir, ref);
-  if (found.error !== null) return found.error;
-  const taskCommits = toBase ? null : truestTaskCommits(store, projectDir, repo);
-  const lines = taskCommits === null ? found.lines : found.lines.filter((_, index) => taskCommits.has(found.shas[index]!));
-  if (lines.length === 0) return null;
-  const shown = lines.slice(0, SHOWN_COMMITS).map((line) => `  ${line}`);
-  if (lines.length > SHOWN_COMMITS) shown.push(`  and ${lines.length - SHOWN_COMMITS} more`);
-  const what = toBase ? `onto the base branch ${base}` : `of a task to ${ref.remoteRef}`;
-  return [
-    `it brings ${lines.length} commit${lines.length === 1 ? "" : "s"} ${what} at ${short(ref.localSha)} that no task commit the reviewer passed, or the Human waived, holds:`,
-    ...shown,
-    `In truest mode every task is reviewed before its push: the reviewer passes the task at its commit (or the Human runs \`${runningName()} task waive <id> --reason <text>\`), then tmb pushes it and opens its pull request with task_pr (\`${runningName()} task pr <id> --title <text>\`).`,
-  ].join("\n");
+
+  private judgeAgile(ref: PushRef): string | null {
+    const { base, remote } = this;
+    if (ref.remoteRef !== `refs/heads/${base}`) return null;
+    if (ZERO_SHA.test(ref.localSha)) return `it deletes the base branch ${base} on ${remote}, and tmb never lets the base branch go`;
+    const found = this.uncovered(ref);
+    if (found.error !== null) return found.error;
+    if (found.lines.length === 0) return null;
+    const shown = found.lines.slice(0, SHOWN_COMMITS).map((line) => `  ${line}`);
+    if (found.lines.length > SHOWN_COMMITS) shown.push(`  and ${found.lines.length - SHOWN_COMMITS} more`);
+    return [
+      `it brings ${found.lines.length} commit${found.lines.length === 1 ? "" : "s"} onto the base branch ${base} at ${short(ref.localSha)} that no feature branch tip the reviewer passed, or the Human waived, holds:`,
+      ...shown,
+      `In agile mode work reaches the base branch through a feature branch: the reviewer passes it at its tip (or the Human runs \`${runningName()} feature waive <name> --reason <text>\`), then its pull request opens with feature_pr (\`${runningName()} feature pr <name> --title <text>\`).`,
+    ].join("\n");
+  }
+
+  /**
+   * In truest mode the base branch is judged as in agile mode, and every other ref too: a task's
+   * commit it brings must be held by a reviewed or waived task commit. A commit of no task passes.
+   */
+  private judgeTruest(ref: PushRef, repo: string | null): string | null {
+    const { base, remote } = this;
+    if (ZERO_SHA.test(ref.localSha)) {
+      return ref.remoteRef === `refs/heads/${base}` ? `it deletes the base branch ${base} on ${remote}, and tmb never lets the base branch go` : null;
+    }
+    const toBase = ref.remoteRef === `refs/heads/${base}`;
+    // Only what the remote reported holds counts as there: a local remote-tracking ref can be moved by hand.
+    const found = this.uncovered(ref);
+    if (found.error !== null) return found.error;
+    const taskCommits = toBase ? null : truestTaskCommits(this.store, this.dir, repo);
+    const lines = taskCommits === null ? found.lines : found.lines.filter((_, index) => taskCommits.has(found.shas[index]!));
+    if (lines.length === 0) return null;
+    const shown = lines.slice(0, SHOWN_COMMITS).map((line) => `  ${line}`);
+    if (lines.length > SHOWN_COMMITS) shown.push(`  and ${lines.length - SHOWN_COMMITS} more`);
+    const what = toBase ? `onto the base branch ${base}` : `of a task to ${ref.remoteRef}`;
+    return [
+      `it brings ${lines.length} commit${lines.length === 1 ? "" : "s"} ${what} at ${short(ref.localSha)} that no task commit the reviewer passed, or the Human waived, holds:`,
+      ...shown,
+      `In truest mode every task is reviewed before its push: the reviewer passes the task at its commit (or the Human runs \`${runningName()} task waive <id> --reason <text>\`), then tmb pushes it and opens its pull request with task_pr (\`${runningName()} task pr <id> --title <text>\`).`,
+    ].join("\n");
+  }
+
+  /**
+   * The commits a push to the base branch brings that no reviewed or waived feature branch tip
+   * holds. Only what the remote says it holds, the sha git read from it, counts as already there:
+   * a local ref, the remote-tracking one or the base a feature was cut from, can hold commits
+   * that never reached the remote. Merge commits are left out: they bring no change of their own.
+   */
+  private uncovered(ref: PushRef): { lines: string[]; shas: string[]; error: string | null } {
+    const known = [
+      ZERO_SHA.test(ref.remoteSha) ? null : this.commitOf(ref.remoteSha),
+      ...coveredCommits(this.store).map((commit) => this.commitOf(commit)),
+    ].filter((sha): sha is string => sha !== null);
+    const listed = this.git.run(this.dir, ["rev-list", "--no-merges", "--format=%H %h %s", ref.localSha, "--not", ...new Set(known)]);
+    if (!listed.ok) return { lines: [], shas: [], error: `git could not list the commits the push brings: ${listed.stderr || "no reason given"}` };
+    const rows = listed.stdout.split("\n").filter((line) => line !== "" && !line.startsWith("commit "));
+    const at = (row: string) => row.indexOf(" ");
+    return { lines: rows.map((row) => row.slice(at(row) + 1)), shas: rows.map((row) => row.slice(0, at(row))), error: null };
+  }
+
+  private commitOf(rev: string): string | null {
+    const resolved = this.git.run(this.dir, ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`]);
+    return resolved.ok ? resolved.stdout : null;
+  }
 }
 
 function denied(remote: string, why: string): Decision {
@@ -139,8 +161,8 @@ export function judgePush(projectDir: string, remote: string, stdin: string, pus
     else if (repo === null) decision = { decision: "allow", reason: "the push is from a repo this workspace does not register, or registers as exempt, so tmb has no policy for it" };
     else if (base === null) decision = { decision: "allow", reason: "no base branch is set, so no push is judged" };
     else {
-      const judge = (ref: PushRef) => (truest ? judgeTruestRef(store, repo.dir, remote, base, ref, repo.name) : judgeRef(store, repo.dir, remote, base, ref));
-      const why = refs.map(judge).find((reason) => reason !== null);
+      const judge = new PushJudge(store, repo.dir, remote, base, truest ? { kind: "truest", repo: repo.name } : { kind: "agile" });
+      const why = refs.map((ref) => judge.judge(ref)).find((reason) => reason !== null);
       const allowed = truest ? "no ref of the push brings an unreviewed task commit, or any unreviewed commit onto the base branch" : `no ref of the push brings unreviewed commits onto ${base}`;
       decision = why === undefined ? { decision: "allow", reason: allowed } : denied(remote, why);
     }
