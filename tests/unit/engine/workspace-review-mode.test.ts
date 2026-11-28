@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { HostAdapter } from "../../../src/adapters/index.ts";
-import { featureStart, HandlerError, issueCreate, settingsSet, taskClose, taskStart } from "../../../src/engine/handlers/index.ts";
+import { featureStart, HandlerError, issueCreate, OPERATIONS, settingsSet, taskClose, taskStart } from "../../../src/engine/handlers/index.ts";
 import { emptySettings } from "../../../src/engine/handlers/settings.ts";
 import { judgePush, openProjectStore, readSettings, reviewModeOf, settingLines, TMB_EVENT_TYPES, writeSetting } from "../../../src/engine/index.ts";
 import { sessionStartContext } from "../../../src/engine/session-start.ts";
@@ -251,7 +251,7 @@ describe("settings show and keep each repo's mode", () => {
       expect(refusal(() => settingsSet(store, PLANNER, { repos: { b: { base_branch: "main", review_mode: "workspace" } } }, context)).code).toBe("refused");
       // A change that leaves every repo's mode as it is goes through.
       expect(settingsSet(store, PLANNER, { repos: { b: { base_branch: "main", checks: ["true"] } } }, context).settings.repos?.b).toEqual({ base_branch: "main", checks: ["true"], review_mode: "truest" });
-      expect(() => settingsSet(store, WORKER, { repos: { a: { base_branch: "dev", review_mode: "truest" } } }, { projectDir: workspace })).toThrow();
+      expect(() => OPERATIONS.settings_set.run(store, WORKER, { repos: { a: { base_branch: "dev", review_mode: "truest" } } }, { projectDir: workspace })).toThrow();
     });
   });
 });

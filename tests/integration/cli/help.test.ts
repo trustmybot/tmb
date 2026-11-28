@@ -55,7 +55,7 @@ describe("tmb help", () => {
   });
 
   test("every command answers --help with its own detail", () => {
-    for (const command of ["init", "onboard", "config", "remove", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "help", "mcp", "hook", "pre-push"]) {
+    for (const command of ["init", "onboard", "config", "remove", "purge", "migrate", "issue", "note", "feature", "task", "search", "history", "graph", "index", "tools", "dashboard", "update", "help", "mcp", "hook", "pre-push"]) {
       const result = run([command, "--help"]);
       expect(result.status).toBe(0);
       expect(result.stdout).toStartWith(`Usage:\n  tmb ${command}`);

@@ -115,8 +115,8 @@ describe("task_drop", () => {
 
   test("the Human may drop a task; a worker and the reviewer are refused", () => {
     const started = taskStart(store, PLANNER, spec(), context());
-    expect(refusal(() => taskDrop(store, WORKER, { id: started.id, reason: "x" }, context())).message).toContain("task_drop is for the planner");
-    expect(refusal(() => taskDrop(store, REVIEWER, { id: started.id, reason: "x" }, context())).code).toBe("refused");
+    expect(refusal(() => OPERATIONS.task_drop.run(store, WORKER, { id: started.id, reason: "x" }, context())).message).toContain("the worker may not drop a task (task.drop)");
+    expect(refusal(() => OPERATIONS.task_drop.run(store, REVIEWER, { id: started.id, reason: "x" }, context())).code).toBe("refused");
     expect(store.getTask(started.id)!.state).toBe("open");
     expect(taskDrop(store, HUMAN, { id: started.id, reason: "nobody will finish it" }, context()).brief.state).toBe("dropped");
   });

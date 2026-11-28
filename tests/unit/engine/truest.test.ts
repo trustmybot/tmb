@@ -17,6 +17,7 @@ import {
   taskWaive,
   truestCoveredCommits,
 } from "../../../src/engine/handlers/index.ts";
+import { OPERATIONS } from "../../../src/engine/handlers/index.ts";
 import { openProjectStore, writeSetting } from "../../../src/engine/index.ts";
 import type { Actor, Store } from "../../../src/engine/store/index.ts";
 import { git } from "../../lib/git.ts";
@@ -118,7 +119,7 @@ describe("truest mode", () => {
     expect(truestCoveredCommits(store)).toEqual([rework]);
   });
 
-  test("only the reviewer reviews and only the Human waives; a waiver covers the commit", async () => {
+  test("only the reviewer reviews, and a worker may not waive; a waiver covers the commit", async () => {
     const task = await inReview();
     expect((await refusal(() => taskReview(store, HUMAN, { id: task.id, commit: task.sha, verdict: "pass" }, context()))).message).toContain(
       "tmb task waive",
@@ -126,15 +127,22 @@ describe("truest mode", () => {
     expect((await refusal(() => taskReview(store, REVIEWER, { id: task.id, commit: task.sha, verdict: "pass" }, context()))).message).toContain(
       "no reviewer run is open",
     );
-    expect((await refusal(() => taskWaive(store, PLANNER, { id: task.id, reason: "small" }, context()))).message).toContain("only the Human waives");
-    expect(taskWaive(store, HUMAN, { id: task.id, reason: "small" }, context())).toMatchObject({ task: task.id, commit: task.sha, reason: "small" });
+    expect((await refusal(() => OPERATIONS.task_waive.run(store, WORKER, { id: task.id, reason: "small" }, context()))).message).toContain("the worker may not waive a task's review (task.waive)");
+    expect(taskWaive(store, HUMAN, { id: task.id, reason: "small" }, context())).toMatchObject({ task: task.id, commit: task.sha, reason: "small", by: HUMAN });
     expect(taskBrief(store, PLANNER, { id: task.id }, context()).review).toMatchObject({ covered: true, coveredBy: "waiver" });
     expect(truestCoveredCommits(store)).toEqual([task.sha]);
   });
 
+  test("the planner waives through the tool on the Human's ask, and the record names the planner", async () => {
+    const task = await inReview();
+    const waived = await OPERATIONS.task_waive.run(store, PLANNER, { id: task.id, reason: "the Human said: small" }, context());
+    expect(waived).toMatchObject({ task: task.id, commit: task.sha, by: PLANNER });
+    expect(taskBrief(store, PLANNER, { id: task.id }, context()).review).toMatchObject({ covered: true, coveredBy: "waiver" });
+  });
+
   test("task_pr is the planner's, is refused without a review, and without origin records the task ready", async () => {
     const task = await inReview();
-    expect((await refusal(() => taskPr(store, WORKER, { id: task.id, title: "x" }, context()))).message).toContain("for the planner");
+    expect((await refusal(() => OPERATIONS.task_pr.run(store, WORKER, { id: task.id, title: "x" }, context()))).message).toContain("the worker may not open a task's pull request (task.pr)");
     expect((await refusal(() => taskPr(store, PLANNER, { id: task.id, title: "x" }, context()))).message).toContain("no reviewer has reviewed it");
     review(task.id, task.sha, "pass");
     expect(await taskPr(store, PLANNER, { id: task.id, title: "x" }, context())).toMatchObject({ url: null, push: expect.stringContaining("no remote named origin") });

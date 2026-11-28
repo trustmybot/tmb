@@ -18,6 +18,7 @@ import {
   taskList,
   taskStart,
 } from "../../../src/engine/handlers/index.ts";
+import { OPERATIONS } from "../../../src/engine/handlers/index.ts";
 import { runCheck, runChecks } from "../../../src/engine/checks.ts";
 import { newId } from "../../../src/engine/ids.ts";
 import { openProjectStore, writeSetting } from "../../../src/engine/index.ts";
@@ -239,8 +240,8 @@ describe("task_start", () => {
   });
 
   test("refuses the worker and the reviewer", () => {
-    expect(refusal(() => taskStart(store, WORKER, spec(), context())).message).toContain("for the planner");
-    expect(refusal(() => taskStart(store, REVIEWER, spec(), context())).code).toBe("refused");
+    expect(refusal(() => OPERATIONS.task_start.run(store, WORKER, spec(), context())).message).toContain("the worker may not start a task (task.start)");
+    expect(refusal(() => OPERATIONS.task_start.run(store, REVIEWER, spec(), context())).code).toBe("refused");
     expectNothingWritten();
   });
 
@@ -471,7 +472,7 @@ describe("task_close", () => {
 
   test("refuses the reviewer and a task whose worktree is gone", async () => {
     const started = taskStart(store, PLANNER, spec(), context());
-    expect((await asyncRefusal(() => taskClose(store, REVIEWER, { id: started.id }, context()))).message).toContain("for the worker or planner");
+    expect((await asyncRefusal(() => OPERATIONS.task_close.run(store, REVIEWER, { id: started.id }, context()))).message).toContain("the reviewer may not close a task (task.close)");
     rmSync(started.worktree, { recursive: true, force: true });
     expect((await asyncRefusal(() => taskClose(store, WORKER, { id: started.id }, context()))).message).toContain("is missing");
   });

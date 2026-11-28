@@ -772,7 +772,7 @@ Each of the six tables also has `id` (PK), `created_by` and `created_at`. Each i
 | `waivers` | `task_id` | TEXT | nullable | FK → `tasks.id` |
 | | `feature_id` | TEXT | nullable | FK → `features.id`. Exactly one of the two is set |
 | | `commit_sha` | TEXT | NOT NULL | The commit the waiver covers |
-| | `reason` | TEXT | NOT NULL | Only the Human writes a waiver |
+| | `reason` | TEXT | NOT NULL | Why the review is waived. `created_by` names who waived: the Human, or the planner on the Human's ask |
 | | `carried_from` | TEXT | nullable | FK → `waivers.id`. The Human's waiver that a rebase carried to this commit, with its reason |
 | `review_marks` | `task_id` | TEXT | nullable | FK → `tasks.id`, for a mark on one task's commit |
 | | `feature_id` | TEXT | nullable | FK → `features.id`. Exactly one of the two is set |

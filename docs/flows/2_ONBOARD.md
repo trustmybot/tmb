@@ -79,7 +79,7 @@ Each step, who takes it and what it leaves in the record.
 
 ## The review mode is the Human's choice
 
-**The review mode decides how many tokens a project uses, so only the Human may set it ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)). tmb recommends agile and never picks. No task starts until it is set.**
+**The review mode decides how many tokens a project uses, so the Human chooses it: on a terminal, or by asking the planner ([ROLES.md](../architecture/ROLES.md#permissions)). tmb recommends agile and never picks. No task starts until it is set.**
 
 - **Example 1.** The Human answers the planner's question.
 - **Example 2.** The Human answers `tmb onboard` on a terminal.

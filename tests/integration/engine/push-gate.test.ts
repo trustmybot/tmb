@@ -42,13 +42,13 @@ describe("the push gate", () => {
     const file = hookFile(project);
     expect(readFileSync(file, "utf8")).toContain("# tmb: the push gate.");
     expect(statSync(file).mode & 0o111).not.toBe(0);
-    expect(human(["remove"], project)).toContain("Removed git's pre-push hook");
+    expect(human(["remove", path.basename(project)], project)).toContain("Removed git's pre-push hook");
     expect(existsSync(file)).toBe(false);
 
     writeFileSync(file, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     expect(tmb(["init"], project)).toContain("is not tmb's, so it was left alone");
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
-    human(["remove"], project);
+    human(["remove", path.basename(project)], project);
     expect(readFileSync(file, "utf8")).toBe("#!/bin/sh\nexit 0\n");
   });
 
@@ -313,7 +313,7 @@ describe("a repo whose pre-push hook is another tool's (trustmybot/tmb#184)", ()
     expect(pushWith(project, env, "-q", "origin", "HEAD:refs/heads/other").status).toBe(0);
     expect(otherToolSaw(project)).toContain("refs/heads/other");
 
-    expect(human(["remove"], project)).toContain("Took tmb's line out of git's pre-push hook");
+    expect(human(["remove", path.basename(project)], project)).toContain("Took tmb's line out of git's pre-push hook");
     expect(readFileSync(hookFile(project), "utf8")).toBe(FOREIGN);
   });
 });

@@ -140,8 +140,8 @@ Planned (trustmybot/tmb#437): a consultant is one kind of created agent, recorde
 | Interaction | Layer |
 |---|---|
 | A push that brings onto the base branch a commit no review or waiver covers is refused, typed by hand too | 2 (push) |
-| Only the Human waives a review | 1 |
-| A step only the Human may take runs only on a terminal, after a typed yes | 1 |
+| Only a role that holds an action takes it: one permission table, one check | 1 |
+| An action of the Human's own rows runs from the command line only on a terminal, after a typed yes | 1 |
 | The gate denies when it cannot read the record | 2 |
 | Naming conventions, commit subjects, mechanical code-quality patterns | 1 (close) where the project's checks cover them; else 6 only |
 | Specs live in the record: a task starts only through the tool that records its spec | 1 |

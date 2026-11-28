@@ -9,6 +9,7 @@ import { areasOf, globMatcher, TESTS_AREA } from "../../../../src/engine/graph/a
 import { indexProject, openView } from "../../../../src/engine/graph/fresh.ts";
 import { graphAreaRemove, graphAreas, graphAreaUpsert, graphFind, graphScope, graphSymbol } from "../../../../src/engine/handlers/graph.ts";
 import { HandlerError } from "../../../../src/engine/handlers/errors.ts";
+import { OPERATIONS } from "../../../../src/engine/handlers/index.ts";
 import { openProjectStore, writeSetting } from "../../../../src/engine/index.ts";
 import type { Actor, Store } from "../../../../src/engine/store/index.ts";
 import { git } from "../../../lib/git.ts";
@@ -108,7 +109,7 @@ describe("areas", () => {
     const empty = await refusal(graphAreaUpsert(store, PLANNER, { name: "nothing", purpose: "x", include: ["src/billing"], exclude: ["src/**"] }, context()));
     expect(empty.message).toContain("would hold no file");
     // Only the planner writes an area.
-    expect((await refusal(graphAreaUpsert(store, WORKER, { name: "login", purpose: "x", include: ["src/login"] }, context()))).code).toBe("refused");
+    expect((await refusal((async () => OPERATIONS.graph_area_upsert.run(store, WORKER, { name: "login", purpose: "x", include: ["src/login"] }, context()))())).code).toBe("refused");
     // One level of nesting.
     await graphAreaUpsert(store, PLANNER, { name: "login", purpose: "Sign-in.", include: ["src/login"] }, context());
     await graphAreaUpsert(store, PLANNER, { name: "oauth", purpose: "Sign-in through Google.", include: ["src/login/oauth"], parent: "login" }, context());
@@ -189,7 +190,7 @@ describe("areas", () => {
     await graphAreaUpsert(store, PLANNER, { name: "oauth", purpose: "Google.", include: ["src/login/oauth"], parent: "login" }, context());
     expect((await refusal(graphAreaRemove(store, PLANNER, { name: TESTS_AREA }, context()))).code).toBe("refused");
     expect((await refusal(graphAreaRemove(store, PLANNER, { name: "login" }, context()))).message).toContain("oauth");
-    expect((await refusal(graphAreaRemove(store, WORKER, { name: "oauth" }, context()))).code).toBe("refused");
+    expect((await refusal((async () => OPERATIONS.graph_area_remove.run(store, WORKER, { name: "oauth" }, context()))())).code).toBe("refused");
     expect((await refusal(graphAreaRemove(store, PLANNER, { name: "billing" }, context()))).code).toBe("not_found");
     expect(await graphAreaRemove(store, PLANNER, { name: "oauth" }, context())).toMatchObject({ removed: "oauth" });
     await graphAreaRemove(store, PLANNER, { name: "login" }, context());

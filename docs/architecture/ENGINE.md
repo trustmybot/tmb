@@ -29,14 +29,15 @@ Everything before [Containment](#containment) is the design. Containment is deta
 
 tmb has no slash commands: each action is a terminal command or a tool the planner calls.
 
-**A step only the Human may take is fenced at the command line.** The command line records every caller as the Human. So it runs such a step only on a terminal, after the Human types yes.
+**Every way in asks one permission check, and the command line checks for a terminal on the Human's rows.** A tool call and a command-line command take an action by name, and the [permission table](ROLES.md#permissions) says which roles may. The command line records every caller as the Human, so it runs an action of the Human's own rows only on a terminal, after the Human types yes.
 
-The fenced steps are: waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project. An update is not one.
+Those steps are: waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project, or purging its record. An update is not one.
 
 - **Example 1.** The Human waives a review on a terminal and types yes. The command line runs the step.
 - **Example 2.** An agent runs the same command in its shell, which has no terminal. The command line refuses and changes nothing.
+- **Example 3.** The planner waives the same review through tmb's tool, because the Human asked for it. The planner holds that action, so the tool records the waiver under the planner.
 - **Edge case: a run with no one to ask.** In unattended mode, such as CI, a run with no terminal may set the review mode where none is set, for the workspace or for one repo. It never changes a mode that is set, so an agent that turns unattended mode on for its own command cannot undo the Human's choice. Nothing else passes.
-- **Edge case: the fence is not proof.** An agent that writes a script which opens its own terminal can pass it. tmb builds no stronger fence, and the host's own permission prompt shows the Human a command before an agent runs it.
+- **Edge case: the terminal check is not proof.** An agent that writes a script which opens its own terminal can pass it. tmb reads no shell command and builds no stronger check; the host's own permission prompt shows the Human a command before an agent runs it.
 
 ## Unattended mode
 
@@ -77,7 +78,7 @@ flowchart LR
 | A docs task changes code | The close refuses, and names the file |
 | The reviewer edits what it judges | Its role has no editing tool ([ROLES.md](ROLES.md#reviewer)) |
 | An unreviewed commit heads for the base branch | The merge gate refuses its pull request. git's pre-push hook refuses a push straight to the base branch, whoever typed it |
-| An agent takes a step that is the Human's alone | The command line's fence ([Ways into the engine](#ways-into-the-engine)) |
+| An agent takes an action its role does not hold | The permission check refuses it, and the command line's terminal check holds the Human's rows ([Ways into the engine](#ways-into-the-engine)) |
 | Two tasks change the same file | No lock. git settles it when the work is merged, and a clash holds back the later task's close. |
 
 - **The engine does the git steps itself.** It, not an agent, cuts branches and worktrees, folds, pushes and opens pull requests, so every step is recorded.
@@ -210,5 +211,5 @@ The skill files tmb ships follow the same table. Planned (trustmybot/tmb#437, tr
 
 **Tests hold each rule, and two lints run with them.**
 
-- **The tests.** A damaged, empty or newer record denies. Init and remove leave the Human's entries alone, and remove takes out exactly what init added. A program updates only itself and keeps its own state. A step that is the Human's alone is refused without a terminal.
+- **The tests.** A damaged, empty or newer record denies. Init and remove leave the Human's entries alone, and remove takes out exactly what init added. A program updates only itself and keeps its own state. An action of the Human's own rows is refused without a terminal, and every action is refused to a role that does not hold it.
 - **The lints.** The engine never names a host outside its adapter, and every test's machine-wide state is a scratch folder.

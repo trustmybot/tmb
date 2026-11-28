@@ -1,12 +1,16 @@
-// The steps only the Human may take from the command line (trustmybot/tmb#179): both waivers,
-// setting the review mode and `tmb remove`. The command line runs one only on a terminal, after
-// the Human types yes, as an agent's shell has none; and the host's guard reads an agent's shell
+// The Human's own steps from the command line: the rows of the permission table the Human may
+// take that change something (both waivers, setting the review mode, `tmb remove` and `tmb purge`).
+// The command line records its caller as the Human, so it runs one only on a terminal, after the
+// Human types yes, as an agent's shell has none; and the host's guard reads an agent's shell
 // command and denies one, with the reason, on a host that can deny a shell command.
 import path from "node:path";
+import { type Action, ACTIONS } from "./permissions.ts";
 import { runningName } from "./program.ts";
 
-/** One Human-only step, as the command line was asked to run it. */
+/** One of the Human's own steps, as the command line was asked to run it. */
 export type HumanOnlyStep = {
+  /** The action in the permission table. */
+  action: Action;
   /** The command, as `tmb task waive`; a message names the running program in its place. */
   command: string;
   /** What it does, in a few words: "waive a task's review". */
@@ -18,17 +22,22 @@ export const HUMAN_YES = "yes";
 
 const REVIEW_MODE_FLAG = "--review-mode";
 
+function step(action: Action, command: string): HumanOnlyStep {
+  return { action, command, what: ACTIONS[action] };
+}
+
 /**
  * The Human-only step `args` asks for, or null. `args` is what follows the program's name, as
  * `["task", "waive", "T-3", "--reason", "x"]`. `tmb update` is not one.
  */
 export function humanOnlyStep(args: readonly string[]): HumanOnlyStep | null {
   const [command, action] = args;
-  if (command === "feature" && action === "waive") return { command: "tmb feature waive", what: "waive a feature branch's review" };
-  if (command === "task" && action === "waive") return { command: "tmb task waive", what: "waive a task's review" };
-  if (command === "remove") return { command: "tmb remove", what: "remove tmb from this project's hosts and git's push hook" };
+  if (command === "feature" && action === "waive") return step("feature.waive", "tmb feature waive");
+  if (command === "task" && action === "waive") return step("task.waive", "tmb task waive");
+  if (command === "remove") return step("project.remove", "tmb remove");
+  if (command === "purge") return step("project.purge", "tmb purge");
   if (command === "onboard" && args.some((arg) => arg === REVIEW_MODE_FLAG || arg.startsWith(`${REVIEW_MODE_FLAG}=`))) {
-    return { command: "tmb onboard --review-mode", what: "set the review mode" };
+    return step("settings.review-mode", "tmb onboard --review-mode");
   }
   return null;
 }
@@ -58,8 +67,9 @@ export function unattendedChangeRefusal(mode: string): string {
 }
 
 /** The question a Human-only step asks on a terminal before it runs. */
-export function humanYesQuestion(step: HumanOnlyStep, args: readonly string[]): string {
-  return `Only the Human may ${step.what}. Type ${HUMAN_YES} to run ${runningName()} ${args.join(" ")}: `;
+export function humanYesQuestion(step: HumanOnlyStep, args: readonly string[], folder?: string): string {
+  const where = folder === undefined ? "" : ` Project folder: ${folder}.${step.action === "project.purge" ? ` Its record there cannot be recovered.` : ""}`;
+  return `Only the Human may ${step.what}.${where} Type ${HUMAN_YES} to run ${runningName()} ${args.join(" ")}: `;
 }
 
 /** The refusal of a Human-only step whose question was answered with anything but yes. */

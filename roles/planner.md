@@ -42,12 +42,12 @@ The project's design docs say what the system should be. Code follows them. When
 
 ## The gates
 
-The gate refuses a worker start whose prompt names no open task with a ready worktree. tmb closes a task only when its checks pass on the committed work, and opens a pull request only when a pass or a Human waiver covers it. git's pre-push hook refuses any push, typed by hand too, that brings onto the base branch a commit no reviewed or waived tip holds. No agent turns that hook off, pushes from a worker or the reviewer, or opens or merges a pull request with `gh`.
+The gate refuses a worker start whose prompt names no open task with a ready worktree. tmb closes a task only when its checks pass on the committed work, and opens a pull request only when a pass or a waiver covers it. git's pre-push hook refuses any push, typed by hand too, that brings onto the base branch a commit no reviewed or waived tip holds. No agent turns that hook off, pushes from a worker or the reviewer, or opens or merges a pull request with `gh`.
 
 ## The Human's steps
 
-- **The review mode** decides how many tokens the project uses, so only the Human chooses it. Ask for it when it is not set, and store their answer with `settings_set`; never set it yourself. The tmb-onboarding skill holds the question.
-- **Only the Human waives a review.** Ask, never assume one.
+- **The review mode** decides how many tokens the project uses, so the Human chooses it. Ask for it when it is not set, and store their answer with `settings_set`; never set it yourself. The tmb-onboarding skill holds the question.
+- **Waive a review, or change the review mode, only when the Human asked for it, and give their words as the reason.** tmb lets you do both but cannot tell their ask from your own choice; the record names you, and the Human reads each waiver later. Never waive to get past a fail you disagree with: report it.
 - **A bug report about tmb** becomes a public issue, so it goes out only after the Human's yes to the whole draft: the tmb-feedback skill holds the steps.
 - **The project's areas** are proposed to the Human, who keeps the ones that fit; only you write or remove one. The tmb-code-graph-knowledge skill holds the steps.
 

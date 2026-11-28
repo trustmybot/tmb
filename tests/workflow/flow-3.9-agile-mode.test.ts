@@ -82,7 +82,7 @@ describe("the review of a feature branch", () => {
       expect(await callJson(client, "feature_brief", { feature: "feat/greet" })).toMatchObject({ covered: true, coveredBy: "review" });
 
       // 5. The pull request opens: tmb pushes the branch and runs gh.
-      expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet", role: "worker" })).toContain("for the planner");
+      expect(await callRefused(client, "feature_pr", { feature: "feat/greet", title: "Greet", role: "worker" })).toContain("the worker may not open a feature branch's pull request (feature.pr)");
       const pr = await callJson(client, "feature_pr", { feature: "feat/greet", title: "Greet the user", body: "Adds greet()." });
       expect(pr).toMatchObject({ url: "https://github.com/example/project/pull/7", base: "main", tip: reworkTip, coveredBy: "review" });
       const ghCall = readFileSync(ghLog, "utf8");
@@ -94,12 +94,12 @@ describe("the review of a feature branch", () => {
       expect(await callJson(client, "feature_pr", { feature: "feat/greet", title: "Again" })).toMatchObject({ url: pr.url, tip: reworkTip });
       expect(readFileSync(ghLog, "utf8").split("\n").filter((line) => line.startsWith("pr create"))).toHaveLength(1);
 
-      // 6. A second branch: the Human waives its review, and only the Human can.
+      // 6. A second branch: the Human waives its review, and the worker cannot.
       await callJson(client, "feature_start", { name: "feat/wave" });
       const wave = await startTask("Add a wave");
       const waveTip = commitFile(wave.worktree, "src/wave.ts", "export const wave = () => 'o/';\n", "add wave");
       await callJson(client, "task_close", { id: wave.id, role: "worker" });
-      expect(await callRefused(client, "feature_waive", { feature: "feat/wave", reason: "tiny", role: "planner" })).toContain("only the Human waives");
+      expect(await callRefused(client, "feature_waive", { feature: "feat/wave", reason: "tiny", role: "worker" })).toContain("the worker may not waive a feature branch's review (feature.waive)");
       expect(human(["feature", "waive", "feat/wave", "--reason", "A one-line change the Human read"], project)).toContain(`at ${waveTip}`);
       expect(await callJson(client, "feature_brief", { feature: "feat/wave" })).toMatchObject({
         covered: true,

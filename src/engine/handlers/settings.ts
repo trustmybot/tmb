@@ -2,6 +2,7 @@
 // it recommends when a session starts with them empty, and changes one when the Human asks.
 // The review mode is the exception: the planner sets it only to the Human's answer.
 // The Human sets them with `tmb onboard`; both write the same setting changes.
+import type { Action } from "../permissions.ts";
 import { runningName } from "../program.ts";
 import { detectBaseBranch } from "../base-branch.ts";
 import { detectChecks } from "../check-detection.ts";
@@ -24,7 +25,7 @@ import {
 import { workingRepos } from "../repos.ts";
 import type { Actor, Store } from "../store/index.ts";
 import { LINK_WAYS } from "../graph/ways.ts";
-import { type OperationContext, requireRole } from "./common.ts";
+import { type OperationContext } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
@@ -170,6 +171,27 @@ function mergedRepos(current: RepoPolicies, value: unknown): RepoPolicies {
   return { ...current, ...given };
 }
 
+/**
+ * The actions a settings_set call takes: the review mode, a project-wide one or a repo's, is its
+ * own action; every other setting is settings.set. A malformed call takes settings.set, and its
+ * input is refused after.
+ */
+export function settingsSetActions(input: unknown): readonly Action[] {
+  if (typeof input !== "object" || input === null) return ["settings.set"];
+  const actions = new Set<Action>();
+  for (const [name, value] of Object.entries(input)) {
+    if (value === undefined || name === "role") continue;
+    if (name === "review_mode") actions.add("settings.review-mode");
+    else if (name === "repos" && typeof value === "object" && value !== null) {
+      for (const policy of Object.values(value)) {
+        const fields = typeof policy === "object" && policy !== null ? Object.keys(policy) : ["?"];
+        for (const field of fields) actions.add(field === "review_mode" ? "settings.review-mode" : "settings.set");
+      }
+    } else actions.add("settings.set");
+  }
+  return actions.size === 0 ? ["settings.set"] : [...actions];
+}
+
 /** The project's settings for one caller: read them, and set the ones the planner may. */
 export class SettingsService {
   constructor(
@@ -185,7 +207,6 @@ export class SettingsService {
   }
 
   set(input: unknown): SettingsSetResult {
-    requireRole(this.actor, "settings_set", ["planner"]);
     const values = validateInput<Partial<Record<SetName, unknown>>>("settings_set", settingsSetSchema, input);
     const named = SET_NAMES.filter((name) => values[name] !== undefined);
     if (named.length === 0) throw new HandlerError("invalid_input", `settings_set needs at least one of ${SET_NAMES.join(", ")}`);

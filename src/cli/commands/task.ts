@@ -2,7 +2,7 @@
 import { markLine, markRequiredLine, type TaskBrief, type TaskCloseResult, type TaskDropResult, type TaskPrResult, type TaskStartResult, type TaskSummary, type TaskWaiveResult } from "../../engine/index.ts";
 import { only, parseWithJson } from "../arguments.ts";
 import { listed, UsageError } from "../command.ts";
-import { JSON_NOTE, RecordCommand, type RecordRequest, reviewLines } from "./record.ts";
+import { JSON_NOTE, RecordCommand, type RecordRequest, reviewLines, who } from "./record.ts";
 
 export class TaskCommand extends RecordCommand {
   readonly name = "task";
@@ -141,7 +141,7 @@ function truestReviewLines(brief: TaskBrief): string[] {
     ...(review.to === null ? [] : [`Review the diff: ${review.from ?? "?"}..${review.to}`]),
     "Reviews:",
     ...reviewLines(review.reviews),
-    ...review.waivers.map((waiver) => `Waived at ${waiver.commit.slice(0, 12)} by the Human: ${waiver.reason}`),
+    ...review.waivers.map((waiver) => `Waived at ${waiver.commit.slice(0, 12)} by ${who(waiver.by)}: ${waiver.reason}`),
     ...review.carries.map((carry) => `Review carried from ${carry.from.slice(0, 12)} to ${carry.to.slice(0, 12)} by a rebase that kept the patch`),
     `Covered for its pull request: ${cover}`,
     ...(review.prUrl ? [`Pull request: ${review.prUrl}`] : []),

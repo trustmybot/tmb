@@ -79,8 +79,8 @@ describe("feature_drop", () => {
   });
 
   test("the Human may drop one; a worker and the reviewer are refused; a reason is required", () => {
-    expect(refusal(() => featureDrop(store, WORKER, { feature: FEATURE, reason: "x" }, context())).message).toContain("feature_drop is for the planner");
-    expect(refusal(() => featureDrop(store, REVIEWER, { feature: FEATURE, reason: "x" }, context())).code).toBe("refused");
+    expect(refusal(() => OPERATIONS.feature_drop.run(store, WORKER, { feature: FEATURE, reason: "x" }, context())).message).toContain("the worker may not drop a feature branch (feature.drop)");
+    expect(refusal(() => OPERATIONS.feature_drop.run(store, REVIEWER, { feature: FEATURE, reason: "x" }, context())).code).toBe("refused");
     expect(refusal(() => featureDrop(store, PLANNER, { feature: FEATURE }, context())).code).toBe("invalid_input");
     expect(refusal(() => featureDrop(store, PLANNER, { feature: FEATURE, reason: "  " }, context())).code).toBe("invalid_input");
     expect(refusal(() => featureDrop(store, PLANNER, { feature: "feat/none", reason: "x" }, context())).code).toBe("not_found");

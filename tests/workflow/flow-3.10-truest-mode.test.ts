@@ -125,7 +125,7 @@ describe("Truest mode: every task is reviewed before its push", () => {
 
       // 6. The base moves, apart from the task's lines: task_pr rebases, the patch is the same, the review carries over.
       const moved = landOnOrigin(project, "README.md", "hello again\n");
-      expect(await callRefused(client, "task_pr", { id: task.id, title: "Fix", role: "worker" })).toContain("for the planner");
+      expect(await callRefused(client, "task_pr", { id: task.id, title: "Fix", role: "worker" })).toContain("the worker may not open a task's pull request (task.pr)");
       const pr = await callJson(client, "task_pr", { id: task.id, title: "Fix line two", body: "Quiet fix." });
       expect(pr).toMatchObject({ url: "https://github.com/example/project/pull/9", base: "main", branch: task.branch, coveredBy: "review", rebasedOnto: moved });
       expect(pr.commit).not.toBe(second);
@@ -174,11 +174,11 @@ describe("Truest mode: every task is reviewed before its push", () => {
       expect((await callJson(client, "task_brief", { id: clash.id })).state).toBe("open");
       expect(git(clash.worktree, "rev-parse", "HEAD")).toBe(clashCommit);
 
-      // The Human waives a task's review from the command line; an agent cannot.
+      // The Human waives a task's review from the command line; the worker cannot.
       const waived = await startTask("Add a file", ["docs"]);
       const waivedCommit = commitFile(waived.worktree, "docs/new.txt", "new\n", "new");
       await callJson(client, "task_close", { id: waived.id, role: "worker" });
-      expect(await callRefused(client, "task_waive", { id: waived.id, reason: "tiny", role: "planner" })).toContain("only the Human waives");
+      expect(await callRefused(client, "task_waive", { id: waived.id, reason: "tiny", role: "worker" })).toContain("the worker may not waive a task's review (task.waive)");
       expect(human(["task", "waive", waived.id, "--reason", "A file the Human read"], project)).toContain(`at ${waivedCommit}`);
       // gh pr create fails because the pull request is already open: task_pr takes that one.
       writeFileSync(ghFailOnce, "");

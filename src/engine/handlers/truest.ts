@@ -10,13 +10,13 @@ import { spawnSync } from "node:child_process";
 import { gitFailure, runGit } from "../git.ts";
 import { repoOfRow } from "../repos.ts";
 import type { Actor, Review, Store, Task } from "../store/index.ts";
-import { CLOSED, endReadyLine, IN_REVIEW, type LocalMerge, localMergeCommand, OPEN, type OperationContext, READY, requireRole, TRUEST } from "./common.ts";
+import { CLOSED, endReadyLine, IN_REVIEW, type LocalMerge, localMergeCommand, OPEN, type OperationContext, READY, TRUEST } from "./common.ts";
 import { openRunsOf } from "../host-runs.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, noBaseBranch } from "./features.ts";
 import { hasOrigin, isAncestor, pushFeature, rebaseOnto, removeTaskCheckout, undoRebase } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
-import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
+import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks, waivedLine } from "./marks.ts";
 import { type Finding, GH_PULL_REQUESTS, type PullRequests, type ReviewSummary, summaryOf, type Verdict } from "./reviews.ts";
 import {
   type CheckRunOutcome,
@@ -35,7 +35,8 @@ import {
 const ORIGIN = "origin";
 const PATCH_ID_TIMEOUT_MS = 60_000;
 /** A Human waiver of one task's review at a commit; `carriedFrom` names the waiver a rebase carried to it. */
-export type TaskWaiver = { id: string; task: string; commit: string; reason: string; at: string; carriedFrom: string | null };
+/** A waiver of a truest task's review; `by` is who waived it: the Human, the planner on the Human's ask, or tmb carrying one over a rebase. */
+export type TaskWaiver = { id: string; task: string; commit: string; reason: string; by: Actor; at: string; carriedFrom: string | null };
 /** A rebase that kept the patch, so the review of `from` holds for `to`. */
 export type ReviewCarry = { id: string; task: string; from: string; to: string; at: string };
 
@@ -59,11 +60,27 @@ export function taskReviewLine(id: string): string {
   return `review_task=${id}`;
 }
 
+/**
+ * The waiver a carried one came from, through every rebase it was carried over, so the reason and
+ * who waived are the original's; a waiver carried by no rebase is its own.
+ */
+function firstOf(store: Store, waiver: TaskWaiver | undefined): TaskWaiver | undefined {
+  const all = allTaskWaivers(store);
+  let first = waiver;
+  while (first?.carriedFrom != null) {
+    const from: string = first.carriedFrom;
+    const earlier = all.find((each) => each.id === from);
+    if (earlier === undefined) break;
+    first = earlier;
+  }
+  return first;
+}
+
 function allTaskWaivers(store: Store): TaskWaiver[] {
   return store
     .listWaivers()
     .filter((waiver) => waiver.taskId !== null)
-    .map((waiver) => ({ id: waiver.id, task: waiver.taskId!, commit: waiver.commitSha, reason: waiver.reason, at: waiver.createdAt, carriedFrom: waiver.carriedFrom }));
+    .map((waiver) => ({ id: waiver.id, task: waiver.taskId!, commit: waiver.commitSha, reason: waiver.reason, by: waiver.createdBy, at: waiver.createdAt, carriedFrom: waiver.carriedFrom }));
 }
 
 /** The carries over rebases: each review or waiver a rebase carried, from the commit it was on to the rebased one. */
@@ -312,10 +329,10 @@ export class TruestService {
   review(input: unknown): TaskReviewResult {
     const { store, actor } = this;
     const given = validateInput<TaskReviewInput>("task_review", taskReviewSchema, input);
-    if (actor.kind === "human") {
+    // The permission table lets only the reviewer, an agent, record a review.
+    if (actor.kind !== "agent") {
       throw new HandlerError("refused", `only the reviewer records a review; the Human waives one instead, with \`${runningName()} task waive <id> --reason <text>\``);
     }
-    requireRole(actor, "task_review", ["reviewer"]);
     if (store.openRuns("reviewer").length === 0) {
       throw new HandlerError("refused", "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, and tmb records that start");
     }
@@ -356,7 +373,6 @@ export class TruestService {
   waive(input: unknown): TaskWaiveResult {
     const { store, actor } = this;
     const given = validateInput<{ id: string; reason: string }>("task_waive", taskWaiveSchema, input);
-    if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
     const task = this.requireInReview(given.id, "there is no review to waive");
     const reason = given.reason.trim();
     const id = store.recordWaiver(actor, { taskId: task.id, commitSha: task.commitSha!, reason });
@@ -367,7 +383,6 @@ export class TruestService {
   async pr(input: unknown): Promise<TaskPrResult> {
     const { store, actor } = this;
     const given = validateInput<{ id: string; title: string; body?: string }>("task_pr", taskPrSchema, input);
-    requireRole(actor, "task_pr", ["planner"]);
     // A ready task (a repo with no remote) may ask again: for the merge command, or for its pull request once a remote was added.
     const asked = requireTask(store, given.id);
     const wasReady = asked.state === READY && asked.reviewMode === TRUEST;
@@ -416,7 +431,7 @@ export class TruestService {
     const how =
       coveredBy === "review"
         ? `Reviewed by the tmb reviewer: pass at ${review.to}${onto === null ? "" : `, carried to ${commit} by a rebase onto ${onto} that kept the patch`}.`
-        : `Review waived by the Human at ${review.to}: ${review.waivers.filter((waiver) => waiver.commit === review.to).at(-1)?.reason ?? ""}`;
+        : waivedLine(String(review.to), firstOf(store, review.waivers.filter((waiver) => waiver.commit === review.to).at(-1)));
     const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
     let opened = this.pullRequests.open(dir, ["--base", baseBranch, "--head", task.branch!, "--title", given.title, "--body", body]);
     if (!opened.ok) {
@@ -536,7 +551,8 @@ export class TruestService {
     // The rebased commit is a new one: the coverage carried to it marks it too.
     const carried = truestReviewOf(store, requireTask(store, task.id));
     if (carried.coveredBy === "waiver") {
-      markReviewed(store, actor, dir, { taskId: task.id }, rebased, "waiver", carried.waivers.at(-1)?.reason ?? "");
+      const last = carried.waivers.at(-1);
+      markReviewed(store, actor, dir, { taskId: task.id }, rebased, "waiver", last?.reason ?? "", firstOf(store, last)?.by);
     } else if (carried.coveredBy === "review") {
       markReviewed(store, actor, dir, { taskId: task.id }, rebased, "pass");
     }

@@ -9,7 +9,7 @@ import { FIND_MAX, find, type Hit, type PathFilter, lookupSymbol, type MapResult
 import { type NotReadNote, notReadNote } from "../graph/not-read.ts";
 import { UNTRUSTED_NOTE } from "../graph/summary.ts";
 import type { Actor, Store } from "../store/index.ts";
-import { type OperationContext, requireRole } from "./common.ts";
+import { type OperationContext } from "./common.ts";
 import { resolveRepo } from "../repos.ts";
 import { HandlerError } from "./errors.ts";
 import { type FieldSchema, type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
@@ -304,7 +304,6 @@ export const graphAreaUpsertSchema: InputSchema = {
 };
 
 export async function graphAreaUpsert(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ area: Area }>> {
-  requireRole(actor, "graph_area_upsert", ["planner"]);
   const { name, purpose, include, exclude = [], parent, repo } = validateInput<{ name: string; purpose: string; include: string[]; exclude?: string[]; parent?: string; repo?: string }>(
     "graph_area_upsert",
     graphAreaUpsertSchema,
@@ -330,7 +329,6 @@ export const graphAreaRemoveSchema: InputSchema = {
 };
 
 export async function graphAreaRemove(store: Store, actor: Actor, input: unknown, context: OperationContext): Promise<GraphAnswer<{ removed: string }>> {
-  requireRole(actor, "graph_area_remove", ["planner"]);
   const { name, repo } = validateInput<{ name: string; repo?: string }>("graph_area_remove", graphAreaRemoveSchema, input);
   return withView(store, actor, context, { repo }, (view) => {
     const result = removeArea(view.db, name.trim());

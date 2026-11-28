@@ -22,24 +22,36 @@ function blockingCount(count: number): string {
   return `${count} blocking finding${count === 1 ? "" : "s"}`;
 }
 
+/** Who waived a review, as a mark or a pull request names them: the Human, or the role that waived it. */
+export function waivedBy(by: Actor): string {
+  if (by.kind === "human") return "the Human";
+  return by.kind === "agent" ? `the ${by.role}` : "tmb";
+}
+
+/** The pull request's line for a review waived at `commit`, naming who waived it. */
+export function waivedLine(commit: string, waiver: { reason: string; by: Actor } | undefined): string {
+  return `Review waived by ${waiver === undefined ? "the Human" : waivedBy(waiver.by)} at ${commit}: ${waiver?.reason ?? ""}`;
+}
+
 /** The mark's state and text for a verdict or a waiver. */
-function markOf(kind: MarkKind, reason: string | number | undefined): { state: MarkState; description: string } {
+function markOf(kind: MarkKind, reason: string | number | undefined, by: Actor): { state: MarkState; description: string } {
   if (kind === "pass") return { state: "success", description: "Passed tmb's review" };
   if (kind === "fail") return { state: "failure", description: `Failed tmb's review: ${blockingCount(typeof reason === "number" ? reason : 0)}` };
-  return { state: "success", description: `Passed: review waived by the Human: ${String(reason ?? "").trim()}` };
+  return { state: "success", description: `Passed: review waived by ${waivedBy(by)}: ${String(reason ?? "").trim()}` };
 }
 
 /**
  * Sets the mark for a verdict or a waiver on `commit` of `parent` and records it. `detail` is the
  * number of blocking findings for a fail and the reason for a waiver. Never throws: a mark that
- * could not be sent is recorded as such and sent at the next occasion.
+ * could not be sent is recorded as such and sent at the next occasion. `waiver` is who waived the
+ * review when it is not `actor`, as for a waiver carried over a rebase.
  */
-export function markReviewed(store: Store, actor: Actor, projectDir: string, parent: MarkParent, commit: string, kind: MarkKind, detail?: string | number): MarkResult {
+export function markReviewed(store: Store, actor: Actor, projectDir: string, parent: MarkParent, commit: string, kind: MarkKind, detail?: string | number, waiver?: Actor): MarkResult {
   try {
     const repo = githubRepoOf(projectDir);
     if (repo === null) return { skipped: NOT_GITHUB };
     sendPendingMarks(store, actor, projectDir, commit);
-    const { state, description } = markOf(kind, detail);
+    const { state, description } = markOf(kind, detail, waiver ?? actor);
     const sent = setCommitStatus(projectDir, repo, commit, MARK_CONTEXT, state, description);
     store.recordReviewMark(actor, {
       ...parent,
