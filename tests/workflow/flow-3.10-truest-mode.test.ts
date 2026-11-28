@@ -1,3 +1,4 @@
+// Flow 3.10, Truest mode (docs/flows/FLOWS.md): this file is its scenario test.
 // Workflow simulation: Truest mode, scripted as the calls a planner, a worker, a reviewer and the
 // Human make, with no model. Every task is reviewed on its own commit before its own pull request
 // opens: a task cannot be pushed unreviewed, a fail reopens it, a pass lets task_pr push it, and a

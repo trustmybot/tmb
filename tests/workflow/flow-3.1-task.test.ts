@@ -1,3 +1,4 @@
+// Flow 3.1, Task (docs/flows/FLOWS.md): this file is its scenario test.
 // Workflow simulation of a simple task: the planner records the
 // issue, starts a feature branch and a task, a worker commits the work and closes it, and the
 // close folds it into the feature branch. Along the way the worker is refused the planner's

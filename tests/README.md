@@ -38,7 +38,7 @@ Two more folders run beside the layers:
 
 - **Example 1.** The unit test of Claude Code's hook is [unit/adapters/claude-code/hook.test.ts](unit/adapters/claude-code/hook.test.ts); the code graph's tests are under [unit/engine/graph/](unit/engine/graph/graph.test.ts).
 - **Example 2.** A test's fixture sits beside it: the syncer's recorded answers are in [unit/syncer/fixtures/](unit/syncer/fixtures/README.md).
-- **Edge case 1.** The Workflow simulation layer is not split by component: each of its tests walks one flow through every component.
+- **Edge case 1.** The Workflow simulation layer is not split by component: each of its tests walks one flow through every component. Each built flow's scenario test there is named by its flow number, such as [workflow/flow-3.1-task.test.ts](workflow/flow-3.1-task.test.ts) ([flows](workflow/README.md#flows)).
 - **Edge case 2.** A test of another test's fixture tests no component, so it sits at its layer's root: [integration/worker-fixture.test.ts](integration/worker-fixture.test.ts).
 
 Setup that more than one test needs lives once in [tests/lib](lib/), and a test imports it rather than keeping a copy:

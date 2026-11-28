@@ -1,3 +1,4 @@
+// Flow 1.2, Updates and channels (docs/flows/FLOWS.md): this file is its scenario test.
 // Each channel's install updates itself from a release repo laid out like trustmybot/tmb-releases,
 // served locally, and never in the middle of a session or a task.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -7,11 +8,11 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { programOf } from "../../../src/engine/program.ts";
-import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, updaterOptions } from "../../../src/cli/updater.ts";
-import { buildTmb, cleanup, installedVersion, openTask, prepareInstall, runUpdate, type Scenario, updatesItself } from "../../install/update-scenario.ts";
-import { projectDbPath } from "../../../src/engine/project.ts";
-import { SCHEMA_VERSION } from "../../../src/engine/store/index.ts";
+import { programOf } from "../../src/engine/program.ts";
+import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, updaterOptions } from "../../src/cli/updater.ts";
+import { buildTmb, cleanup, installedVersion, openTask, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
+import { projectDbPath } from "../../src/engine/project.ts";
+import { SCHEMA_VERSION } from "../../src/engine/store/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
