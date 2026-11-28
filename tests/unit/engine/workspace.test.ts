@@ -165,7 +165,7 @@ describe("init in a workspace", () => {
   });
 
   test("onboard sets one repo by --repo, and refuses --base without one", async () => {
-    await expect(runOnboard(setupOptions({ base: "release" }))).rejects.toThrow("name the one --base, --check or --exempt sets with --repo");
+    await expect(runOnboard(setupOptions({ base: "release" }))).rejects.toThrow("name the one --base, --check, --shared-folder or --exempt sets with --repo");
     await runOnboard(setupOptions({ repo: "b", base: "release", checks: ["true"] }));
     expect(withStore((store) => readSettings(store).repos)).toEqual({
       a: { base_branch: "dev", checks: ["touch checked-in-a"] },
