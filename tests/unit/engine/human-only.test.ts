@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { decide, openProjectStore, projectDbPath, type TmbEvent } from "../../../src/engine/index.ts";
 import { humanOnlyInShell, humanOnlyStep } from "../../../src/engine/human-only.ts";
-import { answerHook as codexHook, shellTextOf } from "../../../src/adapters/codex/hook.ts";
 import { adapter } from "../../../src/adapters/claude-code/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -19,7 +18,7 @@ describe("humanOnlyStep", () => {
     expect(humanOnlyStep(["onboard", "--review-mode", "agile", "--yes"])?.command).toBe("tmb onboard --review-mode");
     expect(humanOnlyStep(["onboard", "--review-mode=truest"])?.command).toBe("tmb onboard --review-mode");
     expect(humanOnlyStep(["remove"])?.command).toBe("tmb remove");
-    expect(humanOnlyStep(["remove", "--host", "codex"])?.command).toBe("tmb remove");
+    expect(humanOnlyStep(["remove", "--host", "claude-code"])?.command).toBe("tmb remove");
     for (const args of [["update"], ["onboard", "--yes"], ["onboard", "--base", "main"], ["task", "close", "T-1"], ["feature", "pr", "feat/a"], ["init"], []]) {
       expect(humanOnlyStep(args)).toBeNull();
     }
@@ -35,7 +34,7 @@ describe("humanOnlyInShell", () => {
       "cd /repo && tmb onboard --review-mode agile --yes",
       "TMB_UNATTENDED=1 tmb onboard --review-mode=truest --yes",
       "env TMB_UNATTENDED=1 tmb onboard --review-mode truest",
-      "true; tmb remove --host codex",
+      "true; tmb remove --host claude-code",
       "echo y | tmb task waive T-2 --reason r",
       "bash -lc 'tmb task waive T-3 --reason r'",
       'sh -c "tmb feature waive feat/b --reason r"',
@@ -121,19 +120,5 @@ describe("the host's guard on an agent's shell command", () => {
     expect(denied.hookSpecificOutput).toMatchObject({ hookEventName: "PreToolUse", permissionDecision: "deny" });
     expect(denied.hookSpecificOutput.permissionDecisionReason).toContain("tmb feature waive");
     expect(adapter.answerHook("pre-tool-use", input("git status"), { unattended: false })).toBe("");
-  });
-
-  test("Codex's shell call is denied through its hook, given as a string or as argv", () => {
-    const input = (toolInput: Record<string, unknown>) => JSON.stringify({ hook_event_name: "PreToolUse", cwd: project, tool_name: "shell", tool_input: toolInput });
-    for (const toolInput of [{ command: ["bash", "-lc", "tmb remove"] }, { command: "tmb onboard --review-mode agile --yes" }, { cmd: "tmb task waive T-1 --reason r" }, { command: ["tmb", "remove"] }]) {
-      const out = codexHook("pre-tool-use", input(toolInput), { unattended: false });
-      expect(JSON.parse(out).hookSpecificOutput.permissionDecision).toBe("deny");
-    }
-    expect(codexHook("pre-tool-use", input({ command: ["bash", "-lc", "ls"] }), { unattended: false })).toBe("");
-  });
-
-  test("shellTextOf keeps an argv word with spaces as one word", () => {
-    expect(shellTextOf({ command: ["git", "commit", "-m", "tmb remove asks"] })).toBe("git commit -m 'tmb remove asks'");
-    expect(humanOnlyInShell(shellTextOf({ command: ["git", "commit", "-m", "tmb remove asks"] }))).toBeNull();
   });
 });

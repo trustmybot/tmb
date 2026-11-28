@@ -138,7 +138,7 @@ describe("tmb init, then tmb onboard", () => {
     mkdirSync(emptyPath, { recursive: true });
     const result = run(["init"], project, { PATH: emptyPath });
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code) and Codex (codex).");
+    expect(result.stderr).toContain("no supported host is installed; tmb supports Claude Code (claude-code).");
     expect(readdirSync(project).sort()).toEqual([".git", "bun.lock", "package.json"]);
   });
 });

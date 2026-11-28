@@ -1,7 +1,6 @@
 // The one place that lists host adapters. Everything else reaches a host through the
 // HostAdapter interface, so a new host is a new adapter and an entry here.
 import { adapter as claudeCode } from "./claude-code/index.ts";
-import { adapter as codex } from "./codex/index.ts";
 import type { HostAdapter } from "./host-adapter.ts";
 import { HostRegistry } from "./registry.ts";
 
@@ -10,7 +9,7 @@ import { HostRegistry } from "./registry.ts";
  * tried, but init says it is not supported yet: mixed agent support is out of v1 (trustmybot/tmb#18).
  * A hook that names no host comes from Claude Code, the first host tmb wired.
  */
-const registry = new HostRegistry([claudeCode, codex], [claudeCode.id], claudeCode.id);
+const registry = new HostRegistry([claudeCode], [claudeCode.id], claudeCode.id);
 
 export const HOST_ADAPTERS: readonly HostAdapter[] = registry.all;
 export const SUPPORTED_HOST_IDS: readonly string[] = registry.supportedIds;
