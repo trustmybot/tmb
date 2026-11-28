@@ -7,7 +7,6 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter as claudeCode, roleFiles } from "../../../src/adapters/claude-code/index.ts";
-import { adapter as codex } from "../../../src/adapters/codex/index.ts";
 import { HOST_ADAPTERS } from "../../../src/adapters/index.ts";
 import { exitCode, findingsJson, formatFindings, runChecks, runDoctorCommand, sessionStartLine } from "../../../src/cli/commands/doctor/index.ts";
 import type { DoctorEnv, Finding } from "../../../src/cli/commands/doctor/types.ts";
@@ -569,7 +568,7 @@ describe("a folder of repos the record does not name", () => {
 });
 
 describe("the hosts' wiring gaps", () => {
-  for (const adapter of [claudeCode, codex]) {
+  for (const adapter of [claudeCode]) {
     test(`${adapter.name}: none after setup, one after a role file is removed`, () => {
       const dir = path.join(root, `wired-${adapter.id}`);
       mkdirSync(dir);

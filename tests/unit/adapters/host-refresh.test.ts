@@ -8,8 +8,6 @@ import path from "node:path";
 import { adapter as claudeCode, roleFiles, settingsFile } from "../../../src/adapters/claude-code/index.ts";
 import { roleFileText } from "../../../src/adapters/claude-code/role-files.ts";
 import { hookCommand } from "../../../src/adapters/claude-code/settings.ts";
-import { installHooks } from "../../../src/adapters/codex/hooks-json.ts";
-import { hooksJsonPath } from "../../../src/adapters/codex/paths.ts";
 import { HOST_ADAPTERS } from "../../../src/adapters/index.ts";
 import { handleEvent, HOST_FILES_HEADING, installPushGate, openProjectStore, recordProgramMove, SUBAGENT_ROLES, tiedProgram, tieProgram, writeSetting } from "../../../src/engine/index.ts";
 import type { Actor, Store } from "../../../src/engine/store/index.ts";
@@ -270,14 +268,5 @@ describe("init takes out what a version no longer wires", () => {
     expect(settingsFile.install(dir, COMMAND).hooksRemoved).toEqual(["Stop"]);
     expect(JSON.parse(readFileSync(settingsFile.path(dir), "utf8")).hooks.Stop).toEqual([{ hooks: [{ type: "command", command: "echo stop" }] }]);
     expect(settingsFile.install(dir, COMMAND).hooksRemoved).toEqual([]);
-  });
-
-  test("Codex: a tmb hook under an event no current hook uses goes", () => {
-    const dir = newProject("p");
-    mkdirSync(path.dirname(hooksJsonPath(dir)), { recursive: true });
-    const stray = `${COMMAND.map((part) => `"${part}"`).join(" ")} hook session-end --host codex`;
-    writeFileSync(hooksJsonPath(dir), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: stray }] }] } }));
-    expect(installHooks(dir, COMMAND).hooksRemoved).toEqual(["Stop"]);
-    expect(JSON.parse(readFileSync(hooksJsonPath(dir), "utf8")).hooks.Stop).toBeUndefined();
   });
 });

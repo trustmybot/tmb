@@ -12,7 +12,6 @@ import { HOST_ADAPTERS } from "../../../src/adapters/index.ts";
 import { AWAITING_REVIEW_HEADING, OPEN_WORK_HEADING, openProjectStore, projectDbPath, TMB_EVENT_TYPES } from "../../../src/engine/index.ts";
 import type { Store } from "../../../src/engine/store/index.ts";
 import { claudeCodeHarness } from "./claude-code.ts";
-import { codexHarness } from "./codex.ts";
 import type { ContractEvent, HostHarness } from "./harness.ts";
 import { asHuman } from "../../lib/as-human.ts";
 import { REPO_ROOT } from "../../lib/paths.ts";
@@ -20,7 +19,7 @@ import { REPO_ROOT } from "../../lib/paths.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const HARNESSES: readonly HostHarness[] = [claudeCodeHarness, codexHarness];
+const HARNESSES: readonly HostHarness[] = [claudeCodeHarness];
 
 const ROOT = REPO_ROOT;
 const CLI = path.join(ROOT, "src", "cli", "index.ts");

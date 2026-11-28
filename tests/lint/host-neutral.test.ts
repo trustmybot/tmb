@@ -8,8 +8,8 @@ setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 const SCANNED = ["src", "roles", "skills"];
-const ALLOWED = ["src/adapters/claude-code/", "src/adapters/codex/", "src/adapters/index.ts"];
-const HOST_NAME = /claude[ -]?code|\.claude\b|CLAUDE_|codex/i;
+const ALLOWED = ["src/adapters/claude-code/", "src/adapters/index.ts"];
+const HOST_NAME = /claude[ -]?code|\.claude\b|CLAUDE_/i;
 
 function filesUnder(dir: string): string[] {
   return readdirSync(path.join(ROOT, dir), { recursive: true, withFileTypes: true })

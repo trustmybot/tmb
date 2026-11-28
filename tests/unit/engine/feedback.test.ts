@@ -250,14 +250,14 @@ describe("what a report holds", () => {
     try {
       const values = reportValues(
         { summary: "It broke.", whatHappened: "Closing a task.", command: "task_close", error: "Error: boom\n    at x (/Users/someone/y.ts:1:1)" },
-        { versionLine: "tmb-dev 1.0.0-dev.7 (abc), on the dev channel", os: "linux 6.1 (x64)", hosts: ["Codex 0.9"], eventKinds: ["issue created", "task updated"] },
+        { versionLine: "tmb-dev 1.0.0-dev.7 (abc), on the dev channel", os: "linux 6.1 (x64)", hosts: ["Fake Host 0.9"], eventKinds: ["issue created", "task updated"] },
         { home: HOME, project: null },
       );
       expect(values.version).toContain("on the dev channel");
       expect(values.error).toContain("Command or tool: task_close");
       expect(values.error).toContain("~/y.ts");
       expect(values.environment).toContain("OS: linux 6.1 (x64)");
-      expect(values.environment).toContain("Host: Codex 0.9");
+      expect(values.environment).toContain("Host: Fake Host 0.9");
       expect(values.environment).toContain("issue created, task updated");
       expect(JSON.stringify(values)).not.toContain("sentinel-value-42");
     } finally {
