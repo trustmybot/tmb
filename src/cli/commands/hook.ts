@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { adapterById, DEFAULT_HOST_ID, type HostAdapter } from "../../adapters/index.ts";
 import { pushGateOffLine } from "../../engine/index.ts";
+import { type BriefSync, syncBriefly } from "../../syncer/index.ts";
 import { unusedBuildsLine } from "../builds.ts";
 import { HIDDEN, ParsedCommand } from "../command.ts";
 import type { Runtime } from "../runtime.ts";
@@ -13,6 +14,16 @@ import { sessionStartLine } from "./doctor/index.ts";
 /** The one event that may tell the Human about the feedback program, or bring the project's host files to this tmb. */
 const SESSION_START_EVENT = "session-start";
 
+/**
+ * The longest a session start waits for a poll of the remote before it briefs from the record as it
+ * is. A poll that changed nothing asks the remote once per list, one after the other, so the wait
+ * is a few asks long.
+ */
+export const SESSION_START_SYNC_WAIT_MS = 5_000;
+
+/** Polls the project's remote for a session start, waiting no longer than the cap. Never throws. */
+export type SessionStartSync = (projectDir: string, waitMs: number) => Promise<BriefSync>;
+
 type HookOptions = { readonly event: string; readonly host: string | undefined };
 
 export class HookCommand extends ParsedCommand<HookOptions> {
@@ -20,7 +31,10 @@ export class HookCommand extends ParsedCommand<HookOptions> {
   readonly summary = "Answer a host event";
   readonly listing = HIDDEN;
 
-  constructor(private readonly runtime: Runtime) {
+  constructor(
+    private readonly runtime: Runtime,
+    private readonly sync: SessionStartSync = syncBriefly,
+  ) {
     super();
   }
 
@@ -50,6 +64,27 @@ export class HookCommand extends ParsedCommand<HookOptions> {
   protected async execute({ event, host }: HookOptions): Promise<number> {
     const adapter = adapterById(host ?? DEFAULT_HOST_ID);
     const stdinText = await this.runtime.ports.readStdin();
+    // The state's hook brings the remote's changes in first, so the brief is fresh; the role's hook only reads.
+    const sync = event === SESSION_START_EVENT ? await this.syncFirst(adapter, stdinText) : null;
+    try {
+      return this.answer(event, adapter, stdinText);
+    } finally {
+      // This process ends with its answer, so a poll still running is given up: the session's next read of the issues polls.
+      sync?.giveUp();
+    }
+  }
+
+  /** The poll a session start waits for, briefly; null when the input names no project or the poll cannot start. Never throws. */
+  private async syncFirst(adapter: HostAdapter, stdinText: string): Promise<BriefSync | null> {
+    try {
+      const projectDir = adapter.sessionProject?.(stdinText) ?? null;
+      return projectDir === null ? null : await this.sync(projectDir, SESSION_START_SYNC_WAIT_MS);
+    } catch {
+      return null;
+    }
+  }
+
+  private answer(event: string, adapter: HostAdapter, stdinText: string): number {
     const run =
       event === SESSION_START_EVENT
         ? {

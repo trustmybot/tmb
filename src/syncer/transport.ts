@@ -27,8 +27,9 @@ export function ghArgs(request: Request): string[] {
   return args;
 }
 
-export function askThroughGh(cwd: string): Ask {
-  return (request) => runGh(cwd, ghArgs(request));
+/** `stop` ends the `gh` an ask is waiting on; that ask then never answers, as its poll was given up. */
+export function askThroughGh(cwd: string, stop?: AbortSignal): Ask {
+  return (request) => runGh(cwd, ghArgs(request), undefined, stop);
 }
 
 /** One change sent to the remote: the fields of one item, as JSON. */
@@ -46,13 +47,14 @@ export function sendThroughGh(cwd: string): Send {
   return (change) => runGh(cwd, ghSendArgs(change), JSON.stringify(change.fields));
 }
 
-function runGh(cwd: string, args: string[], input?: string): Promise<Answer> {
+function runGh(cwd: string, args: string[], input?: string, stop?: AbortSignal): Promise<Answer> {
   return new Promise((resolve) => {
     const child = execFile(
       "gh",
       args,
-      { cwd, encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
+      { cwd, encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1" }, signal: stop },
       (error, stdout, stderr) => {
+        if (stop?.aborted) return;
         const code = error === null ? null : (error as NodeJS.ErrnoException).code;
         if (code === "ENOENT") return resolve({ sent: false, why: "no_client", said: "gh is not installed" });
         if (error !== null && error.killed) return resolve({ sent: false, why: "no_network", said: "gh timed out" });

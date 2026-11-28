@@ -24,7 +24,7 @@ Everything before [Containment](#containment) is the design. Containment is deta
 | Host events, through the host adapter | The host, at a checkpoint | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push to the base branch is checked even when typed by hand. |
 | Command line | The Human | Every step the Human runs by hand, such as init, onboard and `tmb doctor`, the health check. The list is in the [reference](../reference/README.md). |
-| Dashboard | The Human | A local web page over the record, where the Human also changes issues: a note, a decision, an edit, a close or a reopen. It changes no task ([PERMISSIONS.md](PERMISSIONS.md)). |
+| Dashboard | The Human | A local web page over the record, where the Human also changes issues: a note, a decision, an edit, a close or a reopen. It changes no task ([PERMISSIONS.md](PERMISSIONS.md)). A page's read brings the remote's changes in first ([TRAJECTORY.md](TRAJECTORY.md#when-the-syncer-runs)). |
 | Desktop program | The Human | Planned (trustmybot/tmb#79), with the dashboard built in. |
 
 tmb has no slash commands: each action is a terminal command or a tool the planner calls.

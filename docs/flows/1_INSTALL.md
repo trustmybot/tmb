@@ -112,6 +112,7 @@ What else a session start does:
 | Rule | Detail |
 |---|---|
 | Which record | The nearest record in the session's folder or a folder above it. |
+| The remote first | Before the state is read, tmb reads what changed on the remote, so the open work is fresh ([TRAJECTORY.md](../architecture/TRAJECTORY.md#when-the-syncer-runs)). It waits a few seconds at most: a slow or unreachable remote leaves the record as it is, and the start goes on. The role's text never waits for it. |
 | One line per finding | The planner is told, in one line each: a host-file refresh, what `tmb doctor` would find ("N things need a look"), each pull request that ended since the last session, and a repo whose push gate is off. It runs only doctor's quick checks, asks git and not GitHub, and says nothing when there is nothing to say. |
 | It tidies | With no task open or in review, tmb tries again to remove the worktrees that closed and dropped tasks kept. |
 | Unattended runs | A run with no one to answer is told so first ([ENGINE.md](../architecture/ENGINE.md#unattended-mode)). |

@@ -88,6 +88,8 @@ export interface HostAdapter {
   answerHook(event: string, stdinText: string, run: HookRun): string;
   /** What the Human does in this host to restart tmb's tool server in a running session, in the host's own words. */
   readonly reconnectToolServer: string;
+  /** The project a session start's input names: the folder that holds its record. Null when the input cannot be read. Never throws. */
+  sessionProject?(stdinText: string): string | null;
   /** The title the Human gave the session, from a session start's input, when the host passes it; null otherwise. Never throws. */
   sessionTitle?(stdinText: string): string | null;
   /** The tokens per model a subagent's transcript holds, or null when the host keeps none tmb can read. Never throws. */

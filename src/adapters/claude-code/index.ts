@@ -58,6 +58,10 @@ export class ClaudeCodeAdapter implements HostAdapter {
     return detectProgram(HOST_COMMAND, searchPath);
   }
 
+  sessionProject(stdinText: string): string | null {
+    return this.parts.hooks.projectOf(stdinText);
+  }
+
   sessionTitle(stdinText: string): string | null {
     // Claude Code passes `session_title` at a session start when the Human named the session (`--name` or `/rename`).
     try {
