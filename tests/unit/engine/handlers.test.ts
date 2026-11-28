@@ -48,6 +48,16 @@ function refusal(call: () => unknown): HandlerError {
   throw new Error("expected a HandlerError, but the call succeeded");
 }
 
+async function refusedAsync(call: Promise<unknown>): Promise<HandlerError> {
+  try {
+    await call;
+  } catch (error) {
+    if (error instanceof HandlerError) return error;
+    throw error;
+  }
+  throw new Error("expected a HandlerError, but the call succeeded");
+}
+
 describe("project store", () => {
   test("lives at .tmb/trajectory.db in the project", () => {
     expect(projectDbPath(project)).toBe(path.join(project, ".tmb", "trajectory.db"));
@@ -134,10 +144,10 @@ describe("issue_create", () => {
 });
 
 describe("issue_list", () => {
-  test("returns summaries, filtered by state", () => {
+  test("returns summaries, filtered by state", async () => {
     const open = issueCreate(store, HUMAN, { title: "Open one", body: "a long body" });
     const closed = issueCreate(store, HUMAN, { title: "Closed one" });
-    issueUpdate(store, HUMAN, { id: closed.id, state: "closed" });
+    await issueUpdate(store, HUMAN, { id: closed.id, state: "closed" });
 
     expect(issueList(store, HUMAN, {}).map((issue) => issue.id)).toEqual([open.id, closed.id]);
     expect(issueList(store, HUMAN, { state: "open" })).toEqual([
@@ -174,26 +184,26 @@ describe("issue_get", () => {
 });
 
 describe("issue_update", () => {
-  test("changes only the fields given and records the actor", () => {
+  test("changes only the fields given and records the actor", async () => {
     const issue = issueCreate(store, HUMAN, { title: "Old", body: "Body", milestone: "M1" });
-    const result = issueUpdate(store, WORKER, { id: issue.id, title: "New", milestone: "" });
+    const result = await issueUpdate(store, WORKER, { id: issue.id, title: "New", milestone: "" });
     expect(result.changed.sort()).toEqual(["milestone", "title"]);
     expect(result.issue).toMatchObject({ title: "New", body: "Body", milestone: null, state: "open" });
     expect(history(store, HUMAN, { id: issue.id })[1]?.actor).toEqual(WORKER);
   });
 
-  test("records nothing when nothing changes", () => {
+  test("records nothing when nothing changes", async () => {
     const issue = issueCreate(store, HUMAN, { title: "x" });
-    issueUpdate(store, HUMAN, { id: issue.id, state: "closed" });
-    expect(issueUpdate(store, HUMAN, { id: issue.id, state: "closed" }).changed).toEqual([]);
+    await issueUpdate(store, HUMAN, { id: issue.id, state: "closed" });
+    expect((await issueUpdate(store, HUMAN, { id: issue.id, state: "closed" })).changed).toEqual([]);
     expect(history(store, HUMAN, { id: issue.id })).toHaveLength(2);
   });
 
-  test("needs a change, and an issue that exists", () => {
+  test("needs a change, and an issue that exists", async () => {
     const issue = issueCreate(store, HUMAN, { title: "x" });
-    expect(refusal(() => issueUpdate(store, HUMAN, { id: issue.id })).message).toContain("at least one of state, title, body, milestone");
-    expect(refusal(() => issueUpdate(store, HUMAN, { id: "01KA0000000000000000000000", state: "closed" })).code).toBe("not_found");
-    expect(refusal(() => issueUpdate(store, HUMAN, { id: issue.id, title: "" })).code).toBe("invalid_input");
+    expect((await refusedAsync(issueUpdate(store, HUMAN, { id: issue.id }))).message).toContain("at least one of state, title, body, milestone");
+    expect((await refusedAsync(issueUpdate(store, HUMAN, { id: "01KA0000000000000000000000", state: "closed" }))).code).toBe("not_found");
+    expect((await refusedAsync(issueUpdate(store, HUMAN, { id: issue.id, title: "" }))).code).toBe("invalid_input");
   });
 });
 
@@ -225,9 +235,9 @@ describe("search", () => {
 });
 
 describe("history", () => {
-  test("lists every event of the record, oldest first, and refuses an unknown id", () => {
+  test("lists every event of the record, oldest first, and refuses an unknown id", async () => {
     const issue = issueCreate(store, HUMAN, { title: "x" });
-    issueUpdate(store, WORKER, { id: issue.id, state: "closed" });
+    await issueUpdate(store, WORKER, { id: issue.id, state: "closed" });
     expect(history(store, HUMAN, { id: issue.id }).map((event) => [event.type, event.actor.kind])).toEqual([
       ["created", "human"],
       ["updated", "agent"],

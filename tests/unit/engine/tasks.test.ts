@@ -209,8 +209,8 @@ describe("task_start", () => {
     expectNothingWritten();
   });
 
-  test("refuses a closed issue and a missing one", () => {
-    issueUpdate(store, HUMAN, { id: issueId, state: "closed" });
+  test("refuses a closed issue and a missing one", async () => {
+    await issueUpdate(store, HUMAN, { id: issueId, state: "closed" });
     expect(refusal(() => taskStart(store, PLANNER, spec(), context())).message).toContain("is closed");
     expect(refusal(() => taskStart(store, PLANNER, spec({ issue_id: newId() }), context())).code).toBe("not_found");
     expectNothingWritten();
