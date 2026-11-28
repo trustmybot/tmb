@@ -12,7 +12,7 @@ import { adapter as claudeCode } from "../../../src/adapters/claude-code/index.t
 import { PLUGIN_IMPORT } from "../../../src/adapters/claude-code/migrate-plugin.ts";
 import { HOST_ADAPTERS, type HostAdapter } from "../../../src/adapters/index.ts";
 import { sessionStartLine } from "../../../src/cli/commands/doctor/index.ts";
-import { howFarBehind } from "../../../src/cli/commands/doctor/machine.ts";
+import { howFarBehind, programCheck } from "../../../src/cli/commands/doctor/machine.ts";
 import type { DoctorEnv } from "../../../src/cli/commands/doctor/types.ts";
 import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "../../../src/cli/commands/doctor/use.ts";
 import { openProjectStore, readSettings, TMB_EVENT_TYPES, writeSetting } from "../../../src/engine/index.ts";
@@ -376,5 +376,31 @@ describe("how far behind the installed build is", () => {
     expect(howFarBehind("1.0.0", "1.1.0", installed, newer)).toBe("12 days behind");
     utimesSync(installed, now, now);
     expect(howFarBehind("1.0.0", "1.1.0", installed, newer)).toBeNull();
+  });
+});
+
+describe("the program a kept build runs as", () => {
+  test("a build kept for a project's running sessions is not called a second install", () => {
+    const bin = path.join(root, "bin");
+    const kept = path.join(root, "state", "builds", "1.1.0");
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(kept, { recursive: true });
+    writeFileSync(path.join(bin, "tmb"), "", { mode: 0o755 });
+    writeFileSync(path.join(kept, "tmb"), "", { mode: 0o755 });
+    const finding = programCheck(env(root, { version: "1.1.0", installed: path.join(kept, "tmb"), path: bin, platform: "linux", versionOf: () => "1.2.0" }));
+    expect(finding.status).toBe("ok");
+    expect(finding.summary).toBe("tmb 1.1.0, on the stable channel: the build kept for this project's running sessions; the tmb on the PATH is 1.2.0, and hands over to it until they move");
+  });
+
+  test("an installed file that is neither on the PATH nor a kept build is still named", () => {
+    const bin = path.join(root, "bin");
+    const other = path.join(root, "other");
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    writeFileSync(path.join(bin, "tmb"), "", { mode: 0o755 });
+    writeFileSync(path.join(other, "tmb"), "", { mode: 0o755 });
+    const finding = programCheck(env(root, { installed: path.join(other, "tmb"), path: bin, platform: "linux" }));
+    expect(finding.status).toBe("warn");
+    expect(finding.summary).toContain("is another file");
   });
 });

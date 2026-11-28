@@ -2,7 +2,7 @@
 // folder (trustmybot/tmb#160). Each reads only; a fix runs only after the Human's yes.
 import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
-import { formatBytes, keptBuilds, sessionEntries } from "../../builds.ts";
+import { buildsDir, formatBytes, keptBuilds, sessionEntries } from "../../builds.ts";
 import { CHANNELS, programName } from "../../../engine/index.ts";
 import type { Check, DoctorEnv, Finding } from "./types.ts";
 
@@ -70,7 +70,7 @@ export function installStep(env: DoctorEnv): string {
   return `curl -fsSL ${INSTALLER.unix} | ${vars} sh`;
 }
 
-function programCheck(env: DoctorEnv): Finding {
+export function programCheck(env: DoctorEnv): Finding {
   const name = env.program.name;
   const follows = env.program.channel === null ? "pinned to this version" : `on the ${env.program.channel} channel`;
   if (env.installed === null) return finding("program", { status: "ok", summary: `${name} ${env.version}, ${follows}, runs from source` });
@@ -81,6 +81,16 @@ function programCheck(env: DoctorEnv): Finding {
       status: "warn",
       summary: `${where}; no ${name} is on the PATH, so hosts and git cannot run it by name`,
       fix: { say: `add ${path.dirname(env.installed)} to your PATH, or install it again: ${installStep(env)}` },
+    });
+  }
+  // A project whose sessions have not moved yet runs the build kept for them, which the installed
+  // file hands over to: that is not a second install.
+  const kept = path.relative(real(buildsDir(env.stateDir)), real(env.installed));
+  if (!kept.startsWith("..") && !path.isAbsolute(kept)) {
+    const newer = env.versionOf(onPath);
+    return finding("program", {
+      status: "ok",
+      summary: `${name} ${env.version}, ${follows}: the build kept for this project's running sessions; the ${name} on the PATH${newer === null ? "" : ` is ${newer}, and`} hands over to it until they move`,
     });
   }
   if (real(onPath) !== real(env.installed)) {
