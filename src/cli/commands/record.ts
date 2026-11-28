@@ -1,6 +1,7 @@
 // The record commands: the Human's way into the record. Each one parses its call into one
 // operation, the same an agent's tool call runs, and runs it as the Human.
 import { type Actor, HandlerError, type OperationName, OPERATIONS, openProjectStore, projectRootOf, runningName, type Store } from "../../engine/index.ts";
+import { remoteIssueWriter } from "../../syncer/index.ts";
 import { HUMAN, ParsedCommand, type Output } from "../command.ts";
 
 /** A parsed record call: the operation, its input, and how its result is printed. */
@@ -37,7 +38,7 @@ export abstract class RecordCommand extends ParsedCommand<RecordRequest> {
     }
     try {
       const input = this.inputIn(opened.store, projectDir, cwd, request.input);
-      const result = await OPERATIONS[request.operation].run(opened.store, HUMAN, input, { projectDir });
+      const result = await OPERATIONS[request.operation].run(opened.store, HUMAN, input, { projectDir, remoteIssues: remoteIssueWriter(projectDir) });
       output.out(request.json ? JSON.stringify(result, null, 2) : request.format(result as never));
       return 0;
     } catch (error) {

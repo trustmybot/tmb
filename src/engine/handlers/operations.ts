@@ -8,12 +8,14 @@ import {
   type IssueChanges,
   type IssueState,
   type IssueSummary,
+  type MirroredRow,
   SEARCH_LIMIT_DEFAULT,
   SEARCH_LIMIT_MAX,
   type SearchHit,
   type Store,
   type StoredEvent,
 } from "../store/index.ts";
+import type { OperationContext, RemoteIssueEdit, RemoteIssueWriter } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { type InputSchema, NOT_BLANK, RECORD_ID, validateInput } from "./input.ts";
 
@@ -100,6 +102,8 @@ export class IssueService {
   constructor(
     private readonly store: Store,
     private readonly actor: Actor,
+    /** Writes a change to a mirrored issue on its remote; without it, a mirrored issue is not changed. */
+    private readonly remoteIssues?: RemoteIssueWriter,
   ) {}
 
   create(input: unknown): Issue {
@@ -119,8 +123,11 @@ export class IssueService {
     return { issue, discussions: this.store.listDiscussions(id), newestDecision: this.store.newestDecision(id) };
   }
 
-  /** Records only the fields that differ; a request that changes nothing records nothing. */
-  update(input: unknown): IssueUpdateResult {
+  /**
+   * Records only the fields that differ; a request that changes nothing records nothing. A change
+   * to a mirrored issue is written to its remote first and recorded only once the remote took it.
+   */
+  async update(input: unknown): Promise<IssueUpdateResult> {
     const request = validateInput<{ id: string } & Omit<IssueChanges, "milestone"> & { milestone?: string }>("issue_update", issueUpdateSchema, input);
     if (!UPDATABLE.some((field) => request[field] !== undefined)) {
       throw new HandlerError("invalid_input", `issue_update needs at least one of ${UPDATABLE.join(", ")}`);
@@ -138,8 +145,48 @@ export class IssueService {
     }
     const changed = Object.keys(changes) as (keyof IssueChanges)[];
     if (changed.length === 0) return { issue: current, changed };
-    this.store.updateIssue(this.actor, request.id, changes);
+    const row = this.store.mirror.rowOf("issue", request.id);
+    if (row !== null && row.remote_id !== null) await this.updateMirrored(row, changes);
+    else this.store.updateIssue(this.actor, request.id, changes);
     return { issue: this.requireIssue(request.id), changed };
+  }
+
+  /**
+   * The remote is the truth for a mirrored issue: the change goes to the remote first, and the
+   * record then takes what the remote holds after it, so the next poll finds nothing new. A change
+   * the remote did not take is refused and leaves the record as it was.
+   */
+  private async updateMirrored(row: MirroredRow, changes: IssueChanges): Promise<void> {
+    const id = row.id;
+    const remote = String(row.remote);
+    const url = String(row.remote_url ?? "");
+    const refuse = (why: string): never => {
+      throw new HandlerError("refused", `issue ${id} is mirrored from ${remote} and was not changed: ${why}. The record is unchanged.`);
+    };
+    if (row.remote_gone_at !== null) refuse("it is gone from the remote, deleted or out of reach");
+    if (this.remoteIssues === undefined) refuse("this way into tmb cannot reach the remote; change it from the dashboard or the planner's chat");
+    const edit: RemoteIssueEdit = { title: changes.title, body: changes.body, state: changes.state };
+    if (changes.milestone === null) edit.milestone = null;
+    else if (changes.milestone !== undefined) {
+      const milestone = this.store.mirror.milestoneTitled(remote, changes.milestone);
+      if (milestone === null) refuse(`the remote has no milestone named ${JSON.stringify(changes.milestone)} that the record knows of; make it on the remote first, or pick one it has`);
+      edit.milestone = { remoteId: String(milestone!.remote_id) };
+    }
+    const answer = await this.remoteIssues!({ remote, url }, edit);
+    if (!answer.ok) return refuse(answer.why);
+    const held = answer.issue;
+    const after: Record<string, unknown> = {};
+    if (changes.title !== undefined) after.title = held.title;
+    if (changes.body !== undefined) after.body = held.body;
+    if (changes.state !== undefined) Object.assign(after, { state: held.state, state_reason: held.stateReason });
+    if (changes.milestone !== undefined) {
+      after.milestone_id = held.milestoneRemoteId === null ? null : (this.store.mirror.findMirrored("milestone", held.milestoneRemoteId)?.id ?? null);
+    }
+    // Read again after the wait: a poll may have brought the same change in meanwhile.
+    const now = this.store.mirror.rowOf("issue", id) ?? row;
+    const data = Object.fromEntries(Object.entries(after).filter(([column, value]) => (now[column] ?? null) !== value));
+    if (Object.keys(data).length === 0) return;
+    this.store.mirror.updateMirrored(this.actor, "issue", id, { ...data, remote_updated_at: held.remoteUpdatedAt });
   }
 
   appendDiscussion(input: unknown): Discussion {
@@ -172,7 +219,8 @@ export class IssueService {
 export const issueCreate = (store: Store, actor: Actor, input: unknown): Issue => new IssueService(store, actor).create(input);
 export const issueList = (store: Store, actor: Actor, input: unknown): IssueSummary[] => new IssueService(store, actor).list(input);
 export const issueGet = (store: Store, actor: Actor, input: unknown): IssueDetail => new IssueService(store, actor).get(input);
-export const issueUpdate = (store: Store, actor: Actor, input: unknown): IssueUpdateResult => new IssueService(store, actor).update(input);
+export const issueUpdate = (store: Store, actor: Actor, input: unknown, context?: OperationContext): Promise<IssueUpdateResult> =>
+  new IssueService(store, actor, context?.remoteIssues).update(input);
 export const discussionAppend = (store: Store, actor: Actor, input: unknown): Discussion => new IssueService(store, actor).appendDiscussion(input);
 export const search = (store: Store, actor: Actor, input: unknown): SearchHit[] => new IssueService(store, actor).search(input);
 export const history = (store: Store, actor: Actor, input: unknown): StoredEvent[] => new IssueService(store, actor).history(input);

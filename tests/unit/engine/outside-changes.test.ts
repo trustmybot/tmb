@@ -78,6 +78,19 @@ describe("what the planner is told", () => {
     expect(takeOutsideChanges(store)).toContain(`${id} "Synced": closed, by the remote, through tmb's syncer at`);
   });
 
+  test("the syncer's milestone, label and comment changes name what changed and the issue", () => {
+    const repo = store.mirror.repoId(SYNCER, ".");
+    const milestone = store.mirror.createMirrored(SYNCER, "milestone", { title: "Level 2", state: "open", repo_id: repo, remote: "github.com/o/r", remote_id: "M2" });
+    const id = store.mirror.createMirrored(SYNCER, "issue", { title: "Synced", body: "", remote: "github.com/o/r", remote_id: "I1", remote_url: "https://github.com/o/r/issues/1" });
+    const comment = store.mirror.createMirrored(SYNCER, "discussion", { issue_id: id, kind: "comment", body: "first", remote: "github.com/o/r", remote_id: "C1" });
+    takeOutsideChanges(store);
+    store.mirror.updateMirrored(SYNCER, "issue", id, { milestone_id: milestone, labels: ["bug"] });
+    store.mirror.updateMirrored(SYNCER, "discussion", comment, { body: "edited words" });
+    const lines = takeOutsideChanges(store).split("\n").filter((line) => line.startsWith("- "));
+    expect(lines[0]).toContain(`${id} "Synced": milestone set to "Level 2", labels changed, by the remote`);
+    expect(lines[1]).toContain(`${id} "Synced": comment edited: "edited words", by the remote`);
+  });
+
   test("a long list is cut, and the rest is counted as told", () => {
     const id = store.createIssue(PLANNER, { title: "Busy" });
     takeOutsideChanges(store);

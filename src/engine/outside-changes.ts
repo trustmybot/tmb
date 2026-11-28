@@ -24,24 +24,34 @@ function who(actor: Actor): string {
   return actor.kind === "human" ? "the Human" : "the remote, through tmb's syncer";
 }
 
-/** What an issue's updated event changed, in a few words. */
-function issueChange(data: Record<string, unknown>): string {
+/** What an issue's updated event changed, in a few words. A mirrored milestone is named by its title. */
+function issueChange(store: Store, data: Record<string, unknown>): string {
   const parts: string[] = [];
   if (data.state === "closed") parts.push("closed");
   if (data.state === "open") parts.push("reopened");
   if ("title" in data) parts.push(`retitled ${quoted(data.title)}`);
   if ("body" in data) parts.push("body changed");
   if ("milestone" in data) parts.push(data.milestone === null ? "milestone removed" : `milestone set to ${quoted(data.milestone)}`);
+  if ("milestone_id" in data) {
+    const milestone = data.milestone_id === null ? null : store.mirror.rowOf("milestone", String(data.milestone_id));
+    parts.push(data.milestone_id === null ? "milestone removed" : `milestone set to ${quoted(milestone?.title)}`);
+  }
+  if ("labels" in data) parts.push("labels changed");
+  if ("assignees" in data) parts.push("assignees changed");
+  if (typeof data.remote_gone_at === "string") parts.push("gone from the remote");
   return parts.length === 0 ? "changed" : parts.join(", ");
 }
 
 /** One change as a line: the issue, what changed, who and when. */
 function changeLine(store: Store, event: StoredEvent): string {
   const { data } = event;
-  const issueId = event.recordKind === "discussion" ? String(data.issue_id ?? "") : event.recordId;
+  // An edit of a mirrored comment carries only what changed, so its issue is read from its row.
+  const discussion = event.recordKind === "discussion" && event.type !== "created" ? store.mirror.rowOf("discussion", event.recordId) : null;
+  const issueId = event.recordKind === "discussion" ? String(data.issue_id ?? discussion?.issue_id ?? "") : event.recordId;
   let what: string;
-  if (event.recordKind === "issue") what = event.type === "created" ? "recorded" : issueChange(data);
-  else what = event.type === "created" ? `${String(data.kind ?? "note")} added: ${quoted(data.body)}` : "a note or decision changed";
+  if (event.recordKind === "issue") what = event.type === "created" ? "recorded" : issueChange(store, data);
+  else if (event.type === "created") what = `${String(data.kind ?? "note")} added: ${quoted(data.body)}`;
+  else what = discussion?.kind === "comment" && "body" in data ? `comment edited: ${quoted(data.body)}` : "a note or decision changed";
   const title = store.getIssue(issueId)?.title;
   return `- ${issueId}${title === undefined ? "" : ` ${quoted(title)}`}: ${what}, by ${who(event.actor)} at ${event.at}`;
 }

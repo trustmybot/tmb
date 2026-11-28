@@ -7,7 +7,33 @@ import { HandlerError } from "./errors.ts";
 /** Where an operation runs: the project's folder, and how long each check may take. */
 /** `unattended` is true when no one can answer in the run the call comes from. */
 /** `feedback` is the feedback program's environment, given by the door that runs the planner's tools. */
-export type OperationContext = { projectDir: string; checkTimeoutMs?: number; unattended?: boolean; feedback?: FeedbackEnv };
+/** `remoteIssues` writes a change to a mirrored issue on its remote; given by the door, which wires the syncer. */
+export type OperationContext = { projectDir: string; checkTimeoutMs?: number; unattended?: boolean; feedback?: FeedbackEnv; remoteIssues?: RemoteIssueWriter };
+
+/** Which remote issue a write is for: the remote repository as host/owner/name, and the issue's address there. */
+export type RemoteIssueTarget = { remote: string; url: string };
+
+/** A change to a mirrored issue as the remote takes it. A milestone is named by the remote's own id; null removes it. */
+export type RemoteIssueEdit = { title?: string; body?: string; state?: "open" | "closed"; milestone?: { remoteId: string } | null };
+
+/** What the remote holds after it took the change, in the columns the syncer folds, so the next poll finds nothing new. */
+export type RemoteIssueState = {
+  title: string;
+  body: string;
+  state: "open" | "closed";
+  stateReason: string | null;
+  milestoneRemoteId: string | null;
+  remoteUpdatedAt: string;
+};
+
+/** The remote took the change, or it did not and `why` says so in plain words. */
+export type RemoteIssueAnswer = { ok: true; issue: RemoteIssueState } | { ok: false; why: string };
+
+/**
+ * Writes a change to a mirrored issue on its remote, through the user's own login. The engine
+ * names no remote: the command line hands it the syncer's writer.
+ */
+export type RemoteIssueWriter = (target: RemoteIssueTarget, edit: RemoteIssueEdit) => Promise<RemoteIssueAnswer>;
 
 export const OPEN = "open";
 export const CLOSED = "closed";

@@ -68,7 +68,7 @@ export class Store {
   readonly roleChanges: RoleChangeRepository;
   readonly projectRoles: ProjectRoleRepository;
   readonly audit: AuditRepository;
-  /** The rows mirrored from the remote and where each poll stopped; only the syncer writes them. */
+  /** The rows mirrored from the remote and where each poll stopped: the syncer writes them, and a change tmb first made on the remote. */
   readonly mirror: MirrorRepository;
 
   /** Use openStore; it checks the file and its schema version first. */

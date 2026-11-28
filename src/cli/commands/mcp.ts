@@ -4,7 +4,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { HOST_ADAPTERS } from "../../adapters/index.ts";
-import { syncTrigger } from "../../syncer/index.ts";
+import { remoteIssueWriter, syncTrigger } from "../../syncer/index.ts";
 import { openProjectStore, projectRootOf, recordProgramMove, runningProgram, serveTools, type SubagentRole } from "../../engine/index.ts";
 import { HIDDEN, HUMAN, ParsedCommand } from "../command.ts";
 import type { Runtime } from "../runtime.ts";
@@ -86,7 +86,9 @@ export class McpCommand extends ParsedCommand<McpOptions> {
     const onRoles = adapter?.writeRoles === undefined ? undefined : (dir: string, roles: readonly SubagentRole[]) => void adapter.writeRoles!(dir, roles);
     // The session's start and the planner's reads of the issues bring the remote's changes in, at most once a floor.
     const onRecordRead = syncTrigger();
-    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders, onRoles, onRecordRead });
+    // A change to a mirrored issue is written to its remote first, through the syncer.
+    const remoteIssues = remoteIssueWriter(projectDir);
+    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders, onRoles, onRecordRead, remoteIssues });
   }
 
   /** A session's front: its engine serves the tools; a session start looks for an update in the background, and the session's end may apply it. */
