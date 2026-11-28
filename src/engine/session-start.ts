@@ -280,14 +280,7 @@ export function sessionStartContext(
   doctor?: (projectDir: string) => string | null,
   texts: SessionStartTexts = { withRole: true },
 ): string {
-  const reviewer = reviewsHere(projectDir, host);
-  const head = unattended ? UNATTENDED_INSTRUCTION : "";
-  const budget = texts.budget === undefined ? undefined : texts.budget - (head === "" ? 0 : head.length + 2);
-  const state = reviewer
-    ? fitted([joined([reviewerState(projectDir, host!), hostFilesSection(refreshed, unattended)])], budget)
-    : plannerState(projectDir, unattended, host, feedback, refreshed, doctor, budget);
-  const role = texts.withRole ? namingProgram(reviewer ? reviewerRole : plannerRole) : "";
-  return joined([head, role, state]);
+  return new SessionStart({ projectDir, unattended, host, feedback, refreshed, doctor }).context(texts);
 }
 
 /** The parts that have text, a blank line between each, ending in one newline; empty when none has. */
@@ -318,32 +311,6 @@ function fitted(texts: readonly string[], budget: number | undefined): string {
   if (fit !== undefined || budget === undefined) return fit ?? "";
   const note = `\n\n…cut to fit tmb's budget of ${budget} characters for this text; issue_list, task_list, settings_get and graph_map show the rest.\n`;
   return `${texts[0]!.slice(0, Math.max(0, budget - note.length)).trimEnd()}${note}`;
-}
-
-/**
- * The one line on refreshing the project's host files after an update (trustmybot/tmb#128),
- * which the role tells the Human, or names in its answer when no one can answer.
- */
-function hostFilesSection(refreshed: string | null, unattended: boolean): string {
-  if (refreshed === null) return "";
-  const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
-  return `${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tell}`;
-}
-
-/**
- * The planner's one line on what \`tmb doctor\` finds (trustmybot/tmb#160), run after the session
- * start's own clean-up so it counts only what is left. Never throws.
- */
-function doctorSection(projectDir: string, doctor: ((projectDir: string) => string | null) | undefined, unattended: boolean): string {
-  let line: string | null = null;
-  try {
-    line = doctor?.(projectDir) ?? null;
-  } catch {
-    line = null;
-  }
-  if (line === null) return "";
-  const tell = unattended ? "Name it in your answer." : "Tell the Human in one line.";
-  return `${DOCTOR_HEADING}\n\n${oneLine(line)} ${tell}`;
 }
 
 /** The feedback program's first-run section; never throws, as a session start must not fail. */
@@ -381,44 +348,95 @@ function endedPullRequests(store: Store, projectDir: string, host?: string): str
   return moved.length === 0 ? "" : `\n\n${PULL_REQUESTS_ENDED_HEADING}\n\n${moved.map((line) => `- ${line}`).join("\n")}`;
 }
 
-/**
- * The planner's state, fitted to the budget: the open work, the pull requests that ended, empty
- * settings and the map, at each list size, then the findings. Each step with an effect runs once.
- * Never throws: a missing record gives no state, a bad one a line naming the problem.
- */
-function plannerState(
-  projectDir: string,
-  unattended: boolean,
-  host: string | undefined,
-  feedback: FeedbackEnv | undefined,
-  refreshed: string | null,
-  doctor: ((projectDir: string) => string | null) | undefined,
-  budget: number | undefined,
-): string {
-  const record = recordStates(projectDir, unattended, host, budget === undefined ? [listSizes()[0]!] : listSizes());
-  const findings = [hostFilesSection(refreshed, unattended), doctorSection(projectDir, doctor, unattended)];
-  // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
-  const told = unattended || feedback === undefined ? "" : feedbackSection(feedback);
-  return fitted(
-    record.map((state) => joined([state, ...findings, told])),
-    budget,
-  );
+/** What a session start is told: the project, whether anyone can answer, the host, and what the adapter found before it. */
+type SessionStartOptions = {
+  readonly projectDir: string;
+  readonly unattended: boolean;
+  readonly host: string | undefined;
+  readonly feedback: FeedbackEnv | undefined;
+  /** The line on the host files an update refreshed; null when none were. */
+  readonly refreshed: string | null;
+  readonly doctor: ((projectDir: string) => string | null) | undefined;
+};
+
+/** One session start: the texts its host is given, built from the options it was started with. */
+class SessionStart {
+  constructor(private readonly options: SessionStartOptions) {}
+
+  context(texts: SessionStartTexts): string {
+    const { projectDir, unattended, host } = this.options;
+    const reviewer = reviewsHere(projectDir, host);
+    const head = unattended ? UNATTENDED_INSTRUCTION : "";
+    const budget = texts.budget === undefined ? undefined : texts.budget - (head === "" ? 0 : head.length + 2);
+    const state = reviewer ? fitted([joined([reviewerState(projectDir, host!), this.hostFilesSection()])], budget) : this.plannerState(budget);
+    const role = texts.withRole ? namingProgram(reviewer ? reviewerRole : plannerRole) : "";
+    return joined([head, role, state]);
+  }
+
+  /**
+   * The planner's state, fitted to the budget: the open work, the pull requests that ended, empty
+   * settings and the map, at each list size, then the findings. Each step with an effect runs once.
+   * Never throws: a missing record gives no state, a bad one a line naming the problem.
+   */
+  private plannerState(budget: number | undefined): string {
+    const { unattended, feedback } = this.options;
+    const record = this.recordStates(budget === undefined ? [listSizes()[0]!] : listSizes());
+    const findings = [this.hostFilesSection(), this.doctorSection()];
+    // Only the planner's attended session tells the Human about the feedback program, once per program on this machine.
+    const told = unattended || feedback === undefined ? "" : feedbackSection(feedback);
+    return fitted(
+      record.map((state) => joined([state, ...findings, told])),
+      budget,
+    );
+  }
+
+  /** The record's part of the planner's state at each list size; one line naming the problem when it cannot be read, none when there is no record. */
+  private recordStates(sizes: readonly ListSizes[]): string[] {
+    const { projectDir, unattended, host } = this.options;
+    const opened = openProjectStore(projectDir, { create: false });
+    if (!opened.ok) return [opened.error.failure === "missing" ? "" : `tmb could not read the record: ${oneLine(opened.error)}`];
+    try {
+      tidyClosedTasks(opened.store, projectDir);
+      const ended = endedPullRequests(opened.store, projectDir, host);
+      const settings = emptySettingsSection(opened.store, projectDir, unattended);
+      return sizes.map((size) => `${openWork(opened.store, size.work)}${ended}${settings}${projectMapSection(projectDir, opened.store, size.dirs)}`);
+    } catch (error) {
+      return [`tmb could not read the record: ${oneLine(error)}`];
+    } finally {
+      opened.store.close();
+    }
+  }
+
+  /**
+   * The one line on refreshing the project's host files after an update (trustmybot/tmb#128),
+   * which the role tells the Human, or names in its answer when no one can answer.
+   */
+  private hostFilesSection(): string {
+    const { refreshed, unattended } = this.options;
+    if (refreshed === null) return "";
+    return `${HOST_FILES_HEADING}\n\n${oneLine(refreshed)} ${tellLine(unattended)}`;
+  }
+
+  /**
+   * The planner's one line on what \`tmb doctor\` finds (trustmybot/tmb#160), run after the session
+   * start's own clean-up so it counts only what is left. Never throws.
+   */
+  private doctorSection(): string {
+    const { projectDir, doctor, unattended } = this.options;
+    let line: string | null = null;
+    try {
+      line = doctor?.(projectDir) ?? null;
+    } catch {
+      line = null;
+    }
+    if (line === null) return "";
+    return `${DOCTOR_HEADING}\n\n${oneLine(line)} ${tellLine(unattended)}`;
+  }
 }
 
-/** The record's part of the planner's state at each list size; one line naming the problem when it cannot be read, none when there is no record. */
-function recordStates(projectDir: string, unattended: boolean, host: string | undefined, sizes: readonly ListSizes[]): string[] {
-  const opened = openProjectStore(projectDir, { create: false });
-  if (!opened.ok) return [opened.error.failure === "missing" ? "" : `tmb could not read the record: ${oneLine(opened.error)}`];
-  try {
-    tidyClosedTasks(opened.store, projectDir);
-    const ended = endedPullRequests(opened.store, projectDir, host);
-    const settings = emptySettingsSection(opened.store, projectDir, unattended);
-    return sizes.map((size) => `${openWork(opened.store, size.work)}${ended}${settings}${projectMapSection(projectDir, opened.store, size.dirs)}`);
-  } catch (error) {
-    return [`tmb could not read the record: ${oneLine(error)}`];
-  } finally {
-    opened.store.close();
-  }
+/** How a finding reaches the Human: told in one line, or named in the answer when no one can answer. */
+function tellLine(unattended: boolean): string {
+  return unattended ? "Name it in your answer." : "Tell the Human in one line.";
 }
 
 export { plannerRole, reviewerRole };
