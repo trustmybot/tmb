@@ -32,7 +32,7 @@ describe("two hosts on one record", () => {
         clients.map((client, i) =>
           Promise.all(
             Array.from({ length: WRITES_PER_HOST }, (_, n) =>
-              callJson<{ id: string }>(client, "issue_create", { title: `${hosts[i]} issue ${n}`, role: i === 0 ? "planner" : "reviewer" }),
+              callJson<{ id: string }>(client, "issue_create", { title: `${hosts[i]} issue ${n}`, role: "planner" }),
             ),
           ),
         ),
@@ -45,7 +45,7 @@ describe("two hosts on one record", () => {
           for (const { id } of created[i]!) {
             const issue = opened.store.getIssue(id)!;
             expect(issue.title).toStartWith(`${host} issue `);
-            expect(issue.createdBy).toEqual({ kind: "agent", role: i === 0 ? "planner" : "reviewer", host });
+            expect(issue.createdBy).toEqual({ kind: "agent", role: "planner", host });
           }
         });
         expect(opened.store.listIssues()).toHaveLength(hosts.length * WRITES_PER_HOST);

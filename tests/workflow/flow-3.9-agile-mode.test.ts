@@ -41,7 +41,7 @@ describe("the review of a feature branch", () => {
       // Only a reviewer the host started records a verdict.
       const verdict = { feature: "feat/greet", commit: firstTip, verdict: "fail", blocking: ["src/greet.ts:1 greet(undefined) says 'hi undefined'"] };
       expect(await callRefused(client, "review_record", { ...verdict, role: "reviewer" })).toContain("no reviewer run is open");
-      expect(await callRefused(client, "review_record", { ...verdict, role: "planner" })).toContain("for the reviewer");
+      expect(await callRefused(client, "review_record", { ...verdict, role: "planner" })).toContain("the planner may not record a review verdict");
       const shownBrief = tmb(["feature", "brief", "feat/greet"], project);
       expect(shownBrief).toContain("Covered at the tip: not yet");
 

@@ -104,7 +104,7 @@ describe("Truest mode: every task is reviewed before its push", () => {
       const fail = { id: task.id, commit: first, verdict: "fail", blocking: ["src/lines.txt:2 shouts"] };
       expect(await callRefused(client, "task_review", { ...fail, role: "reviewer" })).toContain("no reviewer run is open");
       expect(startSubagent(project, "reviewer", `${brief.review.reviewLine}\nReview the task.`)).toBeNull();
-      expect(await callRefused(client, "task_review", { ...fail, role: "planner" })).toContain("for the reviewer");
+      expect(await callRefused(client, "task_review", { ...fail, role: "planner" })).toContain("the planner may not record a review verdict");
       expect(await callJson(client, "task_review", { ...fail, role: "reviewer" })).toMatchObject({ state: "open", covered: false });
       stopSubagent(project, "reviewer");
       expect((await callJson(client, "task_brief", { id: task.id })).state).toBe("open");
