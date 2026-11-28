@@ -33,7 +33,8 @@ flowchart LR
 
 **The docs are the ground truth, and code follows them.**
 
-- **Example.** A change in behaviour starts with a change to the design page.
+- **Example 1.** A change in behaviour starts with a change to the design page.
+- **Example 2.** The docs site is built from `docs/` on every merge to `dev`, by `.github/workflows/docs.yml`. Nothing is edited on the site: `docs/` is the one source.
 - **Edge case.** The docs and the code disagree. The disagreement goes to the Human before either side is changed ([docs/README.md](../README.md#when-two-things-disagree)).
 
 ## Branches

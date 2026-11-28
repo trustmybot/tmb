@@ -180,4 +180,3 @@ In tmb the session-start hook is the only one that injects context: it puts the 
 - [`ROLES.md`](../architecture/ROLES.md) — agent roles and boundaries.
 - [`FLOWS.md`](../flows/FLOWS.md) — workflows: who acts, what each step guarantees, and the state each flow leaves.
 - [the schema in `TRAJECTORY.md`](../architecture/TRAJECTORY.md#details-schema) — schema.
-- [`common.ts`](../../src/engine/handlers/common.ts) — defines the `requireRole` check behind layer 1; each tool's allowed roles are set at its `requireRole(...)` call in [`handlers/*.ts`](../../src/engine/handlers/).

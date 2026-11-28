@@ -90,7 +90,7 @@ Planned (trustmybot/tmb#260): a gate on GitHub that an rc must pass before it pu
 
 ## 5. The local chain gates an rc
 
-**An rc is tagged from `dev` only after the whole chain passes on a maintainer's own machine.** The maintainer runs it in the container, with a model login and the session steps: see [the whole chain in a container](../../tests/README.md#the-whole-chain-in-a-container). The run on GitHub comes after the local one, never in its place.
+**An rc is tagged from `dev` only after the whole chain passes on a maintainer's own machine.** The maintainer runs it in the container, with a model login and the session steps: see [the whole chain in a container](https://github.com/trustmybot/tmb/blob/dev/tests/README.md#the-whole-chain-in-a-container). The run on GitHub comes after the local one, never in its place.
 
 - **Example 1.** The chain passes locally on a `dev` commit. The maintainer may tag that commit.
 - **Example 2.** The `chain` job is green on GitHub, but nobody ran the chain locally. No rc is tagged: the GitHub job leaves out the model steps.
