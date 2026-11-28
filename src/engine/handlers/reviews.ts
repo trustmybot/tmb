@@ -21,7 +21,6 @@ export type Verdict = (typeof VERDICTS)[number];
 
 /** The state of a feature branch once the engine has opened its pull request. */
 export { PR_OPEN };
-/** What an audit entry of a Human waiver is about. */
 
 const PR_TIMEOUT_MS = 120_000;
 
@@ -86,22 +85,6 @@ export type FeaturePrResult = {
 /** The line that names a feature branch to the reviewer. */
 export function reviewLine(name: string): string {
   return `feature=${name}`;
-}
-
-function requireFeature(store: Store, name: string): Feature {
-  const feature = store.findFeature(name);
-  if (!feature) {
-    const names = store.listFeatures().map((each) => each.name);
-    throw new HandlerError("not_found", `no feature branch ${name} in the record${names.length === 0 ? "" : `; it holds ${names.join(", ")}`}`);
-  }
-  return feature;
-}
-
-/** A feature branch that takes work: open, or with its pull request open, where fix tasks land (trustmybot/tmb#168). */
-function requireOpenFeature(store: Store, name: string, doing: string): Feature {
-  const feature = requireFeature(store, name);
-  if (feature.state !== OPEN && feature.state !== PR_OPEN && feature.state !== READY) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
-  return feature;
 }
 
 function findingsOf(review: Review): Finding[] {
@@ -241,14 +224,6 @@ export const featureBriefSchema: InputSchema = {
   additionalProperties: false,
 };
 
-export function featureBrief(store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureBrief {
-  const { feature } = validateInput<{ feature: string }>("feature_brief", featureBriefSchema, input);
-  const brief = featureBriefOf(store, context.projectDir, requireFeature(store, feature));
-  // A reviewer host that already gave a verdict in this session reviews again in a new run.
-  if (actor.kind === "agent" && actor.role === "reviewer") ensureHostReviewerRun(store, actor.host);
-  return brief;
-}
-
 // --- review_record ------------------------------------------------------------------------
 
 const FINDING_ITEM = { type: "string", pattern: NOT_BLANK } as const;
@@ -280,55 +255,6 @@ export const reviewRecordSchema: InputSchema = {
 
 type ReviewRecordInput = { feature: string; commit: string; verdict: Verdict; blocking?: string[]; notes?: string[] };
 
-export function reviewRecord(store: Store, actor: Actor, input: unknown, context: OperationContext): ReviewRecordResult {
-  const given = validateInput<ReviewRecordInput>("review_record", reviewRecordSchema, input);
-  if (actor.kind === "human") {
-    throw new HandlerError("refused", `only the reviewer records a review; the Human waives one instead, with \`${runningName()} feature waive <name> --reason <text>\``);
-  }
-  requireRole(actor, "review_record", ["reviewer"]);
-  // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
-  if (openRunsOf(store, actor.host).length === 0) {
-    throw new HandlerError(
-      "refused",
-      "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
-    );
-  }
-  const blocking = given.blocking ?? [];
-  const notes = given.notes ?? [];
-  if (given.verdict === "pass" && blocking.length > 0) throw new HandlerError("invalid_input", "a pass names no blocking finding; with one, the verdict is fail");
-  if (given.verdict === "fail" && blocking.length === 0) throw new HandlerError("invalid_input", "a fail names at least one blocking finding");
-
-  const feature = requireOpenFeature(store, given.feature, "it takes no review");
-  const dir = featureDir(store, context.projectDir, feature);
-  const tip = featureTip(dir, feature);
-  const resolved = runGit(dir, ["rev-parse", "--verify", "--quiet", `${given.commit}^{commit}`]);
-  if (!resolved.ok || resolved.stdout !== tip) {
-    throw new HandlerError(
-      "refused",
-      `the feature branch ${feature.name} is at ${tip}, not at the commit reviewed (${given.commit}); read feature_brief again and review the branch at its tip`,
-    );
-  }
-
-  const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
-  // The review names the run that wrote it, and that run its feature branch, since a branch review's start prompt may not name it (trustmybot/tmb#135).
-  const run = openRunsOf(store, actor.host)[0]!;
-  const id = store.transaction(() => {
-    const written = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip, runId: run.id });
-    if (run.featureId === null && run.taskId === null) store.setRunFeature(actor, run.id, feature.id);
-    return written;
-  });
-  const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
-  if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, FINISHED);
-  const mark = markReviewed(store, actor, dir, { featureId: feature.id }, tip, given.verdict, blocking.length);
-  const covered = given.verdict === "pass";
-  const next = covered
-    ? hasOrigin(dir)
-      ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
-      : `the repository has no remote, so no pull request opens: the planner calls feature_pr for ${feature.name}, which records it ready for the Human to merge locally`
-    : `the planner reworks each blocking finding as a task on ${feature.name}, then starts the reviewer again`;
-  return { review, feature: feature.name, covered, next, mark };
-}
-
 // --- feature_waive ------------------------------------------------------------------------
 
 export const featureWaiveSchema: InputSchema = {
@@ -340,19 +266,6 @@ export const featureWaiveSchema: InputSchema = {
   required: ["feature", "reason"],
   additionalProperties: false,
 };
-
-export function featureWaive(store: Store, actor: Actor, input: unknown, context: OperationContext): WaiveResult {
-  const given = validateInput<{ feature: string; reason: string }>("feature_waive", featureWaiveSchema, input);
-  if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
-  const feature = requireOpenFeature(store, given.feature, "there is no review to waive");
-  const dir = featureDir(store, context.projectDir, feature);
-  const commit = featureTip(dir, feature);
-  const reason = given.reason.trim();
-  const id = store.recordWaiver(actor, { featureId: feature.id, commitSha: commit, reason, detail: { feature: feature.name } });
-  const waiver = store.getWaiver(id)!;
-  const mark = markReviewed(store, actor, dir, { featureId: feature.id }, commit, "waiver", reason);
-  return { id, feature: feature.name, commit, reason, at: waiver.createdAt, mark };
-}
 
 // --- feature_pr ---------------------------------------------------------------------------
 
@@ -367,8 +280,17 @@ export const featurePrSchema: InputSchema = {
   additionalProperties: false,
 };
 
+/** A pull request gh opened, by its address, or what went wrong. */
+export type OpenedPullRequest = { ok: true; url: string } | { ok: false; why: string };
+
+/** GitHub's pull requests as the engine opens and finds them; tests pass a fake. */
+export interface PullRequests {
+  open(projectDir: string, args: readonly string[]): OpenedPullRequest;
+  existing(projectDir: string, branch: string): string | null;
+}
+
 /** Opens the pull request with the GitHub command line; returns its address or what went wrong. */
-export function openPullRequest(projectDir: string, args: readonly string[]): { ok: true; url: string } | { ok: false; why: string } {
+export function openPullRequest(projectDir: string, args: readonly string[]): OpenedPullRequest {
   const result = spawnSync("gh", ["pr", "create", ...args], {
     cwd: projectDir,
     encoding: "utf8",
@@ -395,59 +317,167 @@ export function existingPullRequest(projectDir: string, branch: string): string 
   return /^https?:\/\/\S+$/.test(url) ? url : null;
 }
 
-export function featurePr(store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult {
-  const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
-  requireRole(actor, "feature_pr", ["planner"]);
-  // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
-  const feature = requireFeature(store, given.feature);
-  // A ready branch (no remote) may ask again: for the merge command, or for a pull request once a remote was added.
-  if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN && feature.state !== READY) {
-    throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}, so its pull request does not open again`);
-  }
-  const brief = featureBriefOf(store, context.projectDir, feature);
-  if (brief.coveredBy === null) {
-    const newest = brief.reviews.at(-1);
-    const why =
-      newest === undefined
-        ? "no reviewer has reviewed it"
-        : newest.commit !== brief.tip
-          ? `its newest review was at ${newest.commit}, and the branch has moved since`
-          : `its newest review at the tip is a ${newest.verdict}`;
-    throw new HandlerError(
-      "refused",
-      `the pull request of ${feature.name} opens only after the reviewer passes the branch at its tip ${brief.tip}, or the Human waives the review: ${why}. Start the reviewer with the ${reviewLine(feature.name)} line in its prompt, or ask the Human to run \`${runningName()} feature waive ${feature.name} --reason <text>\`.`,
-    );
+/** The GitHub command line's pull requests. */
+export const GH_PULL_REQUESTS: PullRequests = { open: openPullRequest, existing: existingPullRequest };
+
+/** The review of a whole feature branch for one caller: its brief, the verdict, the Human's waiver and its pull request. */
+export class FeatureReviewService {
+  constructor(
+    private readonly store: Store,
+    private readonly actor: Actor,
+    private readonly context: OperationContext,
+    private readonly pullRequests: PullRequests = GH_PULL_REQUESTS,
+  ) {}
+
+  brief(input: unknown): FeatureBrief {
+    const { store, actor } = this;
+    const { feature } = validateInput<{ feature: string }>("feature_brief", featureBriefSchema, input);
+    const brief = featureBriefOf(store, this.context.projectDir, this.requireFeature(feature));
+    // A reviewer host that already gave a verdict in this session reviews again in a new run.
+    if (actor.kind === "agent" && actor.role === "reviewer") ensureHostReviewerRun(store, actor.host);
+    return brief;
   }
 
-  const dir = featureDir(store, context.projectDir, feature);
-  if (!hasOrigin(dir)) {
-    // No remote (trustmybot/tmb#183): nothing is pushed and no pull request opens; the Human merges locally.
-    store.updateFeature(actor, feature.id, { state: READY });
-    const localMerge = { dir, command: localMergeCommand(feature.baseBranch, feature.name), otherwise: endReadyLine("feature", feature.name) };
-    return { feature: feature.name, url: null, localMerge, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: "skipped: the repository has no remote named origin", markRequired: null };
+  record(input: unknown): ReviewRecordResult {
+    const { store, actor } = this;
+    const given = validateInput<ReviewRecordInput>("review_record", reviewRecordSchema, input);
+    if (actor.kind === "human") {
+      throw new HandlerError("refused", `only the reviewer records a review; the Human waives one instead, with \`${runningName()} feature waive <name> --reason <text>\``);
+    }
+    requireRole(actor, "review_record", ["reviewer"]);
+    // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
+    if (openRunsOf(store, actor.host).length === 0) {
+      throw new HandlerError(
+        "refused",
+        "no reviewer run is open: a review is recorded only by a reviewer the host started as a subagent, or by a host set up as the reviewer after it read the branch's feature_brief, and tmb records that start",
+      );
+    }
+    const blocking = given.blocking ?? [];
+    const notes = given.notes ?? [];
+    if (given.verdict === "pass" && blocking.length > 0) throw new HandlerError("invalid_input", "a pass names no blocking finding; with one, the verdict is fail");
+    if (given.verdict === "fail" && blocking.length === 0) throw new HandlerError("invalid_input", "a fail names at least one blocking finding");
+
+    const feature = this.requireOpenFeature(given.feature, "it takes no review");
+    const dir = featureDir(store, this.context.projectDir, feature);
+    const tip = featureTip(dir, feature);
+    const resolved = runGit(dir, ["rev-parse", "--verify", "--quiet", `${given.commit}^{commit}`]);
+    if (!resolved.ok || resolved.stdout !== tip) {
+      throw new HandlerError(
+        "refused",
+        `the feature branch ${feature.name} is at ${tip}, not at the commit reviewed (${given.commit}); read feature_brief again and review the branch at its tip`,
+      );
+    }
+
+    const findings: Finding[] = [...blocking.map((text) => ({ text, blocking: true })), ...notes.map((text) => ({ text, blocking: false }))];
+    // The review names the run that wrote it, and that run its feature branch, since a branch review's start prompt may not name it (trustmybot/tmb#135).
+    const run = openRunsOf(store, actor.host)[0]!;
+    const id = store.transaction(() => {
+      const written = store.appendReview(actor, { target: { kind: "branch", ref: feature.name }, verdict: given.verdict, findings, featureId: feature.id, commitSha: tip, runId: run.id });
+      if (run.featureId === null && run.taskId === null) store.setRunFeature(actor, run.id, feature.id);
+      return written;
+    });
+    const review = summaryOf(store.listFeatureReviews(feature.id).find((each) => each.id === id)!);
+    if (isReviewerHost(store, actor.host)) endHostReviewerRun(store, actor.host, FINISHED);
+    const mark = markReviewed(store, actor, dir, { featureId: feature.id }, tip, given.verdict, blocking.length);
+    const covered = given.verdict === "pass";
+    const next = covered
+      ? hasOrigin(dir)
+        ? `the pull request may open: the planner calls feature_pr for ${feature.name}`
+        : `the repository has no remote, so no pull request opens: the planner calls feature_pr for ${feature.name}, which records it ready for the Human to merge locally`
+      : `the planner reworks each blocking finding as a task on ${feature.name}, then starts the reviewer again`;
+    return { review, feature: feature.name, covered, next, mark };
   }
-  const push = pushFeature(dir, feature.name, actor);
-  if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
-  // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
-  trySendPendingMarks(store, actor, dir);
-  const how =
-    brief.coveredBy === "review"
-      ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
-      : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
-  const markRequired = markRequiredOn(dir, feature.baseBranch);
-  // Its pull request is open: the push of the reviewed tip is what updates it (trustmybot/tmb#168).
-  if (feature.state === PR_OPEN && feature.prUrl !== null) {
-    return { feature: feature.name, url: feature.prUrl, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
+
+  waive(input: unknown): WaiveResult {
+    const { store, actor } = this;
+    const given = validateInput<{ feature: string; reason: string }>("feature_waive", featureWaiveSchema, input);
+    if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
+    const feature = this.requireOpenFeature(given.feature, "there is no review to waive");
+    const dir = featureDir(store, this.context.projectDir, feature);
+    const commit = featureTip(dir, feature);
+    const reason = given.reason.trim();
+    const id = store.recordWaiver(actor, { featureId: feature.id, commitSha: commit, reason, detail: { feature: feature.name } });
+    const waiver = store.getWaiver(id)!;
+    const mark = markReviewed(store, actor, dir, { featureId: feature.id }, commit, "waiver", reason);
+    return { id, feature: feature.name, commit, reason, at: waiver.createdAt, mark };
   }
-  const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
-  let opened = openPullRequest(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
-  if (!opened.ok) {
-    // A pull request already open from the branch (an earlier feature_pr, or one the Human reopened) is the branch's: record it, open no second one.
-    const existing = existingPullRequest(dir, feature.name);
-    if (existing !== null) opened = { ok: true, url: existing };
+
+  pr(input: unknown): FeaturePrResult {
+    const { store, actor } = this;
+    const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
+    requireRole(actor, "feature_pr", ["planner"]);
+    // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
+    const feature = this.requireFeature(given.feature);
+    // A ready branch (no remote) may ask again: for the merge command, or for a pull request once a remote was added.
+    if (feature.state !== OPEN && feature.state !== CLOSED_UNMERGED && feature.state !== PR_OPEN && feature.state !== READY) {
+      throw new HandlerError("refused", `the feature branch ${feature.name} is ${feature.state}, so its pull request does not open again`);
+    }
+    const brief = featureBriefOf(store, this.context.projectDir, feature);
+    if (brief.coveredBy === null) {
+      const newest = brief.reviews.at(-1);
+      const why =
+        newest === undefined
+          ? "no reviewer has reviewed it"
+          : newest.commit !== brief.tip
+            ? `its newest review was at ${newest.commit}, and the branch has moved since`
+            : `its newest review at the tip is a ${newest.verdict}`;
+      throw new HandlerError(
+        "refused",
+        `the pull request of ${feature.name} opens only after the reviewer passes the branch at its tip ${brief.tip}, or the Human waives the review: ${why}. Start the reviewer with the ${reviewLine(feature.name)} line in its prompt, or ask the Human to run \`${runningName()} feature waive ${feature.name} --reason <text>\`.`,
+      );
+    }
+
+    const dir = featureDir(store, this.context.projectDir, feature);
+    if (!hasOrigin(dir)) {
+      // No remote (trustmybot/tmb#183): nothing is pushed and no pull request opens; the Human merges locally.
+      store.updateFeature(actor, feature.id, { state: READY });
+      const localMerge = { dir, command: localMergeCommand(feature.baseBranch, feature.name), otherwise: endReadyLine("feature", feature.name) };
+      return { feature: feature.name, url: null, localMerge, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: "skipped: the repository has no remote named origin", markRequired: null };
+    }
+    const push = pushFeature(dir, feature.name, actor);
+    if (push.result !== "pushed") throw new HandlerError("refused", `the pull request of ${feature.name} needs the branch on origin, and the push did not happen: ${push.detail}`);
+    // The push puts the reviewed commit on GitHub, so a mark GitHub refused before can be sent now.
+    trySendPendingMarks(store, actor, dir);
+    const how =
+      brief.coveredBy === "review"
+        ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
+        : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
+    const markRequired = markRequiredOn(dir, feature.baseBranch);
+    // Its pull request is open: the push of the reviewed tip is what updates it (trustmybot/tmb#168).
+    if (feature.state === PR_OPEN && feature.prUrl !== null) {
+      return { feature: feature.name, url: feature.prUrl, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
+    }
+    const body = [given.body?.trim() ?? "", how].filter((part) => part !== "").join("\n\n");
+    let opened = this.pullRequests.open(dir, ["--base", feature.baseBranch, "--head", feature.name, "--title", given.title, "--body", body]);
+    if (!opened.ok) {
+      // A pull request already open from the branch (an earlier feature_pr, or one the Human reopened) is the branch's: record it, open no second one.
+      const existing = this.pullRequests.existing(dir, feature.name);
+      if (existing !== null) opened = { ok: true, url: existing };
+    }
+    if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
+    store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
+    return { feature: feature.name, url: opened.url, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
   }
-  if (!opened.ok) throw new HandlerError("refused", `${feature.name} was pushed to origin, but its pull request did not open: ${opened.why}`);
-  store.updateFeature(actor, feature.id, { state: PR_OPEN, prUrl: opened.url });
-  return { feature: feature.name, url: opened.url, localMerge: null, base: feature.baseBranch, tip: brief.tip, coveredBy: brief.coveredBy, push: push.detail, markRequired };
+
+  private requireFeature(name: string): Feature {
+    const feature = this.store.findFeature(name);
+    if (!feature) {
+      const names = this.store.listFeatures().map((each) => each.name);
+      throw new HandlerError("not_found", `no feature branch ${name} in the record${names.length === 0 ? "" : `; it holds ${names.join(", ")}`}`);
+    }
+    return feature;
+  }
+
+  /** A feature branch that takes work: open, or with its pull request open, where fix tasks land (trustmybot/tmb#168). */
+  private requireOpenFeature(name: string, doing: string): Feature {
+    const feature = this.requireFeature(name);
+    if (feature.state !== OPEN && feature.state !== PR_OPEN && feature.state !== READY) throw new HandlerError("refused", `the feature branch ${name} is ${feature.state}, so ${doing}`);
+    return feature;
+  }
 }
 
+// The operations as the operation table and the command line call them.
+export const featureBrief = (store: Store, actor: Actor, input: unknown, context: OperationContext): FeatureBrief => new FeatureReviewService(store, actor, context).brief(input);
+export const reviewRecord = (store: Store, actor: Actor, input: unknown, context: OperationContext): ReviewRecordResult => new FeatureReviewService(store, actor, context).record(input);
+export const featureWaive = (store: Store, actor: Actor, input: unknown, context: OperationContext): WaiveResult => new FeatureReviewService(store, actor, context).waive(input);
+export const featurePr = (store: Store, actor: Actor, input: unknown, context: OperationContext): FeaturePrResult => new FeatureReviewService(store, actor, context).pr(input);
