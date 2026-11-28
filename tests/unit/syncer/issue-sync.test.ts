@@ -58,7 +58,8 @@ beforeEach(() => {
   const opened = openProjectStore(dir, { create: true });
   if (!opened.ok) throw opened.error;
   opened.store.close();
-  clock = Date.parse("2026-11-28T00:00:00Z");
+  // A day back, so the ids made under it never run ahead of the real clock for the tests after this file.
+  clock = Date.now() - 24 * 60 * 60_000;
   setSystemTime(new Date(clock));
 });
 
@@ -138,7 +139,9 @@ describe("only the open issues", () => {
 
     // Issue 2 closes, and the change is older than the kept time, so only a full pass can find it.
     issues[1] = { ...issue(2, "closed", 2) };
-    clock += 8 * 24 * 60 * 60_000;
+    withStore((store) => {
+      for (const row of store.mirror.syncRows(REMOTE)) store.mirror.putSyncRow({ ...row, fullPassAt: new Date(clock - 8 * 24 * 60 * 60_000).toISOString() });
+    });
     remote.asked.length = 0;
     expect(await poll(remote.ask)).toMatchObject({ ok: true, fullPass: true });
     expect(remote.asked.map((request) => request.path).filter((path) => /\/issues\/\d+$/.test(path))).toEqual(["repos/trustmybot/tmb/issues/2"]);
