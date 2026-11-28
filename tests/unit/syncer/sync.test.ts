@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openProjectStore, type Store, writeSetting } from "../../../src/engine/index.ts";
+import { OUTSIDE_CHANGES_HEADING, openProjectStore, type Store, takeOutsideChanges, writeSetting } from "../../../src/engine/index.ts";
 import { type Answer, type Ask, type Changes, Folder, type Request, syncProject, UNTITLED } from "../../../src/syncer/index.ts";
 import { readGhOutput } from "../../../src/syncer/transport.ts";
 import { RECORD_READ_WAIT_MS } from "../../../src/engine/index.ts";
@@ -156,6 +156,20 @@ describe("folding the remote into the record", () => {
       expect(events.at(-1)!.actor).toEqual({ kind: "tmb", source: "syncer" });
       expect(store.listDiscussions(summary!.id)[0]!.body).toBe("edited words");
     });
+  });
+
+  test("the planner is told of the syncer's changes as changes made outside its chat", () => {
+    expect(withStore((store) => takeOutsideChanges(store))).toBe("");
+    withStore((store) => new Folder(store, ".").fold(changes()));
+    const told = withStore((store) => takeOutsideChanges(store));
+    expect(told).toContain(OUTSIDE_CHANGES_HEADING);
+    expect(told).toContain('"Mirror the remote": recorded, by the remote, through tmb\'s syncer');
+    expect(told).toContain('comment added: "first words"');
+    const closed = changes();
+    closed.issues[0] = { ...closed.issues[0]!, state: "closed", remoteUpdatedAt: "2026-11-27T00:00:00Z" };
+    withStore((store) => new Folder(store, ".").fold(closed));
+    expect(withStore((store) => takeOutsideChanges(store))).toContain('"Mirror the remote": closed, by the remote');
+    expect(withStore((store) => takeOutsideChanges(store))).toBe("");
   });
 
   test("a local issue, a note and a decision are never touched", () => {
