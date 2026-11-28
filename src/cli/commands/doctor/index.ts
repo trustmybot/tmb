@@ -7,7 +7,7 @@ import { type Command, listed } from "../../command.ts";
 import { asksHelp } from "../../help.ts";
 import type { Runtime } from "../../runtime.ts";
 import { MACHINE_CHECKS } from "./machine.ts";
-import { guarded, projectFindings } from "./project.ts";
+import { projectFindings, runEach } from "./project.ts";
 import { type DoctorEnv, type Finding, SLOW_CHECKS, type Status } from "./types.ts";
 
 export { type DoctorEnv, type Finding, SLOW_CHECKS } from "./types.ts";
@@ -24,8 +24,7 @@ export const DOCTOR_USAGE = `  tmb doctor [--json] [--fix]
 
 /** Every check's findings, the machine's first; `skip` names checks to leave out. */
 export function runChecks(env: DoctorEnv, skip: ReadonlySet<string> = new Set()): Finding[] {
-  const machine = MACHINE_CHECKS.filter((check) => !skip.has(check.name)).flatMap((check) => guarded(check.name, "machine", () => check.run(env)));
-  return [...machine, ...projectFindings(env, skip)];
+  return [...runEach(MACHINE_CHECKS, "machine", env, skip), ...projectFindings(env, skip)];
 }
 
 /** 1 when a check failed; a warning alone leaves 0. */
