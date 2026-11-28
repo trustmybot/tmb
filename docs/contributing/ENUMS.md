@@ -36,6 +36,7 @@ A vocabulary is owned in one of three places:
 | `freeze` | `freezes` |
 | `feedback_report` | `feedback_reports` |
 | `import` | `imports` |
+| `role_change` | `role_changes` |
 
 The engine checks it.
 
@@ -44,7 +45,7 @@ The engine checks it.
 | Value | Meaning |
 |---|---|
 | `created` | The record's first event; it makes the projection row |
-| `updated` | A change to the columns the record kind allows to change. `discussion`, `review`, `guard_decision`, `waiver`, `setting_change`, `feedback_report` and `import` have none |
+| `updated` | A change to the columns the record kind allows to change. `discussion`, `review`, `guard_decision`, `waiver`, `setting_change`, `feedback_report`, `import` and `role_change` have none |
 
 Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 
@@ -198,6 +199,15 @@ The event's `role` is a role above, `main-agent` for the host's main agent, or `
 The engine checks both.
 
 A review mark's kind is `pass`, `fail` or `waiver`, and its state on GitHub is `success` or `failure`, under the status check `tmb/review`.
+
+### `role_changes.change` — a grant or a revoke
+
+| Value | Meaning |
+|---|---|
+| `grant` | The role may take the action |
+| `revoke` | The role may not take the action |
+
+The engine checks it. The actions themselves are the permission table's ([ROLES.md](../architecture/ROLES.md#permissions)).
 
 ---
 

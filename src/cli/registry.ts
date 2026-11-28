@@ -19,6 +19,7 @@ import { NoteCommand } from "./commands/note.ts";
 import { OnboardCommand } from "./commands/onboard.ts";
 import { PrePushCommand } from "./commands/pre-push.ts";
 import { PurgeCommand, RemoveCommand } from "./commands/remove.ts";
+import { RoleCommand } from "./commands/role.ts";
 import { SearchCommand } from "./commands/search.ts";
 import { TaskCommand } from "./commands/task.ts";
 import { ToolsCommand } from "./commands/tools.ts";
@@ -40,6 +41,7 @@ export class CommandTable implements CommandList {
       new ConfigCommand(runtime),
       new RemoveCommand(runtime),
       new PurgeCommand(runtime),
+      new RoleCommand(runtime),
       new MigrateCommand(runtime),
       // Work
       new IssueCommand(runtime),

@@ -83,6 +83,8 @@ tmb is set up for Claude Code. Next:
 | `tmb onboard` | Sets tmb's settings for the project: the base branch, the review mode, the checks and the shared folders; in a multi-repo workspace, each repo's base branch, checks and shared folders. Run it again at any time. | Yes |
 | `tmb remove <project-name>` | Undoes what `tmb init` added ([Remove](#remove)). | Yes, a typed yes |
 | `tmb purge <project-name>` | Does what remove does, then deletes the record for good ([Remove](#remove)). | Yes, a typed yes |
+| `tmb role list` | Lists each role's actions in this project. A role the project changed is marked, a granted action with `+` and a revoked one with `-` ([Roles and their actions](#roles-and-their-actions)). | None |
+| `tmb role grant <role> <action>`, `tmb role revoke <role> <action>` | Lets a role take an action, or takes one away ([Roles and their actions](#roles-and-their-actions)). | Yes, a typed yes |
 
 At the first session the planner fills the settings init left empty ([Onboarding by itself](#onboarding-by-itself)) and asks you for the review mode ([The review mode is yours](#the-review-mode-is-yours)). `tmb onboard` sets them yourself instead.
 
@@ -410,9 +412,17 @@ It keeps the record in `.tmb/`, because that is your data. It does not remove th
 
 **Removing tmb from the machine** is Planned (trustmybot/tmb#498). Until then, delete the program from `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`) and its state folder ([Channels and updates](#channels-and-updates)).
 
+## Roles and their actions
+
+Each role takes the actions in tmb's [permission table](../architecture/ROLES.md#permissions), changed by your grants and revokes. `tmb role grant worker task.drop` lets the worker drop its own task; `tmb role revoke planner task.waive` takes waiving away from the planner. Each change is recorded with who made it.
+
+- A role tmb does not ship can be named too: it starts with reading the record and the code graph only.
+- Refused: granting `tmb.uninstall`, `project.remove` or `project.purge`, which stay yours; revoking reading; changing your own actions; an action tmb does not have.
+- Granting `permissions.manage` to the planner lets it make these changes through its tool, when you ask it to.
+
 ## Steps only you may take
 
-Some commands are rows of yours in the [permission table](../architecture/ROLES.md#permissions): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, `tmb remove` and `tmb purge`. `tmb update` is not one. The planner may also waive and set the review mode through tmb's tools, when you ask it to; the record names who waived. The rule is in [ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine).
+Some commands are rows of yours in the [permission table](../architecture/ROLES.md#permissions): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, `tmb role grant`, `tmb role revoke`, `tmb remove` and `tmb purge`. `tmb update` is not one. The planner may also waive and set the review mode through tmb's tools, when you ask it to; the record names who waived. The rule is in [ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine).
 
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.

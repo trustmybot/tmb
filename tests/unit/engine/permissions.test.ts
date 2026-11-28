@@ -1,8 +1,11 @@
 // One permission table, one check, default deny (docs/architecture/ROLES.md, "Permissions").
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { ACTIONS, DEFAULT_ROLES, FIXED_HUMAN_ACTIONS, HandlerError, mayTake, requirePermission } from "../../../src/engine/index.ts";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { ACTIONS, DEFAULT_ROLES, FIXED_HUMAN_ACTIONS, HandlerError, mayTake, OPERATIONS, openProjectStore, requirePermission } from "../../../src/engine/index.ts";
 import { settingsSetActions } from "../../../src/engine/handlers/settings.ts";
-import type { Actor } from "../../../src/engine/store/index.ts";
+import type { Actor, Store } from "../../../src/engine/store/index.ts";
 
 setDefaultTimeout(30_000);
 
@@ -56,5 +59,73 @@ describe("the permission table", () => {
     expect(settingsSetActions({ base_branch: "main" })).toEqual(["settings.set"]);
     expect(settingsSetActions({ review_mode: "agile" })).toEqual(["settings.review-mode"]);
     expect(new Set(settingsSetActions({ repos: { a: { base_branch: "dev", review_mode: "truest" } } }))).toEqual(new Set(["settings.set", "settings.review-mode"]));
+  });
+});
+
+describe("a project's grants and revokes", () => {
+  let scratch: string;
+  let store: Store;
+  beforeEach(() => {
+    scratch = mkdtempSync(path.join(tmpdir(), "tmb-roles-"));
+    const opened = openProjectStore(scratch, { create: true });
+    if (!opened.ok) throw opened.error;
+    store = opened.store;
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(scratch, { recursive: true, force: true });
+  });
+  const context = () => ({ projectDir: scratch });
+  const refusal = (call: () => unknown): HandlerError => {
+    try {
+      call();
+    } catch (error) {
+      if (error instanceof HandlerError) return error;
+      throw error;
+    }
+    throw new Error("expected a refusal");
+  };
+
+  test("the Human grants the worker task.drop: the worker may drop, the record names the Human, and the list marks it", () => {
+    const result = OPERATIONS.role_change.run(store, HUMAN, { for_role: "worker", action: "task.drop", change: "grant" }, context());
+    expect(result).toMatchObject({ changed: true, role: { role: "worker", granted: ["task.drop"], revoked: [] } });
+    expect(store.listRoleChanges()).toMatchObject([{ role: "worker", action: "task.drop", change: "grant", createdBy: HUMAN }]);
+    expect(mayTake(agent("worker"), "task.drop", store.listRoleChanges())).toBe(true);
+    // A grant that changes nothing records nothing.
+    expect(OPERATIONS.role_change.run(store, HUMAN, { for_role: "worker", action: "task.drop", change: "grant" }, context()).changed).toBe(false);
+    expect(store.listRoleChanges()).toHaveLength(1);
+  });
+
+  test("revoking the planner's waive refuses its waive through the tool; granting it back restores the default", () => {
+    OPERATIONS.role_change.run(store, HUMAN, { for_role: "planner", action: "task.waive", change: "revoke" }, context());
+    const refused = refusal(() => OPERATIONS.task_waive.run(store, agent("planner"), { id: "01KA0000000000000000000000", reason: "x" }, context()));
+    expect(refused.message).toBe(`the planner may not ${ACTIONS["task.waive"]} (task.waive)`);
+    expect(OPERATIONS.role_list.run(store, HUMAN, {}, context()).find((view) => view.role === "planner")?.revoked).toEqual(["task.waive"]);
+    OPERATIONS.role_change.run(store, HUMAN, { for_role: "planner", action: "task.waive", change: "grant" }, context());
+    expect(OPERATIONS.role_list.run(store, HUMAN, {}, context()).find((view) => view.role === "planner")).toMatchObject({ granted: [], revoked: [] });
+  });
+
+  test("a designer role gets read and close; it is listed once changed", () => {
+    OPERATIONS.role_change.run(store, HUMAN, { for_role: "designer", action: "task.close", change: "grant" }, context());
+    expect(OPERATIONS.role_list.run(store, HUMAN, {}, context()).find((view) => view.role === "designer")?.actions).toEqual(["task.close", "record.read", "graph.read"]);
+  });
+
+  test("the fixed steps, what every role may do, the Human's own actions and an unknown action are refused, writing nothing", () => {
+    const change = (for_role: string, action: string, kind = "grant") => refusal(() => OPERATIONS.role_change.run(store, HUMAN, { for_role, action, change: kind }, context())).message;
+    expect(change("planner", "project.purge")).toContain("is the Human's alone");
+    expect(change("planner", "tmb.uninstall")).toContain("is the Human's alone");
+    expect(change("worker", "record.read", "revoke")).toContain("every role may do");
+    expect(change("human", "task.waive", "revoke")).toContain("the Human's own actions");
+    expect(change("worker", "task.anything")).toContain("is no action");
+    expect(change("Worker", "task.drop")).toContain("lowercase");
+    expect(store.listRoleChanges()).toEqual([]);
+  });
+
+  test("only a role holding permissions.manage changes one; the Human may grant it to the planner", () => {
+    const planner = agent("planner");
+    expect(refusal(() => OPERATIONS.role_change.run(store, planner, { for_role: "worker", action: "task.drop", change: "grant" }, context())).message).toContain("(permissions.manage)");
+    OPERATIONS.role_change.run(store, HUMAN, { for_role: "planner", action: "permissions.manage", change: "grant" }, context());
+    OPERATIONS.role_change.run(store, planner, { for_role: "worker", action: "task.drop", change: "grant" }, context());
+    expect(store.listRoleChanges().at(-1)).toMatchObject({ role: "worker", createdBy: planner });
   });
 });

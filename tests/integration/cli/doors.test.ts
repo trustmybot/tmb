@@ -26,6 +26,8 @@ const TOOLS = [
   "history",
   "settings_get",
   "settings_set",
+  "role_list",
+  "role_change",
   "feature_start",
   "feature_update",
   "feature_drop",

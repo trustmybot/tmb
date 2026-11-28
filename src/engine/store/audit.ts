@@ -22,6 +22,11 @@ export type ImportEntry = { id: string; source: string; repo: string | null; det
 export type NewGuardDecision = { event: string; decision: "allow" | "deny"; reason: string };
 export type GuardDecision = NewGuardDecision & { id: string; createdBy: Actor; createdAt: string };
 
+/** A project's grant or revoke of one action for one role. */
+export type NewRoleChange = { role: string; action: string; change: "grant" | "revoke" };
+export type RoleChange = NewRoleChange & { id: string; createdBy: Actor; createdAt: string };
+type RoleChangeRow = { id: string; role: string; action: string; change: "grant" | "revoke"; created_by: string; created_at: string };
+
 type SettingChangeRow = {
   id: string;
   key: string;
@@ -153,5 +158,20 @@ export class AuditRepository {
       createdBy: actorOf(row.created_by),
       createdAt: row.created_at,
     }));
+  }
+}
+
+/** The project's grants and revokes of roles' actions. */
+export class RoleChangeRepository {
+  constructor(private readonly log: EventLog) {}
+
+  recordRoleChange(actor: Actor, change: NewRoleChange): string {
+    return this.log.create(actor, "role_change", { role: change.role, action: change.action, change: change.change });
+  }
+
+  /** Every grant and revoke, oldest first. */
+  listRoleChanges(): RoleChange[] {
+    const rows = this.log.db.query("SELECT * FROM role_changes ORDER BY id").all() as RoleChangeRow[];
+    return rows.map((row) => ({ id: row.id, role: row.role, action: row.action, change: row.change, createdBy: actorOf(row.created_by), createdAt: row.created_at }));
   }
 }
