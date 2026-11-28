@@ -38,9 +38,9 @@ function eventOf(input: JsonObject, type: TmbEventType, action: string, role: st
   return { type, projectDir: projectDirOf(input), host: HOST_ID, role, action };
 }
 
-/** Claude Code's answer adding one text to the session; empty when there is no text. */
-function sessionText(context: string): string {
-  return context === "" ? "" : JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } });
+/** Claude Code's answer adding one text to the session at `hookEventName`; empty when there is no text. */
+function addedText(context: string, hookEventName = "SessionStart"): string {
+  return context === "" ? "" : JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: context } });
 }
 
 /** Reads the tokens a subagent's transcript holds, or null when it cannot. */
@@ -54,6 +54,7 @@ export class HookTranslator {
     "pre-tool-use": (input) => this.preToolUse(input),
     "post-tool-use-failure": (input) => this.postToolUseFailure(input),
     "subagent-stop": (input) => this.subagentStop(input),
+    "user-prompt-submit": (input) => this.userPromptSubmit(input),
     "session-end": (input) => this.sessionEnd(input),
   };
 
@@ -72,12 +73,12 @@ export class HookTranslator {
     const refreshed = run.refresh?.(projectDir) ?? null;
     const texts = { withRole, budget: SESSION_TEXT_BUDGET };
     const answer = handleEvent({ type: "session-start", projectDir, unattended: run.unattended, host: HOST_ID, feedback: run.feedback, refreshed, doctor: run.doctor, texts });
-    return sessionText(answer.context);
+    return addedText(answer.context);
   }
 
   /** The role, its own text. Claude Code runs it beside the state's hook, so it only reads. */
   private sessionStartRole(input: JsonObject): string {
-    return sessionText(handleEvent({ type: "session-role", projectDir: projectDirOf(input), host: HOST_ID }).context);
+    return addedText(handleEvent({ type: "session-role", projectDir: projectDirOf(input), host: HOST_ID }).context);
   }
 
   /**
@@ -136,6 +137,15 @@ export class HookTranslator {
     // The subagent's own transcript holds its usage; the input's transcript_path is the main session's.
     decide({ ...eventOf(input, "after-agent-stop", agentType), cost: this.readUsage(stringField(input, "agent_transcript_path")) });
     return "";
+  }
+
+  /**
+   * Before the main agent's turn: what changed outside its chat since it was last told, added after
+   * the Human's prompt, so the cached text before it stays the same. Nothing when nothing is new.
+   */
+  private userPromptSubmit(input: JsonObject): string {
+    if (stringField(input, "agent_type") !== undefined) return "";
+    return addedText(handleEvent({ type: "planner-turn", projectDir: projectDirOf(input), host: HOST_ID }).context, "UserPromptSubmit");
   }
 
   /** Claude Code takes no answer to a session's end; a reviewer host's run without a verdict ends with it. */

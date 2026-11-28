@@ -861,6 +861,8 @@ Planned (trustmybot/tmb#70). One row per remote repository and list. It is not f
 | `key` | TEXT | PK |  |
 | `value` | TEXT | NOT NULL | CHECK `json_valid(value)` |
 
+- **Example.** The record's facts apart from its history: which tmb wrote its shape, and the newest change the planner was told of ([ENGINE.md](ENGINE.md#tmbs-own-events)). Writing one is not an event.
+
 ### The remote columns
 
 Planned (trustmybot/tmb#70). **Every record the remote also holds carries the remote's own id.** The four mirrored tables are `issues`, `discussions`, `pull_requests` and `milestones`.

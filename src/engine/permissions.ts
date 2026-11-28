@@ -54,32 +54,44 @@ export const EVERY_ROLE: readonly Action[] = ["record.read", "graph.read"];
  */
 export const FIXED_HUMAN_ACTIONS: readonly Action[] = ["tmb.uninstall", "project.remove", "project.purge"];
 
+/** The Human's own steps: the command line runs each only on a terminal, after the Human types yes. */
+const HUMAN_STEPS: readonly Action[] = [...FIXED_HUMAN_ACTIONS, "permissions.manage", "settings.review-mode", "feature.waive", "task.waive"];
+
+/**
+ * What the Human and the planner decide together, so both hold it: issues, feature branches,
+ * settings, roles, feedback and the waivers. The Human takes these through the dashboard or by
+ * asking the planner; holding one is not a command.
+ */
+const SHARED_WITH_PLANNER: readonly Action[] = [
+  "issue.create",
+  "issue.update",
+  "issue.note",
+  "feature.start",
+  "feature.update",
+  "feature.drop",
+  "feature.pr",
+  "feature.waive",
+  "task.waive",
+  "settings.set",
+  "settings.review-mode",
+  "role.create",
+  "role.delete",
+  "permissions.manage",
+  "feedback.send",
+];
+
+/**
+ * What runs between the planner and its agents: tasks, review verdicts and the code graph's
+ * knowledge. The Human holds none of these, and none is granted to the Human: an edit there would
+ * change work under an agent that does not know of it, so the Human asks the planner instead.
+ */
+const PLANNER_AND_AGENTS: readonly Action[] = ["task.start", "task.close", "task.drop", "task.pr", "graph.write"];
+
 /** The actions tmb gives each role it ships, on top of what every role may do. */
 export const DEFAULT_ROLES: Readonly<Record<RoleName, readonly Action[]>> = {
-  [HUMAN_ROLE]: [...FIXED_HUMAN_ACTIONS, "permissions.manage", "settings.review-mode", "feature.waive", "task.waive"],
-  planner: [
-    "settings.review-mode",
-    "feature.waive",
-    "task.waive",
-    "settings.set",
-    "issue.create",
-    "issue.update",
-    "issue.note",
-    "feature.start",
-    "feature.update",
-    "feature.drop",
-    "feature.pr",
-    "task.start",
-    "task.drop",
-    "task.pr",
-    "graph.write",
-    "feedback.send",
-    // Any task, as a recovery: the close records the planner's reason as a note on the task's issue.
-    "task.close",
-    "role.create",
-    "role.delete",
-    "permissions.manage",
-  ],
+  [HUMAN_ROLE]: [...FIXED_HUMAN_ACTIONS, ...SHARED_WITH_PLANNER],
+  // The planner closes any task, as a recovery: the close records its reason as a note on the task's issue.
+  planner: [...SHARED_WITH_PLANNER, ...PLANNER_AND_AGENTS],
   worker: ["task.close"],
   reviewer: ["review.record"],
 };
@@ -162,7 +174,7 @@ export function agentGrantRefusal(actor: Actor, role: RoleName, action: Action, 
 
 /** True for one of the Human's steps the command line runs only on a terminal after a typed yes. */
 export function isHumanStep(action: Action): boolean {
-  return DEFAULT_ROLES[HUMAN_ROLE]!.includes(action);
+  return HUMAN_STEPS.includes(action);
 }
 
 function named(role: RoleName): string {

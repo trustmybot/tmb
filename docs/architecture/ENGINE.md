@@ -24,7 +24,7 @@ Everything before [Containment](#containment) is the design. Containment is deta
 | Host events, through the host adapter | The host, at a checkpoint | The engine can refuse an action no agent asked it about. |
 | Git's pre-push hook | git | A push to the base branch is checked even when typed by hand. |
 | Command line | The Human | Every step the Human runs by hand, such as init, onboard and `tmb doctor`, the health check. The list is in the [reference](../reference/README.md). |
-| Dashboard | The Human | A local web page over the record. |
+| Dashboard | The Human | A local web page over the record, where the Human also changes issues: a note, a decision, an edit, a close or a reopen. It changes no task ([PERMISSIONS.md](PERMISSIONS.md)). |
 | Desktop program | The Human | Planned (trustmybot/tmb#79), with the dashboard built in. |
 
 tmb has no slash commands: each action is a terminal command or a tool the planner calls.
@@ -100,12 +100,20 @@ Planned:
 | An agent start that failed | The host could not start the subagent | The run that was opened is ended | Host | After a failed call of its agent tool |
 | A worker in its folder | A worker reads its brief or closes its task, which tells the engine which folder it works in | That folder becomes the task's worktree | Host | Before a call of tmb's brief or close tool |
 | After an agent stop | A subagent has ended | Its run is ended, with the tokens it used where the host tells | Host | Its subagent stop event, with the subagent's token use |
+| Before the planner's turn | The Human sends the main agent a message | The issues changed outside the chat since the planner was last told, or nothing | Host | Its prompt submit event, in the main agent only |
 | Before a push | A push is about to leave the machine | Refused only when it brings unreviewed commits to the base branch, or deletes it | git | git's pre-push hook |
 
 - **Example 1.** An event carries the same fields whatever raised it: the role, the task and what is about to happen. A push tmb makes for an agent carries that agent's role. A push typed by hand is the Human's.
 - **Example 2.** A push is judged by git's pre-push hook, not by reading an agent's command.
 - **Edge case.** A task's start and close are not events. The engine checks them itself when it is asked, and a refusal there goes to the caller without a recorded decision.
 - **Edge case.** tmb ships its own rules only. Users cannot add rules of their own on these events.
+
+**The planner is told what changed outside its chat, each change once.** A change the Human makes on the dashboard is recorded, but the planner would not see it, so at a session start and before its next turn the planner gets a short list: which issue, what changed, who and when. The record keeps the newest change the planner was told of, so nothing is told twice; when nothing is new, nothing is said. Workers and the reviewer are not told: the planner fits their work to the change.
+
+- **Example 1.** The Human closes an issue on the dashboard, then types "go on" in the chat. The planner's turn opens with that issue named as closed, after the Human's message.
+- **Example 2.** The Human adds a decision while no session is open. The next session start lists it, last in the state's text, and the next turn says nothing more.
+- **Example 3.** The syncer brings in a remote comment. It joins the same list, named as the remote's. Planned (trustmybot/tmb#70).
+- **Edge case.** The planner's first turn in a project lists nothing: it starts from the record as it is, and is told of each change from then on.
 
 ### One program, one build, one engine
 

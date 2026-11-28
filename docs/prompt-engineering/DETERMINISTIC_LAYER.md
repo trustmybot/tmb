@@ -9,7 +9,7 @@ The rules for moving tmb doctrine out of prompts and into code: the layers, what
 | # | Layer | What it is for | What it guarantees |
 |---|---|---|---|
 | 1 | **Engine** (behind the tool server and the command line) | Role-bound tool access, input validation, server-side defaults for omitted args, and atomic composite tools that run a multi-step workflow as one call. | Wire-level rejection (`is_error: true`) regardless of prompt content; a composite's steps land together or not at all. |
-| 2 | **Checkpoints** | git's own hooks first (pre-push refuses an unreviewed push to the base branch), then the few host hooks an adapter writes: PreToolUse blocks an agent start until its prerequisite holds; SubagentStop records the run's end; SessionStart injects context. No hook guards each edit. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
+| 2 | **Checkpoints** | git's own hooks first (pre-push refuses an unreviewed push to the base branch), then the few host hooks an adapter writes: PreToolUse blocks an agent start until its prerequisite holds; SubagentStop records the run's end; SessionStart and UserPromptSubmit inject context. No hook guards each edit. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
 | 3 | **Role file** | The tool list in each role file, written by the host's adapter from what the role may do. | The host withholds the listed tools at spawn. Claude Code does. |
 | 4 | **Schema constraints** | `CHECK`, `UNIQUE`, `NOT NULL`, FK on the trajectory DB. | Rejects malformed writes at the storage layer, including raw-SQL bypasses of MCP handlers. |
 | 5 | **Skill `paths:`** | Skill auto-loads when matching files are in the active context. | Soft — reduces prompt noise; the model can still ignore loaded content. tmb's own skills set no `paths:`; each loads on its description. |
@@ -172,7 +172,7 @@ Claude Code's prompt cache matches from the start of the assembled prompt and st
 
 **Contract for hook authors:** a hook that injects `additionalContext` puts its stable descriptive text first and its volatile fields at the tail of its own output, because a hook that opens with a volatile line breaks the cache for everything after it. Volatile fields include the branch name, commit and dirty-path counts, open-issue and pending-task counts, recent commit messages, the record's and tmb's paths, and any timestamp or PID.
 
-In tmb the session-start hook is the only one that injects context: it puts the role first and the record's sections after it, and is held to this order by review.
+In tmb two hooks inject context. The session-start hook puts the role first and the record's sections after it, with the list of changes made outside the chat last. The prompt-submit hook adds that list only when it has something new, and Claude Code places it after the Human's message, at the very tail. Review holds both to this order.
 
 ## See also
 
