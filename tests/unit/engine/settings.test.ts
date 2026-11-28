@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { readSettings, SettingError, settingLines, validateSetting, writeSetting } from "../../../src/engine/index.ts";
+import { issueSyncOn, readSettings, SettingError, settingLines, validateSetting, writeSetting } from "../../../src/engine/index.ts";
 import { type Actor, openStore, type Store } from "../../../src/engine/store/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("settings in the record", () => {
   test("start unset", () => {
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null, issue_sync: null });
   });
 
   test("each set is one setting change by the actor, and the current value is the newest", () => {
@@ -36,7 +36,7 @@ describe("settings in the record", () => {
     expect(writeSetting(store, HUMAN, "checks", ["bun run lint", "bun test"])).toBe(true);
     expect(writeSetting(store, HUMAN, "base_branch", "develop")).toBe(true);
 
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], shared_folders: null, graph_links: null, repos: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], shared_folders: null, graph_links: null, repos: null, issue_sync: null });
     const audit = store.listSettingChanges();
     expect(audit).toHaveLength(3);
     expect(audit.every((entry) => entry.createdBy.kind === "human")).toBe(true);
@@ -98,7 +98,7 @@ describe("validation", () => {
 
 describe("settingLines", () => {
   test("shows one line per setting, quoting each check and naming what is unset", () => {
-    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], shared_folders: null, graph_links: null, repos: null })).toEqual([
+    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], shared_folders: null, graph_links: null, repos: null, issue_sync: null })).toEqual([
       "host: host-a",
       "host roles: host-a planner, host-b reviewer",
       "base branch: main",
@@ -106,8 +106,9 @@ describe("settingLines", () => {
       'checks: "bun run lint", "go test ./..."',
       "shared folders: (not set)",
       "graph links: (not set)",
+      "issue sync: on (not set)",
     ]);
-    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], shared_folders: null, graph_links: null, repos: null })).toEqual([
+    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], shared_folders: null, graph_links: null, repos: null, issue_sync: null })).toEqual([
       "host: (not set)",
       "host roles: (not set)",
       "base branch: (not set)",
@@ -115,9 +116,21 @@ describe("settingLines", () => {
       "checks: (none)",
       "shared folders: (not set)",
       "graph links: (not set)",
+      "issue sync: on (not set)",
     ]);
   });
 });
+
+describe("issue sync", () => {
+  test("is on or off, and on while unset", () => {
+    expect(validateSetting("issue_sync", "off")).toBe("off");
+    expect(() => validateSetting("issue_sync", "sometimes")).toThrow(SettingError);
+    expect(issueSyncOn({ ...NO_SETTINGS_FOR_SYNC, issue_sync: null })).toBe(true);
+    expect(issueSyncOn({ ...NO_SETTINGS_FOR_SYNC, issue_sync: "off" })).toBe(false);
+  });
+});
+
+const NO_SETTINGS_FOR_SYNC = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null, issue_sync: null } as const;
 
 describe("shared folders (trustmybot/tmb#286)", () => {
   test("are folders inside the repo, cleaned and named once", () => {
