@@ -68,7 +68,7 @@ export const SYNC_RUNNING_NOTE = "A sync with the remote is still running, so is
  * Waits for the listener's work up to the cap; its failure or its lateness never fails the call.
  * Returns false when the work is still running at the cap.
  */
-async function briefly(work: Promise<void> | void): Promise<boolean> {
+export async function briefly(work: Promise<void> | void): Promise<boolean> {
   if (work === undefined) return true;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<boolean>((resolve) => {

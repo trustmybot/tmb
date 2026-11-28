@@ -71,11 +71,11 @@ A person working with agents needs a memory that a remote has no place for: whic
 
 ### When the syncer runs
 
-**The syncer reads the remote when a session starts and when the planner reads the issues, at most once in two minutes, and never holds the work up for it.** There is no daemon and no server.
+**The syncer reads the remote when a session starts, when the planner reads the issues and when the dashboard reads a page's data, at most once in two minutes, and never holds the work up for it.** There is no daemon and no server.
 
 ```mermaid
 flowchart LR
-    T["A session starts, or the planner lists, reads or searches issues"] --> C{"No other poll, past two minutes, past the remote's wait?"}
+    T["A session starts, the planner lists, reads or searches issues, or the dashboard reads a page's data"] --> C{"No other poll, past two minutes, past the remote's wait?"}
     C -->|no| N["The record answers as it is"]
     C -->|yes| R["Read what changed since the tags it kept"]
     R --> F["Each change becomes an event by tmb's syncer"]
@@ -85,8 +85,10 @@ flowchart LR
 - **Example 1.** The planner lists the issues twice in a minute. The first list starts a read; the second answers from the record.
 - **Example 2.** Nothing changed on the remote. The remote answers "not modified" to the tags kept, and no event is written.
 - **Example 3.** Once a week a poll reads the issues, pull requests and milestones whole, to find what was deleted.
+- **Example 4.** The Human opens the dashboard after a day away. Its first read of the issues starts a read of the remote and waits the same moment for it. While the page stays open, its own check for new data starts each read that is due, and the page shows the changes once they are in.
 - **Edge case.** The network is slow. The planner's read waits a moment at most, then answers from the record while the poll goes on.
 - **Edge case.** A new project's first import takes longer than that moment. The planner's list or search answers from the record and adds one line: a sync with the remote is still running, so ask again shortly. An empty list then does not read as "no issues".
+- **Edge case.** The remote is slow at a session start. The start waits a few seconds at most, then briefs from the record as it is. The read is given up with its claim, as nothing runs on after the start, so the planner's next read of the issues reads the remote at once.
 - **Edge case.** Two sessions start at once. One takes the short claim and the other reads nothing. A claim left by a session that died runs out by itself.
 - **Edge case.** A session starts inside another session's two minutes. Its first read is held; its next read after those two minutes polls, without waiting two minutes of its own.
 - **Edge case.** The `gh` program is missing, or no one is signed in. Nothing fails: `tmb doctor` names the reason and its fix.

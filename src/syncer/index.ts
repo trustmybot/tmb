@@ -14,7 +14,7 @@ export type { ReadOptions } from "./reader.ts";
 export { askThroughGh, sendThroughGh } from "./transport.ts";
 export { remoteIssueWriter, writeIssue } from "./writer.ts";
 export { Folder, type FoldCount, syncerActor, UNTITLED } from "./fold.ts";
-export { FULL_PASS_MS, GONE_CHECKS_MAX, keptOf, type SyncOptions, type SyncOutcome, syncProject, syncTrigger } from "./sync.ts";
+export { type BriefSync, FULL_PASS_MS, GONE_CHECKS_MAX, keptOf, type SyncOptions, type SyncOutcome, syncBriefly, syncProject, syncTrigger } from "./sync.ts";
 export type { Answer, Ask, Change, Request, Send } from "./transport.ts";
 export type { ItemKind, Repo } from "./github.ts";
 

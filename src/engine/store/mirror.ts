@@ -171,6 +171,14 @@ export class MirrorRepository {
       return null;
     });
   }
+
+  /**
+   * Gives back the claims `by` still holds, for a poll given up before it ended: with no claim and
+   * no floor left from it, the next trigger polls at once.
+   */
+  releaseClaims(by: string): void {
+    this.log.db.query("UPDATE sync_state SET claimed_by = NULL, claim_until = NULL WHERE claimed_by = ?").run(by);
+  }
 }
 
 export function emptySyncRow(remote: string, list: string): SyncRow {

@@ -1,11 +1,11 @@
-// The syncer's folding half and its polls, on recorded and made-up answers: no network, no `gh`.
+// The syncer's folding half and its polls, on recorded and made-up answers: no network, and no `gh` but a stand-in that hangs.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, setSystemTime, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OUTSIDE_CHANGES_HEADING, openProjectStore, type Store, takeOutsideChanges, writeSetting } from "../../../src/engine/index.ts";
-import { type Answer, type Ask, type Changes, Folder, type Request, syncProject, syncTrigger, UNTITLED } from "../../../src/syncer/index.ts";
+import { type Answer, type Ask, type Changes, Folder, type Request, syncBriefly, syncProject, syncTrigger, UNTITLED } from "../../../src/syncer/index.ts";
 import { readGhOutput } from "../../../src/syncer/transport.ts";
 import { RECORD_READ_WAIT_MS, SYNC_RUNNING_NOTE } from "../../../src/engine/index.ts";
 import { ToolSession } from "../../../src/engine/tool-server.ts";
@@ -388,6 +388,82 @@ describe("when the syncer runs", () => {
       expect(second.asked.length).toBe(asked);
     } finally {
       setSystemTime();
+    }
+  });
+
+  test("a short-lived process's poll that ends within its wait brings the changes in, and there is nothing to give up", async () => {
+    const quick = recordedAsk(everyList());
+    const sync = await syncBriefly(dir, 5_000, { askFor: () => quick.ask });
+    expect(sync.ended()).toBe(true);
+    expect(sync.giveUp()).toBe(false);
+    expect(withStore((store) => store.listIssues().length)).toBe(2);
+    // It kept the floor like any other poll: a trigger right after it asks nothing.
+    const next = recordedAsk(everyList());
+    await syncTrigger({ askFor: () => next.ask })(dir);
+    expect(next.asked).toEqual([]);
+  });
+
+  test("a short-lived process's poll still running at its wait is given up with its claim, so the next trigger polls at once", async () => {
+    const never: Ask = () => new Promise<Answer>(() => {});
+    const started = Date.now();
+    const sync = await syncBriefly(dir, 100, { askFor: () => never, by: "hook@host" });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(sync.ended()).toBe(false);
+    expect(withStore((store) => store.mirror.syncRows(REMOTE).map((row) => row.claimedBy))).toContain("hook@host");
+    expect(sync.giveUp()).toBe(true);
+    expect(withStore((store) => store.mirror.syncRows(REMOTE).every((row) => row.claimedBy === null && row.claimUntil === null && row.lastError === null))).toBe(true);
+    expect(eventCount()).toBe(0);
+    const next = recordedAsk(everyList());
+    await syncTrigger({ askFor: () => next.ask })(dir);
+    expect(withStore((store) => store.listIssues().length)).toBe(2);
+  });
+
+  test("giving up a poll leaves another poll's claim alone", async () => {
+    withStore((store) => store.mirror.claim(REMOTE, ["issues"], "other@host", new Date(Date.now() + 60_000).toISOString(), new Date().toISOString(), false));
+    const asked = recordedAsk(everyList());
+    const sync = await syncBriefly(dir, 5_000, { askFor: () => asked.ask, by: "hook@host" });
+    expect(sync.ended()).toBe(true);
+    expect(asked.asked).toEqual([]);
+    withStore((store) => store.mirror.releaseClaims("hook@host"));
+    expect(withStore((store) => store.mirror.syncRows(REMOTE).map((row) => row.claimedBy))).toEqual(["other@host"]);
+  });
+
+  test("with issue sync off a short-lived process's poll asks nothing", async () => {
+    withStore((store) => writeSetting(store, { kind: "human" }, "issue_sync", "off"));
+    const asked = recordedAsk(everyList());
+    const sync = await syncBriefly(dir, 5_000, { askFor: () => asked.ask });
+    expect(sync.ended()).toBe(true);
+    expect(asked.asked).toEqual([]);
+  });
+
+  test.skipIf(process.platform === "win32")("giving up a poll stops the gh it was waiting on", async () => {
+    // A `gh` on PATH that names its process, then hangs as a remote out of reach would.
+    const bin = join(dir, "hung-gh");
+    const pidFile = join(dir, "gh.pid");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "gh"), `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`, { mode: 0o755 });
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      const sync = await syncBriefly(dir, 1_000);
+      expect(sync.ended()).toBe(false);
+      const pid = Number(readFileSync(pidFile, "utf8"));
+      expect(sync.giveUp()).toBe(true);
+      const running = () => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      for (let i = 0; i < 50 && running(); i++) await Bun.sleep(100);
+      expect(running()).toBe(false);
+      // The poll given up writes nothing after it: no error for tmb doctor, no claim, no floor.
+      await Bun.sleep(200);
+      expect(withStore((store) => store.mirror.syncRows(REMOTE).every((row) => row.claimedBy === null && row.claimUntil === null && row.lastError === null))).toBe(true);
+    } finally {
+      process.env.PATH = path;
     }
   });
 

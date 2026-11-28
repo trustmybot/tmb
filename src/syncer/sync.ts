@@ -217,3 +217,52 @@ export function syncTrigger(options: SyncOptions = {}): (projectDir: string) => 
     return running;
   };
 }
+
+/** A poll a short-lived process waited for: whether it has ended, and how to give it up. */
+export type BriefSync = {
+  /** True once the poll ended, whatever it found. */
+  readonly ended: () => boolean;
+  /**
+   * Gives up a poll that has not ended: stops its ask of the remote and gives its claim back, so
+   * the next trigger polls at once. Returns false, and does nothing, when the poll had ended. Never throws.
+   */
+  readonly giveUp: () => boolean;
+};
+
+/**
+ * One poll for a process that ends soon, such as a hook: under the same floor and claim as any
+ * other, waited for `waitMs` at most. The caller gives up one still running before it ends itself,
+ * so nothing runs on after it. Never throws.
+ */
+export async function syncBriefly(projectDir: string, waitMs: number, options: SyncOptions = {}): Promise<BriefSync> {
+  const stop = new AbortController();
+  const by = options.by ?? `${process.pid}@${os.hostname()}`;
+  let ended = false;
+  const poll = syncProject(projectDir, { askFor: (repoDir) => askThroughGh(repoDir, stop.signal), ...options, by }).then(
+    () => void (ended = true),
+    () => void (ended = true),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([poll, new Promise<void>((resolve) => void (timer = setTimeout(resolve, waitMs)))]);
+  clearTimeout(timer);
+  return {
+    ended: () => ended,
+    giveUp: () => {
+      if (ended) return false;
+      stop.abort();
+      try {
+        const opened = openProjectStore(projectDir, { create: false });
+        if (opened.ok) {
+          try {
+            opened.store.mirror.releaseClaims(by);
+          } finally {
+            opened.store.close();
+          }
+        }
+      } catch {
+        // A claim left behind runs out by itself.
+      }
+      return true;
+    },
+  };
+}

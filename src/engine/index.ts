@@ -142,5 +142,5 @@ export { inGitWorkTree, isManaged, type Repo, repoDirOf, repoOf, repoOfRow, type
 export { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./settings.ts";
 export { type Actor, type ClaimRefusal, type Discussion, emptySyncRow, type Issue, type IssueSummary, type MirrorKind, type MirroredRow, type ModelUsage, type Role, SCHEMA_VERSION, type SearchHit, SHAPE_WRITER_KEY, Store, type StoredEvent, type SyncRow, type Task } from "./store/index.ts";
 export { giveTasksTheirRepos, PLUGIN_IMPORT, tasksWithNoRepo } from "./task-repos.ts";
-export { RECORD_READ_WAIT_MS, type RecordReadListener, SYNC_RUNNING_NOTE, type RolesListener, serveTools, type SharedFoldersListener } from "./tool-server.ts";
+export { briefly, RECORD_READ_WAIT_MS, type RecordReadListener, SYNC_RUNNING_NOTE, type RolesListener, serveTools, type SharedFoldersListener } from "./tool-server.ts";
 export { version, versionLine } from "./version.ts";

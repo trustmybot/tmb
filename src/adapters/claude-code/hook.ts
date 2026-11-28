@@ -154,6 +154,16 @@ export class HookTranslator {
     return "";
   }
 
+  /** The project a hook's input names; null when the input is no JSON. */
+  projectOf(stdinText: string): string | null {
+    try {
+      const input: unknown = stdinText.trim() === "" ? {} : JSON.parse(stdinText);
+      return projectDirOf(isObject(input) ? input : {});
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Turns Claude Code's hook input into the engine's event and the engine's answer into
    * Claude Code's hook output; `run` is what the command line read about the run. Returns the
