@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function event(fields: Partial<TmbEvent> = {}): TmbEvent {
-  return { type: "before-file-write", projectDir: project, host: "host-a", role: "planner", action: "src/a.ts", ...fields };
+  return { type: "worker-in-folder", projectDir: project, host: "host-a", role: "planner", action: "src/a.ts", ...fields };
 }
 
 function createRecord(): void {
@@ -78,15 +78,15 @@ describe("decide", () => {
 
   test("with a readable record, allows and records each decision under the role and host", () => {
     createRecord();
-    expect(decide(event({ type: "before-file-write", role: "worker", task: "T1", action: "src/a.ts" }))).toEqual({ decision: "allow" });
-    expect(decide(event({ type: "before-file-write", action: "src/b.ts" }))).toEqual({ decision: "allow" });
+    expect(decide(event({ type: "after-agent-stop", role: "worker", task: "T1", action: "worker" }))).toEqual({ decision: "allow", reason: "no open worker run on task T1 to end" });
+    expect(decide(event({ action: "src/b.ts" }))).toEqual({ decision: "allow" });
 
     const recorded = guardDecisions();
     expect(recorded).toHaveLength(2);
-    expect(recorded[0]).toMatchObject({ decision: "allow", reason: "no rule denies it", createdBy: { kind: "agent", role: "worker", host: "host-a" } });
-    expect(JSON.parse(recorded[0]!.event)).toEqual({ type: "before-file-write", role: "worker", task: "T1", action: "src/a.ts" });
-    expect(recorded[1]!.createdBy).toEqual({ kind: "agent", role: "planner", host: "host-a" });
-    expect(JSON.parse(recorded[1]!.event)).toEqual({ type: "before-file-write", role: "planner", action: "src/b.ts" });
+    expect(recorded[0]).toMatchObject({ decision: "allow", reason: "no open worker run on task T1 to end", createdBy: { kind: "agent", role: "worker", host: "host-a" } });
+    expect(JSON.parse(recorded[0]!.event)).toEqual({ type: "after-agent-stop", role: "worker", task: "T1", action: "worker" });
+    expect(recorded[1]).toMatchObject({ decision: "allow", reason: "no rule denies it", createdBy: { kind: "agent", role: "planner", host: "host-a" } });
+    expect(JSON.parse(recorded[1]!.event)).toEqual({ type: "worker-in-folder", role: "planner", action: "src/b.ts" });
   });
 
   test("records a subagent that is not a tmb role under the planner, keeping its own role in the event", () => {
@@ -289,29 +289,6 @@ describe("the worker gate", () => {
 
   test("allows a worker start in a project with no record", () => {
     expect(workerStart("no task")).toEqual({ decision: "allow" });
-  });
-});
-
-describe("the guards", () => {
-  const PLANNER = { kind: "agent", role: "planner", host: "host-a" } as const;
-
-  test("tmb leaves a worker's writes to the host, wherever they land, and denies every reviewer write by role (#185)", () => {
-    createRecord();
-    const worktree = mkdtempSync(path.join(project, "wt-"));
-    const opened = openProjectStore(project, { create: true });
-    if (!opened.ok) throw opened.error;
-    const issueId = opened.store.createIssue(PLANNER, { title: "goal" });
-    opened.store.appendTask(PLANNER, { issueId, title: "task", spec: "{}", state: "open", worktree });
-    opened.store.close();
-    const write = (role: string, action: string) => decide(event({ type: "before-file-write", role, action }));
-
-    const reviewer = write("reviewer", path.join(worktree, "a.ts"));
-    expect(reviewer).toMatchObject({ decision: "deny", reason: expect.stringContaining("The reviewer judges a change and never edits one") });
-    expect(write("reviewer", "src/a.ts").decision).toBe("deny");
-    expect(write("worker", path.join(worktree, "src", "new", "a.ts")).decision).toBe("allow");
-    expect(write("worker", path.join(project, "src", "a.ts")).decision).toBe("allow");
-    expect(write("worker", "src/a.ts").decision).toBe("allow");
-    expect(write("planner", "src/a.ts").decision).toBe("allow");
   });
 });
 

@@ -53,7 +53,7 @@ function gitInit(dir: string): void {
   expect(result.status).toBe(0);
 }
 
-const GUARDED_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close";
+const GUARDED_MATCHER = "Agent|Task|Bash|mcp__tmb__task_brief|mcp__tmb__task_close";
 const tmbHooks = (tmbCommand: readonly string[]) => ({
   SessionStart: [
     { hooks: [{ type: "command", command: hookCommand(tmbCommand, "session-start-role") }] },
@@ -77,10 +77,22 @@ describe("settings: setup", () => {
     expect(hookCommand(BINARY, "subagent-stop")).toBe(`"${EXE}" hook subagent-stop`);
   });
 
-  test("the PreToolUse matcher covers the six guarded tools, the shell, and the tools a worker names its task with", () => {
+  test("the PreToolUse matcher covers the subagent starts, the shell, and the tools a worker names its task with, and no file write", () => {
     settingsFile.install(project, BINARY);
     const [group] = (readJson(settingsFile.path(project)) as { hooks: { PreToolUse: { matcher: string }[] } }).hooks.PreToolUse;
-    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
+    expect(group!.matcher.split("|").sort()).toEqual(["Agent", "Bash", "Task", "mcp__tmb__task_brief", "mcp__tmb__task_close"]);
+  });
+
+  test("a project an older tmb wired with the file-write matcher loses it on the next init, and doctor and init agree on the gap", () => {
+    const old = tmbHooks(BINARY);
+    old.PreToolUse[0]!.matcher = `Write|Edit|MultiEdit|NotebookEdit|${GUARDED_MATCHER}`;
+    mkdirSync(path.dirname(settingsFile.path(project)), { recursive: true });
+    writeFileSync(settingsFile.path(project), JSON.stringify({ hooks: old, enabledMcpjsonServers: ["tmb"] }));
+
+    expect(settingsFile.gaps(project, BINARY)).toEqual([".claude/settings.local.json lacks tmb's current PreToolUse hook"]);
+    expect(settingsFile.install(project, BINARY).hooksAdded).toEqual(["PreToolUse"]);
+    expect(readJson(settingsFile.path(project))).toEqual(tmbSettings);
+    expect(settingsFile.gaps(project, BINARY)).toEqual([]);
   });
 
   test("merges into an existing file, keeping other keys, hooks and enabled servers", () => {
