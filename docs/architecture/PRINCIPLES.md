@@ -116,6 +116,11 @@ flowchart LR
 - **Example 3.** Every function is a terminal command or an agent tool.
 - **Edge case.** An adapter grows a rule of its own. That is a defect: rules live in the engine.
 - **What tmb leaves to the host.** Starting agents, running models and managing parallel sessions, on the Human's own login.
+- **Host feature or tmb's own.** tmb uses the host's feature when it serves the outcome. Where the host's default works against the outcome, tmb corrects it: with a refusal or a tool when code can check it, with prompt text when only judgment can.
+  - **Example 1.** The host can watch a pull request's checks. tmb adds no watcher of its own.
+  - **Example 2.** A model tends to answer from memory. Code cannot check that, so the planner's prompt tells it to verify first.
+  - **Example 3.** The host lets an agent close its own work. tmb's close tool refuses until the task's checks pass.
+  - **Edge case.** The host adds a feature tmb already built. tmb's own is removed unless the record or a gate needs it.
 
 ## 9. Gate the outcome, never babysit
 
