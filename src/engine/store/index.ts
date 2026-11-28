@@ -38,6 +38,7 @@ export {
   type NewTask,
   type Run,
   type RunEnd,
+  SEARCH_LIMIT_DEFAULT,
   SEARCH_LIMIT_MAX,
   SNIPPET_MAX,
   type SearchHit,

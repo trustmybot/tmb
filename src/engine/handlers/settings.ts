@@ -74,12 +74,6 @@ export const settingsGetSchema: InputSchema = { type: "object", properties: {}, 
 
 export type SettingsView = { settings: Settings; empty: ProjectSetting[]; detected: Detected };
 
-export function settingsGet(store: Store, _actor: Actor, input: unknown, context: OperationContext): SettingsView {
-  validateInput("settings_get", settingsGetSchema, input);
-  const settings = readSettings(store);
-  return { settings, empty: emptySettings(settings), detected: detectedSettings(context.projectDir) };
-}
-
 // --- settings_set -------------------------------------------------------------------------
 
 export const settingsSetSchema: InputSchema = {
@@ -169,52 +163,71 @@ function mergedRepos(current: RepoPolicies, value: unknown): RepoPolicies {
   return { ...current, ...given };
 }
 
-export function settingsSet(store: Store, actor: Actor, input: unknown, context: OperationContext): SettingsSetResult {
-  requireRole(actor, "settings_set", ["planner"]);
-  const values = validateInput<Partial<Record<SetName, unknown>>>("settings_set", settingsSetSchema, input);
-  const named = SET_NAMES.filter((name) => values[name] !== undefined);
-  if (named.length === 0) throw new HandlerError("invalid_input", `settings_set needs at least one of ${SET_NAMES.join(", ")}`);
-  const repos = readSettings(store).repos;
-  if (repos === null && named.includes("repos")) {
-    throw new HandlerError("refused", "this project is one repo, so it has no repos to set; set base_branch and checks instead");
+/** The project's settings for one caller: read them, and set the ones the planner may. */
+export class SettingsService {
+  constructor(
+    private readonly store: Store,
+    private readonly actor: Actor,
+    private readonly context: OperationContext,
+  ) {}
+
+  get(input: unknown): SettingsView {
+    validateInput("settings_get", settingsGetSchema, input);
+    const settings = readSettings(this.store);
+    return { settings, empty: emptySettings(settings), detected: detectedSettings(this.context.projectDir) };
   }
-  if (repos !== null) {
-    const projectWide = named.filter((name) => name === "base_branch" || name === "checks");
-    if (projectWide.length > 0) {
-      throw new HandlerError("refused", `this project is a workspace of several repos, each with its own base branch and checks; set ${projectWide.join(" and ")} for a repo through repos`);
+
+  set(input: unknown): SettingsSetResult {
+    requireRole(this.actor, "settings_set", ["planner"]);
+    const values = validateInput<Partial<Record<SetName, unknown>>>("settings_set", settingsSetSchema, input);
+    const named = SET_NAMES.filter((name) => values[name] !== undefined);
+    if (named.length === 0) throw new HandlerError("invalid_input", `settings_set needs at least one of ${SET_NAMES.join(", ")}`);
+    const repos = readSettings(this.store).repos;
+    if (repos === null && named.includes("repos")) {
+      throw new HandlerError("refused", "this project is one repo, so it has no repos to set; set base_branch and checks instead");
     }
-  }
-  // With no one to ask, no one chose: the planner never picks the review mode for the Human.
-  if (context.unattended === true && named.includes("review_mode") && values.review_mode !== readSettings(store).review_mode) {
-    throw new HandlerError(
-      "refused",
-      `the review mode is the Human's choice, and no one can answer in this run; the Human sets it with \`${runningName()} onboard\` (\`${runningName()} onboard --review-mode <mode>\`, once they type yes on their terminal)`,
-    );
-  }
-  const nextRepos = repos !== null && named.includes("repos") ? mergedRepos(repos, values.repos) : null;
-  if (context.unattended === true && nextRepos !== null && reviewModeChanges(repos, nextRepos).length > 0) {
-    throw new HandlerError(
-      "refused",
-      `a repo's review mode is the Human's choice, and no one can answer in this run; the Human sets it with \`${runningName()} onboard\` (\`${runningName()} onboard --repo <repo> --review-mode <mode> --yes\` without a question)`,
-    );
-  }
-  const changed: SetName[] = [];
-  try {
-    store.transaction(() => {
-      for (const name of named) {
-        // The review mode is the Human's choice, which the planner passes on; the record says it came through the planner.
-        const wrote =
-          name === "review_mode"
-            ? chooseReviewMode(store, actor, values[name], "planner")
-            : name === "repos"
-              ? writeRepos(store, actor, nextRepos, "planner")
-              : writeSetting(store, actor, name, values[name]);
-        if (wrote) changed.push(name);
+    if (repos !== null) {
+      const projectWide = named.filter((name) => name === "base_branch" || name === "checks");
+      if (projectWide.length > 0) {
+        throw new HandlerError("refused", `this project is a workspace of several repos, each with its own base branch and checks; set ${projectWide.join(" and ")} for a repo through repos`);
       }
-    });
-  } catch (error) {
-    if (error instanceof SettingError) throw new HandlerError("invalid_input", error.message);
-    throw error;
+    }
+    // With no one to ask, no one chose: the planner never picks the review mode for the Human.
+    if (this.context.unattended === true && named.includes("review_mode") && values.review_mode !== readSettings(this.store).review_mode) {
+      throw new HandlerError(
+        "refused",
+        `the review mode is the Human's choice, and no one can answer in this run; the Human sets it with \`${runningName()} onboard\` (\`${runningName()} onboard --review-mode <mode>\`, once they type yes on their terminal)`,
+      );
+    }
+    const nextRepos = repos !== null && named.includes("repos") ? mergedRepos(repos, values.repos) : null;
+    if (this.context.unattended === true && nextRepos !== null && reviewModeChanges(repos, nextRepos).length > 0) {
+      throw new HandlerError(
+        "refused",
+        `a repo's review mode is the Human's choice, and no one can answer in this run; the Human sets it with \`${runningName()} onboard\` (\`${runningName()} onboard --repo <repo> --review-mode <mode> --yes\` without a question)`,
+      );
+    }
+    const changed: SetName[] = [];
+    try {
+      this.store.transaction(() => {
+        for (const name of named) {
+          // The review mode is the Human's choice, which the planner passes on; the record says it came through the planner.
+          const wrote =
+            name === "review_mode"
+              ? chooseReviewMode(this.store, this.actor, values[name], "planner")
+              : name === "repos"
+                ? writeRepos(this.store, this.actor, nextRepos, "planner")
+                : writeSetting(this.store, this.actor, name, values[name]);
+          if (wrote) changed.push(name);
+        }
+      });
+    } catch (error) {
+      if (error instanceof SettingError) throw new HandlerError("invalid_input", error.message);
+      throw error;
+    }
+    return { ...this.get({}), changed };
   }
-  return { ...settingsGet(store, actor, {}, context), changed };
 }
+
+// The operations as the operation table and the command line call them.
+export const settingsGet = (store: Store, actor: Actor, input: unknown, context: OperationContext): SettingsView => new SettingsService(store, actor, context).get(input);
+export const settingsSet = (store: Store, actor: Actor, input: unknown, context: OperationContext): SettingsSetResult => new SettingsService(store, actor, context).set(input);
