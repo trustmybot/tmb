@@ -1,11 +1,11 @@
 // The syncer's folding half and its polls, on recorded and made-up answers: no network, no `gh`.
-import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, setSystemTime, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OUTSIDE_CHANGES_HEADING, openProjectStore, type Store, takeOutsideChanges, writeSetting } from "../../../src/engine/index.ts";
-import { type Answer, type Ask, type Changes, Folder, type Request, syncProject, UNTITLED } from "../../../src/syncer/index.ts";
+import { type Answer, type Ask, type Changes, Folder, type Request, syncProject, syncTrigger, UNTITLED } from "../../../src/syncer/index.ts";
 import { readGhOutput } from "../../../src/syncer/transport.ts";
 import { RECORD_READ_WAIT_MS, SYNC_RUNNING_NOTE } from "../../../src/engine/index.ts";
 import { ToolSession } from "../../../src/engine/tool-server.ts";
@@ -331,6 +331,39 @@ describe("when the syncer runs", () => {
       finish();
       slow.close();
       quick.close();
+    }
+  });
+
+  test("a session started inside another's floor polls once that floor ends, not a floor after its own start", async () => {
+    // The remote's answer to every list of a new repository whose issues the remote does not list yet.
+    const empty = 'HTTP/2.0 200 OK\r\nEtag: "47df56b9c7de2ab750dadaa2936448fa8f7c58b2742726f48e60bfb2ab4468eb"\r\n\r\n[]';
+    const t0 = Date.parse("2026-11-28T09:00:00Z");
+    const syncedAt = () => withStore((store) => store.mirror.syncRows(REMOTE).map((row) => row.syncedAt).sort().at(-1));
+    try {
+      setSystemTime(new Date(t0));
+      // The first session's poll: every list is empty, and its tag is kept.
+      await syncTrigger({ askFor: () => recordedAsk([["repos/", empty]]).ask })(dir);
+      const first = syncedAt();
+      const second = recordedAsk(everyList());
+      const trigger = syncTrigger({ askFor: () => second.ask });
+      // A new session starts a minute later, inside the floor: held, nothing asked, last synced unmoved.
+      setSystemTime(new Date(t0 + 60_000));
+      await trigger(dir);
+      expect(second.asked).toEqual([]);
+      expect(syncedAt()).toBe(first);
+      // Its planner lists the issues a minute and a half later: past the floor, so the poll runs.
+      setSystemTime(new Date(t0 + 150_000));
+      await trigger(dir);
+      expect(second.asked.find((request) => request.path.includes("/issues?"))?.tag).toBe('"47df56b9c7de2ab750dadaa2936448fa8f7c58b2742726f48e60bfb2ab4468eb"');
+      expect(withStore((store) => store.listIssues().length)).toBe(2);
+      expect(syncedAt()).toBe(new Date(t0 + 150_000).toISOString());
+      // And that poll keeps a floor of its own in this session.
+      const asked = second.asked.length;
+      setSystemTime(new Date(t0 + 160_000));
+      await trigger(dir);
+      expect(second.asked.length).toBe(asked);
+    } finally {
+      setSystemTime();
     }
   });
 
