@@ -1,6 +1,6 @@
 # Install tests
 
-The published compiled file, downloaded and started on a clean machine. They run after each dev build and each rc or stable release, on macOS, Windows and Linux ([all layers](../README.md)).
+The published compiled file, downloaded and started on a clean machine. They run after each rc or stable release, on macOS, Windows and Linux ([all layers](../README.md)).
 
 | Test | Run | What it proves |
 |---|---|---|

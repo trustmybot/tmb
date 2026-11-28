@@ -41,29 +41,29 @@ flowchart TD
 
 - **Example 1.** `1.2.0-dev.7.gh512` is the seventh merge to `dev` since the last stable tag, and pull request 512 produced it.
 - **Example 2. Is a fix in my build?** `tmb-dev --version` prints the build's name. The fix shipped in `1.2.0-dev.7.gh512` and you run `1.2.0-dev.9.gh530`: 9 is at least 7 and `X.Y.Z` is the same, so you have it.
-- **Example 3. Dev channel or rc?** The dev channel serves each merged pull request as soon as it lands. Its only checks are that pull request's own and the build's `bun test`. Cut an rc when you have a candidate to ship.
+- **Example 3. Dev channel or rc?** The dev channel serves each merged pull request as soon as it lands. Its only checks are that pull request's own; the dev run tests nothing itself. Cut an rc when you have a candidate to ship.
 - **Edge case.** A commit subject names no pull request. The build omits `gh<PR>`.
 
-## 3. A dev run and a tag run do the same steps
+## 3. A tag run tests what it publishes; a dev run only publishes
 
-**The dev run and the tag run (`.github/workflows/release.yml`) name the version, build, publish, then test what they published.**
+**The tag run (`.github/workflows/release.yml`) names the version, tests, builds, publishes, then tests what it published. The dev run does the same without the tests, so a dev build is out minutes after its merge.**
 
 ```mermaid
 flowchart TD
-    V["name the version"] --> B["build: bun test, then compile"]
+    V["name the version"] --> B["build: bun test (tag run only), then compile"]
     B --> P["publish to the release repo"]
-    P --> I["install test, 3 systems"]
-    P --> U["update test, 3 systems"]
+    P --> I["install test, 3 systems (tag run only)"]
+    P --> U["update test, 3 systems (tag run only)"]
     P --> M["fill package-manager manifests"]
 ```
 
 | Step | What it does |
 |---|---|
 | Name the version | Dev: the name in section 2. Tag: the tag without its `v`. |
-| Build | A macOS runner builds `darwin-arm64` and `darwin-x64` and signs them ad hoc. A Linux runner builds `linux-x64`, `linux-arm64` and `windows-x64`. Each runs `bun test` first. |
+| Build | A macOS runner builds `darwin-arm64` and `darwin-x64` and signs them ad hoc. A Linux runner builds `linux-x64`, `linux-arm64` and `windows-x64`. On a tag run each runs `bun test` first. |
 | Publish | Uploads the five programs, `install.sh`, `install.ps1`, a `VERSION` file and `SHA256SUMS`. Dev deletes and recreates its one release. |
-| Install test | Installs the published release with the real installer on macOS, Linux and Windows. |
-| Update test | Checks an install updating itself on the same three systems. |
+| Install test | Tag run only. Installs the published release with the real installer on macOS, Linux and Windows. |
+| Update test | Tag run only. Checks an install updating itself on the same three systems. |
 | Package managers | Fills the Homebrew cask, the Scoop manifest and the winget manifests from `SHA256SUMS`, only when the release is the newest on its channel. |
 
 - **Example 1.** The tag `v1.2.0-rc.1` is pushed. The run names the version `1.2.0-rc.1`, builds five programs, publishes them and tests the install and the update on three systems.
