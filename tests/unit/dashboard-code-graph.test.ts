@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { childOf, file, functionView, search, tree } from "../../src/dashboard/code-graph.ts";
+import { childOf, CodeGraphView } from "../../src/dashboard/code-graph.ts";
 import { FUNCTION_KINDS } from "../../src/engine/graph/build.ts";
 import { indexProject, openView } from "../../src/engine/graph/fresh.ts";
 import { lookupSymbol } from "../../src/engine/graph/lookups.ts";
@@ -71,7 +71,7 @@ function walk(db: Database, layer: string): Walk {
   const out: Walk = { functions: new Map(), dirs: 0, files: 0, widest: 0 };
   const seen: number[] = [];
   const visit = (dir: string): number => {
-    const level = tree(db, layer, dir)!;
+    const level = new CodeGraphView(db, layer).tree(dir)!;
     out.dirs++;
     out.widest = Math.max(out.widest, level.children.length);
     let sum = 0;
@@ -84,7 +84,7 @@ function walk(db: Database, layer: string): Walk {
         sum += inside;
       } else {
         out.files++;
-        const one = file(db, layer, child.path)!;
+        const one = new CodeGraphView(db, layer).file(child.path)!;
         const fns = one.symbols.filter((s) => FUNCTION_KINDS.has(s.kind));
         expect(fns.length).toBe(child.functions);
         expect(one.functions).toBe(child.functions);
@@ -164,25 +164,25 @@ describe("a small project", () => {
   });
 
   test("the top folder shows its own folders and files only, with function counts and proven links", () => {
-    const top = tree(db, layer, ".")!;
+    const top = new CodeGraphView(db, layer).tree(".")!;
     expect(top.children.map((c) => `${c.kind}:${c.path}:${c.functions}`)).toEqual(["dir:src:7", "dir:test:1", "file:README.md:0"]);
     expect(top.links).toContainEqual({ from: "test", to: "src", calls: 1, imports: 1 });
-    const src = tree(db, layer, "src")!;
+    const src = new CodeGraphView(db, layer).tree("src")!;
     expect(src.children.map((c) => c.path)).toEqual(["src/shop", "src/huge.ts", "src/main.ts"]);
     expect(src.links.find((l) => l.from === "src/main.ts" && l.to === "src/shop")).toMatchObject({ imports: 1 });
   });
 
   test("a file the graph could not parse is drawn, marked so", () => {
-    const huge = tree(db, layer, "src")!.children.find((c) => c.path === "src/huge.ts")!;
+    const huge = new CodeGraphView(db, layer).tree("src")!.children.find((c) => c.path === "src/huge.ts")!;
     expect(huge).toMatchObject({ kind: "file", functions: 0 });
     expect(huge.kind === "file" && huge.notParsed).toContain("not parsed");
-    expect(file(db, layer, "src/huge.ts")!.notParsed).toContain("not parsed");
-    const readme = tree(db, layer, ".")!.children.find((c) => c.path === "README.md")!;
+    expect(new CodeGraphView(db, layer).file("src/huge.ts")!.notParsed).toContain("not parsed");
+    const readme = new CodeGraphView(db, layer).tree(".")!.children.find((c) => c.path === "README.md")!;
     expect(readme.kind === "file" && readme.notParsed).toBeNull();
   });
 
   test("a function with functions inside it holds them, and a class holds its methods", () => {
-    const cart = file(db, layer, "src/shop/cart.ts")!;
+    const cart = new CodeGraphView(db, layer).file("src/shop/cart.ts")!;
     const by = (name: string) => cart.symbols.find((s) => s.qualifiedName === name)!;
     expect(by("seed").parent).toBe(by("makeCart").id);
     expect(by("Cart.total").parent).toBe(by("Cart").id);
@@ -197,7 +197,7 @@ describe("a small project", () => {
     for (const name of ["makeCart", "applyDiscount", "Cart.total", "main"]) {
       const card = lookupSymbol(db, layer, name).cards[0]!;
       const row = db.query("SELECT id FROM symbols WHERE layer = ? AND qualified_name = ? AND unnamed = 0").get(layer, name) as { id: number };
-      const view = functionView(db, layer, row.id)!;
+      const view = new CodeGraphView(db, layer).functionView(row.id)!;
       expect(view.card).toEqual(card);
       expect(view.callers.map(({ id: _id, ...ref }) => ref)).toEqual(card.callers);
       expect(view.callees.map((c) => c.qualifiedName)).toEqual(card.callees.filter((c) => c.target !== null).map((c) => c.target!.qualifiedName));
@@ -206,43 +206,43 @@ describe("a small project", () => {
     }
     const applyDiscount = db.query("SELECT id FROM symbols WHERE layer = ? AND qualified_name = 'applyDiscount'").get(layer) as { id: number };
     // Called from inside an unnamed callback: reported from the nearest named function, as the lookup does.
-    expect(functionView(db, layer, applyDiscount.id)!.callers.map((c) => c.qualifiedName)).toEqual(["Cart.total"]);
+    expect(new CodeGraphView(db, layer).functionView(applyDiscount.id)!.callers.map((c) => c.qualifiedName)).toEqual(["Cart.total"]);
   });
 
   test("an unnamed function opens too, inside its container", () => {
-    const cart = file(db, layer, "src/shop/cart.ts")!;
+    const cart = new CodeGraphView(db, layer).file("src/shop/cart.ts")!;
     const callback = cart.symbols.find((s) => s.qualifiedName === "callback of `map`")!;
-    const view = functionView(db, layer, callback.id)!;
+    const view = new CodeGraphView(db, layer).functionView(callback.id)!;
     expect(view.unnamed).toBe(true);
     expect(view.parent).toBe(cart.symbols.find((s) => s.qualifiedName === "Cart.total")!.id);
     expect(view.callees.map((c) => c.qualifiedName)).toEqual(["applyDiscount"]);
   });
 
   test("a function shows its calls by state, and an unnamed one its own (trustmybot/tmb#252)", () => {
-    const cart = file(db, layer, "src/shop/cart.ts")!;
+    const cart = new CodeGraphView(db, layer).file("src/shop/cart.ts")!;
     const by = (name: string) => cart.symbols.find((s) => s.qualifiedName === name)!;
     // Cart.total writes `.map(…)` and `.reduce(…)`, on no proven type; its callback calls applyDiscount.
     expect(by("Cart.total").calls).toEqual({ linked: 0, outside: 0, notKnown: 2 });
     expect(by("callback of `map`").calls).toEqual({ linked: 1, outside: 0, notKnown: 0 });
-    const view = functionView(db, layer, by("Cart.total").id)!;
+    const view = new CodeGraphView(db, layer).functionView(by("Cart.total").id)!;
     expect(view.card.calls).toEqual({ linked: 1, outside: 0, notKnown: 2 });
     expect(view.card.callsNote).toContain("Calls not known: 2 of 3.");
   });
 
   test("search finds a function by part of its name, named ones first", () => {
-    expect(search(db, layer, "applyDisc").map((h) => h.qualifiedName)).toEqual(["applyDiscount"]);
-    expect(search(db, layer, "cart").map((h) => h.qualifiedName)).toEqual(["Cart", "makeCart", "Cart.total", "callback of `test` 'a cart'"]);
-    expect(search(db, layer, "callback").every((h) => h.unnamed)).toBe(true);
-    expect(search(db, layer, "%")).toEqual([]);
-    expect(search(db, layer, "  ")).toEqual([]);
+    expect(new CodeGraphView(db, layer).search("applyDisc").map((h) => h.qualifiedName)).toEqual(["applyDiscount"]);
+    expect(new CodeGraphView(db, layer).search("cart").map((h) => h.qualifiedName)).toEqual(["Cart", "makeCart", "Cart.total", "callback of `test` 'a cart'"]);
+    expect(new CodeGraphView(db, layer).search("callback").every((h) => h.unnamed)).toBe(true);
+    expect(new CodeGraphView(db, layer).search("%")).toEqual([]);
+    expect(new CodeGraphView(db, layer).search("  ")).toEqual([]);
   });
 
   test("a folder, file or function the graph does not hold is no answer", () => {
-    expect(tree(db, layer, "nope")).toBeNull();
-    expect(file(db, layer, "src/nope.ts")).toBeNull();
-    expect(functionView(db, layer, 999_999)).toBeNull();
+    expect(new CodeGraphView(db, layer).tree("nope")).toBeNull();
+    expect(new CodeGraphView(db, layer).file("src/nope.ts")).toBeNull();
+    expect(new CodeGraphView(db, layer).functionView(999_999)).toBeNull();
     const module = db.query("SELECT id FROM symbols WHERE layer = ? AND kind = 'file' LIMIT 1").get(layer) as { id: number };
-    expect(functionView(db, layer, module.id)).toBeNull();
+    expect(new CodeGraphView(db, layer).functionView(module.id)).toBeNull();
   });
 });
 
@@ -275,7 +275,7 @@ describe("tmb's own repo", () => {
       const walked = walk(view.db, view.layer);
       expect(new Set(walked.functions.keys())).toEqual(all);
       // The top level is a handful of folders and files, not thousands of functions.
-      expect(tree(view.db, view.layer, ".")!.children.length).toBeLessThan(60);
+      expect(new CodeGraphView(view.db, view.layer).tree(".")!.children.length).toBeLessThan(60);
     } finally {
       view.db.close();
     }
