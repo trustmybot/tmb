@@ -1,25 +1,20 @@
 // Claude Code reads subagent definitions from the project's .claude/agents/<name>.md. tmb
 // writes one file per subagent role, marks it as its own, and never touches an agent file
 // it did not write.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { CAPABILITIES, type Capability, type SubagentRole } from "../../engine/index.ts";
-import { inGitWorkTree } from "../../engine/index.ts";
-import { deleteFile } from "../common/json-file.ts";
+import { CAPABILITIES, type Capability, inGitWorkTree, type SubagentRole } from "../../engine/index.ts";
+import { MarkedFiles } from "../common/marked-files.ts";
+import { FILES, MARKERS } from "./host.ts";
 
-const AGENTS_RELATIVE = path.join(".claude", "agents");
-// A YAML comment as the frontmatter's first line: Claude Code ignores it, and it tells tmb the file is its own.
-export const MARKER = "# Written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
-// The marker builds before tmb init wrote, so their files are still recognised and replaced or removed.
-const EARLIER_MARKER = "# Written by tmb setup and deleted by tmb remove; tmb setup replaces any edit.";
-const ROLE_NAME = /^[a-z][a-z0-9-]*$/;
+const ROLE_FILE_EXTENSION = ".md";
 
 /**
  * Claude Code's own tools for each capability. A role is denied the tools of the capabilities
  * it lacks and keeps every other tool, so a project's own tools and any new tool of the host
  * reach it. Claude Code enforces the denial itself.
  */
-export const CAPABILITY_TOOLS: Record<Capability, readonly string[]> = {
+export const CAPABILITY_TOOLS: Readonly<Record<Capability, readonly string[]>> = {
   "read-files": ["Read", "Glob", "Grep"],
   "edit-files": ["Edit", "Write", "NotebookEdit"],
   "run-commands": ["Bash"],
@@ -30,30 +25,17 @@ export function roleDeniedTools(role: SubagentRole): string[] {
   return CAPABILITIES.filter((capability) => !role.capabilities.includes(capability)).flatMap((capability) => CAPABILITY_TOOLS[capability]);
 }
 
-export function agentsDir(projectDir: string): string {
-  return path.join(projectDir, AGENTS_RELATIVE);
-}
-
-export function roleFilePath(projectDir: string, roleName: string): string {
-  return path.join(agentsDir(projectDir), `${roleName}.md`);
-}
-
 /** Whether tmb wrote the file: its frontmatter opens with tmb's marker. Role files and skill files share it. */
 export function isTmbFile(file: string): boolean {
   const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
-  return [MARKER, EARLIER_MARKER].some((marker) => text.startsWith(`---\n${marker}\n`));
+  return [MARKERS.current, MARKERS.earlier].some((marker) => text.startsWith(`---\n${marker}\n`));
 }
 
 /**
  * Where Claude Code can make a subagent's worktree: it cuts one only from a git work tree, so a
  * workspace folder that holds repos and is none gets no worktree from it (trustmybot/tmb#463).
  */
-export type RoleFileOptions = { hostWorktree: boolean };
-
-/** Whether Claude Code can make a role's worktree in the project, as its agent files are written for. */
-export function roleFileOptions(projectDir: string): RoleFileOptions {
-  return { hostWorktree: inGitWorkTree(projectDir) };
-}
+export type RoleFileOptions = { readonly hostWorktree: boolean };
 
 /**
  * The role as a Claude Code agent file. Values are JSON strings, which YAML reads as quoted
@@ -61,12 +43,7 @@ export function roleFileOptions(projectDir: string): RoleFileOptions {
  * a role that lacks no capability has none.
  */
 export function roleFileText(role: SubagentRole, options: RoleFileOptions = { hostWorktree: true }): string {
-  const lines = [
-    "---",
-    MARKER,
-    `name: ${JSON.stringify(role.name)}`,
-    `description: ${JSON.stringify(role.description)}`,
-  ];
+  const lines = ["---", MARKERS.current, `name: ${JSON.stringify(role.name)}`, `description: ${JSON.stringify(role.description)}`];
   const denied = roleDeniedTools(role);
   if (denied.length > 0) lines.push(`disallowedTools: ${JSON.stringify(denied.join(", "))}`);
   // Claude Code makes the worktree the role's working folder and keeps its edits there; tmb adopts it as the task's.
@@ -78,71 +55,41 @@ export function roleFileText(role: SubagentRole, options: RoleFileOptions = { ho
   return lines.join("\n");
 }
 
-/** Role names in each outcome: written or rewritten, already current, or left alone because the file is not tmb's. */
-export type RoleFilesResult = { written: string[]; current: string[]; notOurs: string[]; removed: string[] };
+/** tmb's agent files in the project's .claude/agents. */
+export class RoleFiles extends MarkedFiles<SubagentRole> {
+  constructor() {
+    super("role");
+  }
 
-export function writeRoleFiles(projectDir: string, roles: readonly SubagentRole[]): RoleFilesResult {
-  const result: RoleFilesResult = { written: [], current: [], notOurs: [], removed: [] };
-  const options = roleFileOptions(projectDir);
-  for (const role of roles) {
-    if (!ROLE_NAME.test(role.name)) throw new Error(`role name ${JSON.stringify(role.name)} must be lowercase letters, digits and hyphens`);
-    const file = roleFilePath(projectDir, role.name);
-    const text = roleFileText(role, options);
-    if (existsSync(file)) {
-      if (!isTmbFile(file)) {
-        result.notOurs.push(role.name);
-        continue;
-      }
-      if (readFileSync(file, "utf8") === text) {
-        result.current.push(role.name);
-        continue;
-      }
-    }
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, text);
-    result.written.push(role.name);
+  dir(projectDir: string): string {
+    return path.join(projectDir, FILES.agentsDir);
   }
-  // A role file of tmb's for a role this version no longer has goes, as tmb remove would take it.
-  const wanted = new Set(roles.map((role) => roleFilePath(projectDir, role.name)));
-  result.removed = removeRoleFiles(projectDir, (file) => !wanted.has(file));
-  return result;
-}
 
-/** Deletes every agent file tmb marked as its own, or those of them `only` keeps; returns their paths. */
-export function removeRoleFiles(projectDir: string, only: (file: string) => boolean = () => true): string[] {
-  const dir = agentsDir(projectDir);
-  if (!existsSync(dir)) return [];
-  const removed: string[] = [];
-  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
-  for (const entry of entries) {
-    const file = path.join(dir, entry.name);
-    if (!entry.isFile() || !entry.name.endsWith(".md") || !only(file) || !isTmbFile(file)) continue;
-    deleteFile(file, projectDir);
-    removed.push(file);
+  filePath(projectDir: string, roleName: string): string {
+    return path.join(this.dir(projectDir), `${roleName}${ROLE_FILE_EXTENSION}`);
   }
-  return removed;
-}
 
-/** What `tmb doctor` finds wrong with tmb's role files: one line each, none when init would change nothing. Never writes. */
-export function roleFileGaps(projectDir: string, roles: readonly SubagentRole[]): string[] {
-  const gaps: string[] = [];
-  const options = roleFileOptions(projectDir);
-  for (const role of roles) {
-    const file = roleFilePath(projectDir, role.name);
-    const shown = path.relative(projectDir, file);
-    if (!existsSync(file)) gaps.push(`${shown} is missing: the ${role.name} role is not written`);
-    else if (!isTmbFile(file)) gaps.push(`${shown} is not tmb's, so the ${role.name} role is not tmb's either; tmb leaves it alone`);
-    else if (readFileSync(file, "utf8") !== roleFileText(role, options)) gaps.push(`${shown} is not this version's ${role.name} role`);
+  /** Whether Claude Code can make a role's worktree in the project, as its agent files are written for. */
+  options(projectDir: string): RoleFileOptions {
+    return { hostWorktree: inGitWorkTree(projectDir) };
   }
-  const wanted = new Set(roles.map((role) => roleFilePath(projectDir, role.name)));
-  const dir = agentsDir(projectDir);
-  if (existsSync(dir)) {
-    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = path.join(dir, entry.name);
-      if (entry.isFile() && entry.name.endsWith(".md") && !wanted.has(file) && isTmbFile(file)) {
-        gaps.push(`${path.relative(projectDir, file)} is tmb's role file for a role this version no longer has`);
-      }
-    }
+
+  protected override textOf(projectDir: string): (role: SubagentRole) => string {
+    const options = this.options(projectDir);
+    return (role) => roleFileText(role, options);
   }
-  return gaps;
+
+  protected override isOurs(file: string): boolean {
+    return isTmbFile(file);
+  }
+
+  protected override ownedFiles(projectDir: string, only: (file: string) => boolean): string[] {
+    const dir = this.dir(projectDir);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(ROLE_FILE_EXTENSION))
+      .map((entry) => path.join(dir, entry.name))
+      .filter((file) => only(file) && isTmbFile(file));
+  }
 }

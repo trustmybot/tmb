@@ -6,11 +6,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { roleFilePath } from "../../src/adapters/claude-code/role-files.ts";
 import { isTmbHookCommand, TMB_HOOKS } from "../../src/adapters/claude-code/settings.ts";
 import { projectDbPath, SUBAGENT_ROLES } from "../../src/engine/index.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 import { asHuman } from "../lib/as-human.ts";
+import { roleFiles } from "../../src/adapters/claude-code/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -65,7 +65,7 @@ function newGitProject(): string {
 /** Runs `tmb init`, which writes the engine's subagent roles among the rest. */
 function setUp(project: string): void {
   const out = tmb(["init"], project);
-  for (const name of ROLE_NAMES) expect(out).toContain(`Wrote the ${name} role to ${path.relative(project, roleFilePath(project, name))}.`);
+  for (const name of ROLE_NAMES) expect(out).toContain(`Wrote the ${name} role to ${path.relative(project, roleFiles.filePath(project, name))}.`);
 }
 
 function readJson(file: string): Record<string, unknown> {
@@ -115,10 +115,10 @@ describe("tmb init on a fresh project", () => {
     expect(tmbHooksByEvent(settings)).toEqual(wiredByEvent());
 
     expect(readdirSync(path.join(project, ".claude", "agents")).sort()).toEqual(["reviewer.md", "worker.md"]);
-    for (const role of SUBAGENT_ROLES) expect(readFileSync(roleFilePath(project, role.name), "utf8")).toContain(role.prompt.trim());
+    for (const role of SUBAGENT_ROLES) expect(readFileSync(roleFiles.filePath(project, role.name), "utf8")).toContain(role.prompt.trim());
 
     const again = tmb(["init"], project);
-    for (const name of ROLE_NAMES) expect(again).toContain(`${path.relative(project, roleFilePath(project, name))} already holds the ${name} role; nothing to change.`);
+    for (const name of ROLE_NAMES) expect(again).toContain(`${path.relative(project, roleFiles.filePath(project, name))} already holds the ${name} role; nothing to change.`);
 
     expect(projectDbPath(project)).toBe(path.join(project, ".tmb", "trajectory.db"));
     expect(existsSync(projectDbPath(project))).toBe(true);
@@ -172,7 +172,7 @@ describe("tmb remove", () => {
     human(["remove"], project);
 
     expect(existsSync(path.join(project, MCP_JSON))).toBe(false);
-    for (const name of ROLE_NAMES) expect(existsSync(roleFilePath(project, name))).toBe(false);
+    for (const name of ROLE_NAMES) expect(existsSync(roleFiles.filePath(project, name))).toBe(false);
     noTmbHookLeft(project);
     expect(existsSync(projectDbPath(project))).toBe(true);
   });

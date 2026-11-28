@@ -1,42 +1,61 @@
-import { type Skill, SKILLS, SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
+// The Claude Code adapter: one class over small collaborators, each owning one of the host's files
+// or formats. Its names, paths and caps are in host.ts.
+import { type ModelUsage, SKILLS, SUBAGENT_ROLES, type SubagentRole, TMB_EVENT_TYPES } from "../../engine/index.ts";
+import { detectProgram } from "../common/detect.ts";
 import { keptRecordLine, listed, setUpRecord, shown } from "../common/record.ts";
-import type { HostAdapter } from "../host-adapter.ts";
-import { detect } from "./detect.ts";
-import { answerHook } from "./hook.ts";
-import { HOST_ID, registerServer, serverGap, unregisterServer } from "./mcp-json.ts";
-import { removeRoleFiles, roleFileGaps, roleFilePath, writeRoleFiles } from "./role-files.ts";
-import { install, remove, settingsGaps } from "./settings.ts";
-import { removeSkillFiles, skillFileGaps, skillFilePath, writeSkillFiles } from "./skill-files.ts";
+import type { HookRun, HostAdapter, HostDetection, HostLimits, SessionTextLimit } from "../host-adapter.ts";
+import { HookTranslator } from "./hook.ts";
+import { HOOK_TEXT_CAP, HOST_COMMAND, HOST_ID, HOST_NAME, RECONNECT_TOOL_SERVER, SESSION_TEXT_BUDGET } from "./host.ts";
+import { McpJsonFile } from "./mcp-json.ts";
+import { RoleFiles } from "./role-files.ts";
+import { SettingsFile } from "./settings.ts";
+import { SkillFiles } from "./skill-files.ts";
+import { usageOfTranscriptFile } from "./usage.ts";
 
-function setUpRoleFiles(projectDir: string, roles: readonly SubagentRole[]): string[] {
-  const result = writeRoleFiles(projectDir, roles);
-  const file = (name: string) => shown(projectDir, roleFilePath(projectDir, name));
-  return [
-    ...result.written.map((name) => `Wrote the ${name} role to ${file(name)}.`),
-    ...result.current.map((name) => `${file(name)} already holds the ${name} role; nothing to change.`),
-    ...result.notOurs.map((name) => `${file(name)} is not tmb's, so it was kept as it is and the ${name} role was not written.`),
-    ...result.removed.map((removed) => `Removed tmb's role file ${shown(projectDir, removed)}, for a role this version no longer has.`),
-  ];
+/** What the adapter is made of; each part is passed in, so a test can hand in its own. */
+export type ClaudeCodeParts = {
+  readonly toolServer: McpJsonFile;
+  readonly settings: SettingsFile;
+  readonly roleFiles: RoleFiles;
+  readonly skillFiles: SkillFiles;
+  readonly hooks: HookTranslator;
+};
+
+/** The parts as tmb ships them. */
+export function defaultParts(): ClaudeCodeParts {
+  const settings = new SettingsFile();
+  return {
+    toolServer: new McpJsonFile(),
+    settings,
+    roleFiles: new RoleFiles(),
+    skillFiles: new SkillFiles(),
+    hooks: new HookTranslator(settings, usageOfTranscriptFile),
+  };
 }
 
-function setUpSkillFiles(projectDir: string, skills: readonly Skill[]): string[] {
-  const result = writeSkillFiles(projectDir, skills);
-  const file = (name: string) => shown(projectDir, skillFilePath(projectDir, name));
-  return [
-    ...result.written.map((name) => `Wrote the ${name} skill to ${file(name)}.`),
-    ...result.current.map((name) => `${file(name)} already holds the ${name} skill; nothing to change.`),
-    ...result.notOurs.map((name) => `${file(name)} is not tmb's, so it was kept as it is and the ${name} skill was not written.`),
-    ...result.removed.map((removed) => `Removed tmb's skill file ${shown(projectDir, removed)}, for a skill this version no longer has.`),
-  ];
-}
+const hooksNamed = (events: readonly string[]) => `the ${listed(events)} hook${events.length > 1 ? "s" : ""}`;
 
-export const adapter: HostAdapter = {
-  id: HOST_ID,
-  name: "Claude Code",
-  command: "claude",
-  reconnectToolServer: "run `/mcp`, then Reconnect on tmb",
+export class ClaudeCodeAdapter implements HostAdapter {
+  readonly id = HOST_ID;
+  readonly name = HOST_NAME;
+  readonly command = HOST_COMMAND;
+  readonly reconnectToolServer = RECONNECT_TOOL_SERVER;
+  readonly limits: HostLimits = {
+    canDenyToolCall: true,
+    modelPerRole: true,
+    namesAgentOnToolCall: true,
+    events: TMB_EVENT_TYPES,
+  };
+  readonly sessionText: SessionTextLimit = { cap: HOOK_TEXT_CAP, budget: SESSION_TEXT_BUDGET };
 
-  sessionTitle(stdinText) {
+  constructor(readonly parts: ClaudeCodeParts = defaultParts()) {}
+
+  /** Runs `claude --version`, with no shell, from PATH or from `searchPath` when given. */
+  detect(searchPath?: string): HostDetection {
+    return detectProgram(HOST_COMMAND, searchPath);
+  }
+
+  sessionTitle(stdinText: string): string | null {
     // Claude Code passes `session_title` at a session start when the Human named the session (`--name` or `/rename`).
     try {
       const title = (JSON.parse(stdinText) as { session_title?: unknown }).session_title;
@@ -44,66 +63,73 @@ export const adapter: HostAdapter = {
     } catch {
       return null;
     }
-  },
+  }
 
-  limits: { canDenyToolCall: true, modelPerRole: true, namesAgentOnToolCall: true, events: TMB_EVENT_TYPES },
-
-  detect,
-
-  setup(projectDir, tmbCommand, roles = SUBAGENT_ROLES) {
+  setup(projectDir: string, tmbCommand: readonly string[], roles: readonly SubagentRole[] = SUBAGENT_ROLES): string[] {
+    const { toolServer, settings, roleFiles, skillFiles } = this.parts;
     const lines = setUpRecord(projectDir);
 
-    const server = registerServer(projectDir, tmbCommand);
+    const server = toolServer.register(projectDir, tmbCommand);
     const mcpFile = shown(projectDir, server.file);
     if (!server.changed) lines.push(`${mcpFile} already registers the tmb tool server; nothing to add.`);
     else lines.push(server.created ? `Created ${mcpFile} with the tmb tool server.` : `Registered the tmb tool server in ${mcpFile}.`);
     if (server.gitignoreChanged) lines.push(`Added ${mcpFile} to .gitignore.`);
 
-    const settings = install(projectDir, tmbCommand);
-    const file = shown(projectDir, settings.settingsFile);
+    const installed = settings.install(projectDir, tmbCommand);
+    const file = shown(projectDir, installed.settingsFile);
     lines.push(
-      settings.serverEnabled ? `Enabled the tmb tool server in ${file}.` : `${file} already enables the tmb tool server; nothing to add.`,
-      settings.hooksAdded.length > 0
-        ? `Added the ${listed(settings.hooksAdded)} hook${settings.hooksAdded.length > 1 ? "s" : ""} to ${file}.`
-        : `${file} already has tmb's hooks; nothing to add.`,
+      installed.serverEnabled ? `Enabled the tmb tool server in ${file}.` : `${file} already enables the tmb tool server; nothing to add.`,
+      installed.hooksAdded.length > 0 ? `Added ${hooksNamed(installed.hooksAdded)} to ${file}.` : `${file} already has tmb's hooks; nothing to add.`,
     );
-    if (settings.hooksRemoved.length > 0) lines.push(`Removed tmb's hooks this version no longer wires under ${listed(settings.hooksRemoved)} from ${file}.`);
-    if (settings.gitignoreChanged) lines.push(`Added ${file} to .gitignore.`);
+    if (installed.hooksRemoved.length > 0) lines.push(`Removed tmb's hooks this version no longer wires under ${listed(installed.hooksRemoved)} from ${file}.`);
+    if (installed.gitignoreChanged) lines.push(`Added ${file} to .gitignore.`);
 
-    lines.push(...setUpRoleFiles(projectDir, roles), ...setUpSkillFiles(projectDir, SKILLS));
+    lines.push(...roleFiles.setUp(projectDir, roles), ...skillFiles.setUp(projectDir, SKILLS));
     return lines;
-  },
+  }
 
-  remove(projectDir) {
+  remove(projectDir: string): string[] {
+    const { toolServer, settings, roleFiles, skillFiles } = this.parts;
     const lines: string[] = [];
 
-    const server = unregisterServer(projectDir);
+    const server = toolServer.unregister(projectDir);
     const mcpFile = shown(projectDir, server.file);
     if (!server.removed) lines.push(`No tmb tool server found in ${mcpFile}; nothing to remove.`);
     else lines.push(server.fileDeleted ? `Removed the tmb tool server and the now-empty ${mcpFile}.` : `Removed the tmb tool server from ${mcpFile}.`);
 
     // Role and skill files go first, so the settings file's removal can drop a folder they leave empty.
-    for (const roleFile of removeRoleFiles(projectDir)) lines.push(`Removed tmb's role file ${shown(projectDir, roleFile)}.`);
-    for (const skillFile of removeSkillFiles(projectDir)) lines.push(`Removed tmb's skill file ${shown(projectDir, skillFile)}.`);
+    lines.push(...roleFiles.tearDown(projectDir), ...skillFiles.tearDown(projectDir));
 
-    const settings = remove(projectDir);
-    const file = shown(projectDir, settings.settingsFile);
-    if (settings.hooksRemoved.length === 0 && !settings.serverDisabled) {
+    const removed = settings.remove(projectDir);
+    const file = shown(projectDir, removed.settingsFile);
+    if (removed.hooksRemoved.length === 0 && !removed.serverDisabled) {
       lines.push(`No tmb hook or enabled tmb tool server found in ${file}; nothing to remove.`);
     } else {
-      const hooks = settings.hooksRemoved.length > 0 && `the ${listed(settings.hooksRemoved)} hook${settings.hooksRemoved.length > 1 ? "s" : ""}`;
-      const removed = listed([hooks, settings.serverDisabled && "the tmb tool server's enabled entry"].filter((part): part is string => !!part));
-      lines.push(settings.fileDeleted ? `Removed ${removed}, then the now-empty ${file}.` : `Removed ${removed} from ${file}.`);
+      const hooks = removed.hooksRemoved.length > 0 && hooksNamed(removed.hooksRemoved);
+      const what = listed([hooks, removed.serverDisabled && "the tmb tool server's enabled entry"].filter((part): part is string => !!part));
+      lines.push(removed.fileDeleted ? `Removed ${what}, then the now-empty ${file}.` : `Removed ${what} from ${file}.`);
     }
 
     lines.push(...keptRecordLine(projectDir));
     return lines;
-  },
+  }
 
-  wiringGaps(projectDir, tmbCommand) {
-    const server = serverGap(projectDir, tmbCommand);
-    return [...(server === null ? [] : [server]), ...settingsGaps(projectDir, tmbCommand), ...roleFileGaps(projectDir, SUBAGENT_ROLES), ...skillFileGaps(projectDir, SKILLS)];
-  },
+  wiringGaps(projectDir: string, tmbCommand: readonly string[]): string[] {
+    const { toolServer, settings, roleFiles, skillFiles } = this.parts;
+    const server = toolServer.gap(projectDir, tmbCommand);
+    return [...(server === null ? [] : [server]), ...settings.gaps(projectDir, tmbCommand), ...roleFiles.gaps(projectDir, SUBAGENT_ROLES), ...skillFiles.gaps(projectDir, SKILLS)];
+  }
 
-  answerHook,
-};
+  answerHook(event: string, stdinText: string, run: HookRun): string {
+    return this.parts.hooks.answer(event, stdinText, run);
+  }
+
+  readUsage(transcriptFile: string | undefined): ModelUsage[] | null {
+    return usageOfTranscriptFile(transcriptFile);
+  }
+}
+
+export const adapter = new ClaudeCodeAdapter();
+
+/** The shipped adapter's own parts, for code that works on one of Claude Code's files alone. */
+export const { toolServer, settings: settingsFile, roleFiles, skillFiles } = adapter.parts;

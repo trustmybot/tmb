@@ -5,10 +5,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { answerHook } from "../../src/adapters/claude-code/hook.ts";
-import { adapter as claudeCode } from "../../src/adapters/claude-code/index.ts";
-import { roleFilePath, roleFileText } from "../../src/adapters/claude-code/role-files.ts";
-import { hookCommand, install, settingsPath } from "../../src/adapters/claude-code/settings.ts";
+import { adapter as claudeCode, roleFiles, settingsFile } from "../../src/adapters/claude-code/index.ts";
+import { roleFileText } from "../../src/adapters/claude-code/role-files.ts";
+import { hookCommand } from "../../src/adapters/claude-code/settings.ts";
 import { installHooks } from "../../src/adapters/codex/hooks-json.ts";
 import { hooksJsonPath } from "../../src/adapters/codex/paths.ts";
 import { HOST_ADAPTERS } from "../../src/adapters/index.ts";
@@ -50,7 +49,7 @@ function newProject(name: string): string {
   // The Human's own entries, which a refresh must leave as they are.
   mkdirSync(path.join(dir, ".claude"), { recursive: true });
   writeFileSync(
-    settingsPath(dir),
+    settingsFile.path(dir),
     JSON.stringify({ permissions: { allow: ["Bash(ls)"] }, hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo mine" }] }] } }, null, 2),
   );
   writeFileSync(path.join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { mine: { command: "my-server" } } }, null, 2));
@@ -82,11 +81,11 @@ function wire(dir: string, version: string, program = "tmb"): void {
 /** Makes the project's files look as an earlier version wrote them: a changed role, a role since dropped, a hook since moved. */
 function ageFiles(dir: string): void {
   const worker = SUBAGENT_ROLES[0]!;
-  writeFileSync(roleFilePath(dir, worker.name), roleFileText({ ...worker, prompt: "An older prompt." }));
-  writeFileSync(roleFilePath(dir, "dropped-role"), roleFileText({ ...worker, name: "dropped-role" }));
-  const settings = JSON.parse(readFileSync(settingsPath(dir), "utf8"));
+  writeFileSync(roleFiles.filePath(dir, worker.name), roleFileText({ ...worker, prompt: "An older prompt." }));
+  writeFileSync(roleFiles.filePath(dir, "dropped-role"), roleFileText({ ...worker, name: "dropped-role" }));
+  const settings = JSON.parse(readFileSync(settingsFile.path(dir), "utf8"));
   settings.hooks.Stop = [{ hooks: [{ type: "command", command: hookCommand(COMMAND, "session-end") }] }];
-  writeFileSync(settingsPath(dir), JSON.stringify(settings, null, 2));
+  writeFileSync(settingsFile.path(dir), JSON.stringify(settings, null, 2));
 }
 
 /** The files init writes, by path relative to the project. */
@@ -115,7 +114,7 @@ describe("refreshing a project's host files after an update", () => {
     expect(line).toContain(`tmb refreshed this project's host files from tmb ${A} to ${B}`);
     expect(line).toContain("takes effect from the next session");
     expect(wiredFiles(old)).toEqual(wiredFiles(fresh));
-    expect(existsSync(roleFilePath(old, "dropped-role"))).toBe(false);
+    expect(existsSync(roleFiles.filePath(old, "dropped-role"))).toBe(false);
 
     const entries = refreshes(old);
     expect(entries).toHaveLength(1);
@@ -160,7 +159,7 @@ describe("refreshing a project's host files after an update", () => {
     wire(dir, A);
     ageFiles(dir);
     refresh(dir);
-    const settings = JSON.parse(readFileSync(settingsPath(dir), "utf8"));
+    const settings = JSON.parse(readFileSync(settingsFile.path(dir), "utf8"));
     expect(settings.permissions).toEqual({ allow: ["Bash(ls)"] });
     expect(settings.hooks.PreToolUse[0]).toEqual({ matcher: "Bash", hooks: [{ type: "command", command: "echo mine" }] });
     expect(settings.hooks.Stop).toBeUndefined();
@@ -225,7 +224,7 @@ describe("refreshing a project's host files after an update", () => {
   test("a failed refresh never throws: it says what failed and names tmb init, and records nothing", () => {
     const dir = newProject("p");
     wire(dir, A);
-    writeFileSync(settingsPath(dir), "{ not json");
+    writeFileSync(settingsFile.path(dir), "{ not json");
     const line = refresh(dir);
     expect(line).toContain(`tmb could not refresh this project's host files from tmb ${A} to ${B}`);
     expect(line).toContain("`tmb init`");
@@ -250,7 +249,7 @@ describe("the session start says it in one line", () => {
     const dir = newProject("p");
     wire(dir, A);
     const seen: string[] = [];
-    const output = answerHook("session-start", JSON.stringify({ cwd: dir }), {
+    const output = claudeCode.answerHook("session-start", JSON.stringify({ cwd: dir }), {
       unattended: false,
       refresh: (projectDir) => {
         seen.push(projectDir);
@@ -265,12 +264,12 @@ describe("the session start says it in one line", () => {
 describe("init takes out what a version no longer wires", () => {
   test("Claude Code: a tmb hook under an event its kind no longer uses goes; the Human's hook there stays", () => {
     const dir = newProject("p");
-    const settings = JSON.parse(readFileSync(settingsPath(dir), "utf8"));
+    const settings = JSON.parse(readFileSync(settingsFile.path(dir), "utf8"));
     settings.hooks.Stop = [{ hooks: [{ type: "command", command: hookCommand(COMMAND, "session-end") }, { type: "command", command: "echo stop" }] }];
-    writeFileSync(settingsPath(dir), JSON.stringify(settings));
-    expect(install(dir, COMMAND).hooksRemoved).toEqual(["Stop"]);
-    expect(JSON.parse(readFileSync(settingsPath(dir), "utf8")).hooks.Stop).toEqual([{ hooks: [{ type: "command", command: "echo stop" }] }]);
-    expect(install(dir, COMMAND).hooksRemoved).toEqual([]);
+    writeFileSync(settingsFile.path(dir), JSON.stringify(settings));
+    expect(settingsFile.install(dir, COMMAND).hooksRemoved).toEqual(["Stop"]);
+    expect(JSON.parse(readFileSync(settingsFile.path(dir), "utf8")).hooks.Stop).toEqual([{ hooks: [{ type: "command", command: "echo stop" }] }]);
+    expect(settingsFile.install(dir, COMMAND).hooksRemoved).toEqual([]);
   });
 
   test("Codex: a tmb hook under an event no current hook uses goes", () => {

@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { decide, openProjectStore, projectDbPath, type TmbEvent } from "../../src/engine/index.ts";
 import { humanOnlyInShell, humanOnlyStep } from "../../src/engine/human-only.ts";
-import { answerHook as claudeCodeHook } from "../../src/adapters/claude-code/hook.ts";
 import { answerHook as codexHook, shellTextOf } from "../../src/adapters/codex/hook.ts";
+import { adapter } from "../../src/adapters/claude-code/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -117,10 +117,10 @@ describe("the host's guard on an agent's shell command", () => {
 
   test("Claude Code's Bash call is denied through its hook", () => {
     const input = (command: string) => JSON.stringify({ hook_event_name: "PreToolUse", cwd: project, tool_name: "Bash", tool_input: { command } });
-    const denied = JSON.parse(claudeCodeHook("pre-tool-use", input("tmb feature waive feat/a --reason r"), { unattended: false }));
+    const denied = JSON.parse(adapter.answerHook("pre-tool-use", input("tmb feature waive feat/a --reason r"), { unattended: false }));
     expect(denied.hookSpecificOutput).toMatchObject({ hookEventName: "PreToolUse", permissionDecision: "deny" });
     expect(denied.hookSpecificOutput.permissionDecisionReason).toContain("tmb feature waive");
-    expect(claudeCodeHook("pre-tool-use", input("git status"), { unattended: false })).toBe("");
+    expect(adapter.answerHook("pre-tool-use", input("git status"), { unattended: false })).toBe("");
   });
 
   test("Codex's shell call is denied through its hook, given as a string or as argv", () => {

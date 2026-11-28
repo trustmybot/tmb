@@ -4,15 +4,12 @@
 // format is Claude Code's own and may change: anything unreadable gives no cost, never an error.
 import { readFileSync } from "node:fs";
 import type { ModelUsage } from "../../engine/index.ts";
+import { isObject } from "../common/json-file.ts";
 
 type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
 
 function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** The tokens per model in a transcript's text, or null when it holds no usage tmb can read. */
