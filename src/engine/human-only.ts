@@ -3,7 +3,7 @@
 // the Human types yes, as an agent's shell has none; and the host's guard reads an agent's shell
 // command and denies one, with the reason, on a host that can deny a shell command.
 import path from "node:path";
-import { runningName } from "../program.ts";
+import { runningName } from "./program.ts";
 
 /** One Human-only step, as the command line was asked to run it. */
 export type HumanOnlyStep = {

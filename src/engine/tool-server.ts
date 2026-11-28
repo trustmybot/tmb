@@ -3,12 +3,12 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, type CallToolResult, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
-import { runningName } from "../../program.ts";
-import type { FeedbackEnv } from "../feedback/index.ts";
-import { HandlerError, isOperationName, OPERATIONS } from "../handlers/index.ts";
-import { openProjectStore } from "../project.ts";
-import { hostRole } from "../settings.ts";
-import { type Actor, ROLES, type Role, type Store } from "../store/index.ts";
+import { runningName } from "./program.ts";
+import type { FeedbackEnv } from "./feedback/index.ts";
+import { HandlerError, isOperationName, OPERATIONS } from "./handlers/index.ts";
+import { openProjectStore } from "./project.ts";
+import { hostRole } from "./settings.ts";
+import { type Actor, ROLES, type Role, type Store } from "./store/index.ts";
 
 export const SERVER_NAME = "tmb";
 const ROLE_FIELD = {

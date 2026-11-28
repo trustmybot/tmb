@@ -10,7 +10,7 @@ import { asHuman } from "../lib/as-human.ts";
 import { pathWithFakeClaude } from "./fake-host.ts";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-export const CLI = path.join(ROOT, "src", "cli.ts");
+export const CLI = path.join(ROOT, "src", "cli", "index.ts");
 export const BASE_BRANCH = "main";
 
 export type ToolResult = { isError?: boolean; content: { type: string; text: string }[] };

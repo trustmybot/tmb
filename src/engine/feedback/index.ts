@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir, platform, release } from "node:os";
 import path from "node:path";
-import { type Channel, channelOf, type Program } from "../../program.ts";
+import { type Channel, channelOf, type Program } from "../program.ts";
 import { type Actor, type Store } from "../store/index.ts";
 import { type BugForm, FEEDBACK_REPO, type FeedbackRepo, fetchBugForm, type KnownField, readBugForm } from "./form.ts";
 import { type CleanPaths, formLink, issueBody, type ReportFacts, type ReportInput, reportTitle, reportValues } from "./report.ts";

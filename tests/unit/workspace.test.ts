@@ -14,7 +14,7 @@ import { featureStart, featureUpdate, HandlerError, issueCreate, settingsSet, ta
 import { judgePush, openProjectStore, readSettings, removePushGates, TMB_EVENT_TYPES, writeSetting } from "../../src/engine/index.ts";
 import { resolveRepo, scanWorkspace } from "../../src/engine/repos.ts";
 import type { Actor, Store } from "../../src/engine/store/index.ts";
-import { runInit, runOnboard, type SetupFlags } from "../../src/setup.ts";
+import { runInit, runOnboard, type SetupFlags } from "../../src/cli/commands/setup.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -72,7 +72,7 @@ const HOST: HostAdapter = {
 };
 
 /** The hooks init writes run this checkout's tmb, so a push in a test goes through the real gate. */
-const TMB_COMMAND = [process.execPath, path.join(import.meta.dir, "..", "..", "src", "cli.ts")];
+const TMB_COMMAND = [process.execPath, path.join(import.meta.dir, "..", "..", "src", "cli", "index.ts")];
 
 function setupOptions(flags: SetupFlags = {}) {
   return { projectDir: workspace, tmbCommand: TMB_COMMAND, adapters: [HOST], supportedHostIds: ["a"], flags, ask: null, out: (line: string) => output.push(line) };
@@ -408,7 +408,8 @@ describe("one rule for where the record is", () => {
       }
     };
     walk(src);
-    // migrate-plugin.ts names the plugin's own database, which is not tmb's record.
-    expect(offenders.sort()).toEqual(["adapters/claude-code/migrate-plugin.ts", "engine/project.ts"]);
+    // migrate-plugin.ts names the plugin's own database, which is not tmb's record; the dashboard's help
+    // copy names the file to the Human and opens nothing.
+    expect(offenders.sort()).toEqual(["adapters/claude-code/migrate-plugin.ts", "dashboard/web/shared/help-copy.ts", "engine/project.ts"]);
   });
 });

@@ -1,6 +1,6 @@
 // Feature branches: the planner names one for the work of a milestone, the engine cuts it
 // from the base branch, and each task of that work is cut from its tip and folds back into it.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import { gitFailure, runGit } from "../git.ts";
 import { refreshLocalMerges, refreshPullRequestStates } from "../pull-request-state.ts";
 import { repoOfRow, resolveRepo } from "../repos.ts";

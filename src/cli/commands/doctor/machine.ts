@@ -2,8 +2,8 @@
 // folder (trustmybot/tmb#160). Each reads only; a fix runs only after the Human's yes.
 import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
-import { formatBytes, keptBuilds, sessionEntries } from "../builds.ts";
-import { CHANNELS, programName } from "../program.ts";
+import { formatBytes, keptBuilds, sessionEntries } from "../../builds.ts";
+import { CHANNELS, programName } from "../../../engine/index.ts";
 import type { DoctorEnv, Finding } from "./types.ts";
 
 const INSTALLER = {

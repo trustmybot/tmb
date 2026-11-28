@@ -22,7 +22,7 @@ setDefaultTimeout(30_000);
 const HARNESSES: readonly HostHarness[] = [claudeCodeHarness, codexHarness];
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
+const CLI = path.join(ROOT, "src", "cli", "index.ts");
 
 let scratch: string;
 let env: Record<string, string>;

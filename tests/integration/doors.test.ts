@@ -14,7 +14,7 @@ import { asHuman } from "../lib/as-human.ts";
 setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
+const CLI = path.join(ROOT, "src", "cli", "index.ts");
 const TOOLS = [
   "issue_create",
   "issue_list",

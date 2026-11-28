@@ -2,7 +2,7 @@
 // one record (trustmybot/tmb#163). The record keeps each repo's policy in the repos setting, so no
 // call scans or guesses: a repo comes from the task or feature that names it, then from the repo a
 // call names, then from the git top level of the folder a command acts in, never from cwd alone.
-import { runningName } from "../program.ts";
+import { runningName } from "./program.ts";
 import { readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { runGit } from "./git.ts";

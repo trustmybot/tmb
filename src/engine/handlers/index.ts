@@ -1,6 +1,6 @@
 // The record's operations by name, each with the input schema it enforces and a description
 // telling an agent when to use it. The tool server publishes these as its tools.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import type { Actor, Store } from "../store/index.ts";
 import * as feature from "./features.ts";
 import * as feedback from "./feedback.ts";

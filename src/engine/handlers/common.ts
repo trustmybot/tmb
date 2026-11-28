@@ -1,6 +1,6 @@
 // What the feature and task operations share: where they run, who may call them, and the
 // states and branch names they use.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import type { FeedbackEnv } from "../feedback/index.ts";
 import type { Actor, Role } from "../store/index.ts";
 import { HandlerError } from "./errors.ts";

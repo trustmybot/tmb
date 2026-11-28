@@ -255,10 +255,10 @@ Symbol and edge kinds are the one contract every language of the code graph meet
 
 | Vocabulary | Values | Where |
 |---|---|---|
-| Channel | `dev`, `rc`, `stable` | `src/program.ts` |
+| Channel | `dev`, `rc`, `stable` | `src/engine/program.ts` |
 | Operation refusal code | `invalid_input`, `not_found`, `refused` | `src/engine/handlers/errors.ts` |
 | Why the record did not open | `missing`, `unreadable`, `newer` | `src/engine/store/open.ts` |
-| `tmb doctor` check status | `ok`, `warn`, `fail` | `src/doctor/types.ts` |
+| `tmb doctor` check status | `ok`, `warn`, `fail` | `src/cli/commands/doctor/types.ts` |
 | Feedback program setting | `on`, `off` | `src/engine/feedback/setting.ts` |
 
 ## How to add a new ENUM value

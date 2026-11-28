@@ -1,4 +1,4 @@
-import pkg from "../package.json" with { type: "json" };
+import pkg from "../../package.json" with { type: "json" };
 
 // Injected by scripts/build.ts with --define; absent when run from source.
 declare const TMB_GIT_SHA: string | undefined;

@@ -1,7 +1,7 @@
 // The task flow: the engine starts a task on its own branch and worktree, cut from its feature
 // branch, briefs whoever works on it, and closes it only after the checks pass on its committed
 // work, folding it into the feature branch and pushing that as a backup.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { type CheckCommandResult, CHECK_TIMEOUT_MS, overallResult, runChecks } from "../checks.ts";

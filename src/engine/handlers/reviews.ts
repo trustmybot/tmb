@@ -3,7 +3,7 @@
 // on that commit. Only then does the engine push the branch and open its one pull request into
 // the base branch. The push gate reads the same coverage, so a commit no pass or waiver covers
 // never reaches the base branch by a push either.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";

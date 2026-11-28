@@ -2,8 +2,8 @@
 // the path; the store never works out where the file lives.
 import { Database, SQLiteError } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { runningProgram, upgradeAdvice } from "../../program.ts";
-import { version as tmbVersion } from "../../version.ts";
+import { runningProgram, upgradeAdvice } from "../program.ts";
+import { version as tmbVersion } from "../version.ts";
 import { SCHEMA_STEPS, SCHEMA_VERSION, runStep } from "./schema.ts";
 import { SHAPE_WRITER_KEY, type ShapeWriter, Store } from "./store.ts";
 

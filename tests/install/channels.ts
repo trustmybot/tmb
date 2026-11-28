@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { type Channel, CHANNELS, programName } from "../../src/program.ts";
+import { type Channel, CHANNELS, programName } from "../../src/engine/program.ts";
 import { IS_WINDOWS, run, runToFile, tempDir, withEnv } from "../lib/driver.ts";
 
 const releasesUrl = "https://github.com/trustmybot/tmb-releases";

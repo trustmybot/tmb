@@ -11,14 +11,14 @@ import path from "node:path";
 import { adapter as claudeCode } from "../../src/adapters/claude-code/index.ts";
 import { PLUGIN_IMPORT } from "../../src/adapters/claude-code/migrate-plugin.ts";
 import { HOST_ADAPTERS, type HostAdapter } from "../../src/adapters/index.ts";
-import { sessionStartLine } from "../../src/doctor/index.ts";
-import { howFarBehind } from "../../src/doctor/machine.ts";
-import type { DoctorEnv } from "../../src/doctor/types.ts";
-import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "../../src/doctor/use.ts";
+import { sessionStartLine } from "../../src/cli/commands/doctor/index.ts";
+import { howFarBehind } from "../../src/cli/commands/doctor/machine.ts";
+import type { DoctorEnv } from "../../src/cli/commands/doctor/types.ts";
+import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "../../src/cli/commands/doctor/use.ts";
 import { openProjectStore, readSettings, TMB_EVENT_TYPES, writeSetting } from "../../src/engine/index.ts";
 import type { Actor, Store } from "../../src/engine/store/index.ts";
 import { giveTasksTheirRepos } from "../../src/engine/task-repos.ts";
-import { runInit } from "../../src/setup.ts";
+import { runInit } from "../../src/cli/commands/setup.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

@@ -5,7 +5,7 @@
 // request into the base branch. When the base branch moved since the task was cut, the engine
 // rebases the reviewed commit first: an unchanged patch keeps its review once the checks pass
 // again, a changed one needs a new review, and a conflict reopens the task.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import { spawnSync } from "node:child_process";
 import { gitFailure, runGit } from "../git.ts";
 import { repoOfRow } from "../repos.ts";

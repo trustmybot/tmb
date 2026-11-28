@@ -14,8 +14,8 @@ import { SEED, type SeededIds, seedRecord } from "./dashboard-record.ts";
 setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
-const WEB = path.join(ROOT, "dashboard", "web");
+const CLI = path.join(ROOT, "src", "cli", "index.ts");
+const WEB = path.join(ROOT, "src", "dashboard", "web");
 
 let scratch: string;
 let ids: SeededIds;

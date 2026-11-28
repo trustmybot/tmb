@@ -9,7 +9,7 @@ import { mcpJsonPath, registerServer, serverEntry, unregisterServer } from "../.
 import { setUpRecord } from "../../src/adapters/common/record.ts";
 import { hookCommand, install, isTmbHookCommand, remove, settingsGaps, settingsPath } from "../../src/adapters/claude-code/settings.ts";
 import { OPEN_WORK_HEADING, openProjectStore, plannerRole, projectDbPath, reviewerRole, UNATTENDED_INSTRUCTION } from "../../src/engine/index.ts";
-import { namingProgram } from "../../src/program.ts";
+import { namingProgram } from "../../src/engine/program.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -18,7 +18,7 @@ const EXE = path.join(tmpdir(), "tmb bin", "tmb");
 const BINARY = [EXE];
 const ATTENDED = { unattended: false };
 const BUN = path.join(tmpdir(), "bun bin", "bun");
-const SOURCE = [BUN, path.join(tmpdir(), "my code", "tmb", "src", "cli.ts")];
+const SOURCE = [BUN, path.join(tmpdir(), "my code", "tmb", "src", "cli", "index.ts")];
 
 let project: string;
 const savedEnv = {
@@ -458,7 +458,7 @@ describe("hook session-start", () => {
 });
 
 describe("cli hook", () => {
-  const cli = path.join(import.meta.dir, "..", "..", "src", "cli.ts");
+  const cli = path.join(import.meta.dir, "..", "..", "src", "cli", "index.ts");
 
   function runHook(args: string[], input: string) {
     return spawnSync(process.execPath, [cli, "hook", ...args], { input, encoding: "utf8", timeout: 30_000 });

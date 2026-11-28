@@ -17,7 +17,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rea
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
-import { runToolsCommand } from "../../src/engine/doors/command-line.ts";
+import { runToolsCommand } from "../../src/cli/command-line.ts";
 import { buildLayer, stillBuiltWith } from "../../src/engine/graph/build.ts";
 import { layerRow, openGraphDb } from "../../src/engine/graph/db.ts";
 import type { ToolCopy, ToolRelease } from "../../src/engine/graph/languages/contract.ts";

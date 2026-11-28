@@ -4,13 +4,8 @@
 // It listens on the loopback address only and answers the API only to its own host name.
 import { Database } from "bun:sqlite";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import page from "../../../../dashboard/web/index.html";
-import { openView } from "../../graph/fresh.ts";
-import { HandlerError, OPERATIONS } from "../../handlers/index.ts";
-import { openProjectStore, projectDbPath } from "../../project.ts";
-import { type PullRequestReader, refreshPullRequestStates } from "../../pull-request-state.ts";
-import { workingRepos, workspaceRepos } from "../../repos.ts";
-import type { Actor, Store } from "../../store/index.ts";
+import page from "./web/index.html";
+import { type Actor, HandlerError, openProjectStore, openView, OPERATIONS, projectDbPath, type PullRequestReader, refreshPullRequestStates, type Store, workingRepos, workspaceRepos } from "../engine/index.ts";
 import * as graph from "./code-graph.ts";
 import * as q from "./queries.ts";
 

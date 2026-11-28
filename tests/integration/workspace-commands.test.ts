@@ -11,7 +11,7 @@ import { pathWithFakeClaude } from "./fake-host.ts";
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
 
-const CLI = path.join(path.resolve(import.meta.dir, "../.."), "src", "cli.ts");
+const CLI = path.join(path.resolve(import.meta.dir, "../.."), "src", "cli", "index.ts");
 const REPOS = ["api", "tools", "notes"];
 
 let scratch: string;

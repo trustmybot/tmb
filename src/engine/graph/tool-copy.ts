@@ -16,7 +16,7 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { programStateDir, runningName } from "../../program.ts";
+import { programStateDir, runningName } from "../program.ts";
 import type { FoundCopy, ReleaseAsset, ToolCopy, ToolRelease } from "./languages/contract.ts";
 
 export type { FoundCopy, ToolCopy, Whose } from "./languages/contract.ts";

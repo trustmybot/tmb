@@ -9,7 +9,7 @@ import { assertActor } from "../../src/engine/store/actor.ts";
 import { PROJECTION_TABLES, SCHEMA_STEPS, runStep } from "../../src/engine/store/schema.ts";
 import { tiedProgram } from "../../src/engine/program-tie.ts";
 import { reviewModeChosenVia } from "../../src/engine/settings.ts";
-import { upgradeAdvice } from "../../src/program.ts";
+import { upgradeAdvice } from "../../src/engine/program.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

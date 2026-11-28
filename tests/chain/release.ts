@@ -30,7 +30,7 @@ export async function buildTmb(version: string, outfile: string, target: string 
   const cwd = process.cwd();
   process.chdir(ROOT);
   const result = await Bun.build({
-    entrypoints: [path.join(ROOT, "src", "cli.ts")],
+    entrypoints: [path.join(ROOT, "src", "cli", "index.ts")],
     compile: { outfile, ...(target ? { target: `bun-${target}` as Bun.Build.CompileTarget } : {}) },
     minify: true,
     define: { TMB_VERSION: JSON.stringify(version), TMB_GIT_SHA: JSON.stringify("chain") },

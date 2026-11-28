@@ -11,7 +11,7 @@ import {
   typingDistance,
   unknownCommandText,
   usageErrorText,
-} from "../../src/engine/doors/help.ts";
+} from "../../src/cli/help.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

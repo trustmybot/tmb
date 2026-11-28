@@ -4,7 +4,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { isObject } from "../common/json-file.ts";
-import { runningName } from "../../program.ts";
+import { runningName } from "../../engine/index.ts";
 
 function codexHome(): string {
   const home = process.env.CODEX_HOME;

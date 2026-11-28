@@ -5,7 +5,7 @@ import path from "node:path";
 import { ignoreInGit } from "../common/git.ts";
 import { deleteFile, isObject, writeJsonObject } from "../common/json-file.ts";
 import { CODEX_DIR, configTomlPath, createdMarkerPath, HOST_ID, SERVER_KEY } from "./paths.ts";
-import { runningName } from "../../program.ts";
+import { runningName } from "../../engine/index.ts";
 
 const BEGIN = "# >>> tmb: written by tmb init and deleted by tmb remove; tmb init replaces any edit.";
 // The first line builds before tmb init wrote, so their block is still found and replaced or removed.

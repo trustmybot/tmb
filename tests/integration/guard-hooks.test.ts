@@ -13,7 +13,7 @@ import { pathWithFakeClaude } from "./fake-host.ts";
 setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
+const CLI = path.join(ROOT, "src", "cli", "index.ts");
 
 let scratch: string;
 let env: Record<string, string>;

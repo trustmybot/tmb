@@ -5,7 +5,7 @@
 // `tmb onboard` asks the questions the workflow needs and stores the answers; it can be run
 // again at any time. They reach a host only through the adapter interface, so they name none.
 import { createInterface } from "node:readline";
-import { type HostAdapter, SUPPORTED_HOST_IDS } from "./adapters/index.ts";
+import { type HostAdapter, SUPPORTED_HOST_IDS } from "../../adapters/index.ts";
 import {
   AVAILABLE_REVIEW_MODES,
   chooseReviewMode,
@@ -30,27 +30,10 @@ import {
   validateHostRole,
   validateSetting,
   writeSetting,
-} from "./engine/index.ts";
-import { firstRunAtInit } from "./engine/feedback/first-run.ts";
-import type { FeedbackEnv } from "./engine/feedback/index.ts";
-import { indexProject } from "./engine/graph/fresh.ts";
-import { notReadSummary } from "./engine/graph/not-read.ts";
-import { emptySettings } from "./engine/handlers/settings.ts";
-import { HandlerError } from "./engine/handlers/errors.ts";
-import { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./engine/handlers/marks.ts";
-import { detectBaseBranchWithEvidence } from "./engine/base-branch.ts";
-import { addToForeignHook, foreignHooks, handCallLine, installPushGates, otherProjectInRepo } from "./engine/push-gate.ts";
-import { runGit } from "./engine/git.ts";
-import { inGitWorkTree, type Repo, repoDirOf, type Scan, scanWorkspace, workingRepos } from "./engine/repos.ts";
-import { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./engine/settings.ts";
-import type { Actor } from "./engine/store/index.ts";
-import { giveTasksTheirRepos } from "./engine/task-repos.ts";
-import { runningName } from "./program.ts";
-import { version as packageVersion } from "./version.ts";
-import { Paint } from "./engine/doors/help.ts";
-import { projectLanguages } from "./engine/doors/command-line.ts";
-import { installsOff, machinePlaces } from "./engine/graph/tool-copy.ts";
-import { type InstallOptions, missingTools } from "./engine/graph/tool-install.ts";
+} from "../../engine/index.ts";
+import { type Actor, addToForeignHook, detectBaseBranchWithEvidence, emptySettings, type FeedbackEnv, firstRunAtInit, foreignHooks, giveTasksTheirRepos, handCallLine, HandlerError, indexProject, inGitWorkTree, type InstallOptions, installPushGates, installsOff, machinePlaces, MARK_CONTEXT, missingTools, notReadSummary, otherProjectInRepo, type Repo, repoDirOf, type RepoPolicies, type RepoPolicy, repoPolicyLine, requiredMarkOn, requireMarkHowTo, runGit, runningName, type Scan, scanWorkspace, validateRepoName, version as packageVersion, workingRepos, WORKSPACE_REVIEW_MODE, writeRepos } from "../../engine/index.ts";
+import { Paint } from "../help.ts";
+import { projectLanguages } from "../command-line.ts";
 
 /** Answers given on the command line; each one is used without asking. */
 export type SetupFlags = {

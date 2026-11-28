@@ -3,8 +3,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import type { HookRun } from "./adapters/host-adapter.ts";
-import { adapterById, DEFAULT_HOST_ID, findPluginDb, HOST_ADAPTERS, type MigrationResult, migratePluginProject, migratePluginWorkspace } from "./adapters/index.ts";
+import type { HookRun, HostAdapter } from "../adapters/index.ts";
+import { adapterById, DEFAULT_HOST_ID, findPluginDb, HOST_ADAPTERS, type MigrationResult, migratePluginProject, migratePluginWorkspace } from "../adapters/index.ts";
 import {
   CONFIG_USAGE,
   INDEX_USAGE,
@@ -17,7 +17,7 @@ import {
   runToolsCommand,
   TOOLS_USAGE,
   runRecordCommand,
-} from "./engine/doors/command-line.ts";
+} from "./command-line.ts";
 import {
   actionUsage,
   asksHelp,
@@ -29,29 +29,16 @@ import {
   shortHelpText,
   unknownCommandText,
   usageErrorText,
-} from "./engine/doors/help.ts";
-import { DEFAULT_PORT, startDashboard } from "./engine/doors/dashboard/server.ts";
-import { FEEDBACK_USAGE, runFeedbackCommand } from "./engine/doors/feedback.ts";
-import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, keepLastError } from "./engine/feedback/index.ts";
-import { serveTools } from "./engine/doors/tool-server.ts";
-import { openProjectStore, projectDbPath, projectRootOf } from "./engine/project.ts";
-import { HUMAN_YES, humanOnlyStep, humanYesQuestion, noTerminalRefusal, notConfirmedRefusal, unattendedChangeRefusal } from "./engine/human-only.ts";
-import { readSettings, reviewModeOf } from "./engine/settings.ts";
-import { recordProgramMove } from "./engine/program-tie.ts";
-import { pushActorFrom } from "./engine/push-actor.ts";
-import { runGit } from "./engine/git.ts";
-import { repoOf, workspaceRepos } from "./engine/repos.ts";
-import type { Store } from "./engine/store/index.ts";
-import { judgePush, NO_RECORD, pushGateOffLine, removePushGates, repoTopOf } from "./engine/push-gate.ts";
-import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./setup.ts";
+} from "./help.ts";
+import { DEFAULT_PORT, startDashboard } from "../dashboard/index.ts";
+import { FEEDBACK_USAGE, runFeedbackCommand } from "./commands/feedback.ts";
+import { type FeedbackEnv, feedbackEnv, GH_FEEDBACK_GITHUB, HUMAN_YES, humanOnlyStep, humanYesQuestion, judgePush, keepLastError, NO_RECORD, notConfirmedRefusal, noTerminalRefusal, openProjectStore, projectDbPath, projectRootOf, pushActorFrom, pushGateOffLine, readSettings, recordProgramMove, removePushGates, repoOf, repoTopOf, reviewModeOf, runGit, runningName, runningProgram, serveTools, type Store, unattendedChangeRefusal, version, versionLine, workspaceRepos } from "../engine/index.ts";
+import { runInit, runOnboard, type SetupOptions, terminalAsk } from "./commands/setup.ts";
 import { formatBytes, isProcessRunning } from "./builds.ts";
-import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./doctor/index.ts";
-import { runningName, runningProgram } from "./program.ts";
-import { refreshProject } from "./refresh.ts";
+import { type DoctorEnv, DOCTOR_USAGE, runDoctorCommand, sessionStartLine } from "./commands/doctor/index.ts";
+import { refreshProject } from "./commands/refresh.ts";
 import { runFront } from "./tool-front.ts";
-import { HANDED_OVER_VARIABLE, INSTALLED_FILE_VARIABLE, installedVersionOf, isCompiledEntry, Updater, updaterOptions } from "./update.ts";
-import { version, versionLine } from "./version.ts";
-import type { HostAdapter } from "./adapters/host-adapter.ts";
+import { HANDED_OVER_VARIABLE, INSTALLED_FILE_VARIABLE, installedVersionOf, isCompiledEntry, Updater, updaterOptions } from "./commands/update.ts";
 
 /**
  * Each command's detail, as `tmb help <command>` and `tmb <command> --help` show it. Built when

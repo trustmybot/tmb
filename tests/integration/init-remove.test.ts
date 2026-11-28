@@ -16,7 +16,7 @@ import { asHuman } from "../lib/as-human.ts";
 setDefaultTimeout(30_000);
 
 const ROOT = path.resolve(import.meta.dir, "../..");
-const CLI = path.join(ROOT, "src", "cli.ts");
+const CLI = path.join(ROOT, "src", "cli", "index.ts");
 const ROLE_NAMES = SUBAGENT_ROLES.map((role) => role.name);
 
 const SETTINGS = path.join(".claude", "settings.local.json");

@@ -1,7 +1,7 @@
 // What `tmb doctor` works with: the program that runs it, the project it looks at, and the
 // outside calls a test replaces (trustmybot/tmb#160).
-import type { HostAdapter } from "../adapters/host-adapter.ts";
-import type { Program } from "../program.ts";
+import type { HostAdapter } from "../../../adapters/index.ts";
+import type { Program } from "../../../engine/index.ts";
 
 export type Status = "ok" | "warn" | "fail";
 export type Scope = "machine" | "project";

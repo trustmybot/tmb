@@ -16,7 +16,7 @@ import { openProjectStore, TMB_EVENT_TYPES } from "../../src/engine/index.ts";
 import type { ToolRelease } from "../../src/engine/graph/languages/contract.ts";
 import { toolsFolder } from "../../src/engine/graph/tool-copy.ts";
 import type { InstallOptions } from "../../src/engine/graph/tool-install.ts";
-import { type Ask, runInit } from "../../src/setup.ts";
+import { type Ask, runInit } from "../../src/cli/commands/setup.ts";
 
 setDefaultTimeout(30_000);
 

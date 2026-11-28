@@ -6,7 +6,7 @@
 // with no remote there is no pull request: a ready feature or truest task moves on once the local
 // base branch holds its tip (trustmybot/tmb#183), or the work of it, after a squash or a rebase
 // merge by hand (trustmybot/tmb#214).
-import { runningName } from "../program.ts";
+import { runningName } from "./program.ts";
 import { spawnSync } from "node:child_process";
 import { runGit } from "./git.ts";
 import { CLOSED, CLOSED_UNMERGED, MERGED, READY } from "./handlers/common.ts";

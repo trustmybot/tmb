@@ -5,13 +5,12 @@
 // until the session moves to the new build or ends.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { isProcessRunning, type KeptBuild, keptBuilds } from "./builds.ts";
+import { isProcessRunning, type KeptBuild, keptBuilds } from "../builds.ts";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
-import { openProjectStore } from "./engine/project.ts";
-import { type Channel, channelOf, type Program, programOf, programStateDir } from "./program.ts";
+import { type Channel, channelOf, openProjectStore, type Program, programOf, programStateDir } from "../../engine/index.ts";
 
-export { CHANNELS, type Channel, channelOf, isCompiledEntry } from "./program.ts";
+export { type Channel, channelOf, CHANNELS, isCompiledEntry } from "../../engine/index.ts";
 
 const DEFAULT_RELEASES_URL = "https://github.com/trustmybot/tmb-releases";
 const DEFAULT_RELEASES_API = "https://api.github.com/repos/trustmybot/tmb-releases";
@@ -114,7 +113,7 @@ export type Lease = {
   pid: number;
   project: string;
   startedAt: string;
-  /** The version of the build the session runs, as `tmb doctor` reads it (src/builds.ts); a lease written before trustmybot/tmb#159 names none. */
+  /** The version of the build the session runs, as `tmb doctor` reads it (src/cli/builds.ts); a lease written before trustmybot/tmb#159 names none. */
   build?: string;
   /** The title the Human gave the session, when the host passes it. */
   title?: string | null;
@@ -398,7 +397,7 @@ export class Updater {
     return path.join(this.file("builds"), version, `${this.program.name}${IS_WINDOWS ? ".exe" : ""}`);
   }
 
-  /** The builds kept on disk, with their size and the running sessions that use each (src/builds.ts). */
+  /** The builds kept on disk, with their size and the running sessions that use each (src/cli/builds.ts). */
   keptBuilds(): KeptBuild[] {
     return keptBuilds(this.options.stateDir, isRunning);
   }

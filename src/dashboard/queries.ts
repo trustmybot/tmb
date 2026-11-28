@@ -2,7 +2,7 @@
 // connection. Each returns rows in the shape the web pages show, snake_case as stored, with
 // `created_by` parsed back into its actor and an `author` name for display.
 import type { Database } from "bun:sqlite";
-import type { Actor } from "../../store/index.ts";
+import type { Actor } from "../engine/index.ts";
 
 export type Row = Record<string, unknown>;
 

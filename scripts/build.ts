@@ -20,7 +20,7 @@ async function compile(outfile: string, target?: string): Promise<void> {
   const define: Record<string, string> = { TMB_GIT_SHA: JSON.stringify(sha) };
   if (tmbVersion) define.TMB_VERSION = JSON.stringify(tmbVersion);
   const result = await Bun.build({
-    entrypoints: [path.join(root, "src", "cli.ts")],
+    entrypoints: [path.join(root, "src", "cli", "index.ts")],
     compile: { outfile: path.join(root, outfile), ...(target ? { target: `bun-${target}` as Bun.Build.CompileTarget } : {}) },
     minify: true,
     define,

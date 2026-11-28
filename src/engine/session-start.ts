@@ -4,7 +4,7 @@
 import { existsSync } from "node:fs";
 import plannerRole from "../../roles/planner.md" with { type: "text" };
 import reviewerRole from "../../roles/reviewer.md" with { type: "text" };
-import { namingProgram, runningName } from "../program.ts";
+import { namingProgram, runningName } from "./program.ts";
 import { firstRunSection } from "./feedback/first-run.ts";
 import type { FeedbackEnv } from "./feedback/index.ts";
 import { retryKeptCheckouts } from "./handlers/fold.ts";

@@ -14,5 +14,5 @@
     "noUncheckedIndexedAccess": true
   },
   "include": ["src", "tests", "scripts", "probe"],
-  "exclude": ["tests/chain/demo-app"]
+  "exclude": ["tests/chain/demo-app", "src/dashboard/web"]
 }

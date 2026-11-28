@@ -47,9 +47,10 @@ export const RETIRED_HOOK_NAMES: readonly string[] = [];
 const HOOK_NAMES = [...TMB_HOOKS.map((hook) => hook.name), ...RETIRED_HOOK_NAMES].join("|");
 // The hook a compiled tmb writes: its quoted executable, named tmb, then the hook arguments.
 const BINARY_HOOK_COMMAND = new RegExp(String.raw`^"(?:[^"]*[\\/])?tmb(?:[^"\\/]*)"\s+hook\s+(${HOOK_NAMES})$`, "i");
-// The hook a source run writes: quoted Bun, then tmb's src/cli.ts, quoted or not, then the arguments.
+// The hook a source run writes: quoted Bun, then tmb's entry, src/cli/index.ts (src/cli.ts before the move to
+// components), quoted or not, then the arguments.
 const SOURCE_HOOK_COMMAND = new RegExp(
-  String.raw`^"[^"]*"\s+(?:"[^"]*[\\/]src[\\/]cli\.ts"|[^"\s]*[\\/]src[\\/]cli\.ts)\s+hook\s+(${HOOK_NAMES})$`,
+  String.raw`^"[^"]*"\s+(?:"[^"]*[\\/]src[\\/]cli(?:[\\/]index)?\.ts"|[^"\s]*[\\/]src[\\/]cli(?:[\\/]index)?\.ts)\s+hook\s+(${HOOK_NAMES})$`,
   "i",
 );
 

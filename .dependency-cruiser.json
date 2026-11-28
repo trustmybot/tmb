@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/sverweij/dependency-cruiser/main/src/schema/configuration.schema.json",
+  "forbidden": [
+    {
+      "name": "engine-depends-on-no-component",
+      "comment": "Dependencies point one way: cli, dashboard, adapters and syncer may use the engine; the engine uses none of them.",
+      "severity": "error",
+      "from": { "path": "^src/engine/" },
+      "to": { "path": "^src/(cli|dashboard|adapters|syncer)/" }
+    },
+    {
+      "name": "only-cli-wires-components",
+      "comment": "dashboard, adapters and syncer use the engine only; the cli is the one component that wires the others, and nothing uses the cli.",
+      "severity": "error",
+      "from": { "path": "^src/(dashboard|adapters|syncer)/" },
+      "to": { "path": "^src/(cli|dashboard|adapters|syncer)/", "pathNot": "^src/$1/" }
+    },
+    {
+      "name": "nothing-depends-on-cli",
+      "severity": "error",
+      "from": { "path": "^src/", "pathNot": "^src/cli/" },
+      "to": { "path": "^src/cli/" }
+    },
+    {
+      "name": "component-through-its-entry",
+      "comment": "Another component is used only through its public entry file, src/<component>/index.ts.",
+      "severity": "error",
+      "from": { "path": "^src/([^/]+)/" },
+      "to": { "path": "^src/[^/]+/", "pathNot": ["^src/$1/", "^src/[^/]+/index\\.ts$"] }
+    }
+  ],
+  "options": {
+    "parser": "swc",
+    "tsConfig": { "fileName": "tsconfig.json" },
+    "doNotFollow": { "path": "node_modules" },
+    "exclude": { "path": "^src/dashboard/web/" }
+  }
+}

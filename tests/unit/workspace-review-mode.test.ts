@@ -13,7 +13,7 @@ import { emptySettings } from "../../src/engine/handlers/settings.ts";
 import { judgePush, openProjectStore, readSettings, reviewModeOf, settingLines, TMB_EVENT_TYPES, writeSetting } from "../../src/engine/index.ts";
 import { sessionStartContext } from "../../src/engine/session-start.ts";
 import type { Actor, Store } from "../../src/engine/store/index.ts";
-import { type Ask, runInit, runOnboard, type SetupFlags } from "../../src/setup.ts";
+import { type Ask, runInit, runOnboard, type SetupFlags } from "../../src/cli/commands/setup.ts";
 
 const HUMAN: Actor = { kind: "human" };
 const PLANNER: Actor = { kind: "agent", role: "planner", host: "host-a" };
@@ -69,7 +69,7 @@ const HOST: HostAdapter = {
   answerHook: () => "",
 };
 
-const TMB_COMMAND = [process.execPath, path.join(import.meta.dir, "..", "..", "src", "cli.ts")];
+const TMB_COMMAND = [process.execPath, path.join(import.meta.dir, "..", "..", "src", "cli", "index.ts")];
 
 function setupOptions(flags: SetupFlags = {}, ask: Ask | null = null) {
   return { projectDir: workspace, tmbCommand: TMB_COMMAND, adapters: [HOST], supportedHostIds: ["a"], flags, ask, out: (line: string) => output.push(line) };

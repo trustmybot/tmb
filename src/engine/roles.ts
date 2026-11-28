@@ -2,7 +2,7 @@
 // its host's own format.
 import reviewerPrompt from "../../roles/reviewer.md" with { type: "text" };
 import workerPrompt from "../../roles/worker.md" with { type: "text" };
-import { namingProgram } from "../program.ts";
+import { namingProgram } from "./program.ts";
 
 /** What a role may do, in host-neutral terms; each adapter maps these onto its host's tools. Every role also gets tmb's own tools. */
 export const CAPABILITIES = ["read-files", "edit-files", "run-commands"] as const;

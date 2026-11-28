@@ -2,7 +2,7 @@
 // it recommends when a session starts with them empty, and changes one when the Human asks.
 // The review mode is the exception: the planner sets it only to the Human's answer.
 // The Human sets them with `tmb onboard`; both write the same setting changes.
-import { runningName } from "../../program.ts";
+import { runningName } from "../program.ts";
 import { detectBaseBranch } from "../base-branch.ts";
 import { detectChecks } from "../check-detection.ts";
 import { inGitWorkTree, repoDirOf, scanRepos } from "../repos.ts";

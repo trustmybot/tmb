@@ -5,7 +5,7 @@
 // reviewer host's main agent writes nothing. tmb reads a shell command only for a step only the
 // Human may take (trustmybot/tmb#179): git's pre-push hook holds every push, whatever was typed.
 // A record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
-import { runningName } from "../program.ts";
+import { runningName } from "./program.ts";
 import { adoptWorktree } from "./handlers/adopt.ts";
 import { humanOnlyInShell, shellDenyReason } from "./human-only.ts";
 import { taskIdInPrompt, taskStartLine, worktreeReady } from "./handlers/tasks.ts";

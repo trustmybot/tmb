@@ -3,11 +3,7 @@
 // and one function with its callers and what it calls. Nothing here draws every function at
 // once, and nothing here writes: the page reads the same graph the agents' lookups read.
 import type { Database } from "bun:sqlite";
-import { FUNCTION_KINDS } from "../../graph/build.ts";
-import { SYMBOL_KINDS } from "../../graph/languages/contract.ts";
-import { areasOf, listAreas } from "../../graph/areas.ts";
-import { type CallCounts, countsOf, type SymbolCard, symbolCard } from "../../graph/lookups.ts";
-import type { CallState } from "../../graph/resolve.ts";
+import { areasOf, type CallCounts, type CallState, countsOf, FUNCTION_KINDS, listAreas, SYMBOL_KINDS, type SymbolCard, symbolCard } from "../engine/index.ts";
 
 const KIND_LIST = [...FUNCTION_KINDS];
 const FUNCTION_IN = KIND_LIST.map(() => "?").join(", ");

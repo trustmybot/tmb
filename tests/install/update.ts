@@ -7,8 +7,8 @@
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { programName } from "../../src/program.ts";
-import { CHANNELS, type Channel, Updater, updaterOptions } from "../../src/update.ts";
+import { programName } from "../../src/engine/program.ts";
+import { CHANNELS, type Channel, Updater, updaterOptions } from "../../src/cli/commands/update.ts";
 import { buildTmb, cleanup, prepareInstall, updatesItself } from "./update-scenario.ts";
 
 /** A version on the channel older than any release on it. */

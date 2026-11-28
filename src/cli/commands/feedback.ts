@@ -2,20 +2,7 @@
 // or no to sending it; `tmb feedback on|off|status` changes or shows the setting. Without a
 // terminal a report is only written to a file. The command works whether the program is on or
 // off: off only stops the planner from offering one.
-import {
-  channelFor,
-  draftReport,
-  draftText,
-  type FeedbackEnv,
-  recentLastError,
-  routeLine,
-  sendDraft,
-  setFeedback,
-  statusOf,
-} from "../feedback/index.ts";
-import { feedbackExplanation } from "../feedback/first-run.ts";
-import { openProjectStore, projectRootOf } from "../project.ts";
-import type { Actor, Store } from "../store/index.ts";
+import { type Actor, channelFor, draftReport, draftText, type FeedbackEnv, feedbackExplanation, openProjectStore, projectRootOf, recentLastError, routeLine, sendDraft, setFeedback, statusOf, type Store } from "../../engine/index.ts";
 
 const HUMAN: Actor = { kind: "human" };
 
