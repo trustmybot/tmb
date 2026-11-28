@@ -82,6 +82,7 @@ The code graph follows the branches ([2_CODE_GRAPH.md](2_CODE_GRAPH.md)).
 
 - **Example 1.** The planner starts an agile task. The engine cuts the task branch from the feature branch's tip and adds the task's worktree on it.
 - **Example 2.** Claude Code may start a worker in a worktree of its own making. When the worker first reads its brief there, the engine makes that folder the task's worktree, if it is clean and belongs to no other task. Otherwise the task keeps the worktree the engine cut ([ADAPTERS.md](../architecture/ADAPTERS.md)).
+- **Example 3.** The new worktree links the repo's shared folders from the main folder, whichever made it, the engine or the host ([CONFIG.md](../architecture/CONFIG.md#shared-folders-are-linked-not-installed)).
 - **Edge case.** git cannot add the worktree. Nothing is recorded, and the engine removes what was made.
 
 ## Closing a task

@@ -96,3 +96,24 @@ export async function askChecks(ask: Ask, fallback: string[], source: string, ou
     checks.push(next);
   }
 }
+
+/**
+ * Asks for the shared folders: the folders, inside the repo, every task worktree links from the main
+ * folder, such as its dependency folders. tmb detects none; the planner names them from the repo's toolchain.
+ */
+export async function askSharedFolders(ask: Ask, fallback: string[], source: string, out: (line: string) => void): Promise<string[]> {
+  out("Shared folders are the folders, such as the dependency folders, that every task worktree links from the main folder instead of installing them again.");
+  out(fallback.length === 0 ? `  ${source}: none.` : `  ${source}: ${fallback.join(", ")}`);
+  out("Press Enter to keep these, type none for no shared folders, or type the folders separated by spaces.");
+  for (;;) {
+    const answer = (await ask("> "))?.trim();
+    if (!answer) return fallback;
+    if (answer === "none") return [];
+    try {
+      return validateSetting("shared_folders", answer.split(/\s+/));
+    } catch (error) {
+      if (!(error instanceof SettingError)) throw error;
+      out(error.message);
+    }
+  }
+}

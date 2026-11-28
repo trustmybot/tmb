@@ -11,7 +11,8 @@ import { DOCS_EXTENSIONS, DOCS_FILENAMES, isDocsFile } from "../docs-files.ts";
 import { languageOf } from "../linguist/index.ts";
 import { PROJECT_DIR_NAME } from "../project.ts";
 import { repoChecks, repoDirOf, repoOfRow, resolveRepo, workingRepos } from "../repos.ts";
-import { noReviewMode, readSettings, type ReviewMode, reviewModeOf, type Settings } from "../settings.ts";
+import { noReviewMode, readSettings, type ReviewMode, reviewModeOf, type Settings, sharedFoldersOf } from "../settings.ts";
+import { SharedFolders } from "../shared-folders.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
 import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
@@ -297,7 +298,11 @@ export const taskStartSchema: InputSchema = {
 };
 
 /** sharedFiles names the open tasks that already hold one of this task's files, as information. */
-export type TaskStartResult = { id: string; branch: string; worktree: string; brief: TaskBrief; sharedFiles: SharedFile[] };
+/**
+ * `notLinked` names the shared folders the repo's main folder lacks, so the task's worktree has no
+ * link to them: the main folder's dependencies are not installed (trustmybot/tmb#286).
+ */
+export type TaskStartResult = { id: string; branch: string; worktree: string; brief: TaskBrief; sharedFiles: SharedFile[]; notLinked?: string[] };
 
 /** The title a task is listed under: the intent's first line, cut short. */
 function titleOf(intent: string): string {
@@ -610,6 +615,8 @@ export class TaskService {
     const worktree = taskWorktreePath(projectDir, id);
     const baseCommit = feature === null ? truestBase(dir, baseBranch, `task ${id}`) : featureTip(dir, feature);
     this.addWorktree(dir, branch, worktree, baseCommit);
+    // The worktree is handed over ready: the repo's dependency folders are linked from its main folder.
+    const notLinked = new SharedFolders(this.git).link(dir, worktree, sharedFoldersOf(settings, repo.name));
     const mainSnapshot = snapshotMainFolder(dir, id);
     let shared: SharedFile[] = [];
     try {
@@ -643,7 +650,7 @@ export class TaskService {
       dropMainFolderSnapshot(dir, id);
       throw error;
     }
-    return { id, branch, worktree, brief: briefOf(store, requireTask(store, id), projectDir), sharedFiles: shared };
+    return { id, branch, worktree, brief: briefOf(store, requireTask(store, id), projectDir), sharedFiles: shared, ...(notLinked.length === 0 ? {} : { notLinked }) };
   }
 
   brief(input: unknown): TaskBrief {

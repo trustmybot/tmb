@@ -21,6 +21,7 @@ import {
   openProjectStore,
   otherProjectInRepo,
   repoDirOf,
+  sharedFoldersOf,
   type RepoPolicies,
   repoPolicyLine,
   runGit,
@@ -102,6 +103,7 @@ export class InitRun extends SetupRun {
     if (scan !== null && !workspace) this.initGit();
     // The wiring: the host's registrations, which create the record, then the workspace's repos, then git's push hooks.
     for (const line of adapter.setup(projectDir, options.tmbCommand)) out(line);
+    this.shareFolders([adapter], sharedFoldersOf(stored, null));
     const repos = workspace && scan !== null ? this.registerRepos(stored.repos, scan) : null;
     if (repos !== null) this.giveOldTasksRepos(repos);
     for (const line of installPushGates(projectDir, repos, options.tmbCommand)) out(line);

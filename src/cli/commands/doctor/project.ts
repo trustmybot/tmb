@@ -5,7 +5,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { sessionEntries } from "../../builds.ts";
-import { addToForeignHook, BASE_LAYER, baseCommit, detectBaseBranch, emptySettings, EXTRACTOR_VERSION, FOREIGN_GAP, foreignHooks, graphDbPath, handCallLine, keptCheckouts, MINIFIED, PROJECT_DIR_NAME, projectDbPath, projectRootOf, pushGateGaps, readSettings, removeTaskCheckout, repoDirOf, reviewModeOf, runningName, SCHEMA_VERSION, type Settings, SHAPE_WRITER_KEY, Store, type Task, tiedProgram, unnamedRepos, unnamedReposFix, workingRepos } from "../../../engine/index.ts";
+import { addToForeignHook, BASE_LAYER, baseCommit, detectBaseBranch, emptySettings, EXTRACTOR_VERSION, FOREIGN_GAP, foreignHooks, graphDbPath, handCallLine, keptCheckouts, MINIFIED, PROJECT_DIR_NAME, projectDbPath, projectRootOf, pushGateGaps, readSettings, removeTaskCheckout, repoDirOf, reviewModeOf, runningName, SCHEMA_VERSION, type Settings, SHAPE_WRITER_KEY, sharedFoldersOf, Store, type Task, tiedProgram, unnamedRepos, unnamedReposFix, workingRepos } from "../../../engine/index.ts";
 import type { Check, DoctorEnv, Finding, ProjectPlace, RecordContext } from "./types.ts";
 import { costCheck, pluginHistoryCheck, repoOfTasksCheck, unwiredWorktreesCheck, workAroundCheck } from "./use.ts";
 
@@ -177,7 +177,7 @@ function hostFilesChecks(env: DoctorEnv, projectDir: string, state: { store: Sto
       findings.push(finding("host files", { status: "ok", summary: `${adapter.name}: this tmb cannot check its files` }));
       continue;
     }
-    const gaps = adapter.wiringGaps(projectDir, command);
+    const gaps = adapter.wiringGaps(projectDir, command, sharedFoldersOf(settings, null));
     findings.push(
       gaps.length === 0
         ? finding("host files", { status: "ok", summary: `${adapter.name}'s files match what this tmb wires` })

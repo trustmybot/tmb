@@ -69,10 +69,16 @@ export interface HostAdapter {
    */
   pendingSteps?(projectDir: string): string[];
   /**
-   * What `tmb doctor` finds different from what `setup` would write with `tmbCommand`, one line
-   * each; none when init would change nothing. Reads only.
+   * Makes the host link the project's shared folders, paths inside the repo, from the main folder
+   * into every worktree it makes, keeping the Human's own entries; an empty list takes tmb's away.
+   * `remove` takes them away too. Returns what changed, one line each.
    */
-  wiringGaps?(projectDir: string, tmbCommand: readonly string[]): string[];
+  shareFolders?(projectDir: string, folders: readonly string[]): string[];
+  /**
+   * What `tmb doctor` finds different from what `setup` and `shareFolders` would write with
+   * `tmbCommand` and `sharedFolders`, one line each; none when they would change nothing. Reads only.
+   */
+  wiringGaps?(projectDir: string, tmbCommand: readonly string[], sharedFolders?: readonly string[]): string[];
   /** Answers a host event: the host's stdin in, the host's stdout out (empty when there is nothing to say). Throws on bad input. */
   answerHook(event: string, stdinText: string, run: HookRun): string;
   /** What the Human does in this host to restart tmb's tool server in a running session, in the host's own words. */

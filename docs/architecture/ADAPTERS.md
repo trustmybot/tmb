@@ -44,6 +44,7 @@ The words host, engine, host adapter and checkpoint are in [the glossary](README
 |---|---|
 | Detect | Finds the host's program on the machine. |
 | Set up | Registers tmb's tool server with the host, writes the role definitions in the host's format, and wires the host's events to the engine. Per project, when the Human runs init. |
+| Share folders | Hands the host the project's shared folders, so every worktree the host makes links them from the main folder ([CONFIG.md](CONFIG.md#shared-folders-are-linked-not-installed)). Claude Code takes them as its own worktree-link setting, beside the Human's own entries. The engine gives only the list and names no host key. |
 | Name what is left | Lists the steps only the Human can take, such as trusting the project, and any wiring that is missing. |
 | Translate events | Turns a host event into the engine's neutral question, and the engine's allow or deny into the host's answer. |
 | Report limits | Says what the host cannot do, such as deny a tool call or set a model per role. The adapter states its limits. The engine reads one: how much text a session start may carry, and it cuts the project's state to fit. |
@@ -75,7 +76,7 @@ The words host, engine, host adapter and checkpoint are in [the glossary](README
 Why this way:
 
 - **It runs on the Human's subscription.** The work is ordinary use of the host by its own user. Anthropic's terms do not allow a third-party program to route requests through a user's subscription login, so a design where tmb starts Claude itself would need an API key.
-- **It uses what the host already does well:** parallel subagents, a model and effort per role, isolation, and permission prompts shown to the Human.
+- **It uses what the host already does well:** parallel subagents, a model and effort per role, isolation in worktrees that link the project's shared folders, and permission prompts shown to the Human.
 - **It works wherever the host runs.** Claude Code fires the same events in its command line and in its desktop app. Planned: tmb's own desktop program (trustmybot/tmb#79).
 
 ## Cold start

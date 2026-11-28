@@ -80,7 +80,7 @@ tmb is set up for Claude Code. Next:
 | Command | Does | Asks questions |
 |---|---|---|
 | `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | None |
-| `tmb onboard` | Sets tmb's settings for the project: the base branch, the review mode and the checks; in a multi-repo workspace, each repo's base branch and checks. Run it again at any time. | Yes |
+| `tmb onboard` | Sets tmb's settings for the project: the base branch, the review mode, the checks and the shared folders; in a multi-repo workspace, each repo's base branch, checks and shared folders. Run it again at any time. | Yes |
 | `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
 
 At the first session the planner fills the settings init left empty ([Onboarding by itself](#onboarding-by-itself)) and asks you for the review mode ([The review mode is yours](#the-review-mode-is-yours)). `tmb onboard` sets them yourself instead.
@@ -96,13 +96,14 @@ At the first session the planner fills the settings init left empty ([Onboarding
 
 ### onboard
 
-`tmb onboard` asks three questions, each offering the value stored now:
+`tmb onboard` asks four questions, each offering the value stored now:
 
 | Question | Default | Flag |
 |---|---|---|
 | The base branch, the branch pull requests merge into | The branch origin names as its default, else the current branch, else `main`. Outside a git repository there is no default. | `--base <branch>` |
 | The review mode | `agile` or `truest`. | `--review-mode <mode>` |
 | The checks, the shell commands that must pass before a task closes | The commands it finds in the project: the `lint`, `typecheck` and `test` scripts of `package.json`, run with bun, npm, pnpm or yarn as the lockfile shows; `pytest` for a Python project; `cargo test` for Rust; `go test ./...` for Go. | `--check <command>`, once per command; the commands given replace the list |
+| The shared folders, the folders every task worktree links from the main folder, such as `node_modules` ([CONFIG.md](../architecture/CONFIG.md#shared-folders-are-linked-not-installed)) | None: tmb detects none, and the planner names them. Without a terminal or the flag, they stay as they are. | `--shared-folder <folder>`, once per folder; the folders given replace the list |
 
 - A flag answers its question without asking, and `--yes` takes the default of every question no flag answers.
 - Onboard asks only when it runs in a terminal. Without one, each question takes its default, so it never waits for input.
@@ -134,7 +135,7 @@ A project of one repo whose folder later becomes a workspace keeps its tasks. `t
 
 | Flag | Sets |
 |---|---|
-| `--base <branch>`, `--check <command>` | The repo's base branch and checks |
+| `--base <branch>`, `--check <command>`, `--shared-folder <folder>` | The repo's base branch, checks and shared folders |
 | `--exempt` | tmb does no work in the repo |
 | `--review-mode <mode>` | A review mode of the repo's own. A [step only you may take](#steps-only-you-may-take), as the workspace's is; refused in unattended mode |
 | `--review-mode workspace` | Takes the repo's own mode away, so it follows the workspace's again |
@@ -142,7 +143,7 @@ A project of one repo whose folder later becomes a workspace keeps its tasks. `t
 - With one repo tmb works in, `--repo` may be left out.
 - On a terminal without `--repo`, onboard asks for each repo's base branch and checks in turn. It asks for the workspace's review mode once, then asks once whether any repo takes its own, and asks each repo only on a yes.
 - The planner sets the same with `settings_set` and `repos`. A repo it names keeps no part of its old policy except its review mode, which stays unless the planner names one or `workspace`. Repos it does not name keep theirs.
-- `base_branch` and `checks` are not used in a multi-repo workspace: each repo has its own in `repos`, and `settings_set` refuses them.
+- `base_branch`, `checks` and `shared_folders` are not used in a multi-repo workspace: each repo has its own in `repos`, and `settings_set` refuses them.
 - `tmb feature start <name> --repo <name>` and `tmb task start ... --repo <name>` name the repo; with several repos, one that names none is refused with the list.
 - Each repo works in its own review mode: `tmb feature start` is refused in a repo in truest mode, and a task there goes into review at close. `tmb config` and the session start show each repo's mode.
 
@@ -179,6 +180,7 @@ The keys, and where they are kept, are in [CONFIG.md](../architecture/CONFIG.md)
   - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
+- Lists the project's shared folders under `worktree.symlinkDirectories` in `.claude/settings.local.json`, beside your own entries, so every worktree Claude Code makes links them; tmb's onboarding and `settings_set` keep the list current, and `tmb remove` takes only tmb's entries away.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
 - Writes tmb's own skills in `.claude/skills/`, one folder each, marked as tmb's. A role loads one when its trigger fires.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write. Planned (trustmybot/tmb#461): nor one of its own that you edited.

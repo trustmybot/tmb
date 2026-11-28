@@ -4,7 +4,7 @@ import { runningName } from "./program.ts";
 import { DEFAULT_LINK_WAY, LINK_WAYS, type LinkWay } from "./graph/ways.ts";
 import type { Actor, Role, Store } from "./store/index.ts";
 
-export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "graph_links", "repos"] as const;
+export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "shared_folders", "graph_links", "repos"] as const;
 export type SettingName = (typeof SETTING_NAMES)[number];
 
 export const REVIEW_MODES = ["agile", "truest"] as const;
@@ -24,9 +24,10 @@ export const DEFAULT_HOST_ROLE: HostRole = "planner";
  * One folder's policy in a workspace: for a repo, the branch its pull requests merge into and the
  * checks its tasks run, or exempt, when tmb wires nothing in it; git false for a folder that is no
  * repo, recorded and left alone (trustmybot/tmb#163). A repo may name its own review mode, the
- * Human's choice; one that names none uses the workspace's (trustmybot/tmb#216).
+ * Human's choice; one that names none uses the workspace's (trustmybot/tmb#216). Its shared folders
+ * are linked from its main folder into every task worktree (trustmybot/tmb#286).
  */
-export type RepoPolicy = { base_branch?: string; checks?: string[]; review_mode?: ReviewMode; graph_links?: LinkWay; exempt?: boolean; git?: false };
+export type RepoPolicy = { base_branch?: string; checks?: string[]; shared_folders?: string[]; review_mode?: ReviewMode; graph_links?: LinkWay; exempt?: boolean; git?: false };
 /** Each folder of a workspace by its path from the workspace folder, with forward slashes. */
 export type RepoPolicies = Record<string, RepoPolicy>;
 
@@ -36,6 +37,7 @@ export type SettingValues = {
   base_branch: string;
   review_mode: ReviewMode;
   checks: string[];
+  shared_folders: string[];
   graph_links: LinkWay;
   repos: RepoPolicies;
 };
@@ -82,6 +84,23 @@ function checkList(value: unknown): string[] {
   return value.map((check) => nonEmptyText("each check", check));
 }
 
+/**
+ * Checks the shared folders: each a folder's path inside the repo, relative, with forward slashes,
+ * named once. Throws SettingError.
+ */
+function folderList(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new SettingError(`shared folders must be a list of folders inside the repo, got ${JSON.stringify(value)}`);
+  const folders = value.map((folder) => {
+    const name = nonEmptyText("each shared folder", folder).replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+    const parts = name.split("/");
+    if (name.startsWith("/") || /^[A-Za-z]:/.test(name) || parts.some((part) => part === "" || part === "." || part === "..") || name === ".git" || name.startsWith(".git/")) {
+      throw new SettingError(`a shared folder is named by its path inside the repo, such as node_modules or apps/web/.venv, got ${JSON.stringify(folder)}`);
+    }
+    return name;
+  });
+  return [...new Set(folders)];
+}
+
 /** Checks a repo's name: a path inside the workspace, relative, with forward slashes. Throws SettingError. */
 export function validateRepoName(value: unknown): string {
   const name = nonEmptyText("a repo's name", value).replace(/\\/g, "/").replace(/\/+$/, "");
@@ -100,12 +119,12 @@ function repoPolicies(value: unknown): RepoPolicies {
     const given = (value as Record<string, unknown>)[raw];
     if (typeof given !== "object" || given === null || Array.isArray(given)) throw new SettingError(`the repo ${name}'s policy must be an object, got ${JSON.stringify(given)}`);
     const fields = given as Record<string, unknown>;
-    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "review_mode", "graph_links", "exempt", "git"].includes(key));
-    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, review_mode, graph_links, exempt and git, not ${unknown.join(", ")}`);
+    const unknown = Object.keys(fields).filter((key) => !["base_branch", "checks", "shared_folders", "review_mode", "graph_links", "exempt", "git"].includes(key));
+    if (unknown.length > 0) throw new SettingError(`the repo ${name}'s policy takes base_branch, checks, shared_folders, review_mode, graph_links, exempt and git, not ${unknown.join(", ")}`);
     if (fields.git !== undefined) {
       // A folder that is no repo takes no policy: tmb records it and leaves it alone.
       if (fields.git !== false) throw new SettingError(`git is given only as false, for a folder that is not a repo; got ${JSON.stringify(fields.git)} for ${name}`);
-      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks, review_mode, graph_links or exempt`);
+      if (Object.keys(fields).length > 1) throw new SettingError(`the folder ${name} is not a repo, so it takes no base_branch, checks, shared_folders, review_mode, graph_links or exempt`);
       repos[name] = { git: false };
       continue;
     }
@@ -114,6 +133,7 @@ function repoPolicies(value: unknown): RepoPolicies {
     if (fields.exempt === true) policy.exempt = true;
     if (fields.base_branch !== undefined) policy.base_branch = nonEmptyText(`the repo ${name}'s base branch`, fields.base_branch);
     if (fields.checks !== undefined) policy.checks = checkList(fields.checks);
+    if (fields.shared_folders !== undefined) policy.shared_folders = folderList(fields.shared_folders);
     if (fields.review_mode !== undefined) policy.review_mode = reviewMode(fields.review_mode);
     if (fields.graph_links !== undefined) policy.graph_links = graphLinks(fields.graph_links);
     if (policy.exempt !== true && policy.base_branch === undefined) throw new SettingError(`the repo ${name} needs a base_branch, or exempt: true`);
@@ -135,6 +155,8 @@ export function validateSetting<N extends SettingName>(name: N, value: unknown):
       return reviewMode(value) as SettingValues[N];
     case "checks":
       return checkList(value) as SettingValues[N];
+    case "shared_folders":
+      return folderList(value) as SettingValues[N];
     case "graph_links":
       return graphLinks(value) as SettingValues[N];
     case "repos":
@@ -185,6 +207,14 @@ export function graphLinksOf(settings: Settings, repo: string | null): LinkWay {
   return own ?? settings.graph_links ?? DEFAULT_LINK_WAY;
 }
 
+/**
+ * The folders every task worktree of a repo links from its main folder (trustmybot/tmb#286): the
+ * project's own in a single-repo project, else the repo's. None while none is set.
+ */
+export function sharedFoldersOf(settings: Settings, repo: string | null): string[] {
+  return repo === null ? (settings.shared_folders ?? []) : (settings.repos?.[repo]?.shared_folders ?? []);
+}
+
 /** The role the host's main agent takes in the project: its role in the record, else the planner. */
 export function hostRole(store: Store, host: string): HostRole {
   const change = store.newestSettingChange("host_roles", null, true);
@@ -198,6 +228,7 @@ const LABELS: Record<SettingName, string> = {
   base_branch: "base branch",
   review_mode: "review mode",
   checks: "checks",
+  shared_folders: "shared folders",
   graph_links: "graph links",
   repos: "repos",
 };
@@ -213,7 +244,8 @@ export function repoPolicyLine(name: string, policy: RepoPolicy, workspaceMode: 
   const mode =
     policy.review_mode !== undefined ? `, review mode ${policy.review_mode} (its own)` : workspaceMode !== null ? `, review mode ${workspaceMode} (the workspace's)` : "";
   const links = policy.graph_links === undefined ? "" : `, graph links ${policy.graph_links}`;
-  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}${mode}${links}`;
+  const shared = (policy.shared_folders ?? []).length === 0 ? "" : `, shared folders ${policy.shared_folders!.join(", ")}`;
+  return `${name} on ${policy.base_branch}${checks.length === 0 ? "" : `, checks ${checks.map((check) => JSON.stringify(check)).join(", ")}`}${shared}${mode}${links}`;
 }
 
 /** One line per setting, as the command line shows them. */

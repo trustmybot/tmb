@@ -90,6 +90,12 @@ export const settingsSetSchema: InputSchema = {
       description: "The shell commands that must pass before a task closes, replacing the list; an empty list means none.",
       items: { type: "string", pattern: NOT_BLANK },
     },
+    shared_folders: {
+      type: "array",
+      description:
+        "The folders, as paths inside the repo, that every task worktree links from the main folder instead of installing them: the repo's dependency folders, named from its own toolchain. Replaces the list; an empty list means none.",
+      items: { type: "string", pattern: NOT_BLANK },
+    },
     graph_links: {
       type: "string",
       description:
@@ -100,12 +106,13 @@ export const settingsSetSchema: InputSchema = {
       type: "object",
       description:
         "Only in a workspace of several repos: each named repo's policy, replacing that repo's; repos not named keep theirs. " +
-        "base_branch is the branch its pull requests merge into, checks the commands its tasks run before they close, review_mode its own review mode when the Human chose one, graph_links its own way to make the code graph's links, exempt true for a repo tmb does no work in.",
+        "base_branch is the branch its pull requests merge into, checks the commands its tasks run before they close, shared_folders the folders its task worktrees link from its main folder, review_mode its own review mode when the Human chose one, graph_links its own way to make the code graph's links, exempt true for a repo tmb does no work in.",
       additionalProperties: {
         type: "object",
         properties: {
           base_branch: { type: "string", pattern: NOT_BLANK },
           checks: { type: "array", items: { type: "string", pattern: NOT_BLANK } },
+          shared_folders: { type: "array", items: { type: "string", pattern: NOT_BLANK } },
           review_mode: {
             type: "string",
             description:
@@ -125,8 +132,8 @@ export const settingsSetSchema: InputSchema = {
   additionalProperties: false,
 };
 
-type SetName = ProjectSetting | "graph_links" | "repos";
-const SET_NAMES: readonly SetName[] = [...PROJECT_SETTINGS, "graph_links", "repos"];
+type SetName = ProjectSetting | "shared_folders" | "graph_links" | "repos";
+const SET_NAMES: readonly SetName[] = [...PROJECT_SETTINGS, "shared_folders", "graph_links", "repos"];
 
 export type SettingsSetResult = SettingsView & { changed: SetName[] };
 
@@ -187,9 +194,9 @@ export class SettingsService {
       throw new HandlerError("refused", "this project is one repo, so it has no repos to set; set base_branch and checks instead");
     }
     if (repos !== null) {
-      const projectWide = named.filter((name) => name === "base_branch" || name === "checks");
+      const projectWide = named.filter((name) => name === "base_branch" || name === "checks" || name === "shared_folders");
       if (projectWide.length > 0) {
-        throw new HandlerError("refused", `this project is a workspace of several repos, each with its own base branch and checks; set ${projectWide.join(" and ")} for a repo through repos`);
+        throw new HandlerError("refused", `this project is a workspace of several repos, each with its own base branch, checks and shared folders; set ${projectWide.join(" and ")} for a repo through repos`);
       }
     }
     // With no one to ask, no one chose: the planner never picks the review mode for the Human.

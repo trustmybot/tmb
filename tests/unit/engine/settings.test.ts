@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("settings in the record", () => {
   test("start unset", () => {
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null });
   });
 
   test("each set is one setting change by the actor, and the current value is the newest", () => {
@@ -36,7 +36,7 @@ describe("settings in the record", () => {
     expect(writeSetting(store, HUMAN, "checks", ["bun run lint", "bun test"])).toBe(true);
     expect(writeSetting(store, HUMAN, "base_branch", "develop")).toBe(true);
 
-    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], graph_links: null, repos: null });
+    expect(readSettings(store)).toEqual({ host: null, host_roles: null, base_branch: "develop", review_mode: null, checks: ["bun run lint", "bun test"], shared_folders: null, graph_links: null, repos: null });
     const audit = store.listSettingChanges();
     expect(audit).toHaveLength(3);
     expect(audit.every((entry) => entry.createdBy.kind === "human")).toBe(true);
@@ -98,21 +98,40 @@ describe("validation", () => {
 
 describe("settingLines", () => {
   test("shows one line per setting, quoting each check and naming what is unset", () => {
-    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], graph_links: null, repos: null })).toEqual([
+    expect(settingLines({ host: "host-a", host_roles: { "host-a": "planner", "host-b": "reviewer" }, base_branch: "main", review_mode: "agile", checks: ["bun run lint", "go test ./..."], shared_folders: null, graph_links: null, repos: null })).toEqual([
       "host: host-a",
       "host roles: host-a planner, host-b reviewer",
       "base branch: main",
       "review mode: agile",
       'checks: "bun run lint", "go test ./..."',
+      "shared folders: (not set)",
       "graph links: (not set)",
     ]);
-    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], graph_links: null, repos: null })).toEqual([
+    expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], shared_folders: null, graph_links: null, repos: null })).toEqual([
       "host: (not set)",
       "host roles: (not set)",
       "base branch: (not set)",
       "review mode: (not set)",
       "checks: (none)",
+      "shared folders: (not set)",
       "graph links: (not set)",
     ]);
+  });
+});
+
+describe("shared folders (trustmybot/tmb#286)", () => {
+  test("are folders inside the repo, cleaned and named once", () => {
+    expect(validateSetting("shared_folders", ["node_modules/", "./apps/web/.venv", "node_modules", "a\\b"])).toEqual(["node_modules", "apps/web/.venv", "a/b"]);
+    expect(validateSetting("shared_folders", [])).toEqual([]);
+  });
+
+  test("refuse a path outside the repo, git's own folder, or a value that is no list", () => {
+    for (const bad of [["../up"], ["/abs"], ["a/../b"], [".git"], [" "], "node_modules"]) {
+      expect(() => validateSetting("shared_folders", bad)).toThrow(SettingError);
+    }
+  });
+
+  test("a repo's policy takes them", () => {
+    expect(validateSetting("repos", { web: { base_branch: "main", shared_folders: ["node_modules"] } })).toEqual({ web: { base_branch: "main", shared_folders: ["node_modules"] } });
   });
 });

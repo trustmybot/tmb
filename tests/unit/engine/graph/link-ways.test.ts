@@ -335,7 +335,7 @@ describe("the setting", () => {
 
   // The default itself, with nothing set, is in "the default way" below (trustmybot/tmb#337).
   test("a repo's own graph_links wins over the workspace's, which wins over the default", () => {
-    const none = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null } as const;
+    const none = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null } as const;
     expect(graphLinksOf({ ...none, graph_links: "language-tool" }, "web")).toBe("language-tool");
     expect(graphLinksOf({ ...none, graph_links: "language-tool", repos: { web: { base_branch: "main", graph_links: "built-in" } } }, "web")).toBe("built-in");
     expect(graphLinksOf({ ...none, repos: { web: { base_branch: "main", graph_links: "language-tool" } } }, "web")).toBe("language-tool");
@@ -466,7 +466,7 @@ describe("the compiler tmb uses", () => {
 // repo that sets built-in keeps it, and the repo's own setting wins. A layer built by the built-in
 // rules before this default is rebuilt by the tool, as any change of way is.
 describe("the default way", () => {
-  const NONE = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null } as const;
+  const NONE = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null } as const;
 
   function opened(dir: string): Store {
     const result = openProjectStore(dir, { create: true });

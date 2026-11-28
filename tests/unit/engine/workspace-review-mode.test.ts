@@ -269,8 +269,8 @@ describe("tmb onboard in a workspace", () => {
 
   test("on a terminal it asks the workspace's mode once, then offers the change per repo", async () => {
     const prompts: string[] = [];
-    // role, workspace mode, the offer, then per repo: base, checks, mode.
-    const answers = ["", "agile", "y", "", "", "truest", "", "", "workspace"];
+    // role, workspace mode, the offer, then per repo: base, checks, shared folders, mode.
+    const answers = ["", "agile", "y", "", "", "", "truest", "", "", "", "workspace"];
     await runOnboard(setupOptions({}, scripted(answers, prompts)));
     expect(prompts.filter((prompt) => prompt.startsWith("Review mode, one of"))).toHaveLength(1);
     expect(prompts.filter((prompt) => prompt.startsWith("Does any repo take a review mode"))).toHaveLength(1);

@@ -13,7 +13,7 @@ flowchart TD
     P3 --> C
     C --> D[Settings left empty; init says how they get filled]
     D --> E[First session: the engine tells the planner what is empty and what it found]
-    E --> F[Planner works out the base branch and the checks, applies them and shows them]
+    E --> F[Planner works out the base branch, the checks and the shared folders, applies them and shows them]
     F --> G{Review mode set?}
     G -- yes --> J
     G -- "no, someone can answer" --> H[Planner asks the Human: each mode with its cost, agile recommended]
@@ -38,6 +38,7 @@ Each step, who takes it and what it leaves in the record.
 | The review mode | Agile or truest, [the Human's choice](#the-review-mode-is-the-humans-choice). In a multi-repo workspace: the workspace's mode once, then once whether any repo takes its own. | the planner's question, or `tmb onboard` on a terminal | the review mode, and how it was chosen |
 | The push gate | No switch. Init installs the hook. Where a repo's pre-push hook is another tool's, the Human is asked whether tmb adds its one line first in it. A repo marked exempt gets none ([3_GIT.md](3_GIT.md)). | init; `tmb onboard` on a terminal | git's pre-push hook per repo |
 | The checks | Found in the project and stored as a setting, not as a file in the repo ([The repo's checks](#the-repos-checks)). | the planner, or `tmb onboard` | the checks, per repo in a multi-repo workspace |
+| The shared folders | No detection. The planner names the folders the repo's install step fills, such as `node_modules`, then installs the dependencies in the main folder ([CONFIG.md](../architecture/CONFIG.md#shared-folders-are-linked-not-installed)). | the planner, or `tmb onboard` | the shared folders, per repo in a multi-repo workspace |
 | The areas | Once the code graph is built, the planner names the parts of the project, one line each, and writes them. It asks nothing ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md#when-the-areas-change)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
 | Issue sync | Planned, inside the syncer (trustmybot/tmb#70). | | |
@@ -70,7 +71,7 @@ Each step, who takes it and what it leaves in the record.
 
 **When a planner's session starts and the base branch, the review mode or the checks is empty, the engine says so, with what it found. The planner applies what it recommends before other work and shows it.**
 
-- **Example 1.** The base branch and the checks are empty. The planner works both out, applies them and shows them. It asks nothing.
+- **Example 1.** The base branch and the checks are empty. The planner works both out, names the shared folders from the repo's toolchain, applies them and shows them. It asks nothing.
 - **Example 2.** The review mode is empty too. The planner asks the Human and stores the answer. Then it names the project's areas and writes them.
 - **Example 3.** The planner reminds the Human that `tmb onboard` can be run again, and that it can change a value when asked.
 - **Example 4.** Every setting is stored. Later session starts say nothing more about settings.

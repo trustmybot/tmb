@@ -79,7 +79,9 @@ export class McpCommand extends ParsedCommand<McpOptions> {
     const adapter = HOST_ADAPTERS.find((candidate) => candidate.id === host);
     // The report the planner's tools send names the host that runs them.
     const feedback = this.runtime.feedbackEnvironment(adapter === undefined ? [] : [adapter]);
-    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback });
+    // A change to the shared folders reaches the host's own files, so the worktrees it makes link them too.
+    const onSharedFolders = adapter?.shareFolders === undefined ? undefined : (dir: string, folders: readonly string[]) => void adapter.shareFolders!(dir, folders);
+    return serveTools({ projectDir, host, version: this.runtime.version, unattended: this.runtime.hookRun().unattended, feedback, onSharedFolders });
   }
 
   /** A session's front: its engine serves the tools; a session start looks for an update in the background, and the session's end may apply it. */
