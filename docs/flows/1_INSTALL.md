@@ -101,7 +101,7 @@ The limits on each are in [ENGINE.md](../architecture/ENGINE.md).
 
 ## Session start
 
-**The role comes from the engine, every time.** Claude Code raises its session start event. The engine answers with the role, the open work from the record and the project's layout from the code graph.
+**The role comes from the engine, every time.** Claude Code raises its session start event. The engine answers with the role, the open work from the record and the project's layout from the code graph. It answers in two texts, the role and then the project's state, because Claude Code caps how much one answer may add. The role is never cut; the state is cut to fit.
 
 - **Example 1.** Claude Code raises the event again on resume, clear or compaction. It gets the same answer, so a session resumes from the record and needs nothing from the conversation before it.
 - **Example 2.** The settings are empty. The session starts first contact ([2_ONBOARD.md](2_ONBOARD.md)).

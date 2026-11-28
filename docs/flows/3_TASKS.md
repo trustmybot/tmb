@@ -107,7 +107,7 @@ flowchart LR
 - **Example 3.** The reviewer finds the docs task changed behaviour. That is a blocking finding: that part is redone as a code task.
 - **Edge case.** A fold conflict, a rebase conflict, or a failing check after a rebase goes as for a code task ([Retry and escalation](#retry-and-escalation)).
 
-**Planned (trustmybot/tmb#436): the doc-review skill.** The author's self-check and the reviewer's matching checklist.
+**Planned (trustmybot/tmb#495): the doc-review skill.** The author's self-check and the reviewer's matching checklist.
 
 ## Review and the gates
 
@@ -252,7 +252,7 @@ The other symptoms:
 | Symptom | Where to look |
 |---|---|
 | No task will start | The review mode is not set: the Human runs `tmb onboard`. Or the issue is closed |
-| The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a multi-repo workspace the start must come from inside the task's repo, and the deny names the folder. Reading the repo from the task is Planned (trustmybot/tmb#463) |
+| The worker will not start | Its start prompt must carry the task's id line from the brief, and the task must be open with its worktree present. In a multi-repo workspace tmb reads the repo from the task, wherever the start comes from |
 | The reviewer's verdict is refused | No reviewer run is open, the commit is not the branch's current tip, or the task is not in review at that commit |
 | The pull request will not open | No pass or waiver covers the tip or the commit. The Human waives with `tmb feature waive` or `tmb task waive` |
 | The push is denied | It goes to the base branch and carries a commit no pass or waiver covers, or the record cannot be read. The hook's message names the cause |

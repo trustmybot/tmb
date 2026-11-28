@@ -291,7 +291,7 @@ flowchart TD
     D --> G[Drop the task with a reason]
 ```
 
-- **What is listed.** At a session start, and by the health check: runs and check runs with a start and no end, and open code tasks with no run. A docs task has no run, because the planner writes it; leaving it out is Planned (trustmybot/tmb#460). The planner is told in one line, and the health check lists them in full ([1_INSTALL.md](../flows/1_INSTALL.md)).
+- **What is listed.** At a session start, and by the health check: runs and check runs with a start and no end, and open code tasks with no run. A docs task has no run, because the planner writes it, so it is not listed. The planner is told in one line, and the health check lists them in full ([1_INSTALL.md](../flows/1_INSTALL.md)).
 - **The planner decides.** Leave it, because it is still working. Resume it: start a worker on the open task again. Or drop the task with a reason ([3_TASKS.md](../flows/3_TASKS.md#debugging-a-stuck-task)).
 - **Last activity needs no heartbeat.** It is the newest record under the run.
 - **Nothing is ended for the agent.** tmb lists what has no end and deletes nothing.

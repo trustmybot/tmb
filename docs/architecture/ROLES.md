@@ -38,7 +38,7 @@ Each layer owns one level of quality, and no layer repeats another's check. [3_T
 
 - **Example 1.** Init writes the worker and the reviewer into the project in the host's own format.
 - **Example 2.** The planner starts a worker. tmb starts no agent, runs no model and never reads a login ([ADAPTERS.md](ADAPTERS.md)).
-- **Example 3.** A role's file is its identity. The start prompt is the task context. Skills as added capabilities are Planned (trustmybot/tmb#436).
+- **Example 3.** A role's file is its identity. The start prompt is the task context. A skill adds a procedure the role loads when needed ([4_EXTENDING.md](../flows/4_EXTENDING.md#tmbs-own-skills)).
 - **Edge case.** A role file tmb did not write sits in the project. Init replaces and removes only role files it wrote ([ENGINE.md](ENGINE.md#what-tmb-writes-and-where)).
 
 Agents the project creates are Planned (trustmybot/tmb#437) ([Agents a project creates](#agents-a-project-creates)).

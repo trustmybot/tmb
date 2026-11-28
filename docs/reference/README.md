@@ -173,13 +173,14 @@ The keys, and where they are kept, are in [CONFIG.md](../architecture/CONFIG.md)
 
 - Creates the project's record, `.tmb/trajectory.db`, which holds issues, notes and decisions.
 - Registers tmb's tool server in the project's `.mcp.json` as `tmb`, keeping any other servers. It enables the server in `.claude/settings.local.json` so Claude Code loads it without asking.
-- Adds five hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
-  - A SessionStart hook runs `tmb hook session-start`, which starts each session with the role this host was set up with, the planner unless you chose the reviewer, and the open work from the record.
-  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write and reads no shell command. **Planned (trustmybot/tmb#457):** the hook no longer runs before a file write or a shell command.
+- Adds six hooks to `.claude/settings.local.json`, the project settings file that is yours alone, and keeps everything else in that file:
+  - Two SessionStart hooks start each session. `tmb hook session-start-role` gives the role this host was set up with, the planner unless you chose the reviewer. `tmb hook session-start` gives the open work from the record. They are two because Claude Code caps the text one hook may add.
+  - A PreToolUse hook runs `tmb hook pre-tool-use` before Claude Code starts a subagent, or reads a task's brief or closes a task through tmb's tools. tmb judges no file write. **Planned (trustmybot/tmb#457):** the hook no longer runs before a shell command.
   - A PostToolUseFailure hook runs `tmb hook post-tool-use-failure` when a subagent start fails after tmb allowed it, for example when Claude Code cannot make the worker's worktree. tmb ends the run that start opened, as stopped.
   - A SubagentStop hook runs `tmb hook subagent-stop` when a subagent ends.
   - A SessionEnd hook runs `tmb hook session-end` when the session ends.
 - Writes two agent files in `.claude/agents/`, marked as tmb's: `worker.md`, the worker that carries out one task, and `reviewer.md`, the reviewer that judges a finished change. The reviewer gets no tool that edits files, and keeps its shell to run checks. Both get tmb's tools.
+- Writes tmb's own skills in `.claude/skills/`, one folder each, marked as tmb's. A role loads one when its trigger fires.
 - Never overwrites an agent file in `.claude/agents/` that tmb did not write. Planned (trustmybot/tmb#461): nor one of its own that you edited.
 - In a git work tree, adds `.tmb/` and `.claude/settings.local.json` to `.gitignore`. It also adds `.mcp.json` if init created that file.
 - In a git work tree, writes git's pre-push hook, so every push asks tmb first, and tmb refuses only an unreviewed push to the base branch; in a multi-repo workspace, one in each repo tmb works in. A pre-push hook that is not tmb's is left alone, and init prints the line to add to it.

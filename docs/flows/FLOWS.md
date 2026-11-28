@@ -49,7 +49,7 @@ The three checkpoints are in [ENGINE.md](../architecture/ENGINE.md), and who own
 
 ## 5. One test per flow
 
-**Planned (trustmybot/tmb#300). Every flow has one scenario test of its ideal case, so the flow and the code cannot drift apart unseen.**
+**Every flow has one scenario test of its ideal case, so the flow and the code cannot drift apart unseen.**
 
 - **Example.** A change breaks the ideal case of a flow. That flow's test fails.
 
