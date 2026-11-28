@@ -1,8 +1,8 @@
 name: ci
 
-# Pull requests and pushes to dev run only the fast Linux `test` job. The heavy jobs run on
-# version tags (rc and stable), so CI never slows a lane down (trustmybot/tmb#164). Needs no
-# secret.
+# Pull requests and pushes to dev run the Linux `test` and `chain` jobs only. The heavy jobs
+# (`update-scenario`, `benchmark`) run on version tags (rc and stable), so CI never slows a lane
+# down (trustmybot/tmb#164). Needs no secret.
 
 on:
   pull_request:
@@ -103,9 +103,17 @@ jobs:
           bun tests/lib/pinned-repo.ts flask "$RUNNER_TEMP/pinned/flask"
           bun tests/lib/pinned-repo.ts datasette "$RUNNER_TEMP/pinned/datasette"
           bun tests/lib/pinned-repo.ts gin "$RUNNER_TEMP/pinned/gin"
+          bun tests/lib/pinned-repo.ts jsoup "$RUNNER_TEMP/pinned/jsoup"
+          bun tests/lib/pinned-repo.ts ripgrep "$RUNNER_TEMP/pinned/ripgrep"
+          bun tests/lib/pinned-repo.ts libuv "$RUNNER_TEMP/pinned/libuv"
+          bun tests/lib/pinned-repo.ts leveldb "$RUNNER_TEMP/pinned/leveldb"
       - run: bun tests/benchmark/run.ts --check
         env:
           TMB_PINNED_HONO: ${{ runner.temp }}/pinned/hono
           TMB_PINNED_FLASK: ${{ runner.temp }}/pinned/flask
           TMB_PINNED_DATASETTE: ${{ runner.temp }}/pinned/datasette
           TMB_PINNED_GIN: ${{ runner.temp }}/pinned/gin
+          TMB_PINNED_JSOUP: ${{ runner.temp }}/pinned/jsoup
+          TMB_PINNED_RIPGREP: ${{ runner.temp }}/pinned/ripgrep
+          TMB_PINNED_LIBUV: ${{ runner.temp }}/pinned/libuv
+          TMB_PINNED_LEVELDB: ${{ runner.temp }}/pinned/leveldb
