@@ -4,6 +4,10 @@
 // folder still does. The feedback program is off for them too, so a fresh state folder does not
 // add the first run's notice or question to every session start; the feedback tests give their
 // own environment.
+//
+// The folder is removed by a global afterAll, which bun runs once after the last test file. bun
+// test does not fire process "exit" handlers, so an exit handler alone left every folder behind.
+import { afterAll } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +15,6 @@ import path from "node:path";
 if (process.env.TMB_STATE_DIR === undefined) {
   const stateDir = mkdtempSync(path.join(tmpdir(), "tmb-test-state-"));
   process.env.TMB_STATE_DIR = stateDir;
-  process.on("exit", () => rmSync(stateDir, { recursive: true, force: true }));
+  afterAll(() => rmSync(stateDir, { recursive: true, force: true }));
 }
 process.env.TMB_NO_FEEDBACK ??= "1";
