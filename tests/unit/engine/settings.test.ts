@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { issueSyncOn, readSettings, SettingError, settingLines, validateSetting, writeSetting } from "../../../src/engine/index.ts";
+import { issueSyncOf, issueSyncOn, readSettings, SettingError, settingLines, validateSetting, writeSetting } from "../../../src/engine/index.ts";
 import { type Actor, openStore, type Store } from "../../../src/engine/store/index.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
@@ -106,7 +106,7 @@ describe("settingLines", () => {
       'checks: "bun run lint", "go test ./..."',
       "shared folders: (not set)",
       "graph links: (not set)",
-      "issue sync: on (not set)",
+      "issue sync: open (not set)",
     ]);
     expect(settingLines({ host: null, host_roles: null, base_branch: null, review_mode: null, checks: [], shared_folders: null, graph_links: null, repos: null, issue_sync: null })).toEqual([
       "host: (not set)",
@@ -116,17 +116,28 @@ describe("settingLines", () => {
       "checks: (none)",
       "shared folders: (not set)",
       "graph links: (not set)",
-      "issue sync: on (not set)",
+      "issue sync: open (not set)",
     ]);
   });
 });
 
 describe("issue sync", () => {
-  test("is on or off, and on while unset", () => {
-    expect(validateSetting("issue_sync", "off")).toBe("off");
+  test("is open, all or off, and open while unset", () => {
+    for (const mode of ["open", "all", "off"] as const) expect(validateSetting("issue_sync", mode)).toBe(mode);
     expect(() => validateSetting("issue_sync", "sometimes")).toThrow(SettingError);
+    expect(() => validateSetting("issue_sync", "on")).toThrow(SettingError);
+    expect(issueSyncOf({ ...NO_SETTINGS_FOR_SYNC, issue_sync: null })).toBe("open");
     expect(issueSyncOn({ ...NO_SETTINGS_FOR_SYNC, issue_sync: null })).toBe(true);
     expect(issueSyncOn({ ...NO_SETTINGS_FOR_SYNC, issue_sync: "off" })).toBe(false);
+  });
+
+  test("a record that says on reads as all, which is what on did; off stays off", () => {
+    store.recordSettingChange(HUMAN, { key: "issue_sync", oldValue: null, newValue: JSON.stringify("on"), how: null });
+    expect(readSettings(store).issue_sync).toBe("all");
+    writeSetting(store, HUMAN, "issue_sync", "open");
+    expect(readSettings(store).issue_sync).toBe("open");
+    store.recordSettingChange(HUMAN, { key: "issue_sync", oldValue: null, newValue: JSON.stringify("off"), how: null });
+    expect(readSettings(store).issue_sync).toBe("off");
   });
 });
 

@@ -220,6 +220,18 @@ describe("empty settings", () => {
     // trustmybot/tmb#162: init asks nothing, so the planner asks among its onboarding questions.
     expect(text).toContain("Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, agile marked as recommended.");
     expect(text.indexOf(OPEN_WORK_HEADING)).toBeLessThan(text.indexOf(EMPTY_SETTINGS_HEADING));
+    // Issue sync is the Human's too, asked in the same questions with what each choice costs.
+    expect(text).toContain("Issue sync is the Human's choice too, as a big repo with thousands of closed issues takes longer to bring in and makes a bigger record: do not set it yourself.");
+    expect(text).toContain("one option per choice with what it costs, open marked as the default");
+    expect(text).toContain("- issue sync: open (only the issues open on the remote, and those that close later; fast, and a small record), or all (");
+  });
+
+  test("once issue sync is chosen, it is not asked again", () => {
+    withStore((store) => writeSetting(store, HUMAN, "issue_sync", "all"));
+    const text = contextWith(false);
+    expect(text).toContain(EMPTY_SETTINGS_HEADING);
+    expect(text).not.toContain("Issue sync");
+    expect(text).not.toContain("- issue sync:");
   });
 
   test("name only the settings still empty", () => {
@@ -244,6 +256,7 @@ describe("empty settings", () => {
     expect(text).toContain("Name each value you applied in your answer.");
     expect(text).not.toContain("remind them");
     expect(text).toContain("no one can answer in this run: do not set it. task_start is refused until the Human runs `tmb onboard`");
+    expect(text).toContain("Issue sync is the Human's choice too: leave it unset, and it reads as open.");
   });
 
   test("are not mentioned once set", () => {

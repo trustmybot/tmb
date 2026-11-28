@@ -6,7 +6,7 @@ import os from "node:os";
 import {
   emptySyncRow,
   githubRepoOf,
-  issueSyncOn,
+  issueSyncOf,
   openProjectStore,
   readSettings,
   repoDirOf,
@@ -19,7 +19,7 @@ import { Folder, type FoldCount, numberInUrl } from "./fold.ts";
 import type { Repo } from "./github.ts";
 import { FLOOR_MS, readItem, readRemote } from "./reader.ts";
 import { type Ask, askThroughGh } from "./transport.ts";
-import { type Cannot, type Kept, LISTS, type ListName, type ReadAnswer } from "./types.ts";
+import { type Cannot, type Kept, LISTS, type ListName, type ReadAnswer, type RemoteIssue } from "./types.ts";
 
 /** How often the issues, pull requests and milestones are read whole, to find what was deleted. */
 export const FULL_PASS_MS = 7 * 24 * 60 * 60_000;
@@ -57,10 +57,19 @@ export function keptOf(rows: readonly SyncRow[]): Kept {
   return kept;
 }
 
-/** Whether the remote is due a full pass: never had one, or the last one started a week ago. */
-function fullPassDue(rows: readonly SyncRow[], now: Date): boolean {
+/**
+ * Whether the remote is due a full pass: never had one, the last one started a week ago, or the
+ * Human chose all issues since it, so the closed ones an import of the open ones left out come in.
+ */
+function fullPassDue(rows: readonly SyncRow[], now: Date, allChosenAt: string | null): boolean {
   const started = rows.find((row) => row.list === "issues")?.fullPassAt ?? null;
-  return started === null || now.getTime() - Date.parse(started) >= FULL_PASS_MS;
+  return started === null || now.getTime() - Date.parse(started) >= FULL_PASS_MS || (allChosenAt !== null && allChosenAt > started);
+}
+
+/** When the Human last chose all issues, or null when the current choice is not all. */
+function allChosenAt(store: Store): string | null {
+  const change = store.newestSettingChange("issue_sync", null, true);
+  return change !== null && issueSyncOf(readSettings(store)) === "all" ? change.createdAt : null;
 }
 
 /** Polls every repo of the project tmb works in. Never throws. */
@@ -74,11 +83,12 @@ export async function syncProject(projectDir: string, options: SyncOptions = {})
   if (!opened.ok) return [{ repo: ".", remote: null, ok: false, cannot: "no_record", why: opened.error.message }];
   const store = opened.store;
   try {
-    if (!issueSyncOn(readSettings(store))) return [{ repo: ".", remote: null, ok: false, cannot: "off", why: "issue sync is off" }];
+    const mode = issueSyncOf(readSettings(store));
+    if (mode === "off") return [{ repo: ".", remote: null, ok: false, cannot: "off", why: "issue sync is off" }];
     const policies = workspaceRepos(store);
     const repos = policies === null ? [{ path: ".", dir: projectDir }] : workingRepos(policies).map((name) => ({ path: name, dir: repoDirOf(projectDir, name) }));
     const outcomes: SyncOutcome[] = [];
-    for (const repo of repos) outcomes.push(await syncRepo(store, repo.path, repo.dir, options));
+    for (const repo of repos) outcomes.push(await syncRepo(store, repo.path, repo.dir, options, mode === "open"));
     return outcomes;
   } catch (error) {
     return [{ repo: ".", remote: null, ok: false, cannot: "failed", why: error instanceof Error ? error.message : String(error) }];
@@ -87,7 +97,8 @@ export async function syncProject(projectDir: string, options: SyncOptions = {})
   }
 }
 
-async function syncRepo(store: Store, path: string, dir: string, options: SyncOptions): Promise<SyncOutcome> {
+/** `openOnly`: the Human chose only the open issues, so closed ones never held are not copied in. */
+async function syncRepo(store: Store, path: string, dir: string, options: SyncOptions, openOnly: boolean): Promise<SyncOutcome> {
   const clock = options.now ?? (() => new Date());
   const repo: Repo | null = githubRepoOf(dir);
   if (repo === null) return { repo: path, remote: null, ok: false, cannot: "not_github", why: "origin names no GitHub repository" };
@@ -98,14 +109,14 @@ async function syncRepo(store: Store, path: string, dir: string, options: SyncOp
   if (refused !== null) return { repo: path, remote, ok: false, cannot: "held", why: `${refused.held} until ${refused.until}`, until: refused.until };
 
   const rows = store.mirror.syncRows(remote);
-  const fullPass = fullPassDue(rows, started);
+  const fullPass = fullPassDue(rows, started, allChosenAt(store));
   const kept = keptOf(rows);
   if (fullPass) for (const list of FULL_PASS_LISTS) delete kept.lists[list];
   const ask = (options.askFor ?? askThroughGh)(dir);
   let answer: ReadAnswer;
   try {
     // The claim already kept the floor, so the reader is not asked to keep it again.
-    answer = await readRemote({ repo, kept, ask, now: started, force: true, pageLimit: options.pageLimit });
+    answer = await readRemote({ repo, kept, ask, now: started, force: true, pageLimit: options.pageLimit, openIssuesOnly: openOnly });
   } catch (error) {
     answer = { ok: false, cannot: "failed", why: error instanceof Error ? error.message : String(error), keep: kept };
   }
@@ -119,11 +130,11 @@ async function syncRepo(store: Store, path: string, dir: string, options: SyncOp
     return { repo: path, remote, ok: false, cannot: answer.cannot, why: answer.why };
   }
 
-  const folder = new Folder(store, path);
+  const folder = new Folder(store, path, openOnly);
   let lastError: string | null = null;
   try {
     folder.fold(answer);
-    if (fullPass && !FULL_PASS_LISTS.some((list) => answer.incomplete.includes(list))) await checkGone(store, folder, repo, remote, ask, answer, iso(clock()));
+    if (fullPass && !FULL_PASS_LISTS.some((list) => answer.incomplete.includes(list))) await checkGone(store, folder, repo, remote, ask, answer, iso(clock()), openOnly);
   } catch (error) {
     lastError = `failed: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -153,9 +164,10 @@ async function syncRepo(store: Store, path: string, dir: string, options: SyncOp
 /**
  * After a whole read, the held rows the remote no longer listed: each issue and pull request is asked
  * for directly, since only that tells deleted from moved, up to GONE_CHECKS_MAX a poll. A milestone
- * missing from the whole list is gone.
+ * missing from the whole list is gone. When only the open issues were read, a held closed issue is
+ * not looked for, and one held open that is there and closed takes its close.
  */
-async function checkGone(store: Store, folder: Folder, repo: Repo, remote: string, ask: Ask, answer: Extract<ReadAnswer, { ok: true }>, at: string): Promise<void> {
+async function checkGone(store: Store, folder: Folder, repo: Repo, remote: string, ask: Ask, answer: Extract<ReadAnswer, { ok: true }>, at: string, openOnly: boolean): Promise<void> {
   const seen = new Set([...answer.issues, ...answer.pullRequests, ...answer.milestones].map((item) => item.remoteId));
   for (const milestone of store.mirror.presentMirrored("milestone", remote)) {
     if (!seen.has(milestone.remoteId)) folder.markGone("milestone", milestone.id, at);
@@ -163,7 +175,7 @@ async function checkGone(store: Store, folder: Folder, repo: Repo, remote: strin
   let asked = 0;
   for (const kind of ["issue", "pull_request"] as const) {
     for (const held of store.mirror.presentMirrored(kind, remote)) {
-      if (seen.has(held.remoteId)) continue;
+      if (seen.has(held.remoteId) || (openOnly && kind === "issue" && held.state !== "open")) continue;
       const number = numberInUrl(held.url);
       if (number === null || asked >= GONE_CHECKS_MAX) continue;
       asked += 1;
@@ -171,6 +183,7 @@ async function checkGone(store: Store, folder: Folder, repo: Repo, remote: strin
       if (!item.ok) return;
       if (item.gone) folder.markGone(kind, held.id, at);
       else if (item.item.remote !== remote) folder.moved(kind, held.id, item.item);
+      else if (kind === "issue") folder.fold({ issues: [item.item as RemoteIssue], comments: [], pullRequests: [], milestones: [] });
     }
   }
 }

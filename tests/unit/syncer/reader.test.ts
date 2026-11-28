@@ -109,7 +109,7 @@ describe("the first read", () => {
     expect(answer.pullRequests[0]!.headCommit).toMatch(/^[0-9a-f]{40}$/);
     expect(answer.milestones[0]).toMatchObject({ remoteId: "MI_kwDOVzoTK84BLK3l", title: "v1.x", state: "open" });
 
-    expect(answer.keep.lists.issues).toEqual({ tag: 'W/"58187fc690cc1227bc9ffdfd1e2e3c066262cce95c6350fbadd8d7355dd7da36"', since: answer.issues.map((issue) => issue.remoteUpdatedAt).sort().at(-1)! });
+    expect(answer.keep.lists.issues).toEqual({ tag: 'W/"58187fc690cc1227bc9ffdfd1e2e3c066262cce95c6350fbadd8d7355dd7da36"', since: answer.issues.map((issue) => issue.remoteUpdatedAt).sort().at(-1)!, resume: null });
     expect(answer.keep.lists.review_comments?.since).toBeNull();
     expect(answer.keep.notBefore).toBe(new Date(NOW.getTime() + FLOOR_MS).toISOString());
     expect(answer.keep.waitUntil).toBeNull();

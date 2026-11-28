@@ -17,7 +17,7 @@ flowchart TD
     F --> G{Review mode set?}
     G -- yes --> J
     G -- "no, someone can answer" --> H[Planner asks the Human: each mode with its cost, agile recommended]
-    H --> I[Planner stores the Human's answer]
+    H --> I[Planner stores the Human's answer, and asks issue sync the same way]
     I --> J[Planner names the project's areas]
     G -- "no, unattended run" --> X[Stays unset: no task starts until the Human sets it]
     J --> K[Session starts say nothing more about settings]
@@ -41,7 +41,7 @@ Each step, who takes it and what it leaves in the record.
 | The shared folders | No detection. The planner names the folders the repo's install step fills, such as `node_modules`, then installs the dependencies in the main folder ([CONFIG.md](../architecture/CONFIG.md#shared-folders-are-linked-not-installed)). | the planner, or `tmb onboard` | the shared folders, per repo in a multi-repo workspace |
 | The areas | Once the code graph is built, the planner names the parts of the project, one line each, and writes them. It asks nothing ([CODE_GRAPH.md](../architecture/CODE_GRAPH.md#when-the-areas-change)). | the planner | the areas |
 | The design docs | Planned (trustmybot/tmb#302). Where the high-level design is, or in a project with none, where to keep it: a folder in the repo, a link outside it, or the record ([the three layers](../architecture/README.md#three-layers-of-knowledge)). | the planner's question, or `tmb onboard` | where the design is kept |
-| Issue sync | No question. On unless the Human turns it off: the syncer then reads nothing from the remote ([when it runs](../architecture/TRAJECTORY.md#when-the-syncer-runs)). | the planner on the Human's word | the issue sync setting |
+| Issue sync | [The Human's choice](#issue-sync-is-the-humans-choice): only the open issues, all of them, or none. Open while unset. | the planner's question, or `tmb onboard` on a terminal | the issue sync setting |
 
 ## Init asks nothing
 
@@ -87,6 +87,23 @@ Each step, who takes it and what it leaves in the record.
 - **Edge case.** An unattended run leaves the mode unset. The first task is refused, and the refusal names `tmb onboard`.
 
 What each mode does, where the mode is kept and the one case where a run with no terminal may set it are in [3_WORKFLOW.md](3_WORKFLOW.md).
+
+## Issue sync is the Human's choice
+
+**How much of the remote's issues comes into the record is the Human's choice, asked beside the review mode with what each answer costs. Unset, it reads as only the open ones.** A big repo with thousands of closed issues takes longer to bring in and makes a bigger record.
+
+| Answer | What comes in | Cost |
+|---|---|---|
+| Open, the default | The issues open on the remote, and their later closes | Fast, and a small record |
+| All | Open and closed issues | Longer, and a bigger record, on a repo with many closed issues |
+| Off | Nothing from the remote | None; the record holds only local issues |
+
+- **Example 1.** The Human answers the planner's question with all. The closed issues come in at the next poll.
+- **Example 2.** The Human answers `tmb onboard` on a terminal, or passes it the issue-sync flag.
+- **Edge case.** An unattended run leaves it unset, and the syncer brings in the open issues.
+- **Edge case.** The Human changes all back to open. Nothing already in the record is removed.
+
+How the syncer reads each answer is in [TRAJECTORY.md](../architecture/TRAJECTORY.md#how-much-of-the-remote-comes-in).
 
 ## The repo's checks
 

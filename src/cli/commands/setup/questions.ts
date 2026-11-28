@@ -1,6 +1,6 @@
 // The questions onboarding asks on a terminal: each asks until it has an answer it can use, and
 // none touches the record.
-import { AVAILABLE_REVIEW_MODES, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode, SettingError, validateSetting, WORKSPACE_REVIEW_MODE } from "../../../engine/index.ts";
+import { AVAILABLE_REVIEW_MODES, DEFAULT_ISSUE_SYNC, ISSUE_SYNC_COSTS, ISSUE_SYNC_MODES, type IssueSync, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type ReviewMode, SettingError, validateSetting, WORKSPACE_REVIEW_MODE } from "../../../engine/index.ts";
 import type { Ask } from "../../terminal.ts";
 
 /** Asks for one line of text; an empty answer takes the fallback, and with none, asks again. */
@@ -40,6 +40,27 @@ export async function askReviewMode(ask: Ask, stored: ReviewMode | null, out: (l
     if (answer.trim() === "") return fallback;
     try {
       return validateSetting("review_mode", answer.trim());
+    } catch (error) {
+      if (!(error instanceof SettingError)) throw error;
+      out(error.message);
+    }
+  }
+}
+
+/**
+ * Asks how much of the remote's issues the record copies in, with one line on what each costs. An
+ * empty answer keeps the stored choice, else takes the default; the end of input keeps the stored one, or none.
+ */
+export async function askIssueSync(ask: Ask, stored: IssueSync | null, out: (line: string) => void): Promise<IssueSync | null> {
+  out("Issue sync decides how much of the GitHub repo's issues tmb copies into its record:");
+  for (const mode of ISSUE_SYNC_MODES) out(`  ${mode}: ${ISSUE_SYNC_COSTS[mode]}${mode === DEFAULT_ISSUE_SYNC ? " (the default)" : ""}`);
+  const fallback = stored ?? DEFAULT_ISSUE_SYNC;
+  for (;;) {
+    const answer = await ask(`Issue sync, one of: ${ISSUE_SYNC_MODES.join(", ")} [${fallback}]: `);
+    if (answer === null) return stored;
+    if (answer.trim() === "") return fallback;
+    try {
+      return validateSetting("issue_sync", answer.trim());
     } catch (error) {
       if (!(error instanceof SettingError)) throw error;
       out(error.message);

@@ -84,7 +84,7 @@ describe("tmb init, then tmb onboard", () => {
     expect(tmb(["init"], project)).toContain("Found Claude Code, the one supported host installed; setting tmb up for it.");
     expect(human(["onboard", "--yes", "--review-mode", "agile"], project)).toContain("Recorded 3 changes in the record's setting changes.");
     expect(config(project)).toEqual({ host: "claude-code", host_roles: { "claude-code": "planner" }, base_branch: "trunk", review_mode: "agile", checks: ["bun run lint", "bun run test"], shared_folders: null, graph_links: null, issue_sync: null });
-    expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\nshared folders: (not set)\ngraph links: (not set)\nissue sync: on (not set)\n');
+    expect(tmb(["config"], project)).toBe('host: claude-code\nhost roles: claude-code planner\nbase branch: trunk\nreview mode: agile\nchecks: "bun run lint", "bun run test"\nshared folders: (not set)\ngraph links: (not set)\nissue sync: open (not set)\n');
   });
 
   test("onboard with no terminal and no flags never waits for input: takes the defaults, leaves the review mode to the Human and prints them", async () => {

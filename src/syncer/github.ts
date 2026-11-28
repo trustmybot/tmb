@@ -20,13 +20,14 @@ const PAGE = 100;
 
 /**
  * Each list's first page, newest change first where the remote can sort so. Its address never
- * changes, so the tag kept for it asks "has anything changed?".
+ * changes, so the tag kept for it asks "has anything changed?". `openOnly` asks for the open
+ * issues alone, as an import does when the Human chose only the open ones.
  */
-export function firstPage(repo: Repo, list: ListName): string {
+export function firstPage(repo: Repo, list: ListName, openOnly = false): string {
   const root = `repos/${repo.owner}/${repo.name}`;
   switch (list) {
     case "issues":
-      return `${root}/issues?state=all&sort=updated&direction=desc&per_page=${PAGE}`;
+      return `${root}/issues?state=${openOnly ? "open" : "all"}&sort=updated&direction=desc&per_page=${PAGE}`;
     case "comments":
       return `${root}/issues/comments?sort=updated&direction=desc&per_page=${PAGE}`;
     case "review_comments":
@@ -42,9 +43,9 @@ export function firstPage(repo: Repo, list: ListName): string {
 export const laterPage = (repo: Repo, list: ListName, page: number): string => `${firstPage(repo, list)}&page=${page}`;
 
 /** The lists that take "updated since", oldest change first, so a long read can resume. */
-export function sincePage(repo: Repo, list: ListName, since: string | null): string | null {
+export function sincePage(repo: Repo, list: ListName, since: string | null, openOnly = false): string | null {
   if (list !== "issues" && list !== "comments" && list !== "review_comments") return null;
-  const asked = firstPage(repo, list).replace("direction=desc", "direction=asc");
+  const asked = firstPage(repo, list, openOnly).replace("direction=desc", "direction=asc");
   return since === null ? asked : `${asked}&since=${encodeURIComponent(since)}`;
 }
 

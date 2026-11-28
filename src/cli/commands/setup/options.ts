@@ -9,6 +9,8 @@ export type SetupFlags = {
   role?: string;
   base?: string;
   reviewMode?: string;
+  /** onboard: how much of the remote's issues the record copies in: open, all or off. */
+  issueSync?: string;
   checks?: string[];
   /** onboard: the shared folders, each a path inside the repo, linked into every task worktree (trustmybot/tmb#286). */
   sharedFolders?: string[];
@@ -61,6 +63,7 @@ export function validatedFlags(flags: SetupFlags): Answered {
     base_branch: flags.base === undefined ? undefined : validateSetting("base_branch", flags.base),
     // With --repo, --review-mode is that repo's own, which the workspace's onboarding reads (trustmybot/tmb#216).
     review_mode: flags.reviewMode === undefined || flags.repo !== undefined ? undefined : validateSetting("review_mode", flags.reviewMode),
+    issue_sync: flags.issueSync === undefined ? undefined : validateSetting("issue_sync", flags.issueSync),
     checks: flags.checks === undefined || flags.checks.length === 0 ? undefined : validateSetting("checks", flags.checks),
     shared_folders: flags.sharedFolders === undefined || flags.sharedFolders.length === 0 ? undefined : validateSetting("shared_folders", flags.sharedFolders),
   };

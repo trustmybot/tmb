@@ -6,7 +6,7 @@
 import type { Actor, MirroredRow, Store } from "../engine/index.ts";
 import type { Changes, RemoteComment, RemoteIssue, RemoteItem, RemoteMilestone, RemotePullRequest } from "./types.ts";
 
-/** What one fold did. A comment whose issue the record does not hold is skipped, as is a blank one. */
+/** What one fold did. A comment whose issue the record does not hold is skipped, as is a blank one, and a closed issue never held when only the open ones are copied. */
 export type FoldCount = { created: number; updated: number; skipped: number };
 
 /** A blank title on the remote still makes an issue the record can show. */
@@ -48,10 +48,14 @@ export class Folder {
   readonly count: FoldCount = { created: 0, updated: 0, skipped: 0 };
   private repoId: string | null = null;
 
-  /** `repoPath` is the repo's path in the project, `.` for the project folder itself. */
+  /**
+   * `repoPath` is the repo's path in the project, `.` for the project folder itself. `openOnly`
+   * skips a closed issue the record does not hold, when the Human chose only the open ones.
+   */
   constructor(
     private readonly store: Store,
     private readonly repoPath: string,
+    private readonly openOnly = false,
   ) {}
 
   /** Folds one answer in the order the rows refer to each other: milestones, issues, comments, pull requests. */
@@ -110,6 +114,10 @@ export class Folder {
   }
 
   private issue(issue: RemoteIssue): void {
+    if (this.openOnly && issue.state === "closed" && this.store.mirror.findMirrored("issue", issue.remoteId) === null) {
+      this.count.skipped += 1;
+      return;
+    }
     this.put("issue", issue, {
       title: issue.title.trim() === "" ? UNTITLED : issue.title,
       body: issue.body,

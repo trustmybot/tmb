@@ -17,7 +17,7 @@ import { takeOutsideChanges } from "./outside-changes.ts";
 import { openProjectStore } from "./project.ts";
 import { refreshPullRequestStates } from "./pull-request-state.ts";
 import { repoDirOf, workspaceRepos } from "./repos.ts";
-import { readSettings, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type RepoPolicy, type ReviewMode } from "./settings.ts";
+import { DEFAULT_ISSUE_SYNC, ISSUE_SYNC_COSTS, ISSUE_SYNC_MODES, readSettings, RECOMMENDED_REVIEW_MODE, REVIEW_MODE_COSTS, type RepoPolicies, type RepoPolicy, type ReviewMode } from "./settings.ts";
 import { type Actor, type Store, type Task, clip } from "./store/index.ts";
 
 export const OPEN_WORK_HEADING = "## Open work in the record";
@@ -153,10 +153,12 @@ const SETTING_LABELS = { base_branch: "base branch", review_mode: "review mode",
  * When the project's settings are empty, as `tmb init` leaves them, the planner onboards the
  * project itself: it applies the base branch and checks it recommends and shows them. The review
  * mode is the Human's choice: init asks nothing, so the planner asks for it among its onboarding
- * questions, and with no one to ask leaves it unset, so task_start is refused. Empty when all are set.
+ * questions, and with no one to ask leaves it unset, so task_start is refused. Issue sync is the
+ * Human's too, asked among the same questions; unset, it reads as open. Empty when all are set.
  */
 function emptySettingsSection(store: Store, projectDir: string, unattended: boolean): string {
-  const empty = emptySettings(readSettings(store));
+  const settings = readSettings(store);
+  const empty = emptySettings(settings);
   if (empty.length === 0) return "";
   const detected = detectedSettings(projectDir);
   const checks = detected.checks.length === 0 ? "none found" : detected.checks.map((check) => `\`${oneLineText(check)}\``).join(", ");
@@ -166,6 +168,7 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
       ? [`base branch: ${detected.base_branch === null ? "none found, as this is not a git work tree" : branch(detected.base_branch)}`, `checks: ${checks}`]
       : Object.entries(detected.repos).map(([name, repo]) => `repo ${oneLineText(name)}: base branch ${branch(repo.base_branch)}`)),
     `review modes: ${detected.review_modes.map((mode) => `${mode} (${REVIEW_MODE_COSTS[mode as ReviewMode]})`).join(" or ")}`,
+    ...(settings.issue_sync === null ? [`issue sync: ${ISSUE_SYNC_MODES.map((mode) => `${mode} (${ISSUE_SYNC_COSTS[mode]})`).join(", or ")}`] : []),
   ];
   const others = empty.filter((name) => name !== "review_mode");
   const parts: string[] = [];
@@ -185,6 +188,14 @@ function emptySettingsSection(store: Store, projectDir: string, unattended: bool
         : "The review mode is the Human's choice, as it decides how many tokens the project uses: do not set it yourself. " +
             `Ask the Human for it among your onboarding questions, with your host's question tool, such as AskUserQuestion: one option per mode with what it costs, ${RECOMMENDED_REVIEW_MODE} marked as recommended. ` +
             "Set their answer with settings_set. task_start is refused until it is set.",
+    );
+  }
+  if (settings.issue_sync === null) {
+    parts.push(
+      unattended
+        ? `Issue sync is the Human's choice too: leave it unset, and it reads as ${DEFAULT_ISSUE_SYNC}.`
+        : "Issue sync is the Human's choice too, as a big repo with thousands of closed issues takes longer to bring in and makes a bigger record: do not set it yourself. " +
+            `Ask for it in the same questions: one option per choice with what it costs, ${DEFAULT_ISSUE_SYNC} marked as the default. Set their answer with settings_set; until then it reads as ${DEFAULT_ISSUE_SYNC}.`,
     );
   }
   return `\n\n${EMPTY_SETTINGS_HEADING}\n\nNot set yet: ${empty.map((name) => SETTING_LABELS[name]).join(", ")}. ${parts.join(" ")}\n\nWhat tmb found in the project:\n\n${found.map((line) => `- ${line}`).join("\n")}`;

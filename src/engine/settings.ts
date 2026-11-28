@@ -7,9 +7,20 @@ import type { Actor, Role, Store } from "./store/index.ts";
 export const SETTING_NAMES = ["host", "host_roles", "base_branch", "review_mode", "checks", "shared_folders", "graph_links", "repos", "issue_sync"] as const;
 export type SettingName = (typeof SETTING_NAMES)[number];
 
-/** Whether the syncer brings the remote's changes into the record; unset is on. */
-export const ISSUE_SYNC_MODES = ["on", "off"] as const;
+/**
+ * How much of the remote's issues the syncer brings into the record: the open ones, all of them, or
+ * none. Unset is open, the cheap choice for a big repo. Records written when the setting was on or
+ * off read on as all, which is what on did.
+ */
+export const ISSUE_SYNC_MODES = ["open", "all", "off"] as const;
 export type IssueSync = (typeof ISSUE_SYNC_MODES)[number];
+export const DEFAULT_ISSUE_SYNC: IssueSync = "open";
+/** One line on what each choice copies and costs, as the questions show it. */
+export const ISSUE_SYNC_COSTS: Record<IssueSync, string> = {
+  open: "only the issues open on the remote, and those that close later; fast, and a small record",
+  all: "open and closed issues; a big repo with thousands of closed issues takes longer and makes a bigger record",
+  off: "no issues from the remote; the record holds only local ones",
+};
 
 export const REVIEW_MODES = ["agile", "truest"] as const;
 export type ReviewMode = (typeof REVIEW_MODES)[number];
@@ -180,6 +191,7 @@ export function readSettings(store: Store): Settings {
     const change = store.newestSettingChange(name, null, true);
     settings[name] = change === null ? null : JSON.parse(change.newValue!);
   }
+  if (settings.issue_sync === "on") settings.issue_sync = "all";
   return settings as Settings;
 }
 
@@ -223,9 +235,14 @@ export function sharedFoldersOf(settings: Settings, repo: string | null): string
   return repo === null ? (settings.shared_folders ?? []) : (settings.repos?.[repo]?.shared_folders ?? []);
 }
 
-/** Whether the syncer runs: on unless the Human turned it off. */
+/** How much of the remote's issues the syncer brings in: the Human's choice, else open. */
+export function issueSyncOf(settings: Settings): IssueSync {
+  return settings.issue_sync ?? DEFAULT_ISSUE_SYNC;
+}
+
+/** Whether the syncer runs: unless the Human turned it off. */
 export function issueSyncOn(settings: Settings): boolean {
-  return settings.issue_sync !== "off";
+  return issueSyncOf(settings) !== "off";
 }
 
 /** The role the host's main agent takes in the project: its role in the record, else the planner. */
@@ -276,7 +293,7 @@ export function settingLines(settings: Settings): string[] {
       const entries = Object.entries(value as HostRoles);
       return `${LABELS[name]}: ${entries.length === 0 ? "(none)" : entries.map(([host, role]) => `${host} ${role}`).join(", ")}`;
     }
-    if (name === "issue_sync" && value === null) return `${LABELS[name]}: on (not set)`;
+    if (name === "issue_sync" && value === null) return `${LABELS[name]}: ${DEFAULT_ISSUE_SYNC} (not set)`;
     const shown =
       value === null ? "(not set)" : Array.isArray(value) ? (value.length === 0 ? "(none)" : value.map((check) => JSON.stringify(check)).join(", ")) : value;
     return `${LABELS[name]}: ${shown}`;
