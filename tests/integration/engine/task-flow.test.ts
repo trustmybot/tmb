@@ -69,7 +69,7 @@ describe("feature branches", () => {
       expect(await callJson(client, "feature_list", {})).toEqual([started]);
       const refused = (await client.callTool({ name: "feature_start", arguments: { name: "feat/mine", role: "worker" } })) as ToolResult;
       expect(refused.isError).toBe(true);
-      expect(refused.content[0]!.text).toContain("feature_start is for the planner");
+      expect(refused.content[0]!.text).toContain("the worker may not start a feature branch (feature.start)");
     } finally {
       await client.close();
     }

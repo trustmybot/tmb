@@ -81,7 +81,8 @@ tmb is set up for Claude Code. Next:
 |---|---|---|
 | `tmb init` | Prepares the project: creates its record, wires the host, adds git's push hook and indexes the code graph. It leaves tmb's other settings empty. | None |
 | `tmb onboard` | Sets tmb's settings for the project: the base branch, the review mode, the checks and the shared folders; in a multi-repo workspace, each repo's base branch, checks and shared folders. Run it again at any time. | Yes |
-| `tmb remove` | Undoes what `tmb init` added ([Remove](#remove)). | No |
+| `tmb remove <project-name>` | Undoes what `tmb init` added ([Remove](#remove)). | Yes, a typed yes |
+| `tmb purge <project-name>` | Does what remove does, then deletes the record for good ([Remove](#remove)). | Yes, a typed yes |
 
 At the first session the planner fills the settings init left empty ([Onboarding by itself](#onboarding-by-itself)) and asks you for the review mode ([The review mode is yours](#the-review-mode-is-yours)). `tmb onboard` sets them yourself instead.
 
@@ -389,8 +390,11 @@ The extension is the file's last one and the name is matched without regard to c
 ## Remove
 
 ```sh
-tmb remove
+cd /work/backend
+tmb remove backend
 ```
+
+**Run it inside the project, and name the project's home folder.** The home folder is where `tmb init` ran and the record lives; for a record in `/work/backend/.tmb` the name is `backend`. tmb finds the project from the folder you are in or one above it, and refuses a name that is not its home folder's, naming the project it found. It refuses a path, `.` and no name, with the usage. Outside any project it refuses.
 
 It removes only what `tmb init` added:
 
@@ -400,11 +404,15 @@ It removes only what `tmb init` added:
 - `.mcp.json` itself, only if init created that file and nothing else is left in it.
 - git's pre-push hook, if tmb wrote it.
 
-It keeps the record in `.tmb/`, because that is your data; delete the folder yourself to drop it. It does not remove the `.gitignore` lines. It runs only on a terminal, once you type yes.
+It keeps the record in `.tmb/`, because that is your data. It does not remove the `.gitignore` lines. It runs only on a terminal, once you type yes to a question that names the project's full home folder.
+
+**`tmb purge <project-name>` also deletes the record, for good.** It does what `tmb remove` does for every host, then deletes `.tmb/`. Its question says the record cannot be recovered: the trajectory of every issue, task and review goes with it. If the removal fails, the record is kept.
+
+**Removing tmb from the machine** is Planned (trustmybot/tmb#498). Until then, delete the program from `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`) and its state folder ([Channels and updates](#channels-and-updates)).
 
 ## Steps only you may take
 
-Some commands are yours alone: `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, and `tmb remove`. `tmb update` is not one. The rule is in [ENGINE.md](../architecture/ENGINE.md).
+Some commands are rows of yours in the [permission table](../architecture/ROLES.md#permissions): `tmb feature waive`, `tmb task waive`, setting the review mode with `tmb onboard --review-mode`, `tmb remove` and `tmb purge`. `tmb update` is not one. The planner may also waive and set the review mode through tmb's tools, when you ask it to; the record names who waived. The rule is in [ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine).
 
 - Each runs only on a terminal, and asks you to type yes first. Anything else changes nothing.
 - Without a terminal, as in an agent's shell, it is refused, does nothing and records nothing.

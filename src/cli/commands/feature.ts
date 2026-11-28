@@ -2,7 +2,7 @@
 import { endReadyLine, type FeatureBrief, type FeatureDropResult, type FeaturePrResult, type FeatureSummary, type FeatureUpdateResult, markLine, markRequiredLine, type WaiveResult } from "../../engine/index.ts";
 import { only, parseWithJson } from "../arguments.ts";
 import { listed, UsageError } from "../command.ts";
-import { JSON_NOTE, RecordCommand, type RecordRequest, reviewLines } from "./record.ts";
+import { JSON_NOTE, RecordCommand, type RecordRequest, reviewLines, who } from "./record.ts";
 
 export class FeatureCommand extends RecordCommand {
   readonly name = "feature";
@@ -119,6 +119,6 @@ function featureBriefLines(brief: FeatureBrief): string[] {
     "Reviews:",
     ...reviewLines(brief.reviews),
     "Waivers:",
-    ...(brief.waivers.length === 0 ? ["  (none)"] : brief.waivers.map((waiver) => `  at ${waiver.commit.slice(0, 12)}  ${waiver.at}  ${waiver.reason}`)),
+    ...(brief.waivers.length === 0 ? ["  (none)"] : brief.waivers.map((waiver) => `  at ${waiver.commit.slice(0, 12)}  ${waiver.at}  by ${who(waiver.by)}  ${waiver.reason}`)),
   ];
 }

@@ -153,7 +153,7 @@ describe("tmb remove", () => {
     expect(tmbHooksByEvent(readJson(path.join(project, SETTINGS)))).toEqual(wiredByEvent());
     expect(Object.keys(readJson(path.join(project, MCP_JSON)).mcpServers as object).sort()).toEqual(["mine", "tmb"]);
 
-    human(["remove"], project);
+    human(["remove", path.basename(project)], project);
 
     expect(readJson(path.join(project, SETTINGS))).toEqual(humanSettings);
     expect(readJson(path.join(project, MCP_JSON))).toEqual(humanMcp);
@@ -170,11 +170,51 @@ describe("tmb remove", () => {
     setUp(project);
     expect(existsSync(path.join(project, MCP_JSON))).toBe(true);
 
-    human(["remove"], project);
+    human(["remove", path.basename(project)], project);
 
     expect(existsSync(path.join(project, MCP_JSON))).toBe(false);
     for (const name of ROLE_NAMES) expect(existsSync(roleFiles.filePath(project, name))).toBe(false);
     noTmbHookLeft(project);
     expect(existsSync(projectDbPath(project))).toBe(true);
+  });
+});
+
+describe("tmb remove and tmb purge name the project they run in", () => {
+  const refused = (args: string[], cwd: string) => spawnSync(process.execPath, [CLI, ...args], { cwd, env, encoding: "utf8", timeout: 30_000 });
+
+  test("with no name, a path or another name, each is refused and changes nothing; the refusal names the project found", () => {
+    const project = newGitProject();
+    setUp(project);
+    const name = path.basename(project);
+    const sub = path.join(project, "src");
+    mkdirSync(sub);
+    for (const command of ["remove", "purge"]) {
+      for (const args of [[command], [command, "."], [command, project]]) {
+        const result = refused(args, sub);
+        expect({ args, status: result.status }).toEqual({ args, status: 2 });
+        expect(result.stderr).toContain(`the project here is ${project}: run tmb ${command} ${name}`);
+      }
+      const other = refused([command, "backend"], sub);
+      expect(other.status).toBe(1);
+      expect(other.stderr).toContain(`the project here is ${project}, whose home folder is named ${name}, not backend`);
+    }
+    const outside = mkdtempSync(path.join(scratch, "outside-"));
+    expect(refused(["purge", path.basename(outside)], outside).stderr).toContain("is in no tmb project");
+    expect(existsSync(projectDbPath(project))).toBe(true);
+    expect(existsSync(path.join(project, MCP_JSON))).toBe(true);
+  });
+
+  test("purge, from a subfolder, asks a question naming the full home folder, removes tmb's wiring and deletes the record for good", () => {
+    const project = newGitProject();
+    setUp(project);
+    const sub = path.join(project, "src");
+    mkdirSync(sub);
+    const result = asHuman(process.execPath, [CLI, "purge", path.basename(project)], { cwd: sub, env });
+    expect(result.status).toBe(0);
+    expect(result.output).toContain(`Project folder: ${project}. Its record there cannot be recovered.`);
+    expect(result.output).toContain("its trajectory cannot be recovered");
+    expect(existsSync(path.join(project, ".tmb"))).toBe(false);
+    expect(existsSync(path.join(project, MCP_JSON))).toBe(false);
+    noTmbHookLeft(project);
   });
 });

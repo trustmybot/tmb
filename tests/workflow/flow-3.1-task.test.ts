@@ -28,14 +28,14 @@ describe("a simple task: recorded, worked, closed and folded into its feature br
       expect(issue).toMatchObject({ title: "Add a hello file", state: "open", createdBy: { kind: "agent", role: "planner", host: "test" } });
 
       // 2. A worker cannot start the feature branch; the planner can.
-      expect(await callRefused(client, "feature_start", { name: FEATURE, role: "worker" })).toBe("feature_start is for the planner, not the worker");
+      expect(await callRefused(client, "feature_start", { name: FEATURE, role: "worker" })).toBe("the worker may not start a feature branch (feature.start)");
       expect(git(project, "branch", "--list", FEATURE)).toBe("");
       const feature = await callJson(client, "feature_start", { name: FEATURE });
       expect(feature).toMatchObject({ name: FEATURE, baseCommit: base, state: "open", tasks: [] });
 
       // 3. A worker cannot start the task; the planner can, and gets its branch and worktree.
       const spec = { issue_id: issue.id, kind: "code", intent: "Add the hello file", files: [FILE], criteria: ["SC1: hello.txt exists"] };
-      expect(await callRefused(client, "task_start", { ...spec, role: "worker" })).toBe("task_start is for the planner, not the worker");
+      expect(await callRefused(client, "task_start", { ...spec, role: "worker" })).toBe("the worker may not start a task (task.start)");
       expect(await callJson(client, "task_list", {})).toEqual([]);
       const started = await callJson(client, "task_start", spec);
       expect(started.brief).toMatchObject({ state: "open", feature: FEATURE, kind: "code", baseCommit: base, checks: [CHECK] });

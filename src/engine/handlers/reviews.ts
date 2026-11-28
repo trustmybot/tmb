@@ -8,11 +8,11 @@ import { spawnSync } from "node:child_process";
 import { runGit } from "../git.ts";
 import { endHostReviewerRun, ensureHostReviewerRun, FINISHED, isReviewerHost, openRunsOf } from "../host-runs.ts";
 import type { Actor, Feature, Review, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, endReadyLine, type LocalMerge, localMergeCommand, OPEN, type OperationContext, PR_OPEN, READY, requireRole } from "./common.ts";
+import { CLOSED_UNMERGED, endReadyLine, type LocalMerge, localMergeCommand, OPEN, type OperationContext, PR_OPEN, READY } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { featureDir, featureTip, knownBase } from "./features.ts";
 import { hasOrigin, isAncestor, pushFeature } from "./fold.ts";
-import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks } from "./marks.ts";
+import { markRequiredOn, type MarkResult, markReviewed, trySendPendingMarks, waivedLine } from "./marks.ts";
 import { truestCoveredCommits } from "./truest.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
@@ -35,7 +35,8 @@ export type ReviewSummary = {
   at: string;
 };
 
-export type Waiver = { id: string; feature: string; commit: string; reason: string; at: string };
+/** A waiver of a feature branch's review; `by` is who waived it: the Human, or the planner on the Human's ask. */
+export type Waiver = { id: string; feature: string; commit: string; reason: string; by: Actor; at: string };
 
 /** One task's commits on the feature branch, the group a reviewer judges it in. */
 export type ReviewGroup = { task: string; title: string; kind: string | null; from: string; to: string };
@@ -95,7 +96,7 @@ export function summaryOf(review: Review): ReviewSummary {
   return { id: review.id, verdict: review.verdict, commit: review.commitSha, findings: findingsOf(review), by: review.createdBy, at: review.createdAt };
 }
 
-/** Every Human waiver of a feature branch's review, oldest first, with the feature branch id it names. */
+/** Every waiver of a feature branch's review, oldest first, with the feature branch id it names. */
 function allWaivers(store: Store): (Waiver & { featureId: string })[] {
   const names = new Map(store.listFeatures().map((feature) => [feature.id, feature.name]));
   return store
@@ -107,6 +108,7 @@ function allWaivers(store: Store): (Waiver & { featureId: string })[] {
       feature: names.get(waiver.featureId!) ?? waiver.featureId!,
       commit: waiver.commitSha,
       reason: waiver.reason,
+      by: waiver.createdBy,
       at: waiver.createdAt,
     }));
 }
@@ -341,10 +343,10 @@ export class FeatureReviewService {
   record(input: unknown): ReviewRecordResult {
     const { store, actor } = this;
     const given = validateInput<ReviewRecordInput>("review_record", reviewRecordSchema, input);
-    if (actor.kind === "human") {
+    // The permission table lets only the reviewer, an agent, record a review.
+    if (actor.kind !== "agent") {
       throw new HandlerError("refused", `only the reviewer records a review; the Human waives one instead, with \`${runningName()} feature waive <name> --reason <text>\``);
     }
-    requireRole(actor, "review_record", ["reviewer"]);
     // Only the host whose reviewer is running records a verdict: another host's open run is not this one's.
     if (openRunsOf(store, actor.host).length === 0) {
       throw new HandlerError(
@@ -391,7 +393,6 @@ export class FeatureReviewService {
   waive(input: unknown): WaiveResult {
     const { store, actor } = this;
     const given = validateInput<{ feature: string; reason: string }>("feature_waive", featureWaiveSchema, input);
-    if (actor.kind !== "human") throw new HandlerError("refused", `only the Human waives a review, from the command line; the ${actor.kind === "agent" ? actor.role : "tmb"} cannot`);
     const feature = this.requireOpenFeature(given.feature, "there is no review to waive");
     const dir = featureDir(store, this.context.projectDir, feature);
     const commit = featureTip(dir, feature);
@@ -399,13 +400,12 @@ export class FeatureReviewService {
     const id = store.recordWaiver(actor, { featureId: feature.id, commitSha: commit, reason, detail: { feature: feature.name } });
     const waiver = store.getWaiver(id)!;
     const mark = markReviewed(store, actor, dir, { featureId: feature.id }, commit, "waiver", reason);
-    return { id, feature: feature.name, commit, reason, at: waiver.createdAt, mark };
+    return { id, feature: feature.name, commit, reason, by: waiver.createdBy, at: waiver.createdAt, mark };
   }
 
   pr(input: unknown): FeaturePrResult {
     const { store, actor } = this;
     const given = validateInput<{ feature: string; title: string; body?: string }>("feature_pr", featurePrSchema, input);
-    requireRole(actor, "feature_pr", ["planner"]);
     // A branch whose pull request closed without a merge takes a new one (trustmybot/tmb#152); a merged one is final.
     const feature = this.requireFeature(given.feature);
     // A ready branch (no remote) may ask again: for the merge command, or for a pull request once a remote was added.
@@ -441,7 +441,7 @@ export class FeatureReviewService {
     const how =
       brief.coveredBy === "review"
         ? `Reviewed by the tmb reviewer: pass at ${brief.tip}.`
-        : `Review waived by the Human at ${brief.tip}: ${brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1)?.reason ?? ""}`;
+        : waivedLine(brief.tip, brief.waivers.filter((waiver) => waiver.commit === brief.tip).at(-1));
     const markRequired = markRequiredOn(dir, feature.baseBranch);
     // Its pull request is open: the push of the reviewed tip is what updates it (trustmybot/tmb#168).
     if (feature.state === PR_OPEN && feature.prUrl !== null) {

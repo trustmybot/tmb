@@ -6,7 +6,7 @@ import { refreshLocalMerges, refreshPullRequestStates } from "../pull-request-st
 import { repoOfRow, resolveRepo } from "../repos.ts";
 import { readSettings, reviewModeOf } from "../settings.ts";
 import type { Actor, Feature, Store } from "../store/index.ts";
-import { CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, PR_OPEN, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, PR_OPEN, READY, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { backupPush, branchRef, isAncestor, moveFeature, type PushOutcome } from "./fold.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
@@ -209,7 +209,6 @@ export class FeatureService {
   start(input: unknown): FeatureSummary {
     const { store, actor } = this;
     const { name, repo: named } = validateInput<{ name: string; repo?: string }>("feature_start", featureStartSchema, input);
-    requireRole(actor, "feature_start", ["planner"]);
     const repo = resolveRepo(store, this.projectDir(), named);
     const dir = repo.dir;
     this.requireBranchName(dir, name);
@@ -253,7 +252,6 @@ export class FeatureService {
   update(input: unknown): FeatureUpdateResult {
     const { store, actor } = this;
     const given = validateInput<{ feature: string }>("feature_update", featureUpdateSchema, input);
-    requireRole(actor, "feature_update", ["planner"]);
     // A ready branch the Human already merged locally is merged, not updated (trustmybot/tmb#183).
     refreshLocalMerges(store, actor, this.projectDir());
     const feature = store.findFeature(given.feature);
@@ -324,7 +322,6 @@ export class FeatureService {
   drop(input: unknown): FeatureDropResult {
     const { store, actor } = this;
     const given = validateInput<{ feature: string; reason: string }>("feature_drop", featureDropSchema, input);
-    requireRole(actor, "feature_drop", ["planner"]);
     // A pull request that merged or closed, or a local merge, is recorded first: a merged branch is not dropped.
     refreshPullRequestStates(store, actor, this.projectDir());
     store.transaction(() => {

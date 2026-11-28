@@ -4,7 +4,7 @@
 import { runningName } from "../program.ts";
 import { channelFor, draftReport, draftText, type FeedbackEnv, readDraft, routeLine, sendDraft, statusOf } from "../feedback/index.ts";
 import type { Actor, Store } from "../store/index.ts";
-import { type OperationContext, requireRole } from "./common.ts";
+import { type OperationContext } from "./common.ts";
 import { HandlerError } from "./errors.ts";
 import { type InputSchema, NOT_BLANK, validateInput } from "./input.ts";
 
@@ -80,7 +80,6 @@ export class FeedbackService {
   ) {}
 
   async draft(input: unknown): Promise<FeedbackDraftResult> {
-    requireRole(this.actor, "feedback_draft", ["planner"]);
     const values = validateInput<{ summary: string; what_happened: string; command?: string; error?: string }>("feedback_draft", feedbackDraftSchema, input);
     const env = feedbackOf(this.context);
     requireOn(env, "feedback_draft");
@@ -118,7 +117,6 @@ export class FeedbackService {
   }
 
   send(input: unknown): FeedbackSendResult {
-    requireRole(this.actor, "feedback_send", ["planner"]);
     const values = validateInput<{ draft_id: string; human_answer: "yes" }>("feedback_send", feedbackSendSchema, input);
     const env = feedbackOf(this.context);
     if (this.context.unattended === true) throw new HandlerError("refused", `feedback_send: no one can answer in this run, so no report is sent; the Human can send one later with \`${runningName()} feedback\``);

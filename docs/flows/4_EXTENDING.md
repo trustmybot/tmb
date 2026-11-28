@@ -21,7 +21,7 @@ flowchart LR
 
 ## Nothing is written without the Human's approval
 
-This one rule holds for all four flows. The planner drafts or proposes, the Human approves each item, and only then does tmb record it and write it. The approval is a step only the Human may take: a yes typed on a terminal, like a waiver ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)).
+This one rule holds for all four flows. The planner drafts or proposes, the Human approves each item, and only then does tmb record it and write it. The approval is the Human's: a yes typed on a terminal, like a waiver ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)).
 
 - **Example 1.** The planner drafts a skill and the Human says yes. The skill lands in the project.
 - **Example 2.** The planner drafts a skill and the Human says no. The draft is discarded and nothing is written.
@@ -227,6 +227,10 @@ flowchart TD
 - **Example 2.** The name is planner, bro, worker or reviewer. tmb refuses it: a project agent with that name would shadow the workflow backbone.
 - **Example 3.** A project agent of that name exists and tmb wrote it. tmb shows the diff and the Human says yes or no.
 - **Edge case.** A project agent of that name exists and tmb did not write it. The Human picks skip, adopt or overwrite; skip is the default.
+
+**A created agent's actions are part of what the Human approves.** The planner proposes the actions the agent may take with its draft, and the Human approves them with the agent. With none approved, it holds only what every role may: reading the record and the code graph ([ROLES.md](../architecture/ROLES.md#permissions)).
+
+- **Example.** The planner creates a designer agent to design a logo. It proposes `record.read`, `graph.read` and `task.close`, and the Human approves the agent with those three.
 
 | Rule | What it means |
 |---|---|

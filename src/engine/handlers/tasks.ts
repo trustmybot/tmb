@@ -14,7 +14,7 @@ import { repoChecks, repoDirOf, repoOfRow, resolveRepo, workingRepos } from "../
 import { noReviewMode, readSettings, type ReviewMode, reviewModeOf, type Settings, sharedFoldersOf } from "../settings.ts";
 import { SharedFolders } from "../shared-folders.ts";
 import { type Actor, type Feature, type Store, type Task, clip } from "../store/index.ts";
-import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, READY, requireRole, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
+import { CLOSED, CLOSED_UNMERGED, DROPPED, IN_REVIEW, OPEN, type OperationContext, READY, TASK_BRANCH_PREFIX, TRUEST } from "./common.ts";
 import { workElsewhere } from "./adopt.ts";
 import { HandlerError } from "./errors.ts";
 import { baseBranchTip, featureForTask, featureTip, noBaseBranch } from "./features.ts";
@@ -569,7 +569,6 @@ export class TaskService {
       checks?: string[];
       replaces?: string;
     }>("task_start", taskStartSchema, input);
-    requireRole(actor, "task_start", ["planner"]);
     const spec: TaskSpec = {
       intent: request.intent,
       files: [...new Set(request.files.map(normalizeSpecPath))],
@@ -685,7 +684,6 @@ export class TaskService {
     const { store, actor } = this;
     const context = this.context!;
     const { id } = validateInput<{ id: string }>("task_close", taskCloseSchema, input);
-    requireRole(actor, "task_close", ["worker", "planner"]);
     const task = requireTask(store, id);
     if (task.state !== OPEN) throw new HandlerError("refused", `task ${id} is ${task.state}; only an open task closes`);
     if (!worktreeReady(task)) throw new HandlerError("refused", `task ${id}'s worktree ${task.worktree ?? "(none)"} is missing, so there is nothing to check`);
@@ -769,7 +767,6 @@ export class TaskService {
   drop(input: unknown): TaskDropResult {
     const { store, actor } = this;
     const { id, reason } = validateInput<{ id: string; reason: string }>("task_drop", taskDropSchema, input);
-    requireRole(actor, "task_drop", ["planner"]);
     store.transaction(() => {
       const task = requireTask(store, id);
       // A ready task the Human will not merge as it is (a squash, say, which tmb cannot see) is ended here too (trustmybot/tmb#183).

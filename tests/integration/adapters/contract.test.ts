@@ -163,7 +163,7 @@ for (const harness of HARNESSES) {
       setUp(project);
       expect(snapshot(project)).toEqual(afterSetup);
 
-      human(["remove", "--host", adapter.id], project);
+      human(["remove", path.basename(project), "--host", adapter.id], project);
       const afterRemove = snapshot(project);
       // The lines init added to .gitignore stay with the record they hide.
       expect(Buffer.from(afterRemove[".gitignore"]!, "base64").toString()).toStartWith("node_modules/\n");

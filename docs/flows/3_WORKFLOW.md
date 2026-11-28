@@ -34,7 +34,7 @@ flowchart TD
 - **Example 1.** Agile: a milestone's tasks each close on their checks and fold into the feature branch. The reviewer judges the branch once, and it reaches the base branch as one pull request.
 - **Example 2.** Truest: a task's checks pass and it waits in review at its commit. Once it passes, it gets its own pull request.
 - **Example 3.** The verdict is a pass. The planner reads it from the record, judges the design fit and asks for the pull request without being told.
-- **Example 4.** A repo is truest. The planner cannot widen the unit: it reviews every task and batches none. Only the Human waives.
+- **Example 4.** A repo is truest. The planner cannot widen the unit: it reviews every task and batches none. Only a waiver, the Human's call, skips one.
 - **Edge case.** The verdict is a fail. The planner sends the work back to its author without asking the Human.
 
 ## Where the review mode is set
@@ -54,7 +54,7 @@ flowchart TD
     PM --> T
 ```
 
-- **Only the Human chooses the mode,** because it decides how many tokens the project uses. tmb marks agile as recommended and shows what each mode costs. It never picks. A fence keeps the choice the Human's ([ENGINE.md](../architecture/ENGINE.md#ways-into-the-engine)).
+- **The Human chooses the mode,** because it decides how many tokens the project uses. tmb marks agile as recommended and shows what each mode costs. It never picks. The Human sets it on a terminal, or asks the planner to ([ROLES.md](../architecture/ROLES.md#permissions)).
 - **The Human is asked at onboarding** ([2_ONBOARD.md](2_ONBOARD.md)).
 - **A repo that names no mode follows the workspace's,** and follows it when it changes ([3_GIT.md](3_GIT.md#multi-repo-workspaces)).
 - **The mode lives in the record,** and every change is kept as a setting change ([CONFIG.md](../architecture/CONFIG.md)).
@@ -65,7 +65,7 @@ flowchart TD
 
 ## Switching review modes
 
-**Only the Human switches, by the same fence as the first choice. A change applies to tasks started after it.**
+**The Human switches, the same way as the first choice. A change applies to tasks started after it.**
 
 - **Example 1.** The Human changes the project's mode. Tasks started later use it, in every repo that names no mode of its own.
 - **Example 2.** The Human changes one repo's mode. Tasks started later in that repo use it.
@@ -197,7 +197,7 @@ flowchart TD
     RD --> M
 ```
 
-- **Waivers.** Only the Human waives a review ([3_TASKS.md](3_TASKS.md#task-lifecycle)). A waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The record keeps it as a waiver, and the commit's mark on GitHub says the review was waived.
+- **Waivers.** A waiver is the Human's call ([ROLES.md](../architecture/ROLES.md#permissions)). A waiver names one feature branch at its tip, so it covers one repo and nothing folded in later. The record keeps it as a waiver, and the commit's mark on GitHub says the review was waived.
 - **What tmb does not gate.** A pull request the Human opens by hand, and the merge button. The commit's mark on GitHub stops a merge only when the Human makes it a required check ([3_GIT.md](3_GIT.md#beyond-the-local-hook)).
 - **Merged is final.** tmb reads the pull request's state through the Human's own GitHub command line. A read that fails changes nothing. The session start names each pull request that ended since the last session. **Planned (trustmybot/tmb#458):** the sync with the remote (trustmybot/tmb#70) reads the state, and the session start reports it from the record without calling GitHub.
 - **Dropped is final.** The planner or the Human drops a branch nobody will merge, with a reason. The branch is kept in git.
@@ -263,7 +263,7 @@ flowchart TD
 
 - **Example 1.** A task's checks pass at close. Nothing is pushed: the task waits at its commit, in its own worktree, for the reviewer.
 - **Example 2.** The reviewer passes the task's commit. The verdict is recorded for that exact commit, and the engine pushes the branch and opens the task's pull request.
-- **Example 3.** The Human waives the review of one task. Only the Human can, and a waiver covers one task ([3_TASKS.md](3_TASKS.md#task-lifecycle)).
+- **Example 3.** The Human waives the review of one task. The Human decides it, and a waiver covers one task ([3_TASKS.md](3_TASKS.md#task-lifecycle)).
 - **Edge case.** The base branch moved before the first push. The engine rebases the reviewed commit once and runs the checks again ([3_GIT.md](3_GIT.md#rebasing-a-reviewed-task)).
 
 The gates are the same as in agile mode ([Merge gate](#merge-gate)). Every failure path is in [3_TASKS.md](3_TASKS.md#retry-and-escalation).

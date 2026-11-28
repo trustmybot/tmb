@@ -16,6 +16,7 @@ import {
   taskClose,
   taskStart,
 } from "../../../src/engine/handlers/index.ts";
+import { OPERATIONS } from "../../../src/engine/handlers/index.ts";
 import { openProjectStore, writeSetting } from "../../../src/engine/index.ts";
 import type { Actor, Store } from "../../../src/engine/store/index.ts";
 import { git } from "../../lib/git.ts";
@@ -210,7 +211,7 @@ describe("feature_update brings the base branch in", () => {
 
   test("is the planner's: the worker and the reviewer are refused, and an unknown or closed branch too", () => {
     featureStart(store, PLANNER, { name: FEATURE }, context());
-    for (const actor of [WORKER, REVIEWER]) expect(refusal(() => featureUpdate(store, actor, { feature: FEATURE }, context())).message).toContain("is for the planner");
+    for (const actor of [WORKER, REVIEWER]) expect(refusal(() => OPERATIONS.feature_update.run(store, actor, { feature: FEATURE }, context())).message).toContain("may not bring the base branch in");
     expect(refusal(() => featureUpdate(store, PLANNER, { feature: "feat/none" }, context())).code).toBe("not_found");
     store.updateFeature(HUMAN, store.findFeature(FEATURE)!.id, { state: "merged" });
     expect(refusal(() => featureUpdate(store, PLANNER, { feature: FEATURE }, context())).message).toContain("is merged; only an open one, one whose pull request is open, or one ready for a local merge");

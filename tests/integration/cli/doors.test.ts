@@ -165,7 +165,7 @@ describe("init and remove", () => {
     tmb(["onboard", "--yes"], project);
     expect(files.map((file) => readFileSync(file, "utf8"))).toEqual(before);
 
-    const removed = human(["remove"], project);
+    const removed = human(["remove", path.basename(project)], project);
     expect(readJson(mcpFile)).toEqual({ mcpServers: { other: otherServer } });
     expect(readJson(settingsFile)).toEqual(originalSettings);
     expect(existsSync(path.join(project, ".tmb", "trajectory.db"))).toBe(true);
@@ -177,7 +177,7 @@ describe("init and remove", () => {
     tmb(["init"], project);
     tmb(["onboard", "--yes"], project);
     expect(readFileSync(path.join(project, ".gitignore"), "utf8")).toBe(".tmb/\n.mcp.json\n.claude/settings.local.json\n");
-    human(["remove"], project);
+    human(["remove", path.basename(project)], project);
     expect(existsSync(path.join(project, ".mcp.json"))).toBe(false);
     expect(existsSync(path.join(project, ".claude"))).toBe(false);
     expect(existsSync(path.join(project, ".tmb", "trajectory.db"))).toBe(true);
@@ -199,8 +199,11 @@ describe("tool server", () => {
         expect(Object.keys(tool.inputSchema.properties ?? {})).toContain("role");
       }
 
-      const issue = await callJson(client, "issue_create", { title: "Served issue", body: "From the tool server", role: "worker" });
-      expect(issue.createdBy).toEqual({ kind: "agent", role: "worker", host: "test" });
+      const byWorker = await call(client, "issue_create", { title: "Served issue", role: "worker" });
+      expect(byWorker.isError).toBe(true);
+      expect(byWorker.content[0]?.text).toContain("the worker may not record an issue (issue.create)");
+      const issue = await callJson(client, "issue_create", { title: "Served issue", body: "From the tool server", role: "planner" });
+      expect(issue.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
       expect((await callJson<any[]>(client, "issue_list", { state: "open" })).map((summary) => summary.id)).toEqual([issue.id]);
       const decision = await callJson(client, "discussion_append", { issue_id: issue.id, kind: "decision", body: "Serve over stdio" });
       expect(decision.createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
@@ -306,14 +309,14 @@ describe("one record, two doors", () => {
     try {
       const detail = await callJson(client, "issue_get", { id: created.id });
       expect(detail.issue).toMatchObject({ title: "Written on the command line", createdBy: { kind: "human" } });
-      agentNote = await callJson(client, "discussion_append", { issue_id: created.id, kind: "note", body: "Written by an agent", role: "reviewer" });
+      agentNote = await callJson(client, "discussion_append", { issue_id: created.id, kind: "note", body: "Written by an agent", role: "planner" });
     } finally {
       await client.close();
     }
 
     const shown = tmbJson(["issue", "show", created.id], project);
     expect(shown.discussions).toEqual([agentNote]);
-    expect(shown.discussions[0].createdBy).toEqual({ kind: "agent", role: "reviewer", host: "test" });
+    expect(shown.discussions[0].createdBy).toEqual({ kind: "agent", role: "planner", host: "test" });
   });
 });
 

@@ -133,7 +133,7 @@ flowchart LR
 - **Example 3.** The approach is wrong. The planner or the Human drops the task with a reason, and a new task names the one it replaces.
 - **Edge case.** A run started and never ended. No timer ends it. It is named at the next session start and by the health check, and the planner decides.
 
-**Nothing waits on the Human** except what only the Human may do: a waiver, the review mode, the merge.
+**Nothing waits on the Human** except what the Human decides: a waiver, the review mode, the merge.
 
 **Rework is bounded** (Planned, trustmybot/tmb#400). The number of runs alone never blocks a run; two fails since the last pass do, until the cause is recorded.
 
@@ -221,7 +221,7 @@ stateDiagram-v2
 - **Example 2.** A task is dropped. Its work reaches no branch. A new task can name the dropped task it replaces, so a chain of retries reads as one line.
 - **Edge case.** Dropping keeps what holds work ([3_GIT.md](3_GIT.md#closing-a-task)).
 
-**Review is the default, and only the Human waives it.**
+**Review is the default, and a waiver is the Human's call.** The Human waives on a terminal, or asks the planner to waive ([ROLES.md](../architecture/ROLES.md#permissions)).
 
 - **Example 1.** A truest task is in review. It keeps its worktree. Only a reviewer run records the verdict, and only on the task's current commit.
 - **Example 2.** An agile task closes unreviewed. Its review state is on the feature branch, not the task ([3_WORKFLOW.md](3_WORKFLOW.md#review-state)).

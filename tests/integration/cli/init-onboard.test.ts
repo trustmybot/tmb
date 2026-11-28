@@ -96,7 +96,7 @@ describe("tmb remove", () => {
     const before = snapshot(project);
     tmb(["init"], project);
     expect(snapshot(project)).not.toEqual(before);
-    human(["remove"], project);
+    human(["remove", path.basename(project)], project);
     const after = snapshot(project);
     // The record is the Human's data, and remove never edits .gitignore.
     for (const kept of Object.keys(after).filter((file) => file === ".gitignore" || file.startsWith(".tmb"))) delete after[kept];

@@ -185,9 +185,9 @@ flowchart TD
 
 ## Uninstall
 
-**`tmb remove` undoes what init added and leaves the Human's own settings alone.** It runs only on a terminal, after a typed yes.
+**`tmb remove <project-name>` undoes what init added and leaves the Human's own settings alone.** It runs inside the project, takes the name of the project's home folder, and runs only on a terminal, after a typed yes. `tmb purge <project-name>` does the same, then deletes the record for good ([reference](../reference/README.md#remove)).
 
-Three things stay:
+After `tmb remove`, three things stay:
 
 - the record, which is the Human's data;
 - the lines init added to `.gitignore`;

@@ -119,6 +119,7 @@ export { keptCheckouts, removeTaskCheckout } from "./handlers/fold.ts";
 export { type FeatureBrief, type FeatureDropResult, type FeaturePrResult, type FeatureSummary, type FeatureUpdateResult, type GraphAnswer, type IssueDetail, type IssueUpdateResult, markLine, markRequiredLine, type OperationName, type TaskBrief, type TaskCloseResult, type TaskDropResult, type TaskPrResult, type TaskStartResult, type TaskSummary, type TaskWaiveResult, type WaiveResult } from "./handlers/index.ts";
 export { MARK_CONTEXT, requiredMarkOn, requireMarkHowTo } from "./handlers/marks.ts";
 export { emptySettings } from "./handlers/settings.ts";
+export { ACTIONS, type Action, DEFAULT_ROLES, EVERY_ROLE, FIXED_HUMAN_ACTIONS, HUMAN_ROLE, isAction, isHumanStep, mayTake, requirePermission, type RoleName } from "./permissions.ts";
 export { HUMAN_YES, humanOnlyStep, humanYesQuestion, notConfirmedRefusal, noTerminalRefusal, unattendedChangeRefusal } from "./human-only.ts";
 export { createIdFactory } from "./ids.ts";
 export { type Channel, channelOf, CHANNELS, isCompiledEntry, type Program, programName, programOf, programStateDir, runningName, runningProgram } from "./program.ts";

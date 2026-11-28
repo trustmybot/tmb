@@ -118,7 +118,7 @@ describe("tmb init and remove", () => {
     expect(afterInit.hooks.SubagentStop).toEqual([{ hooks: [{ type: "command", command: hookCommand("subagent-stop") }] }]);
     expect(afterInit.hooks.SessionEnd).toEqual([{ hooks: [{ type: "command", command: hookCommand("session-end") }] }]);
 
-    const remove = asHuman(process.execPath, [CLI, "remove"], { cwd: project, env: testEnv() });
+    const remove = asHuman(process.execPath, [CLI, "remove", path.basename(project)], { cwd: project, env: testEnv() });
     expect(remove.status).toBe(0);
     expect(existsSync(settingsFile)).toBe(true);
     expect(readSettings()).toEqual(original);

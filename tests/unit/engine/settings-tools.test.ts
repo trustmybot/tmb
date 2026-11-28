@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { HandlerError, settingsGet, settingsSet } from "../../../src/engine/handlers/index.ts";
+import { HandlerError, OPERATIONS, settingsGet, settingsSet } from "../../../src/engine/handlers/index.ts";
 import { openProjectStore, readSettings } from "../../../src/engine/index.ts";
 import type { Actor, Store } from "../../../src/engine/store/index.ts";
 
@@ -66,7 +66,7 @@ describe("settings_set", () => {
   });
 
   test("refuses another role, an empty request and a value tmb does not know, writing nothing", () => {
-    expect(refusal(() => settingsSet(store, WORKER, { base_branch: "main" }, context())).message).toBe("settings_set is for the planner, not the worker");
+    expect(refusal(() => OPERATIONS.settings_set.run(store, WORKER, { base_branch: "main" }, context())).message).toBe("the worker may not set the project's other settings (settings.set)");
     expect(refusal(() => settingsSet(store, PLANNER, {}, context())).message).toContain("needs at least one of base_branch, review_mode, checks");
     expect(refusal(() => settingsSet(store, PLANNER, { base_branch: "main", review_mode: "strict" }, context())).code).toBe("invalid_input");
     expect(refusal(() => settingsSet(store, PLANNER, { checks: ["bun test", " "] }, context())).code).toBe("invalid_input");

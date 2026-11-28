@@ -287,4 +287,4 @@ flowchart TD
 - **Example 1.** A repo names no mode. It follows the workspace's.
 - **Example 2.** A repo holds fixtures that never ship, and tmb does no work in it. The Human marks it exempt: it is listed in the record and left untouched, with no task, no hook, no code graph and no push gate.
 - **Example 3.** Everything that reads the mode reads the repo's: starting work, the session start and the health check. The settings and the planner's session start list each repo with its base branch and its mode.
-- **Edge case.** Only the Human chooses a repo's mode, as for the workspace's. In unattended mode a repo's mode is not changed.
+- **Edge case.** The Human chooses a repo's mode, as for the workspace's. In unattended mode a repo's mode is not changed.

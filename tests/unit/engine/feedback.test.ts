@@ -327,7 +327,7 @@ describe("the planner's tools", () => {
     expect(OPERATIONS.feedback_draft).toBeDefined();
     expect(OPERATIONS.feedback_send).toBeDefined();
     await withStore(async (store) => {
-      expect((await refusal(() => feedbackDraft(store, WORKER, DRAFT_INPUT, { projectDir: project, feedback: fakeEnv() }))).message).toContain("for the planner");
+      expect((await refusal(() => OPERATIONS.feedback_draft.run(store, WORKER, DRAFT_INPUT, { projectDir: project, feedback: fakeEnv() }))).message).toContain("the worker may not draft and send feedback to tmb (feedback.send)");
       const off = await refusal(() => feedbackDraft(store, PLANNER, DRAFT_INPUT, { projectDir: project, feedback: fakeEnv({ env: { TMB_NO_FEEDBACK: "1" } }) }));
       expect(off.message).toContain("the feedback program is off");
       expect(off.message).toContain("tmb-dev feedback");

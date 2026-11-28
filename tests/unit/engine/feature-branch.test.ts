@@ -15,6 +15,7 @@ import {
   taskStart,
 } from "../../../src/engine/handlers/index.ts";
 import { adoptWorktree } from "../../../src/engine/handlers/adopt.ts";
+import { OPERATIONS } from "../../../src/engine/handlers/index.ts";
 import { moveFeature, retryKeptCheckouts } from "../../../src/engine/handlers/fold.ts";
 import { sessionStartContext } from "../../../src/engine/session-start.ts";
 import { openProjectStore, writeSetting } from "../../../src/engine/index.ts";
@@ -153,8 +154,8 @@ describe("feature_start", () => {
     } finally {
       fresh.store.close();
     }
-    expect(refusal(() => featureStart(store, WORKER, { name: FEATURE }, context())).message).toContain("for the planner");
-    expect(refusal(() => featureStart(store, REVIEWER, { name: FEATURE }, context())).code).toBe("refused");
+    expect(refusal(() => OPERATIONS.feature_start.run(store, WORKER, { name: FEATURE }, context())).message).toContain("the worker may not start a feature branch (feature.start)");
+    expect(refusal(() => OPERATIONS.feature_start.run(store, REVIEWER, { name: FEATURE }, context())).code).toBe("refused");
     expect(branches()).toEqual(["main"]);
   });
 

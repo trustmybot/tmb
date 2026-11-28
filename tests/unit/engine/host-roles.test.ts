@@ -117,10 +117,11 @@ describe("host roles", () => {
     const session = new ToolSession(project, REVIEWER_HOST);
     try {
       const made = await session.call("issue_create", { title: "From the reviewer host" });
-      const named = await session.call("issue_create", { title: "From a worker", role: "worker" });
-      const id = (result: typeof made) => (JSON.parse((result.content[0] as { text: string }).text) as { id: string }).id;
-      expect(store.getIssue(id(made))?.createdBy).toEqual(REVIEWER);
-      expect(store.getIssue(id(named))?.createdBy).toEqual({ kind: "agent", role: "worker", host: REVIEWER_HOST });
+      const named = await session.call("issue_create", { title: "From the planner", role: "planner" });
+      const text = (result: typeof made) => (result.content[0] as { text: string }).text;
+      expect(text(made)).toContain("the reviewer may not record an issue (issue.create)");
+      const id = (JSON.parse(text(named)) as { id: string }).id;
+      expect(store.getIssue(id)?.createdBy).toEqual({ kind: "agent", role: "planner", host: REVIEWER_HOST });
     } finally {
       session.close();
     }

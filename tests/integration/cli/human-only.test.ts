@@ -41,13 +41,15 @@ function humanEntries(project: string): number {
   }
 }
 
-const STEPS: { args: string[]; command: string }[] = [
+/** Each step, in the project whose home folder is named `name`. */
+const steps = (name: string): { args: string[]; command: string }[] => [
   { args: ["feature", "waive", "feat/wave", "--reason", "an agent says it is fine"], command: "tmb feature waive" },
   { args: ["task", "waive", "T-1", "--reason", "an agent says it is fine"], command: "tmb task waive" },
   { args: ["onboard", "--review-mode", "truest", "--yes"], command: "tmb onboard --review-mode" },
   { args: ["onboard", "--review-mode=truest"], command: "tmb onboard --review-mode" },
-  { args: ["remove"], command: "tmb remove" },
-  { args: ["remove", "--host", "claude-code"], command: "tmb remove" },
+  { args: ["remove", name], command: "tmb remove" },
+  { args: ["remove", name, "--host", "claude-code"], command: "tmb remove" },
+  { args: ["purge", name], command: "tmb purge" },
 ];
 
 describe("a step only the Human may take", () => {
@@ -56,7 +58,7 @@ describe("a step only the Human may take", () => {
     tmb(["feature", "start", "feat/wave"], project);
     const before = snapshot(project);
     const entries = humanEntries(project);
-    for (const step of STEPS) {
+    for (const step of steps(path.basename(project))) {
       const result = run(step.args, project);
       expect({ args: step.args, status: result.status }).toEqual({ args: step.args, status: 1 });
       expect(result.stderr).toContain(`${step.command} is a step only the Human may take`);
@@ -105,7 +107,7 @@ describe("a step only the Human may take", () => {
       expect(humanEntries(project)).toBe(entries);
     }
 
-    const removed = Bun.spawnSync([process.execPath, CLI, "remove"], { cwd: fresh, env: unattended });
+    const removed = Bun.spawnSync([process.execPath, CLI, "remove", path.basename(fresh)], { cwd: fresh, env: unattended });
     expect(removed.exitCode).toBe(1);
     expect(removed.stderr.toString()).toContain("tmb remove is a step only the Human may take");
   }, 90_000);
