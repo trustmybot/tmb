@@ -37,6 +37,7 @@ A vocabulary is owned in one of three places:
 | `feedback_report` | `feedback_reports` |
 | `import` | `imports` |
 | `role_change` | `role_changes` |
+| `role` | `roles` |
 
 The engine checks it.
 
@@ -59,8 +60,9 @@ Owned by the code (`src/engine/store/projections.ts`); no `CHECK`.
 | `actor_role` | `planner` | The host's main agent, addressed as bro |
 | `actor_role` | `worker` | The subagent that carries out one task |
 | `actor_role` | `reviewer` | The agent that judges a branch or a task it did not write |
+| `actor_role` | a created role's name | An agent of a role the project created, in lowercase letters, digits and `-` |
 
-The engine checks it. `runs.role` takes the same three roles. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`.
+The engine checks it. `runs.role` takes the same values. A `tmb` actor has no role and names its source in `actor_source`: `syncer` or `upgrade`.
 
 ### `issues.state` — issue lifecycle
 
@@ -206,7 +208,16 @@ A review mark's kind is `pass`, `fail` or `waiver`, and its state on GitHub is `
 | `grant` | The role may take the action |
 | `revoke` | The role may not take the action |
 
-The engine checks it. The actions themselves are the permission table's ([ROLES.md](../architecture/ROLES.md#permissions)).
+The engine checks it. The actions themselves are the permission table's ([PERMISSIONS.md](../architecture/PERMISSIONS.md)).
+
+### `roles.state` — a created role's life
+
+| Value | Meaning |
+|---|---|
+| `active` | The role exists, and its agent file is written |
+| `deleted` | The role was deleted. Its row stays so the records its agent wrote still name it |
+
+The engine checks it.
 
 ---
 

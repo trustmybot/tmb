@@ -29,7 +29,7 @@ Everything before [Containment](#containment) is the design. Containment is deta
 
 tmb has no slash commands: each action is a terminal command or a tool the planner calls.
 
-**Every way in asks one permission check, and the command line checks for a terminal on the Human's rows.** A tool call and a command-line command take an action by name, and the [permission table](ROLES.md#permissions) says which roles may. The command line records every caller as the Human, so it runs an action of the Human's own rows only on a terminal, after the Human types yes.
+**Every way in asks one permission check, and the command line checks for a terminal on the Human's rows.** A tool call and a command-line command take an action by name, and the [permission table](PERMISSIONS.md) says which roles may. The command line records every caller as the Human, so it runs an action of the Human's own rows only on a terminal, after the Human types yes.
 
 Those steps are: waiving a review, of a feature branch or of a task; setting the review mode; removing tmb from a project, or purging its record. An update is not one.
 

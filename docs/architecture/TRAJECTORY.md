@@ -341,7 +341,7 @@ The record is one SQLite file, `.tmb/trajectory.db`, in the workspace folder and
 The record is tmb's cold memory ([`MEMORY.md`](MEMORY.md)): the only source of truth for workflow state. Its tables fall into four groups:
 
 - **Events** — `events`, the one append-only table. Every write to the record is one event; nothing else is the source of truth.
-- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`, `role_changes`. Planned: `sessions`, `pull_requests`, `milestones`, `repos`, `remotes`, `extensions`, `issue_links`, `docs`.
+- **Projections** — each row is the current state of one record, folded from its events. They can be emptied and rebuilt from `events`. Built: `issues`, `discussions`, `features`, `tasks`, `runs`, `check_runs`, `reviews`, `guard_decisions`, `waivers`, `review_marks`, `setting_changes`, `freezes`, `feedback_reports`, `imports`, `role_changes`, `roles`. Planned: `sessions`, `pull_requests`, `milestones`, `repos`, `remotes`, `extensions`, `issue_links`, `docs`.
 - **Search** — `search`, one full-text index.
 - **Not folded from events** — `meta`, the record's own facts, and `sync_state` (Planned, trustmybot/tmb#70), where each poll of the remote stopped.
 
@@ -427,12 +427,12 @@ In each table an empty last cell means built.
 | Column | Type | Null | Holds and constraints | Planned |
 |---|---|---|---|---|
 | `id` | TEXT | PK | A ULID |  |
-| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `feature`, `waiver`, `review_mark`, `setting_change`, `freeze`, `feedback_report`, `import`, `role_change`, checked by the engine | Gains one kind per planned projection. Old `audit` events stay and the fold skips them |
+| `record_kind` | TEXT | NOT NULL | One of `issue`, `discussion`, `task`, `run`, `check_run`, `review`, `guard_decision`, `feature`, `waiver`, `review_mark`, `setting_change`, `freeze`, `feedback_report`, `import`, `role_change`, `role`, checked by the engine | Gains one kind per planned projection. Old `audit` events stay and the fold skips them |
 | `record_id` | TEXT | NOT NULL |  |  |
 | `type` | TEXT | NOT NULL | `created` or `updated` |  |
 | `data` | TEXT | NOT NULL | CHECK `json_valid(data)` |  |
 | `actor_kind` | TEXT | NOT NULL | `human`, `agent`, or `tmb` for a write no person or agent made |  |
-| `actor_role` | TEXT | nullable | `planner`, `worker` or `reviewer`, checked by the engine, so a role a project creates is a new value |  |
+| `actor_role` | TEXT | nullable | `planner`, `worker`, `reviewer` or a role the project created, checked by the engine |  |
 | `actor_host` | TEXT | nullable |  |  |
 | `actor_source` | TEXT | nullable | Which part of tmb wrote it: `syncer` or `upgrade`. Set only for a `tmb` actor |  |
 | `actor_session` | TEXT | nullable | The session that acted. NULL for the Human at a terminal and for tmb | trustmybot/tmb#63 |
@@ -796,8 +796,24 @@ Each of the seven tables also has `id` (PK), `created_by` and `created_at`. Each
 | | `repo` | TEXT | nullable | Goes, for `repo_id`, FK → `repos.id` (trustmybot/tmb#466) |
 | | `detail` | TEXT | NOT NULL | JSON: what was carried and what was left behind |
 | `role_changes` | `role` | TEXT | NOT NULL | The role whose action changed: one tmb ships or one a project added |
-| | `action` | TEXT | NOT NULL | The action, as `task.drop` ([ROLES.md](ROLES.md#permissions)) |
+| | `action` | TEXT | NOT NULL | The action, as `task.drop` ([PERMISSIONS.md](PERMISSIONS.md)) |
 | | `change` | TEXT | NOT NULL | `grant` or `revoke`. The newest row for a role and an action is in force |
+
+#### `roles`
+
+**One row per role the project created, with what it is for and its prompt** ([PERMISSIONS.md](PERMISSIONS.md#4-roles-are-data)). Record kind `role`. Its actions are `role_changes` rows.
+
+- **Example.** The planner creates `designer`. Its row names the planner as creator, and a grant row follows for each of its actions.
+- **Edge case.** The role is deleted. Its row stays, as `deleted`, so the records its agent wrote still name it; its grants are revoked.
+
+| Column | Type | Null | Holds and constraints |
+|---|---|---|---|
+| `id` | TEXT | PK |  |
+| `name` | TEXT | NOT NULL | The role's name, also its agent's. One role of a name is `active` at a time |
+| `purpose` | TEXT | NOT NULL | What it is for and when to start it |
+| `prompt` | TEXT | NOT NULL | Its agent's prompt |
+| `state` | TEXT | NOT NULL | `active` or `deleted` |
+| `created_by`, `created_at`, `updated_at` | TEXT | NOT NULL |  |
 
 #### `docs`
 
@@ -915,6 +931,7 @@ It covers issues and discussions. Planned: a task's title and spec (trustmybot/t
 | `idx_check_runs_task` | `check_runs` | `task_id, id` | no |
 | `idx_reviews_feature` | `reviews` | `feature_id, id` | no |
 | `idx_role_changes_role` | `role_changes` | `role, id` | no |
+| `idx_roles_name` | `roles` | `name, id` | no |
 
 Planned, with each table above: one index per new foreign key column, in the same shape (the column, then `id`), and the unique indexes its table names.
 
@@ -945,7 +962,7 @@ Planned, with each table above: one index per new foreign key column, in the sam
 - **Checks are recorded, not re-run.** Each run of a task's checks is a `check_runs` row with each command it ran and the commit it ran at.
 - **Cost is metered, not stored as totals.** A run's `cost` holds the tokens it used per model, filled when the run ends.
 - **Nothing is dropped silently.** A dropped task or feature branch keeps its row and its `drop_reason`.
-- **Roles are enforced by the engine, not the schema.** Each operation checks that the caller's role may take its action: tmb's defaults with the project's `role_changes` on top ([`ROLES.md`](ROLES.md#permissions)).
+- **Roles are enforced by the engine, not the schema.** Each operation checks that the caller's role may take its action: tmb's defaults with the project's `role_changes` on top ([`PERMISSIONS.md`](PERMISSIONS.md)).
 
 ### Schema migration policy
 

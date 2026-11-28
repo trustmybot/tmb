@@ -58,7 +58,7 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 
 | Kind | Pages | For |
 |---|---|---|
-| **High-level design** | This page, [PRINCIPLES.md](PRINCIPLES.md), [ROLES.md](ROLES.md) | What tmb is and who does what. Short and chart-first. The Human reviews these. |
+| **High-level design** | This page, [PRINCIPLES.md](PRINCIPLES.md), [ROLES.md](ROLES.md), [PERMISSIONS.md](PERMISSIONS.md) | What tmb is and who does what. Short and chart-first. The Human reviews these. |
 | **Low-level design** | Every other page | The detail under a high-level page: every other case, failures, and how to debug them. For building and debugging tmb. |
 
 - **Two folders.** `docs/architecture/` holds the design in space: the parts, what each owns and how they connect. [`docs/flows/`](../flows/README.md) holds the design in time: the steps tmb takes.
@@ -70,14 +70,15 @@ tmb keeps each fact in exactly one of three layers: the lowest layer that can ho
 New to tmb? Read in this order:
 
 1. [PRINCIPLES.md](PRINCIPLES.md) — why tmb is built the way it is.
-2. [ROLES.md](ROLES.md) — what each role is for, what it may do, and how several sessions work in parallel.
-3. [ADAPTERS.md](ADAPTERS.md) — how tmb works with a host without being built for it.
-4. [ENGINE.md](ENGINE.md) — how the engine is reached, where it judges, and what tmb writes and where.
-5. [MEMORY.md](MEMORY.md) — what an agent loads, keeps and writes back, and what each costs.
-6. [TRAJECTORY.md](TRAJECTORY.md) — what is recorded, and how work is resumed from it. The rules come first, the schema after.
-7. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from. The rules come first, the cases and the schema after.
-8. [ISSUES.md](ISSUES.md) — an issue's fields and labels.
-9. [CONFIG.md](CONFIG.md) — every setting, where it lives and who may set it.
+2. [ROLES.md](ROLES.md) — what each role is for, and how several sessions work in parallel.
+3. [PERMISSIONS.md](PERMISSIONS.md) — who may take each action, and why.
+4. [ADAPTERS.md](ADAPTERS.md) — how tmb works with a host without being built for it.
+5. [ENGINE.md](ENGINE.md) — how the engine is reached, where it judges, and what tmb writes and where.
+6. [MEMORY.md](MEMORY.md) — what an agent loads, keeps and writes back, and what each costs.
+7. [TRAJECTORY.md](TRAJECTORY.md) — what is recorded, and how work is resumed from it. The rules come first, the schema after.
+8. [CODE_GRAPH.md](CODE_GRAPH.md) — the map of the code the planner reasons from. The rules come first, the cases and the schema after.
+9. [ISSUES.md](ISSUES.md) — an issue's fields and labels.
+10. [CONFIG.md](CONFIG.md) — every setting, where it lives and who may set it.
 
 | Question | Read |
 |---|---|
@@ -111,6 +112,7 @@ The words for tmb's parts. tmb prefers the name a developer already knows. The p
 | [ROLES](ROLES.md) | Worker | The role that carries out one task, of any kind. |
 | [ROLES](ROLES.md) | Reviewer | The role that judges a diff and records a verdict. It edits nothing. |
 | [ROLES](ROLES.md) | Lane | One of several sessions working in a project at once, with the work it took. tmb keeps no lane record. |
+| [PERMISSIONS](PERMISSIONS.md) | Action | A named step a role may take, such as closing a task. Each role holds a set of them. |
 | [ADAPTERS](ADAPTERS.md) | Host | An agent program, such as Claude Code, that runs the agents. |
 | [ADAPTERS](ADAPTERS.md) | Host adapter | The one part of tmb that knows a host: its file formats, its events and its limits. |
 | [TRAJECTORY](TRAJECTORY.md) | Trajectory | The record of the work. The term is used in agent research for the sequence of an agent's steps. |
