@@ -2,13 +2,14 @@ name: install smoke
 
 # Runs the install smoke test against the channel's published installer on every OS, whenever
 # the test driver itself changes, so a broken driver is caught before the next release needs it.
-# The release workflows run the same driver after they publish. Needs no secret.
+# The tag release workflow runs the same driver after it publishes. Needs no secret.
 
 on:
   pull_request:
     paths:
       - tests/install/smoke.ts
       - tests/lib/**
+      - src/engine/program.ts
       - .github/workflows/install-smoke.yml
   workflow_dispatch:
     inputs:

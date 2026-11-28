@@ -60,7 +60,7 @@ flowchart TD
 | Step | What it does |
 |---|---|
 | Name the version | Dev: the name in section 2. Tag: the tag without its `v`. |
-| Build | A macOS runner builds `darwin-arm64` and `darwin-x64` and signs them ad hoc. A Linux runner builds `linux-x64`, `linux-arm64` and `windows-x64`. On a tag run each runs `bun test` first. |
+| Build | A macOS runner builds `darwin-arm64` and `darwin-x64` and signs them ad hoc. A Linux runner builds `linux-x64`, `linux-arm64` and `windows-x64`. On a tag run each runs `bun test` first, so the suite runs on macOS and on Linux; a failing test stops the publish. |
 | Publish | Uploads the five programs, `install.sh`, `install.ps1`, a `VERSION` file and `SHA256SUMS`. Dev deletes and recreates its one release. |
 | Install test | Tag run only. Installs the published release with the real installer on macOS, Linux and Windows. |
 | Update test | Tag run only. Checks an install updating itself on the same three systems. |
@@ -79,7 +79,7 @@ Why the installer script is the only route on macOS, and the package-manager rou
 
 | Workflow | On a tag it runs |
 |---|---|
-| `ci.yml` | `test` (typecheck, boundary lint, `bun test`, link lint), `chain` (the whole chain in a container, without its model steps), and `update-scenario` on macOS and Windows |
+| `ci.yml` | `test` (typecheck, boundary lint, `bun test`, link lint), `chain` (the whole chain in a container, without its model steps), `update-scenario` on macOS and Windows, and `benchmark` (the code graph's stored scores) |
 | `packaging-probe.yml` | The packaging probe on macOS, Linux and Windows |
 | `release.yml` | The build, the publish and the install and update tests in section 3 |
 

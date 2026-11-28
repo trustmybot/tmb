@@ -62,7 +62,7 @@ Setup that more than one test needs lives once in [tests/lib](lib/), and a test 
 | When | Layers |
 |---|---|
 | Every pull request | Lint, Unit, Integration, Workflow simulation, and the whole chain's steps that use no model |
-| Every rc or stable release | Install |
+| Every rc or stable release | Install, after the publish. Before it, everything `bun test` runs (Lint, Unit, Integration, Workflow simulation), on macOS and on Linux |
 | On request | Agent run, Agent chain, the whole chain with its session steps |
 | Before `dev` becomes an rc | The whole chain, session steps included, run by the Human on their own machine with their own login. It must pass there first; the run on GitHub comes after ([contributing](../docs/contributing/README.md)). |
 | Before an rc or stable release | All of them. |

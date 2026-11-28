@@ -4,7 +4,9 @@ name: release
 # version tag is pushed: vX.Y.Z-rc.N is an rc (a prerelease), vX.Y.Z is stable (marked
 # latest). Nothing publishes on a merge; only a pushed tag does. Installs on the rc channel
 # find the newest rc tag through the public releases API; stable installs read the latest
-# release's VERSION asset.
+# release's VERSION asset. Each build runner runs `bun test` before it compiles, so the suite runs
+# on macOS as well as Linux before anything is published; the install and update tests then run
+# against the published release on macOS, Linux and Windows.
 
 on:
   push:
@@ -58,7 +60,12 @@ jobs:
         with:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
+      # The same suite as ci.yml's test job, hono at its pinned commit included, on each build
+      # runner: the macOS runner is the only place the suite runs on macOS.
+      - run: bun tests/lib/pinned-repo.ts "$RUNNER_TEMP/pinned/hono"
       - run: bun test
+        env:
+          TMB_PINNED_HONO: ${{ runner.temp }}/pinned/hono
       - run: bun scripts/build.ts ${{ matrix.targets }}
         env:
           TMB_VERSION: ${{ needs.version.outputs.tmb_version }}
