@@ -123,7 +123,7 @@ flowchart TD
     D -- none here --> SILENT2["Allow, nothing recorded"]
     D -- "damaged, empty or a newer tmb's" --> DENY2["Deny with the cause"]
     D -- readable --> E{"Which checkpoint?"}
-    E -- a worker starts --> F{"Open task, worktree ready, started from its repo?"}
+    E -- a worker starts --> F{"Open task, worktree ready?"}
     F -- no --> DENY["Deny with the reason, and record it"]
     F -- yes --> G
     E -- anything else --> G["Allow"]
@@ -185,7 +185,7 @@ flowchart TD
 - **Example.** The Human tunes the worker's prompt in its role file. The next update leaves the file, and the health check says it differs from this version's.
 - **Edge case.** A settings file holds the Human's entries and tmb's. tmb changes only its own entries.
 
-Planned (trustmybot/tmb#436, trustmybot/tmb#437, trustmybot/tmb#112): the skill files tmb ships, and the agent and cheatcode files the Human approves one by one ([4_EXTENDING.md](../flows/4_EXTENDING.md)).
+The skill files tmb ships follow the same table. Planned (trustmybot/tmb#437, trustmybot/tmb#112): the agent and cheatcode files the Human approves one by one ([4_EXTENDING.md](../flows/4_EXTENDING.md)).
 
 **On the machine.** tmb is one program for every project, so two things live outside any project. Each channel's program has its own, and one never touches another's.
 

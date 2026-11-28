@@ -185,7 +185,6 @@ The engine checks it.
 | Value | Raised when |
 |---|---|
 | `session-start` | A host session starts |
-| `before-file-write` | An agent is about to write a file. Planned removal (trustmybot/tmb#457) |
 | `before-agent-start` | A subagent is about to start |
 | `agent-start-failed` | A subagent's start failed |
 | `after-agent-stop` | A subagent stopped |

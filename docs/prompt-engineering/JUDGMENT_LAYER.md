@@ -1,6 +1,6 @@
 # Judgment layer
 
-The rules for writing and grading a tmb prompt (`roles/*.md`, and skills, Planned, trustmybot/tmb#436), the layer 6 that holds only what needs judgment: a checklist of yes/no criteria, a grading rubric, and real examples. Which rules belong in code instead is in [`DETERMINISTIC_LAYER.md`](DETERMINISTIC_LAYER.md). Each criterion names its rule in [`PROMPT_ENGINEERING.md`](PROMPT_ENGINEERING.md), the research reference, and carries that rule's evidence tier.
+The rules for writing and grading a tmb prompt (`roles/*.md` and `skills/*.md`), the layer 6 that holds only what needs judgment: a checklist of yes/no criteria, a grading rubric, and real examples. Which rules belong in code instead is in [`DETERMINISTIC_LAYER.md`](DETERMINISTIC_LAYER.md). Each criterion names its rule in [`PROMPT_ENGINEERING.md`](PROMPT_ENGINEERING.md), the research reference, and carries that rule's evidence tier.
 
 ---
 
@@ -52,7 +52,7 @@ The criteria follow the order in which you write or read a prompt, one category 
 
 Each prompt does only its agent's job. It names what the agent receives, hands its output over in the shape the next agent expects, and never asks the agent to redo a check another agent owns: overlapping jobs duplicate work and blur who owns a miss. This holds for every agent, a new one included. An agent in tmb's code flow also matches its place in [`FLOWS.md`](../flows/FLOWS.md) and its row of the [quality layers](../flows/3_TASKS.md#quality-layers) table; where the flow and its prompt disagree, fix one of them in the same change so they do not drift.
 
-Each shipped prompt carries only the wiring that makes tmb work: who the agent is, what it does every turn, and pointers to the skills (Planned, trustmybot/tmb#436) that hold procedures. Rubrics, checklists, persona and style guidance, and domain heuristics arrive as cheatcodes ([`4_EXTENDING.md`](../flows/4_EXTENDING.md#cheatcodes), Planned, trustmybot/tmb#112); a paragraph that teaches a technique instead of wiring a role belongs in one.
+Each shipped prompt carries only the wiring that makes tmb work: who the agent is, what it does every turn, and pointers to the skills that hold procedures. Rubrics, checklists, persona and style guidance, and domain heuristics arrive as cheatcodes ([`4_EXTENDING.md`](../flows/4_EXTENDING.md#cheatcodes), Planned, trustmybot/tmb#112); a paragraph that teaches a technique instead of wiring a role belongs in one.
 
 ---
 

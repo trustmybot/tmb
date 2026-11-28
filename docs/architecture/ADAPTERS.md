@@ -46,7 +46,7 @@ The words host, engine, host adapter and checkpoint are in [the glossary](README
 | Set up | Registers tmb's tool server with the host, writes the role definitions in the host's format, and wires the host's events to the engine. Per project, when the Human runs init. |
 | Name what is left | Lists the steps only the Human can take, such as trusting the project, and any wiring that is missing. |
 | Translate events | Turns a host event into the engine's neutral question, and the engine's allow or deny into the host's answer. |
-| Report limits | Says what the host cannot do, such as deny a tool call or set a model per role. The adapter states its limits; the engine does not read them. |
+| Report limits | Says what the host cannot do, such as deny a tool call or set a model per role. The adapter states its limits. The engine reads one: how much text a session start may carry, and it cuts the project's state to fit. |
 | Reconnect | Says how a session picks up tmb's tools again after the tool server moved to a new build. |
 | Remove | Undoes exactly what setup added. |
 

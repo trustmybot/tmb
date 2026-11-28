@@ -12,8 +12,8 @@ The rules for moving tmb doctrine out of prompts and into code: the layers, what
 | 2 | **Checkpoints** | git's own hooks first (pre-push refuses an unreviewed push to the base branch), then the few host hooks an adapter writes: PreToolUse blocks an agent start until its prerequisite holds; SubagentStop records the run's end; SessionStart injects context. No hook guards each edit. | A block or side effect runs outside the LLM's context, whatever the prompt says. A fail-closed gate also denies when it errors or runs out of time; a fail-open gate lets the call through then. Injected context is advisory: it reaches the model but compliance stays at layer 6. |
 | 3 | **Role file** | The tool list in each role file, written by the host's adapter from what the role may do. | The host withholds the listed tools at spawn. Claude Code does. |
 | 4 | **Schema constraints** | `CHECK`, `UNIQUE`, `NOT NULL`, FK on the trajectory DB. | Rejects malformed writes at the storage layer, including raw-SQL bypasses of MCP handlers. |
-| 5 | **Skill `paths:`** | Skill auto-loads when matching files are in the active context. | Soft — reduces prompt noise; the model can still ignore loaded content. Planned (trustmybot/tmb#436): tmb ships no skill yet. |
-| 6 | **Prompts** | The role prompts in `roles/`, skill prose (Planned, trustmybot/tmb#436): the judgment layer. | None — accept the compliance ceiling. |
+| 5 | **Skill `paths:`** | Skill auto-loads when matching files are in the active context. | Soft — reduces prompt noise; the model can still ignore loaded content. tmb's own skills set no `paths:`; each loads on its description. |
+| 6 | **Prompts** | The role prompts in `roles/`, skill prose: the judgment layer. | None — accept the compliance ceiling. |
 
 **Doctrine: prefer the hardest layer that fits.** Layer 6 is the fallback, not the default. Move a constraint to a harder layer as soon as the softer layer it sits in fails to enforce it.
 
@@ -90,7 +90,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 | No task starts until the review mode is set | 1 |
 | The code graph read before a task starts | 6 only |
 | A decision recorded for every task | 6 only |
-| Project skill and agent files change only with the Human's approval | Planned (trustmybot/tmb#436, trustmybot/tmb#437) |
+| Project skill and agent files change only with the Human's approval | Planned (trustmybot/tmb#437) |
 | A tool call's `role` is one of the three roles, and defaults to the role the host was set up in | 1 |
 | Feature branch, task start and drop, pull request, settings and areas are the planner's tools alone | 1 |
 | A pull request opens only when a pass or a Human waiver covers the tip | 1 + 2 (push) |
@@ -128,7 +128,7 @@ The "Layer" column names the **strongest currently deployed** layer for each int
 | Recording a verdict is reviewer-only | 1 |
 | A verdict is taken only on the branch's current tip | 1 |
 | A fail reopens a truest task; in agile mode the planner starts fix tasks | 1 (truest); 6 only (agile) |
-| Cannot edit code (read-only review) | 3 (Claude Code) + 2 (a write the host names as the reviewer's is denied) |
+| Cannot edit code (read-only review) | 3 (Claude Code) |
 | Diff-level judgment: whether a behaviour change the probes show is a bug | 6 only |
 
 ### Consultants
@@ -167,7 +167,7 @@ Claude Code's prompt cache matches from the start of the assembled prompt and st
 | Zone | Content | Stability |
 |------|---------|-----------|
 | **A — stable identity** | The planner's role (`roles/planner.md`), tool descriptions, fixed across all sessions and users | Stable |
-| **B — semi-stable bodies** | Skill bodies (Planned, trustmybot/tmb#436), which change only on tmb updates | Semi-stable |
+| **B — semi-stable bodies** | Skill bodies, which change only on tmb updates | Semi-stable |
 | **C — volatile hook tails** | Hook-injected context (counts, banners, branch, last commits), which changes every session or turn | Volatile |
 
 **Contract for hook authors:** a hook that injects `additionalContext` puts its stable descriptive text first and its volatile fields at the tail of its own output, because a hook that opens with a volatile line breaks the cache for everything after it. Volatile fields include the branch name, commit and dirty-path counts, open-issue and pending-task counts, recent commit messages, the record's and tmb's paths, and any timestamp or PID.

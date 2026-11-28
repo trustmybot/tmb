@@ -2,7 +2,7 @@
 
 What a project adds to its team: skills, cheatcodes (published capabilities), created agents and consultants. This page holds every case of flows 4.1 and 4.2 in [FLOWS.md](FLOWS.md). What each agent may do once it exists is in [ROLES.md](../architecture/ROLES.md).
 
-tmb ships three roles: planner, worker and reviewer. Everything else on this page is **Planned**: tmb's own skills (trustmybot/tmb#436), cheatcodes (trustmybot/tmb#112), and created agents, project skills and consultants (trustmybot/tmb#437).
+tmb ships three roles, planner, worker and reviewer, and six skills of its own. The rest of this page is **Planned**: the tmb skills not shipped yet (trustmybot/tmb#495), cheatcodes (trustmybot/tmb#112), and created agents, project skills and consultants (trustmybot/tmb#437).
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,7 @@ This one rule holds for all four flows. The planner drafts or proposes, the Huma
 
 ## tmb's own skills
 
-**Planned (trustmybot/tmb#436).** A tmb skill holds one situational procedure of tmb's own harness. A role loads it when its trigger fires, so the role's always-loaded prompt stays short.
+**A tmb skill holds one situational procedure of tmb's own harness.** A role loads it when its trigger fires, so the role's always-loaded prompt stays short.
 
 ```mermaid
 flowchart LR
@@ -42,27 +42,33 @@ flowchart LR
 ```
 
 - **Example 1.** A session starts in a project whose settings are empty. The planner loads the onboarding skill.
-- **Example 2.** The reviewer is started on a feature branch. It loads the review procedure.
+- **Example 2.** A check fails at a task's close. The planner loads the recovery skill.
 - **Edge case.** No trigger fires. The role works from its prompt alone.
 
 Skills are written once, like the roles, and the adapter writes them in the host's format. The placement test in [JUDGMENT_LAYER.md](../prompt-engineering/JUDGMENT_LAYER.md) decides what goes in a role's prompt, a skill or code.
 
-The procedures in tmb's flows that a skill would hold. **The whole table is Planned (trustmybot/tmb#436), and the names are not fixed.**
+The procedures tmb's skills hold:
 
 | Procedure | Loaded by | When |
 |---|---|---|
 | Onboarding: the base branch, the checks, the review mode question, the project's areas | Planner | A session starts in a project whose settings are empty (flow 2.1) |
 | Writing a spec and scoping it from the code graph | Planner | Before each code task (flow 3.1) |
+| The code graph's areas and concepts | Planner | It adds, changes or removes an area or a concept (flow 2.2) |
+| Retry and escalation | Planner | A check fails at close, a review fails, a fold or rebase conflicts, or a run never ended ([3_TASKS.md](3_TASKS.md#retry-and-escalation)) |
+| Truest mode: a review and a pull request per task | Planner | A task is in a repo set to truest (flow 3.10) |
+| Reporting a tmb bug | Planner | tmb itself breaks and the feedback program is on (flow 5.1) |
+
+**Planned (trustmybot/tmb#495, or the issue a row names), and the names are not fixed:**
+
+| Procedure | Loaded by | When |
+|---|---|---|
 | Agent search: several word queries, then follow the code graph | Planner | It must find where a thing lives or what depends on it (flow 2.2) |
 | Doc review | Planner, reviewer | Grading a docs or prompts change ([3_TASKS.md](3_TASKS.md#docs-task)) |
-| Retry and escalation | Planner | A check fails at close, a review fails, a fold or rebase conflicts, or a run never ended ([3_TASKS.md](3_TASKS.md#retry-and-escalation)) |
 | Pull request comment triage | Planner | Review comments reach a pull request tmb opened (flow 3.5; depends on trustmybot/tmb#70) |
 | Running parallel sessions | Planner | The Human asks for several independent streams of work ([ROLES.md](../architecture/ROLES.md#parallel-lanes)) |
-| Truest mode: a review and a pull request per task | Planner | A task is in a repo set to truest (flow 3.10) |
 | Installing a cheatcode | Planner | A task needs a capability the project lacks (flow 4.1; depends on trustmybot/tmb#112) |
 | Creating an agent or a skill | Planner | Routing hits a role with no agent, or a recurring pattern needs encoding (flow 4.2) |
 | The review procedure: what to read, what to probe, findings and the verdict | Reviewer | It is started on a feature branch or on a task's commit (flows 3.9 and 3.10) |
-| Reporting a tmb bug | Planner | tmb itself breaks and the feedback program is on (flow 5.1) |
 
 ## Skills
 
