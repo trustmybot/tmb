@@ -122,7 +122,7 @@ export { installsOff, machinePlaces } from "./graph/tool-copy.ts";
 export { type InstallOptions, installTool, missingTools } from "./graph/tool-install.ts";
 export { baseLanguages, toolLine, type ToolRow, toolRows } from "./graph/tool-report.ts";
 export { DEFAULT_LINK_WAY } from "./graph/ways.ts";
-export { endReadyLine } from "./handlers/common.ts";
+export { endReadyLine, type OperationContext, type RemoteIssueAnswer, type RemoteIssueEdit, type RemoteIssueState, type RemoteIssueTarget, type RemoteIssueWriter } from "./handlers/common.ts";
 export { HandlerError } from "./handlers/errors.ts";
 export { keptCheckouts, removeTaskCheckout } from "./handlers/fold.ts";
 export { type FeatureBrief, type FeatureDropResult, type FeaturePrResult, type FeatureSummary, type FeatureUpdateResult, type GraphAnswer, type IssueDetail, type IssueUpdateResult, markLine, markRequiredLine, type OperationName, type RoleChangeResult, type RoleView, type TaskBrief, type TaskCloseResult, type TaskDropResult, type TaskPrResult, type TaskStartResult, type TaskSummary, type TaskWaiveResult, type WaiveResult } from "./handlers/index.ts";

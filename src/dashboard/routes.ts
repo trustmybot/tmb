@@ -1,6 +1,7 @@
 // The dashboard's API, path by path. Pages are read from the read-only connection; the Human's
-// changes to an issue go through the engine's own operations, acting as the Human.
-import { type Actor, HandlerError, OPERATIONS, type Store, workingRepos, workspaceRepos } from "../engine/index.ts";
+// changes to an issue go through the engine's own operations, acting as the Human, so a change to
+// a mirrored issue reaches its remote first, as the planner's does.
+import { type Actor, HandlerError, type OperationContext, OPERATIONS, type Store, workingRepos, workspaceRepos } from "../engine/index.ts";
 import type { GraphReads } from "./graph-reads.ts";
 import { fail, failure, HttpError, type Json, json, param, pick, readJson, type RouteRequest } from "./http.ts";
 import type { PullRequestRefresher } from "./pull-requests.ts";
@@ -20,6 +21,8 @@ export class DashboardRoutes {
     private readonly guard: RequestGuard,
     private readonly graph: GraphReads,
     private readonly pullRequests: PullRequestRefresher,
+    /** Where the operations run, and how a change reaches a mirrored issue's remote. */
+    private readonly context: OperationContext,
   ) {}
 
   /** Every route, with `page` served at the root. */
@@ -27,7 +30,7 @@ export class DashboardRoutes {
     const q = this.queries;
     const refreshed = <T>(read: () => T) => (this.pullRequests.refresh(), read());
     const limit = (req: Request) => clampLimit(param(req, "limit"));
-    const update = OPERATIONS.issue_update;
+    const update = (id: string, input: Record<string, unknown>) => OPERATIONS.issue_update.run(this.store, this.actor, { id, ...input }, this.context);
     return {
       "/": page,
       "/api/token": this.read(() => ({ token: this.guard.token })),
@@ -53,13 +56,13 @@ export class DashboardRoutes {
       "/api/graph/function/:id": this.graph.route((graph, req) => (/^\d+$/.test(req.params.id!) ? graph.functionView(Number(req.params.id)) : null)),
       "/api/graph/search": this.graph.route((graph, req) => ({ hits: graph.search(param(req, "q") ?? "") })),
       "/api/issues/:id/edit": {
-        POST: this.write((id, body) => update.run(this.store, this.actor, { id, ...pick(body, ["title", "body", "milestone"]) }), { fresh: true }),
+        POST: this.write((id, body) => update(id, pick(body, ["title", "body", "milestone"])), { fresh: true }),
       },
       "/api/issues/:id/comment": {
         POST: this.write((id, body) => OPERATIONS.discussion_append.run(this.store, this.actor, { issue_id: id, kind: body.kind ?? "note", body: body.body }), { fresh: false }),
       },
-      "/api/issues/:id/close": { POST: this.write((id) => update.run(this.store, this.actor, { id, state: "closed" }), { fresh: true }) },
-      "/api/issues/:id/reopen": { POST: this.write((id) => update.run(this.store, this.actor, { id, state: "open" }), { fresh: true }) },
+      "/api/issues/:id/close": { POST: this.write((id) => update(id, { state: "closed" }), { fresh: true }) },
+      "/api/issues/:id/reopen": { POST: this.write((id) => update(id, { state: "open" }), { fresh: true }) },
     };
   }
 
@@ -92,7 +95,7 @@ export class DashboardRoutes {
         if (options.fresh && body.updated_at !== issue.updatedAt) {
           throw new HttpError(409, "stale", "the issue changed since this page read it; reload to see the change");
         }
-        return json(change(id, body));
+        return json(await change(id, body));
       } catch (error) {
         return failure(error);
       }

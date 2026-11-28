@@ -2,6 +2,7 @@
 import { parseArgs } from "node:util";
 import { DEFAULT_PORT, startDashboard } from "../../dashboard/index.ts";
 import { projectRootOf } from "../../engine/index.ts";
+import { remoteIssueWriter } from "../../syncer/index.ts";
 import { noArguments } from "../arguments.ts";
 import { listed, ParsedCommand } from "../command.ts";
 import type { Runtime } from "../runtime.ts";
@@ -41,7 +42,8 @@ export class DashboardCommand extends ParsedCommand<DashboardOptions> {
 
   protected async execute({ port, project }: DashboardOptions): Promise<number> {
     const projectDir = projectRootOf(project ?? this.runtime.cwd());
-    const dashboard = startDashboard({ projectDir, port });
+    // The Human's change to a mirrored issue is written to its remote first, through the syncer.
+    const dashboard = startDashboard({ projectDir, port, remoteIssues: remoteIssueWriter(projectDir) });
     this.runtime.out(`tmb dashboard for ${projectDir}: ${dashboard.url}`);
     this.runtime.out("Press Ctrl+C to stop.");
     await this.runtime.untilStopped();

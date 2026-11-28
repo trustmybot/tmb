@@ -1,6 +1,7 @@
 // The rows the record mirrors from the remote, and where each poll of the remote stopped
-// (trustmybot/tmb#70). The syncer decides what changed; this file only finds rows by the remote's
-// own id and writes through the event log, so the remote's changes are events like any other.
+// (trustmybot/tmb#70). The syncer, or a change tmb first wrote to the remote, decides what changed;
+// this file only finds rows by the remote's own id and writes through the event log, so the
+// remote's changes are events like any other.
 // sync_state is the one exception: it is not folded from events, and a poll that finds nothing
 // writes nothing but it.
 import type { Actor } from "./actor.ts";
@@ -73,6 +74,18 @@ export class MirrorRepository {
     return this.log.db.query(`SELECT * FROM ${tableOf(kind)} WHERE remote_id = ? ORDER BY id LIMIT 1`).get(remoteId) as MirroredRow | null;
   }
 
+  /** The row of a kind with this record id, with its remote columns; null when there is none. */
+  rowOf(kind: MirrorKind, id: string): MirroredRow | null {
+    return this.log.db.query(`SELECT * FROM ${tableOf(kind)} WHERE id = ?`).get(id) as MirroredRow | null;
+  }
+
+  /** The milestone mirrored from this remote under this title and not gone from it; null when there is none. */
+  milestoneTitled(remote: string, title: string): MirroredRow | null {
+    return this.log.db
+      .query("SELECT * FROM milestones WHERE remote = ? AND title = ? AND remote_id IS NOT NULL AND remote_gone_at IS NULL ORDER BY id LIMIT 1")
+      .get(remote, title) as MirroredRow | null;
+  }
+
   /** The issue the record holds with this number on this remote; null when it holds none. */
   issueIdOn(remote: string, number: number): string | null {
     const row = this.log.db.query("SELECT id FROM issues WHERE remote = ? AND remote_url LIKE ? ORDER BY id LIMIT 1").get(remote, `%/issues/${number}`) as { id: string } | null;
@@ -99,9 +112,12 @@ export class MirrorRepository {
     return this.log.create(actor, kind, data);
   }
 
-  /** Records a change the remote made to a mirrored row. A local row, or a note or a decision, never changes this way. */
+  /**
+   * Records a change the remote holds on a mirrored row: one the syncer read, or one tmb wrote to
+   * the remote first. A local row, or a note or a decision, never changes this way.
+   */
   updateMirrored(actor: Actor, kind: MirrorKind, id: string, data: Record<string, unknown>): void {
-    const row = this.log.db.query(`SELECT * FROM ${tableOf(kind)} WHERE id = ?`).get(id) as MirroredRow | null;
+    const row = this.rowOf(kind, id);
     if (row === null) throw new Error(`no ${kind} ${id}`);
     if (row.remote_id === null) throw new Error(`the ${kind} ${id} is local: the syncer never changes it`);
     if (kind === "discussion" && row.kind !== "comment") throw new Error(`the ${row.kind} ${id} is local: only a comment follows the remote`);

@@ -4,7 +4,7 @@
 // It listens on the loopback address only and answers the API only to its own host name.
 import { Database } from "bun:sqlite";
 import page from "./web/index.html";
-import { type Actor, openProjectStore, projectDbPath, type PullRequestReader, type Store } from "../engine/index.ts";
+import { type Actor, openProjectStore, projectDbPath, type PullRequestReader, type RemoteIssueWriter, type Store } from "../engine/index.ts";
 import { BUSY_TIMEOUT_MS, DEFAULT_PORT, HOST, MAX_BODY_BYTES } from "./constants.ts";
 import { GraphReads } from "./graph-reads.ts";
 import { fail } from "./http.ts";
@@ -22,8 +22,9 @@ export type Dashboard = { url: string; port: number; stop(): Promise<void> };
 /**
  * Serves the dashboard for the project at `projectDir` until stop() is called. Refuses a
  * project with no record, or one this build cannot read, the same way the other doors do.
+ * `remoteIssues` writes the Human's change to a mirrored issue on its remote; without it, such a change is refused.
  */
-export function startDashboard(options: { projectDir: string; port?: number; readPullRequest?: PullRequestReader }): Dashboard {
+export function startDashboard(options: { projectDir: string; port?: number; readPullRequest?: PullRequestReader; remoteIssues?: RemoteIssueWriter }): Dashboard {
   const opened = openProjectStore(options.projectDir, { create: false });
   if (!opened.ok) throw opened.error;
   const store: Store = opened.store;
@@ -37,6 +38,7 @@ export function startDashboard(options: { projectDir: string; port?: number; rea
     guard,
     new GraphReads(options.projectDir, store, guard),
     new PullRequestRefresher(store, HUMAN, options.projectDir, options.readPullRequest),
+    { projectDir: options.projectDir, remoteIssues: options.remoteIssues },
   );
 
   const server = Bun.serve({

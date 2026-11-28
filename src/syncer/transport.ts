@@ -1,5 +1,6 @@
-// One GET to the remote, sent through the user's own `gh`, as the engine's GitHub client does:
-// tmb reads no token and holds no login. Only GET is ever sent, so the reader cannot write.
+// The one place the syncer talks to the remote, through the user's own `gh`, as the engine's GitHub
+// client does: tmb reads no token and holds no login. A poll only asks, with GET, so the reader
+// cannot write; the one write is a change to a mirrored issue, sent apart from it.
 import { execFile } from "node:child_process";
 
 const GH_TIMEOUT_MS = 30_000;
@@ -27,20 +28,41 @@ export function ghArgs(request: Request): string[] {
 }
 
 export function askThroughGh(cwd: string): Ask {
-  return (request) =>
-    new Promise((resolve) => {
-      execFile(
-        "gh",
-        ghArgs(request),
-        { cwd, encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
-        (error, stdout, stderr) => {
-          const code = error === null ? null : (error as NodeJS.ErrnoException).code;
-          if (code === "ENOENT") return resolve({ sent: false, why: "no_client", said: "gh is not installed" });
-          if (error !== null && error.killed) return resolve({ sent: false, why: "no_network", said: "gh timed out" });
-          resolve(readGhOutput(stdout, stderr));
-        },
-      );
-    });
+  return (request) => runGh(cwd, ghArgs(request));
+}
+
+/** One change sent to the remote: the fields of one item, as JSON. */
+export type Change = { host: string; path: string; method: "PATCH"; fields: Record<string, unknown> };
+
+/** Sends one change to the remote. Tests pass their own, which answers from recordings. */
+export type Send = (change: Change) => Promise<Answer>;
+
+export function ghSendArgs(change: Change): string[] {
+  return ["api", "--include", "--hostname", change.host, "--method", change.method, "--input", "-", change.path];
+}
+
+/** The fields go in on stdin as JSON, so no text is ever read as a flag, a file or a number. */
+export function sendThroughGh(cwd: string): Send {
+  return (change) => runGh(cwd, ghSendArgs(change), JSON.stringify(change.fields));
+}
+
+function runGh(cwd: string, args: string[], input?: string): Promise<Answer> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      "gh",
+      args,
+      { cwd, encoding: "utf8", timeout: GH_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
+      (error, stdout, stderr) => {
+        const code = error === null ? null : (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") return resolve({ sent: false, why: "no_client", said: "gh is not installed" });
+        if (error !== null && error.killed) return resolve({ sent: false, why: "no_network", said: "gh timed out" });
+        resolve(readGhOutput(stdout, stderr));
+      },
+    );
+    // A gh that is missing closes stdin at once; the answer comes from the callback either way.
+    child.stdin?.on("error", () => undefined);
+    child.stdin?.end(input ?? "");
+  });
 }
 
 /**

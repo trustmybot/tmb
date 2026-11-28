@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, type CallToolResult, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { runningName } from "./program.ts";
 import type { FeedbackEnv } from "./feedback/index.ts";
+import type { RemoteIssueWriter } from "./handlers/common.ts";
 import { HandlerError, isOperationName, OPERATIONS } from "./handlers/index.ts";
 import { openProjectStore } from "./project.ts";
 import { HUMAN_ROLE, isRoleName } from "./permissions.ts";
@@ -93,6 +94,8 @@ export class ToolSession {
     private readonly onSharedFolders?: SharedFoldersListener,
     private readonly onRoles?: RolesListener,
     private readonly onRecordRead?: RecordReadListener,
+    /** Writes a change to a mirrored issue on its remote: the command line hands it the syncer's writer. */
+    private readonly remoteIssues?: RemoteIssueWriter,
   ) {
     if (host.trim() === "") throw new Error("the tool server needs a host id");
   }
@@ -121,7 +124,7 @@ export class ToolSession {
     try {
       const store = this.openStore();
       const actor: Actor = { kind: "agent", role: (role as string | undefined) ?? hostRole(store, this.host), host: this.host };
-      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir, unattended: this.unattended, feedback: this.feedback });
+      const result = await OPERATIONS[name].run(store, actor, input, { projectDir: this.projectDir, unattended: this.unattended, feedback: this.feedback, remoteIssues: this.remoteIssues });
       if (name === "settings_set" && (result as { changed: string[] }).changed.includes("shared_folders")) {
         try {
           this.onSharedFolders?.(this.projectDir, sharedFoldersOf(readSettings(store), null));
@@ -167,8 +170,18 @@ export async function serveTools(options: {
   onSharedFolders?: SharedFoldersListener;
   onRoles?: RolesListener;
   onRecordRead?: RecordReadListener;
+  remoteIssues?: RemoteIssueWriter;
 }): Promise<void> {
-  const session = new ToolSession(options.projectDir, options.host, options.unattended === true, options.feedback, options.onSharedFolders, options.onRoles, options.onRecordRead);
+  const session = new ToolSession(
+    options.projectDir,
+    options.host,
+    options.unattended === true,
+    options.feedback,
+    options.onSharedFolders,
+    options.onRoles,
+    options.onRecordRead,
+    options.remoteIssues,
+  );
   const server = new Server({ name: SERVER_NAME, version: options.version }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listTools() }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => session.call(request.params.name, request.params.arguments));
