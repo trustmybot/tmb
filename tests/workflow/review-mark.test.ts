@@ -4,8 +4,8 @@
 // mark as it was.
 // A stand-in for GitHub keeps the marks; the project's origin has a GitHub address.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { githubStandIn } from "../integration/github-stand-in.ts";
-import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+import { githubStandIn } from "../lib/github-stand-in.ts";
+import { callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

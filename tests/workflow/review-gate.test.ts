@@ -3,9 +3,10 @@
 // it in a task, the reviewer passes the new tip, and the pull request opens; on a second branch
 // the Human waives the review instead. A fake `gh` on PATH stands in for GitHub.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
+import { fakeGh } from "../lib/fake-gh.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -14,10 +15,7 @@ const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startS
 afterAll(cleanup);
 
 // A fake gh: it logs its arguments and prints a pull request address, as `gh pr create` does.
-const ghLog = path.join(scratch, "gh.log");
-const fakeBin = path.join(scratch, "fake-gh");
-mkdirSync(fakeBin, { recursive: true });
-writeFileSync(path.join(fakeBin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho "https://github.com/example/project/pull/7"\n`, { mode: 0o755 });
+const { bin: fakeBin, log: ghLog } = fakeGh(scratch);
 env.PATH = `${fakeBin}${path.delimiter}${env.PATH}`;
 
 describe("the review of a feature branch", () => {

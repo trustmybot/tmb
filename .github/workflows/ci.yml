@@ -80,7 +80,7 @@ jobs:
         with:
           bun-version: "1.4"
       - run: bun install --frozen-lockfile
-      - run: bun test tests/integration/update.test.ts
+      - run: bun test tests/integration/cli/update.test.ts
 
   # The code graph's benchmark (trustmybot/tmb#244): tmb and the public repos, each at its pinned
   # commit, scored against its language's own tool. tmb's pin is read from its own history, so the

@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { adapter } from "../../../src/adapters/claude-code/index.ts";
 import { isTmbHookCommand } from "../../../src/adapters/claude-code/settings.ts";
-import { fakeClaudeFolder } from "../fake-host.ts";
+import { fakeClaudeFolder } from "../../lib/fake-host.ts";
 import type { ContractEvent, HostHarness } from "./harness.ts";
 
 const SETTINGS = path.join(".claude", "settings.local.json");

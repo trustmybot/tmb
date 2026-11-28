@@ -8,9 +8,10 @@
 // TMB_AGENT_MODEL  the model claude runs (default: haiku)
 // TMB_AGENT_LOG    where the answer is saved (default: a new file under the temp folder)
 // Needs a logged-in claude (or CLAUDE_CODE_OAUTH_TOKEN), git and bun. Exits 0 PASS, 1 FAIL, 2 when it cannot run.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { CODE_TOOLS, MODEL, Tmb, agentLog, askClaude, bareOrigin, fail, fixtureProject, git, preflight, readPrompt, show, tempDir } from "../lib/driver.ts";
+import { fakeGh } from "../lib/fake-gh.ts";
 
 // prompts/truest.txt is Human-authored: never edit it to make this test pass.
 const prompt = readPrompt(path.join(import.meta.dir, "prompts/truest.txt"));
@@ -31,10 +32,7 @@ tmb.shown(["init"], `tmb init failed in ${project}`);
 tmb.human(["onboard", "--yes", "--base", base, "--review-mode", "truest", "--check", check], `tmb onboard failed in ${project}`);
 
 // A fake gh: it logs its arguments and prints a pull request address, as `gh pr create` does.
-const ghLog = path.join(work, "gh.log");
-const fakeBin = path.join(work, "fake-gh");
-mkdirSync(fakeBin, { recursive: true });
-writeFileSync(path.join(fakeBin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho "https://github.com/example/math/pull/1"\n`, { mode: 0o755 });
+const { bin: fakeBin, log: ghLog } = fakeGh(work, { url: "https://github.com/example/math/pull/1" });
 process.env.PATH = `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`;
 
 console.log(`Asking claude (${MODEL}): ${prompt}`);

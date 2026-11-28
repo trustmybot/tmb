@@ -4,7 +4,7 @@
 // in force, and only then does the task start. Scripted as tool calls through the tool server and
 // the Human's command line, with no model.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { callJson, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, tmbProcesses } from "../lib/tmb-processes.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

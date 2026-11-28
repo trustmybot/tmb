@@ -4,7 +4,7 @@
 // steps. Scripted as tool calls through the tool server, with no model.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

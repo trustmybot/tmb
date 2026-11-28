@@ -7,7 +7,8 @@ import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { callJson, callRefused, tmbProcesses } from "../integration/tmb-processes.ts";
+import { callJson, callRefused, tmbProcesses } from "../lib/tmb-processes.ts";
+import { fakeGh } from "../lib/fake-gh.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);
@@ -16,16 +17,11 @@ const { scratch, env, git, tmb, human, tmbJson, setUpProject, commitFile, startS
   tmbProcesses("tmb-workflow-truest-");
 afterAll(cleanup);
 
-const ghLog = path.join(scratch, "gh.log");
-const fakeBin = path.join(scratch, "fake-gh");
-mkdirSync(fakeBin, { recursive: true });
 // With the flag file present, the next \`gh pr create\` fails as if the pull request were already open.
 const ghFailOnce = path.join(scratch, "gh-fail-once");
-writeFileSync(
-  path.join(fakeBin, "gh"),
-  `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$1 $2" = "pr create" ] && [ -f '${ghFailOnce}' ]; then rm '${ghFailOnce}'; echo "a pull request already exists" >&2; exit 1; fi\necho "https://github.com/example/project/pull/9"\n`,
-  { mode: 0o755 },
-);
+const { bin: fakeBin, log: ghLog } = fakeGh(scratch, {
+  answer: `if [ "$1 $2" = "pr create" ] && [ -f '${ghFailOnce}' ]; then rm '${ghFailOnce}'; echo "a pull request already exists" >&2; exit 1; fi\necho "https://github.com/example/project/pull/9"`,
+});
 env.PATH = `${fakeBin}${path.delimiter}${env.PATH}`;
 
 const LINES = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
