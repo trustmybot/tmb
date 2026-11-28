@@ -99,30 +99,58 @@ async function smoke(): Promise<void> {
   const gitInit = run("git", ["init", "-q"], { cwd: project, env: homeEnv });
   const initStatus =
     gitInit.status === 0 ? runToFile(tmb, ["init"], initLog, { cwd: project, env: withEnv({ PATH: `${fakeHost}${path.delimiter}${pathOf(homeEnv)}` }, homeEnv) }) : -1;
+  // A session start is two hooks, the role and then the project's state, and init wires both.
   const settings = path.join(project, ".claude", "settings.local.json");
-  if (initStatus === 0 && existsSync(settings) && readFileSync(settings, "utf8").includes("hook session-start")) {
-    pass("tmb init wired the SessionStart hook in a fresh git repo");
+  const wired = initStatus === 0 && existsSync(settings) ? sessionStartHooks(readFileSync(settings, "utf8")) : [];
+  const missing = SESSION_START_HOOKS.filter((hook) => !wired.includes(hook));
+  if (initStatus === 0 && missing.length === 0) {
+    pass("tmb init wired both SessionStart hooks in a fresh git repo");
   } else {
     if (gitInit.status !== 0) console.log(`  | git init: ${gitInit.output.trim()}`);
     showLog(initLog);
-    fail("tmb init wired the SessionStart hook in a fresh git repo");
+    fail(`tmb init wired both SessionStart hooks in a fresh git repo${initStatus === 0 ? ` (missing: ${missing.join(", ")})` : ""}`);
   }
 
-  const hook = run(tmb, ["hook", "session-start"], { cwd: project, env: homeEnv, input: "{}" });
-  let problem = "";
+  const role = sessionStartText("session-start-role");
+  if ("problem" in role) fail(`tmb hook session-start-role: ${role.problem}`);
+  else if (!role.text.includes("You are bro")) fail('tmb hook session-start-role: additionalContext lacks "You are bro"');
+  else pass("tmb hook session-start-role answers as bro");
+
+  const state = sessionStartText("session-start");
+  if ("problem" in state) fail(`tmb hook session-start: ${state.problem}`);
+  else if (state.text.trim() === "") fail("tmb hook session-start: additionalContext is empty");
+  else pass("tmb hook session-start answers with the project's state");
+}
+
+const SESSION_START_HOOKS = ["session-start-role", "session-start"] as const;
+
+/** The `tmb hook` names the settings file runs at a session start, in order; none when the file is not the settings JSON. */
+function sessionStartHooks(settingsText: string): string[] {
+  try {
+    const groups: unknown = JSON.parse(settingsText)?.hooks?.SessionStart;
+    if (!Array.isArray(groups)) return [];
+    return groups
+      .flatMap((group) => (Array.isArray(group?.hooks) ? group.hooks : []))
+      .map((hook) => /\shook\s+(\S+)$/.exec(String(hook?.command ?? ""))?.[1] ?? "")
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** The text one session-start hook adds to the session, or why its answer is not Claude Code's SessionStart JSON. */
+function sessionStartText(hookName: (typeof SESSION_START_HOOKS)[number]): { text: string } | { problem: string } {
+  const hook = run(tmb, ["hook", hookName], { cwd: project, env: homeEnv, input: "{}" });
+  let problem: string;
   try {
     const answer = JSON.parse(hook.stdout).hookSpecificOutput;
-    if (answer?.hookEventName !== "SessionStart") problem = `hookEventName is ${JSON.stringify(answer?.hookEventName)}, not SessionStart`;
-    else if (!String(answer.additionalContext ?? "").includes("You are bro")) problem = 'additionalContext lacks "You are bro"';
+    if (answer?.hookEventName === "SessionStart") return { text: String(answer.additionalContext ?? "") };
+    problem = `hookEventName is ${JSON.stringify(answer?.hookEventName)}, not SessionStart`;
   } catch (error) {
     problem = `output is not the hook JSON: ${error instanceof Error ? error.message : String(error)}`;
   }
-  if (problem) {
-    for (const line of hook.stderr.split(/\r?\n/).filter(Boolean)) console.log(`  | ${line}`);
-    fail(`tmb hook session-start: ${problem}`);
-  } else {
-    pass("tmb hook session-start answers as bro");
-  }
+  for (const line of hook.stderr.split(/\r?\n/).filter(Boolean)) console.log(`  | ${line}`);
+  return { problem };
 }
 
 try {
