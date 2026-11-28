@@ -39,7 +39,7 @@ flowchart LR
         I["Issues, comments, milestones, pull requests"]
     end
     I -->|"the syncer reads"| R
-    R -->|"a backup push, a pull request, a published issue"| I
+    R -->|"a backup push, a pull request, a change to a mirrored issue"| I
 ```
 
 A person working with agents needs a memory that a remote has no place for: which task an agent took, what it cost, which commit a verdict judged, why the gate said no. The record keeps that on the user's machine, whether or not the project has a remote.
@@ -55,9 +55,9 @@ A person working with agents needs a memory that a remote has no place for: whic
 | Comments, milestones, pull requests | Notes and decisions, in the record | Mirrored from the remote |
 | Tasks, runs, check runs, reviews, guard decisions | In the record | In the record only, never on the remote |
 | Which side is the truth | The record | The remote for what it holds, the record for the rest |
-| What tmb sends to the remote | Nothing | A branch pushed as a backup, a pull request, a review mark on a commit, and an issue the Human publishes |
+| What tmb sends to the remote | Nothing | A branch pushed as a backup, a pull request, a review mark on a commit, and a change to a mirrored issue's title, body, milestone or state. Planned (trustmybot/tmb#409): an issue the Human publishes |
 
-- **The syncer only reads.** It never writes to the remote, and it never changes a local issue.
+- **A poll only reads.** It never writes to the remote, and it never changes a local issue.
 - **A row with no remote id is local.** Publishing an issue gives it one (Planned, trustmybot/tmb#409).
 - **Teammates see only what is on the remote.** A note or a decision is local. Planned (trustmybot/tmb#409): the Human may publish one as a comment, as the Human publishes an issue.
 
@@ -81,6 +81,27 @@ flowchart LR
 - **Edge case.** Two sessions start at once. One takes the short claim and the other reads nothing. A claim left by a session that died runs out by itself.
 - **Edge case.** The `gh` program is missing, or no one is signed in. Nothing fails: `tmb doctor` names the reason and its fix.
 - **Edge case.** The Human turns issue sync off ([2_ONBOARD.md](../flows/2_ONBOARD.md)). The syncer reads nothing.
+
+### A change to a mirrored issue goes to the remote first
+
+**A change to a mirrored issue's title, body, milestone or state is written to the remote first, through the user's own `gh`, and recorded only once the remote took it.** It is one path for whoever holds the issue action, the Human on the dashboard or the planner in its chat ([PERMISSIONS.md](PERMISSIONS.md)), and the event names that one. A change the remote did not take is refused with the reason, and the record is unchanged.
+
+```mermaid
+flowchart LR
+    C["The Human or the planner changes an issue"] --> M{"Mirrored from the remote?"}
+    M -->|no| L["Recorded only"]
+    M -->|yes| W["Written to the remote first"]
+    W -->|"taken"| R["Recorded as the remote now holds it"]
+    W -->|"not taken"| X["Refused with the reason; the record is unchanged"]
+```
+
+- **Example 1.** The Human closes a mirrored issue on the dashboard. It is closed on the remote, then in the record by an event that names the Human. The next poll finds the record already says what the remote says and writes no event.
+- **Example 2.** The planner retitles a mirrored issue. The same path runs, and the event names the planner.
+- **Example 3.** The Human closes a local issue. It is recorded only; nothing is sent.
+- **Edge case.** The network is down, `gh` is missing or not signed in, the account has no write access, the remote's rate limit is reached, or the issue is gone. The close is refused and says which, and the issue stays open in the record.
+- **Edge case.** The milestone named is not one the record holds from that remote. The change is refused before anything is sent: a milestone is made on the remote first.
+- **Edge case.** Issue sync is off. Off stops the polls only, so a change to a mirrored issue is still written to the remote first.
+- **Not sent.** A note or a decision stays local on every issue. Planned (trustmybot/tmb#409): the Human may publish one as a comment.
 
 ### Every kind of repo
 
@@ -159,7 +180,7 @@ flowchart TD
 
 | Work | In the record | On the remote |
 |---|---|---|
-| A remote issue | Issue and tasks | Read into the record. Planned (trustmybot/tmb#70): the record's changes sent back |
+| A remote issue | Issue and tasks | Read into the record. A change to its title, body, milestone or state is written to the remote first |
 | A local issue | Issue and tasks | Nothing, until the Human publishes it. Planned (trustmybot/tmb#409) |
 | Ad hoc work in the chat | Nothing | Nothing |
 
@@ -478,7 +499,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `state` | TEXT | NOT NULL | Default `'open'`. `open` or `closed` |  |
 | `state_reason` | TEXT | nullable | Why it closed, in the remote's words, such as completed, not planned or duplicate |  |
 | `milestone` | TEXT | nullable | The milestone's name, for an issue made in the record. A read shows the `milestones` row's title first | Goes, for `milestone_id` (trustmybot/tmb#70) |
-| `milestone_id` | TEXT | nullable | FK → `milestones.id`. Set by the syncer | Set in the record (trustmybot/tmb#70) |
+| `milestone_id` | TEXT | nullable | FK → `milestones.id`. Set by the syncer, and by a milestone change to a mirrored issue that the remote took | Set in the record (trustmybot/tmb#70) |
 | `priority` | TEXT | nullable | `urgent`, `high`, `medium` or `low`. A remote's value outside the list is kept as it is and ordered last | trustmybot/tmb#402 |
 | `type` | TEXT | nullable | The kind of work, such as bug or feature. Mirrored from the remote | Set in the record (trustmybot/tmb#402) |
 | `labels` | TEXT | NOT NULL | A JSON list of free labels. Default `'[]'`. Mirrored from the remote | Set in the record (trustmybot/tmb#402) |
@@ -986,7 +1007,7 @@ Planned, with each table above: one index per new foreign key column, in the sam
 - **Current state is a fold.** The live write path and the rebuild apply the same function to each event, so a rebuilt projection matches the live one.
 - **Two event types.** An event is `created` or `updated`. Each record kind lists the columns a created event fills and the columns an updated event may change; `discussions`, `reviews`, `guard_decisions`, `waivers`, `setting_changes`, `feedback_reports`, `imports` and `role_changes` rows never change, except a mirrored comment, the one discussion that may.
 - **Every write has an actor.** The Human, or an agent named by its role and host. A human actor carries no role or host; an agent actor carries both. Or tmb, named by its source.
-- **The remote is the truth for what it holds.** Planned (trustmybot/tmb#70). A mirrored row changes only by an event the syncer wrote, or by a write tmb first made on the remote at the Human's word.
+- **The remote is the truth for what it holds.** A mirrored row changes only by an event the syncer wrote, or by a change tmb first wrote to the remote for whoever holds the issue action ([A change to a mirrored issue goes to the remote first](#a-change-to-a-mirrored-issue-goes-to-the-remote-first)).
 - **Verdicts are append-only.** A new review adds a row. A review names the exact commit it judged, so a later commit is never taken as reviewed.
 - **Checks are recorded, not re-run.** Each run of a task's checks is a `check_runs` row with each command it ran and the commit it ran at.
 - **Cost is metered, not stored as totals.** A run's `cost` holds the tokens it used per model, filled when the run ends.

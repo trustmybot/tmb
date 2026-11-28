@@ -112,7 +112,7 @@ Planned:
 
 - **Example 1.** The Human closes an issue on the dashboard, then types "go on" in the chat. The planner's turn opens with that issue named as closed, after the Human's message.
 - **Example 2.** The Human adds a decision while no session is open. The next session start lists it, last in the state's text, and the next turn says nothing more.
-- **Example 3.** The syncer brings in a remote comment. It joins the same list, named as the remote's. Planned (trustmybot/tmb#70).
+- **Example 3.** The syncer brings in a remote comment. It joins the same list, named as the remote's.
 - **Edge case.** The planner's first turn in a project lists nothing: it starts from the record as it is, and is told of each change from then on.
 
 ### One program, one build, one engine

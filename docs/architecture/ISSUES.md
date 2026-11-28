@@ -6,7 +6,7 @@ How a project's issue board stays searchable when agents file most of its issues
 
 An issue in tmb's record is a goal with a title, a body, a state of open or closed, and one optional milestone. It carries notes and decisions, and ranked word search finds it by its words ([MEMORY.md](MEMORY.md#search)).
 
-**Planned:** type, priority and labels on an issue (trustmybot/tmb#402), the label list as a setting and its rules (trustmybot/tmb#417), and sending the record's changes back to the remote (trustmybot/tmb#70). The syncer already reads the remote's issues, with their type, labels and milestone, into the record ([TRAJECTORY.md](TRAJECTORY.md#when-the-syncer-runs)).
+**Planned:** type, priority and labels on an issue (trustmybot/tmb#402), and the label list as a setting and its rules (trustmybot/tmb#417). The syncer already reads the remote's issues, with their type, labels and milestone, into the record ([TRAJECTORY.md](TRAJECTORY.md#when-the-syncer-runs)), and a change to a mirrored issue goes to the remote first ([TRAJECTORY.md](TRAJECTORY.md#a-change-to-a-mirrored-issue-goes-to-the-remote-first)).
 
 ```mermaid
 flowchart LR
