@@ -88,6 +88,7 @@ flowchart LR
 - **Edge case.** The network is slow. The planner's read waits a moment at most, then answers from the record while the poll goes on.
 - **Edge case.** A new project's first import takes longer than that moment. The planner's list or search answers from the record and adds one line: a sync with the remote is still running, so ask again shortly. An empty list then does not read as "no issues".
 - **Edge case.** Two sessions start at once. One takes the short claim and the other reads nothing. A claim left by a session that died runs out by itself.
+- **Edge case.** A session starts inside another session's two minutes. Its first read is held; its next read after those two minutes polls, without waiting two minutes of its own.
 - **Edge case.** The `gh` program is missing, or no one is signed in. Nothing fails: `tmb doctor` names the reason and its fix.
 - **Edge case.** The Human turns issue sync off ([2_ONBOARD.md](../flows/2_ONBOARD.md)). The syncer reads nothing.
 

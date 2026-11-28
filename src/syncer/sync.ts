@@ -39,10 +39,11 @@ export type SyncOptions = {
   by?: string;
 };
 
-/** What one poll did for one repo. `off` is the Human's setting; `held` is another poll's claim or the floor. */
+/** What one poll did for one repo. `off` is the Human's setting; `held` is another poll's claim or the floor, until the time it names. */
 export type SyncOutcome =
   | { repo: string; remote: string; ok: true; changed: boolean; count: FoldCount; incomplete: ListName[]; fullPass: boolean }
-  | { repo: string; remote: string | null; ok: false; cannot: Cannot | "off" | "no_record" | "held"; why: string };
+  | { repo: string; remote: string | null; ok: false; cannot: "held"; why: string; until: string }
+  | { repo: string; remote: string | null; ok: false; cannot: Cannot | "off" | "no_record"; why: string };
 
 const iso = (date: Date): string => date.toISOString();
 
@@ -94,7 +95,7 @@ async function syncRepo(store: Store, path: string, dir: string, options: SyncOp
   const started = clock();
   const by = options.by ?? `${process.pid}@${os.hostname()}`;
   const refused = store.mirror.claim(remote, LISTS, by, iso(new Date(started.getTime() + FLOOR_MS)), iso(started), options.force === true);
-  if (refused !== null) return { repo: path, remote, ok: false, cannot: "held", why: `${refused.held} until ${refused.until}` };
+  if (refused !== null) return { repo: path, remote, ok: false, cannot: "held", why: `${refused.held} until ${refused.until}`, until: refused.until };
 
   const rows = store.mirror.syncRows(remote);
   const fullPass = fullPassDue(rows, started);
@@ -177,6 +178,8 @@ async function checkGone(store: Store, folder: Folder, repo: Repo, remote: strin
 /**
  * Runs polls for one process at most one at a time and no more often than the floor, so a trigger
  * on every read of the record costs nothing between polls. Each trigger returns the poll in flight.
+ * A poll held back by the record's floor or another session's claim waits only until that ends:
+ * a session started inside another's floor must not add a floor of its own (trustmybot/tmb#513).
  */
 export function syncTrigger(options: SyncOptions = {}): (projectDir: string) => Promise<void> {
   let running: Promise<void> | null = null;
@@ -185,9 +188,17 @@ export function syncTrigger(options: SyncOptions = {}): (projectDir: string) => 
     if (running !== null) return running;
     if (Date.now() < nextAt) return Promise.resolve();
     running = syncProject(projectDir, options)
-      .then(() => undefined, () => undefined)
+      .then(
+        (outcomes) => {
+          // The soonest any repo may be read again: a held one when its hold ends, any other a floor from now.
+          const floor = Date.now() + FLOOR_MS;
+          nextAt = Math.min(floor, ...outcomes.map((outcome) => (!outcome.ok && outcome.cannot === "held" ? Date.parse(outcome.until) || floor : floor)));
+        },
+        () => {
+          nextAt = Date.now() + FLOOR_MS;
+        },
+      )
       .finally(() => {
-        nextAt = Date.now() + FLOOR_MS;
         running = null;
       });
     return running;
