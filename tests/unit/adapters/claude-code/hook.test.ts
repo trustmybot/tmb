@@ -67,10 +67,6 @@ describe("hook pre-tool-use", () => {
     createRecord();
     // A subagent start names the role of the agent starting, and its start prompt is the action.
     const calls: [string, Record<string, unknown>, string, string, string][] = [
-      ["Write", { file_path: "/p/a.ts", content: "x" }, "before-file-write", "planner", "/p/a.ts"],
-      ["Edit", { file_path: "/p/b.ts", old_string: "a", new_string: "b" }, "before-file-write", "planner", "/p/b.ts"],
-      ["MultiEdit", { file_path: "/p/c.ts", edits: [] }, "before-file-write", "planner", "/p/c.ts"],
-      ["NotebookEdit", { notebook_path: "/p/d.ipynb", new_source: "" }, "before-file-write", "planner", "/p/d.ipynb"],
       ["Agent", { subagent_type: "Explore", prompt: "look around" }, "before-agent-start", "Explore", "look around"],
       ["Task", { subagent_type: "reviewer", prompt: "review it" }, "before-agent-start", "reviewer", "review it"],
       ["Agent", { prompt: "no type given" }, "before-agent-start", "general-purpose", "no type given"],
@@ -93,27 +89,17 @@ describe("hook pre-tool-use", () => {
 
   test("takes the role from agent_type inside a subagent, and records under it and the host", () => {
     createRecord();
-    expect(preToolUse("Write", { file_path: "/p/a.ts" }, { agent_id: "a1", agent_type: "worker" })).toBe("");
+    expect(JSON.parse(preToolUse("Bash", { command: "tmb remove" }, { agent_id: "a1", agent_type: "worker" })).hookSpecificOutput.permissionDecision).toBe("deny");
     const [recorded] = guardDecisions();
     expect(recorded!.createdBy).toEqual({ kind: "agent", role: "worker", host: "claude-code" });
-    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-file-write", role: "worker", action: "/p/a.ts" });
-  });
-
-  test("denies a reviewer subagent's write by role, in Claude Code's form, even if its agent file let the edit tool through (#185)", () => {
-    createRecord();
-    for (const tool of ["Write", "Edit", "MultiEdit", "NotebookEdit"]) {
-      const field = tool === "NotebookEdit" ? "notebook_path" : "file_path";
-      const output = JSON.parse(preToolUse(tool, { [field]: "/p/a.ts" }, { agent_id: "a1", agent_type: "reviewer" }));
-      expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
-      expect(output.hookSpecificOutput.permissionDecisionReason).toContain("never edits");
-    }
-    expect(guardDecisions().map((decision) => decision.decision)).toEqual(["deny", "deny", "deny", "deny"]);
+    expect(JSON.parse(recorded!.event)).toEqual({ type: "before-shell-command", role: "worker", action: "tmb remove" });
   });
 
   test("answers nothing and records nothing for a tool it does not guard", () => {
     createRecord();
     expect(preToolUse("Read", { file_path: "/p/a.ts" })).toBe("");
     expect(preToolUse("Writer", { file_path: "/p/a.ts" })).toBe("");
+    for (const tool of ["Write", "Edit", "MultiEdit", "NotebookEdit"]) expect(preToolUse(tool, { file_path: "/p/a.ts" }, { agent_id: "a1", agent_type: "reviewer" })).toBe("");
     expect(guardDecisions()).toHaveLength(0);
   });
 
@@ -128,12 +114,12 @@ describe("hook pre-tool-use", () => {
   });
 
   test("allows with no output and records nothing when the project has no record", () => {
-    expect(preToolUse("Write", { file_path: "/p/a.ts" })).toBe("");
+    expect(preToolUse("Agent", { subagent_type: "Explore", prompt: "look" })).toBe("");
   });
 
   test("denies in Claude Code's form, with a reason naming the cause, when the record cannot be read", () => {
     breakRecord();
-    const output = JSON.parse(preToolUse("Write", { file_path: "/p/a.ts" }));
+    const output = JSON.parse(preToolUse("Agent", { subagent_type: "Explore", prompt: "look" }));
     expect(output).toEqual({
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: expect.any(String) },
     });
@@ -149,10 +135,10 @@ describe("hook pre-tool-use", () => {
     test("denies when the record cannot be read, finding it from the input's cwd or Claude Code's project dir", () => {
       breakRecord();
       const sub = subfolder();
-      expect(denies(preToolUse("Write", { file_path: "a.ts" }, { cwd: sub }))).toBe(true);
+      expect(denies(preToolUse("Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: sub }))).toBe(true);
 
       process.env.CLAUDE_PROJECT_DIR = sub;
-      expect(denies(preToolUse("Write", { file_path: path.join(sub, "a.ts") }, { cwd: tmpdir() }))).toBe(true);
+      expect(denies(preToolUse("Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: tmpdir() }))).toBe(true);
     });
 
     test("prefers Claude Code's project dir over the input's cwd", () => {
@@ -160,7 +146,7 @@ describe("hook pre-tool-use", () => {
       const elsewhere = mkdtempSync(path.join(tmpdir(), "tmb-elsewhere-"));
       try {
         process.env.CLAUDE_PROJECT_DIR = project;
-        expect(denies(preToolUse("Write", { file_path: "a.ts" }, { cwd: elsewhere }))).toBe(true);
+        expect(denies(preToolUse("Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: elsewhere }))).toBe(true);
       } finally {
         rmSync(elsewhere, { recursive: true, force: true });
       }
@@ -168,9 +154,9 @@ describe("hook pre-tool-use", () => {
 
     test("records the decision in the project's readable record", () => {
       createRecord();
-      expect(preToolUse("Write", { file_path: "a.ts" }, { cwd: subfolder() })).toBe("");
+      expect(preToolUse("Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: subfolder() })).toBe("");
       expect(guardDecisions().map((decision) => JSON.parse(decision.event))).toEqual([
-        { type: "before-file-write", role: "planner", action: "a.ts" },
+        { type: "before-agent-start", role: "Explore", action: "look" },
       ]);
     });
   });
@@ -282,7 +268,7 @@ describe("Claude Code set up as the reviewer", () => {
 
   test("its main agent is guarded and recorded as the reviewer", () => {
     setUpAsReviewer();
-    const input = { hook_event_name: "PreToolUse", cwd: project, tool_name: "Write", tool_input: { file_path: "src/a.ts", content: "x" } };
+    const input = { hook_event_name: "PreToolUse", cwd: project, tool_name: "Bash", tool_input: { command: "tmb task waive T-1 --reason r" } };
     expect(JSON.parse(adapter.answerHook("pre-tool-use", JSON.stringify(input), ATTENDED)).hookSpecificOutput.permissionDecision).toBe("deny");
     expect(guardDecisions()[0]!.createdBy).toEqual({ kind: "agent", role: "reviewer", host: "claude-code" });
   });

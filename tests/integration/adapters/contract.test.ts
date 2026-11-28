@@ -136,7 +136,6 @@ for (const harness of HARNESSES) {
       setUp(project);
       const samples: Record<string, ContractEvent> = {
         "session-start": { type: "session-start" },
-        "before-file-write": { type: "before-file-write", role: "planner", file: "notes.md" },
         "before-agent-start": { type: "before-agent-start", role: "reviewer", prompt: "review" },
         "agent-start-failed": { type: "agent-start-failed", role: "reviewer", prompt: "review" },
         "after-agent-stop": { type: "after-agent-stop", role: "reviewer" },
@@ -213,20 +212,6 @@ for (const harness of HARNESSES) {
         expect(raise(project, { type: "before-shell-command", role, command: "tmb task waive T-1 --reason fine" }).deny).toContain("only the Human may take");
       }
       expect(withStore(project, (store) => store.listGuardDecisions().filter((row) => row.decision === "deny"))).toHaveLength(3);
-      if (adapter.limits.events.includes("before-file-write")) {
-        const write = raise(project, { type: "before-file-write", role: "reviewer", file: "README.md" });
-        if (adapter.limits.namesAgentOnToolCall) {
-          // The host names the reviewer on its tool call, so tmb denies the write by role (trustmybot/tmb#185).
-          expect(write.deny).toContain("never edits");
-        } else {
-          // The host names no agent, so a reviewer subagent's write is judged as the host's own role,
-          // the planner's, and goes through; git's pre-push hook still judges every push of it.
-          expect(write.deny).toBeNull();
-          const last = withStore(project, (store) => store.listGuardDecisions().at(-1));
-          expect(last?.createdBy).toEqual({ kind: "agent", role: "planner", host: adapter.id });
-          expect(readFileSync(path.join(project, ".git", "hooks", "pre-push"), "utf8")).toContain("pre-push");
-        }
-      }
       const decisions = withStore(project, (store) => store.listGuardDecisions());
       expect(decisions.length).toBeGreaterThan(0);
       for (const decision of decisions) expect(decision.createdBy).toMatchObject({ kind: "agent", host: adapter.id });
@@ -246,7 +231,7 @@ for (const harness of HARNESSES) {
       }
     });
 
-    test("set up as the reviewer, the host's main agent is briefed, guarded and run as the reviewer", () => {
+    test("set up as the reviewer, the host's main agent is briefed and run as the reviewer", () => {
       const project = newProject();
       setUp(project, "reviewer");
       const started = raise(project, { type: "session-start" });
@@ -255,9 +240,6 @@ for (const harness of HARNESSES) {
       const open = () => withStore(project, (store) => store.openRuns("reviewer"));
       expect(open().map((run) => run.createdBy)).toEqual([{ kind: "agent", role: "reviewer", host: adapter.id }]);
 
-      if (adapter.limits.events.includes("before-file-write") && adapter.limits.canDenyToolCall) {
-        expect(raise(project, { type: "before-file-write", role: "planner", file: "README.md" }).deny).toContain("reviewer");
-      }
       expect(raise(project, { type: "session-end" }).deny).toBeNull();
       expect(open()).toHaveLength(0);
     });
@@ -268,7 +250,7 @@ for (const harness of HARNESSES) {
       const dbFile = projectDbPath(project);
       for (const suffix of ["-wal", "-shm"]) rmSync(dbFile + suffix, { force: true });
       writeFileSync(dbFile, "this is not a database, only text long enough to look like a header");
-      const event: ContractEvent = { type: "before-file-write", role: "planner", file: "README.md" };
+      const event: ContractEvent = { type: "before-agent-start", role: "Explore", prompt: "look" };
       if (adapter.limits.canDenyToolCall) expect(raise(project, event).deny).toContain("cannot read the project's record");
 
       const call = harness.hookCall(project, event)!;

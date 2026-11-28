@@ -102,10 +102,10 @@ describe("host roles", () => {
     expect(() => writeSetting(store, HUMAN, "host_roles", { "host-a": "worker" })).toThrow();
   });
 
-  test("the main agent's events are guarded and recorded in the host's role", () => {
-    const write = (host: string) => decide({ type: "before-file-write", projectDir: project, host, role: MAIN_AGENT, action: "src/a.ts" });
-    expect(write(REVIEWER_HOST)).toMatchObject({ decision: "deny" });
-    expect(write("host-a")).toMatchObject({ decision: "allow" });
+  test("the main agent's events are recorded in the host's role", () => {
+    const named = (host: string) => decide({ type: "worker-in-folder", projectDir: project, host, role: MAIN_AGENT, action: project });
+    expect(named(REVIEWER_HOST)).toMatchObject({ decision: "allow" });
+    expect(named("host-a")).toMatchObject({ decision: "allow" });
     const roles = store.listGuardDecisions().map((decision) => decision.createdBy);
     expect(roles).toEqual([
       { kind: "agent", role: "reviewer", host: REVIEWER_HOST },

@@ -10,10 +10,6 @@ import { type HookName, type SettingsFile, TASK_NAMING_TOOLS } from "./settings.
  * action and, for a subagent start, the field that names the role of the agent starting.
  */
 const TOOL_EVENTS: Readonly<Record<string, { readonly type: TmbEventType; readonly actionField: string; readonly roleField?: string }>> = {
-  Write: { type: "before-file-write", actionField: "file_path" },
-  Edit: { type: "before-file-write", actionField: "file_path" },
-  MultiEdit: { type: "before-file-write", actionField: "file_path" },
-  NotebookEdit: { type: "before-file-write", actionField: "notebook_path" },
   Agent: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
   Task: { type: "before-agent-start", actionField: "prompt", roleField: "subagent_type" },
   Bash: { type: "before-shell-command", actionField: "command" },

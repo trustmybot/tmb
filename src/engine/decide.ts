@@ -1,9 +1,9 @@
 // The gate's answer to a host event. Every host raises the same tmb events, and every rule
 // is written against them here. A worker starts only on an open task with its worktree
 // ready, and once it names that task from a worktree its host made for it, tmb adopts that
-// worktree as the task's; a worker's and a reviewer's start and stop are recorded as a run. A
-// reviewer host's main agent writes nothing. tmb reads a shell command only for a step only the
-// Human may take (trustmybot/tmb#179): git's pre-push hook holds every push, whatever was typed.
+// worktree as the task's; a worker's and a reviewer's start and stop are recorded as a run. tmb
+// judges no file write. It reads a shell command only for a step only the Human may take
+// (trustmybot/tmb#179): git's pre-push hook holds every push, whatever was typed.
 // A record tmb cannot read denies, so nothing runs unguarded in a project whose record is broken.
 import { runningName } from "./program.ts";
 import { adoptWorktree } from "./handlers/adopt.ts";
@@ -17,7 +17,6 @@ import { type Actor, type ModelUsage, ROLES, type Role, type OpenResult, type Ru
 
 export const TMB_EVENT_TYPES = [
   "session-start",
-  "before-file-write",
   "before-agent-start",
   "agent-start-failed",
   "after-agent-stop",
@@ -50,7 +49,7 @@ export type TmbEvent = {
   /** For an agent stopping: the tokens it used, per model, when its host gives them (trustmybot/tmb#133). */
   cost?: ModelUsage[] | null;
   /**
-   * What is about to happen: the file path, the start prompt of an agent starting or of one whose
+   * What is about to happen: the start prompt of an agent starting or of one whose
    * start failed, or the role of one stopping; for a worker naming its task, the folder it works in;
    * for a shell command, its text.
    */
@@ -95,23 +94,6 @@ function howToStart(): string {
   return `Start the task first with the task_start tool, or \`${runningName()} task start\` from the command line, then start the worker with the ${taskStartLine("<id>")} line from its brief in the start prompt.`;
 }
 
-function deny(reason: string): Decision {
-  return { decision: "deny", reason };
-}
-
-// --- file writes --------------------------------------------------------------------------
-
-/**
- * The reviewer never edits (trustmybot/tmb#185): a write by the reviewer is denied by role, whether
- * the reviewer is a subagent or a host's main agent set up as the reviewer. Its agent file also takes
- * its edit tools away where the host allows that; this rule holds wherever the host names the
- * reviewer on its tool calls. A worker starts in its own worktree, where its host keeps its edits.
- */
-function fileWriteRule(event: TmbEvent): Decision | null {
-  if (event.role === REVIEWER) return deny("The reviewer judges a change and never edits one: report what you found in your verdict instead.");
-  return null;
-}
-
 /** The rules for one event, read against the record it is recorded in. */
 class EventRules {
   private readonly actor: Actor;
@@ -133,7 +115,6 @@ class EventRules {
     if (event.role === REVIEWER && event.type === "before-agent-start") return this.reviewerStart();
     if ((event.role === WORKER || event.role === REVIEWER) && event.type === "after-agent-stop") return this.runStop(event.role);
     if ((event.role === WORKER || event.role === REVIEWER) && event.type === "agent-start-failed") return this.startFailed(event.role);
-    if (event.type === "before-file-write") return fileWriteRule(event) ?? { decision: "allow" };
     if (event.role === WORKER && event.type === "worker-in-folder") return this.workerInFolder();
     return { decision: "allow" };
   }

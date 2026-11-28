@@ -62,12 +62,6 @@ export const claudeCodeHarness: HostHarness = {
         return { command: wiredCommand(project, "SessionStart"), input: input(project, "SessionStart", { source: "startup" }), env };
       case "session-end":
         return { command: wiredCommand(project, "SessionEnd"), input: input(project, "SessionEnd", { reason: "exit" }), env };
-      case "before-file-write":
-        return {
-          command: wiredCommand(project, "PreToolUse"),
-          input: input(project, "PreToolUse", { ...agentType(event.role), tool_name: "Write", tool_input: { file_path: event.file, content: "x" } }),
-          env,
-        };
       case "before-shell-command":
         return {
           command: wiredCommand(project, "PreToolUse"),

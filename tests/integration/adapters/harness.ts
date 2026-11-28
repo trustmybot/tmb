@@ -10,7 +10,6 @@ import type { HostAdapter } from "../../../src/adapters/index.ts";
 export type ContractEvent =
   | { type: "session-start" }
   | { type: "session-end" }
-  | { type: "before-file-write"; role: string; file: string }
   /** A shell call by the agent: tmb denies only a step only the Human may take in it (trustmybot/tmb#179). */
   | { type: "before-shell-command"; role: string; command: string }
   | { type: "before-agent-start"; role: string; prompt: string }

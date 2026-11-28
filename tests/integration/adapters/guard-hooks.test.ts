@@ -82,11 +82,12 @@ function expectDeny(result: ReturnType<typeof runPreToolUse>): void {
 }
 
 describe("tmb hook pre-tool-use", () => {
-  test("allows a Write and a Bash call with empty output, and records the write: tmb reads no shell command, not even a push that skips git's hook", () => {
+  test("allows a subagent start, a Write and a Bash call with empty output, and records only the start: tmb judges no file write and reads no shell command, not even a push that skips git's hook", () => {
     const project = setUpProject();
     const file = path.join(project, "src", "a.ts");
 
     for (const [tool, input] of [
+      ["Agent", { subagent_type: "Explore", prompt: "look" }],
       ["Write", { file_path: file, content: "export {};\n" }],
       ["Bash", { command: "git push --no-verify origin main" }],
     ] as const) {
@@ -99,19 +100,15 @@ describe("tmb hook pre-tool-use", () => {
     const recorded = opened.store.listGuardDecisions();
     opened.store.close();
     expect(recorded.map((decision) => [JSON.parse(decision.event), decision.decision, decision.createdBy])).toEqual([
-      [{ type: "before-file-write", role: "planner", action: file }, "allow", { kind: "agent", role: "planner", host: "claude-code" }],
+      [{ type: "before-agent-start", role: "Explore", action: "look" }, "allow", { kind: "agent", role: "planner", host: "claude-code" }],
     ]);
   });
 
-  test("denies a Write with the cause when the record cannot be read, and leaves a Bash call alone", () => {
+  test("denies a subagent start with the cause when the record cannot be read, and leaves a Bash call alone", () => {
     const project = setUpProject();
     breakRecord(project);
 
-    for (const [tool, input] of [
-      ["Write", { file_path: path.join(project, "a.ts"), content: "" }],
-    ] as const) {
-      expectDeny(runPreToolUse(project, tool, input));
-    }
+    expectDeny(runPreToolUse(project, "Agent", { subagent_type: "Explore", prompt: "look" }));
     expect(runPreToolUse(project, "Bash", { command: "git push" })).toEqual({ status: 0, stdout: "", stderr: "" });
   });
 
@@ -120,15 +117,15 @@ describe("tmb hook pre-tool-use", () => {
     const sub = path.join(project, "src", "deep");
     mkdirSync(sub, { recursive: true });
 
-    expect(runPreToolUse(project, "Write", { file_path: "a.ts", content: "" }, { cwd: sub })).toEqual({ status: 0, stdout: "", stderr: "" });
+    expect(runPreToolUse(project, "Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: sub })).toEqual({ status: 0, stdout: "", stderr: "" });
     const opened = openProjectStore(project, { create: false });
     if (!opened.ok) throw opened.error;
     const recorded = opened.store.listGuardDecisions();
     opened.store.close();
-    expect(recorded.map((decision) => JSON.parse(decision.event))).toEqual([{ type: "before-file-write", role: "planner", action: "a.ts" }]);
+    expect(recorded.map((decision) => JSON.parse(decision.event))).toEqual([{ type: "before-agent-start", role: "Explore", action: "look" }]);
 
     breakRecord(project);
-    expectDeny(runPreToolUse(project, "Write", { file_path: "a.ts", content: "" }, { cwd: sub }));
-    expectDeny(runPreToolUse(project, "Write", { file_path: "a.ts", content: "" }, { cwd: sub, claudeProjectDir: project }));
+    expectDeny(runPreToolUse(project, "Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: sub }));
+    expectDeny(runPreToolUse(project, "Agent", { subagent_type: "Explore", prompt: "look" }, { cwd: sub, claudeProjectDir: project }));
   });
 });
