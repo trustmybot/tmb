@@ -8,7 +8,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { programOf } from "../../src/engine/program.ts";
-import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, updaterOptions } from "../../src/cli/commands/update.ts";
+import { assetName, channelOf, compareVersions, isCompiledEntry, Updater, updaterOptions } from "../../src/cli/updater.ts";
 import { buildTmb, cleanup, installedVersion, openTask, prepareInstall, runUpdate, type Scenario, updatesItself } from "../install/update-scenario.ts";
 import { projectDbPath } from "../../src/engine/project.ts";
 import { SCHEMA_VERSION } from "../../src/engine/store/index.ts";

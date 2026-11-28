@@ -4,6 +4,8 @@
 // old build stays until the Human says yes to deleting it in `tmb doctor --fix`.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { version } from "../engine/index.ts";
+import type { Updater } from "./updater.ts";
 
 /** Where a program keeps its old builds, one folder per version. */
 export const BUILDS_DIR = "builds";
@@ -102,4 +104,12 @@ export function isProcessRunning(pid: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+/** Builds kept for sessions that no running session uses any more, as one line; null when there are none. */
+export function unusedBuildsLine(updater: Updater): string | null {
+  const unused = updater.keptBuilds().filter((build) => build.usedBy.length === 0 && build.version !== version);
+  if (unused.length === 0) return null;
+  const size = formatBytes(unused.reduce((sum, build) => sum + build.bytes, 0));
+  return `${unused.length} old ${updater.program.name} build${unused.length === 1 ? "" : "s"} (${size}) no running session uses can be removed with \`${updater.program.name} doctor --fix\`.`;
 }

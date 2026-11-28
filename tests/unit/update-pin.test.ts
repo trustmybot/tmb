@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { adapter as claudeCode } from "../../src/adapters/claude-code/index.ts";
-import { Updater } from "../../src/cli/commands/update.ts";
+import { Updater } from "../../src/cli/updater.ts";
 
 // Every test file sets this: bun's 5s fails slow tests on a busy machine (tests/README.md).
 setDefaultTimeout(30_000);

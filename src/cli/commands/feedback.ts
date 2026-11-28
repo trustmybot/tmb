@@ -2,9 +2,10 @@
 // or no to sending it; `tmb feedback on|off|status` changes or shows the setting. Without a
 // terminal a report is only written to a file. The command works whether the program is on or
 // off: off only stops the planner from offering one.
-import { type Actor, channelFor, draftReport, draftText, type FeedbackEnv, feedbackExplanation, openProjectStore, projectRootOf, recentLastError, routeLine, sendDraft, setFeedback, statusOf, type Store } from "../../engine/index.ts";
-
-const HUMAN: Actor = { kind: "human" };
+import { channelFor, draftReport, draftText, type FeedbackEnv, feedbackExplanation, openProjectStore, projectRootOf, recentLastError, routeLine, sendDraft, setFeedback, statusOf, type Store } from "../../engine/index.ts";
+import { type Command, HUMAN, listed } from "../command.ts";
+import { asksHelp } from "../help.ts";
+import type { Runtime } from "../runtime.ts";
 
 export const FEEDBACK_USAGE = `  tmb feedback [<text>]     Draft a bug report about tmb itself, show it whole and ask before
                             sending it to tmb's repo as a public issue; <text> says what you
@@ -119,5 +120,33 @@ async function draftAndAsk(given: string, env: FeedbackEnv, io: FeedbackIo): Pro
     return 0;
   } finally {
     store?.close();
+  }
+}
+
+/** `tmb feedback`: asks only when a person is at both ends. */
+export class FeedbackCommand implements Command {
+  readonly name = "feedback";
+  readonly summary = "Report a bug in tmb itself";
+  readonly listing = listed("Program");
+  readonly handsOver = true;
+
+  constructor(private readonly runtime: Runtime) {}
+
+  usage(): string {
+    return FEEDBACK_USAGE;
+  }
+
+  asksHelp(args: readonly string[]): boolean {
+    return asksHelp([...args]);
+  }
+
+  async run(args: readonly string[]): Promise<number> {
+    const { runtime } = this;
+    const terminal = runtime.terminal();
+    try {
+      return await runFeedbackCommand([...args], runtime.feedbackEnvironment(), { out: runtime.out, err: runtime.err, ask: terminal?.ask ?? null, cwd: runtime.cwd() });
+    } finally {
+      terminal?.close();
+    }
   }
 }
