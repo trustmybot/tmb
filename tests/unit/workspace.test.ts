@@ -408,7 +408,8 @@ describe("one rule for where the record is", () => {
       }
     };
     walk(src);
-    // migrate-plugin.ts names the plugin's own database, which is not tmb's record.
-    expect(offenders.sort()).toEqual(["adapters/claude-code/migrate-plugin.ts", "engine/project.ts"]);
+    // migrate-plugin.ts names the plugin's own database, which is not tmb's record; the dashboard's help
+    // copy names the file to the Human and opens nothing.
+    expect(offenders.sort()).toEqual(["adapters/claude-code/migrate-plugin.ts", "dashboard/web/shared/help-copy.ts", "engine/project.ts"]);
   });
 });
