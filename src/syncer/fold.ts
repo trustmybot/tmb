@@ -22,6 +22,9 @@ function remoteColumns(item: RemoteItem): Record<string, unknown> {
   return { remote: item.remote, remote_id: item.remoteId, remote_updated_at: item.remoteUpdatedAt, remote_gone_at: null };
 }
 
+/** When the remote says an issue or a comment was opened; a row brought in before the column gets it at its next fold. */
+const openedOnRemote = (item: RemoteItem): Record<string, unknown> => (item.createdAt === "" ? {} : { remote_created_at: item.createdAt });
+
 /** The columns of `next` that differ from the held row; the remote's time alone is no change. */
 function differences(held: MirroredRow, next: Record<string, unknown>): Record<string, unknown> {
   const changed: Record<string, unknown> = {};
@@ -92,7 +95,7 @@ export class Folder {
     if (Object.keys(changed).length === 0) return;
     // A list does not say who changed an item, only who wrote it, so an update names no account.
     // A discussion has no updated_at of its own, so a comment's edit carries the remote's time.
-    const edited = kind === "discussion" ? { updated_at: item.remoteUpdatedAt } : {};
+    const edited = kind === "discussion" && "body" in changed ? { updated_at: item.remoteUpdatedAt } : {};
     this.store.mirror.updateMirrored(syncerActor(null), kind, held.id, { ...changed, ...edited, remote_updated_at: item.remoteUpdatedAt });
     this.count.updated += 1;
   }
@@ -117,6 +120,7 @@ export class Folder {
       assignees: issue.assignees,
       milestone_id: this.milestoneId(issue.milestoneRemoteId),
       remote_url: issue.url,
+      ...openedOnRemote(issue),
       ...remoteColumns(issue),
     });
   }
@@ -130,7 +134,7 @@ export class Folder {
       this.count.skipped += 1;
       return;
     }
-    this.put("discussion", comment, { body: comment.body, ...remoteColumns(comment) }, { issue_id: issueId, kind: "comment", remote_author: comment.author });
+    this.put("discussion", comment, { body: comment.body, ...openedOnRemote(comment), ...remoteColumns(comment) }, { issue_id: issueId, kind: "comment", remote_author: comment.author });
   }
 
   private pullRequest(pullRequest: RemotePullRequest): void {

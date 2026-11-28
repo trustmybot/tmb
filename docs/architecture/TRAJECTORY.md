@@ -517,6 +517,7 @@ Table constraint: a `human` actor has no role and no host; an `agent` actor has 
 | `repo_id` | TEXT | nullable | FK → `repos.id`. The repo it belongs to | trustmybot/tmb#402 |
 | `remote_url` | TEXT | nullable | Its address on the remote. UNIQUE |  |
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a local issue |  |
+| `remote_created_at` | TEXT | nullable | When it was opened on the remote, so its age is the remote's, not the time it came in. NULL for a local issue |  |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
 | `updated_at` | TEXT | NOT NULL |  |  |
@@ -616,6 +617,7 @@ Planned (trustmybot/tmb#468). **One row per thing a project adds to its team: a 
 | `body` | TEXT | NOT NULL | CHECK `length(trim(body)) > 0`. A note and a decision never change; a comment's body follows the remote's |  |
 | `remote_author` | TEXT | nullable | The remote account that wrote a comment |  |
 | `remote`, `remote_id`, `remote_updated_at`, `remote_gone_at` | TEXT | nullable | [The remote columns](#the-remote-columns). All NULL for a note and a decision that was not published |  |
+| `remote_created_at` | TEXT | nullable | When a comment was written on the remote. NULL for a note and a decision |  |
 | `created_by` | TEXT | NOT NULL |  |  |
 | `created_at` | TEXT | NOT NULL |  |  |
 | `updated_at` | TEXT | nullable | When a comment last changed |  |

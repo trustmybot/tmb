@@ -126,6 +126,30 @@ describe("folding the remote into the record", () => {
     });
   });
 
+  test("an issue and a comment keep the remote's own opened time, and a row brought in without it gets it once", () => {
+    const opened = "2025-03-01T12:00:00Z";
+    const old = changes();
+    old.issues[0] = { ...old.issues[0]!, createdAt: opened };
+    old.comments[0] = { ...old.comments[0]!, createdAt: opened };
+    withStore((store) => new Folder(store, ".").fold(old));
+    withStore((store) => {
+      expect(store.mirror.findMirrored("issue", "I1")).toMatchObject({ remote_created_at: opened });
+      expect(store.mirror.findMirrored("discussion", "C1")).toMatchObject({ remote_created_at: opened, updated_at: null });
+    });
+    // As a row the syncer brought in before the column was there.
+    withStore((store) => {
+      store.mirror.updateMirrored({ kind: "tmb", source: "upgrade" }, "issue", store.mirror.findMirrored("issue", "I1")!.id, { remote_created_at: null });
+      store.mirror.updateMirrored({ kind: "tmb", source: "upgrade" }, "discussion", store.mirror.findMirrored("discussion", "C1")!.id, { remote_created_at: null });
+    });
+    const count = withStore((store) => new Folder(store, ".").fold(old));
+    expect(count).toEqual({ created: 0, updated: 2, skipped: 1 });
+    withStore((store) => {
+      expect(store.mirror.findMirrored("issue", "I1")).toMatchObject({ remote_created_at: opened });
+      // Filling in the opened time is not an edit of the comment.
+      expect(store.mirror.findMirrored("discussion", "C1")).toMatchObject({ remote_created_at: opened, updated_at: null });
+    });
+  });
+
   test("folding the same answer again writes no event", () => {
     withStore((store) => new Folder(store, ".").fold(changes()));
     const before = eventCount();

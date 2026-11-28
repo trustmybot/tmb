@@ -5,6 +5,7 @@ import { Markdown } from '../../Markdown.tsx';
 import { Label } from '../../ui/Label.tsx';
 import { RelativeTime } from '../../ui/RelativeTime.tsx';
 import { Avatar } from './Avatar.tsx';
+import { openedAt } from './remote.tsx';
 
 const SHORT_NOTE = 90;
 
@@ -66,13 +67,13 @@ export function Timeline({ discussions, inForce = null }: { discussions: Row[]; 
           <CommentCard
             key={String(c['id'])}
             author={String(c['author'])}
-            verb={c['kind'] === 'decision' ? 'recorded a decision' : 'added a note'}
-            at={c['created_at']}
+            verb={c['kind'] === 'decision' ? 'recorded a decision' : c['kind'] === 'comment' ? 'commented on the remote' : 'added a note'}
+            at={openedAt(c)}
             badge={
               c['kind'] === 'decision' ? (
                 <Label variant={c['id'] === inForce ? 'success' : 'secondary'}>{c['id'] === inForce ? 'Decision in force' : 'Earlier decision'}</Label>
               ) : (
-                <Label variant="secondary">note</Label>
+                <Label variant="secondary">{c['kind'] === 'comment' ? 'mirrored comment' : 'note'}</Label>
               )
             }
             body={String(c['body'] ?? '')}

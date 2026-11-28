@@ -27,6 +27,7 @@ export function hrefFor(kind: EntityKind, id: unknown): string {
 export function actorText(actor: unknown): string {
   const a = actor as Actor | null | undefined;
   if (!a) return '—';
+  if (a.kind === 'tmb') return `tmb's ${a.source}`;
   return a.kind === 'human' ? 'Human' : `${a.role} on ${a.host}`;
 }
 

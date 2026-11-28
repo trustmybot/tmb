@@ -3,8 +3,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 export type Row = Record<string, unknown>;
 
-/** Who made a record: the Human, or an agent named by its role and host. */
-export type Actor = { kind: 'human' } | { kind: 'agent'; role: string; host: string };
+/** Who made a record: the Human, an agent named by its role and host, or tmb's own syncer or upgrade. */
+export type Actor = { kind: 'human' } | { kind: 'agent'; role: string; host: string } | { kind: 'tmb'; source: string; remote?: string | null };
 
 export interface Summary {
   issues: { open: number; closed: number };

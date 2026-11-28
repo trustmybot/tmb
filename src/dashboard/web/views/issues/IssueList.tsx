@@ -5,13 +5,14 @@ import { ListRow } from '../../shared/list/ListRow.tsx';
 import { RelativeTime } from '../../ui/RelativeTime.tsx';
 import { MilestoneMenu } from './MilestoneMenu.tsx';
 import { hasMilestone, milestoneLabel } from './milestones.ts';
+import { openedAt } from './remote.tsx';
 
 export type IssueState = 'open' | 'closed';
 
 const SORTS: Record<string, ListSort> = {
   updated: { label: 'Recently Updated', key: 'updated_at', dir: -1 },
-  newest: { label: 'Newest', key: 'created_at', dir: -1 },
-  oldest: { label: 'Oldest', key: 'created_at', dir: 1 },
+  newest: { label: 'Newest', key: 'opened_at', dir: -1 },
+  oldest: { label: 'Oldest', key: 'opened_at', dir: 1 },
 };
 
 const TABS: ListTab[] = [
@@ -34,7 +35,8 @@ function IssueRow({ issue }: { issue: Row }) {
       meta={
         <span>
           {issue['milestone'] ? `${String(issue['milestone'])} · ` : ''}
-          {open ? 'opened' : 'closed'} <RelativeTime value={open ? issue['created_at'] : issue['updated_at']} /> by {String(issue['author'] ?? '—')}
+          {open ? 'opened' : 'closed'} <RelativeTime value={open ? openedAt(issue) : issue['updated_at']} /> by {String(issue['author'] ?? '—')}
+          {issue['remote_url'] ? ' · mirrored' : ''}
         </span>
       }
       aside={
