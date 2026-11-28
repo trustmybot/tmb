@@ -17,7 +17,9 @@ export const FILES = {
   mcpJson: ".mcp.json",
   /** Records that init created .mcp.json, so remove deletes the file only when it was tmb's. */
   mcpJsonCreatedMarker: path.join(PROJECT_DIR_NAME, "claude-code-created.json"),
-  /** The Human's per-user, per-project settings: tmb's hooks and the enabled tool server. */
+  /** Records which of the settings' worktree links tmb added, so tmb changes and removes only its own. */
+  sharedFoldersMarker: path.join(PROJECT_DIR_NAME, "claude-code-shared-folders.json"),
+  /** The Human's per-user, per-project settings: tmb's hooks, the enabled tool server and the worktree links. */
   settings: path.join(".claude", "settings.local.json"),
   /** The settings file as .gitignore names it. */
   settingsGitignoreEntry: ".claude/settings.local.json",
@@ -30,6 +32,10 @@ export const FILES = {
 
 /** The settings key that lists the enabled servers from .mcp.json. */
 export const ENABLED_SERVERS_KEY = "enabledMcpjsonServers";
+
+/** The settings object for worktrees, and its key listing the folders Claude Code links into every worktree it makes, subagents' included. */
+export const WORKTREE_KEY = "worktree";
+export const SYMLINK_DIRECTORIES_KEY = "symlinkDirectories";
 
 /**
  * A YAML comment as the frontmatter's first line: Claude Code ignores it, and it tells tmb the file

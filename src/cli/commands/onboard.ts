@@ -10,6 +10,7 @@ const ONBOARD_OPTIONS = {
   base: { type: "string" },
   "review-mode": { type: "string" },
   check: { type: "string", multiple: true },
+  "shared-folder": { type: "string", multiple: true },
   repo: { type: "string" },
   exempt: { type: "boolean" },
   "add-push-gate": { type: "boolean" },
@@ -23,10 +24,12 @@ export class OnboardCommand extends PrepareCommand {
 
   usage(): string {
     return `  tmb onboard [--host <id>] [--role planner|reviewer] [--base <branch>] [--review-mode <mode>]
-              [--check <command>]... [--repo <name> [--exempt]] [--add-push-gate] [--yes]
+              [--check <command>]... [--shared-folder <folder>]... [--repo <name> [--exempt]]
+              [--add-push-gate] [--yes]
                             Set the project's settings: a host's role, the base branch, the
-                            review mode and the checks. In a workspace of several repos, --repo
-                            names the repo --base, --check and --review-mode set (--review-mode
+                            review mode, the checks and the shared folders every task worktree
+                            links from the main folder. In a workspace of several repos, --repo
+                            names the repo --base, --check, --shared-folder and --review-mode set (--review-mode
                             workspace makes it follow the workspace's), and --exempt makes tmb do
                             no work in it. --add-push-gate adds tmb's one line to a pre-push hook
                             that is another tool's. Asks on a terminal, else keeps the stored
@@ -42,6 +45,7 @@ export class OnboardCommand extends PrepareCommand {
       base: values.base,
       reviewMode: values["review-mode"],
       checks: values.check,
+      sharedFolders: values["shared-folder"],
       yes: values.yes,
       repo: values.repo,
       exempt: values.exempt,

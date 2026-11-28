@@ -1,11 +1,12 @@
 // What init and onboard share: the project they work on, where they write, and their way into the
 // project's record.
 import { chooseReviewMode, HandlerError, indexProject, notReadSummary, openProjectStore, readSettings, type Repo, repoDirOf, type RepoPolicy, type ReviewModeChooser, runningName, SETTING_NAMES, settingLines, type Settings, type SettingValues, writeRepos, writeSetting } from "../../../engine/index.ts";
+import type { HostAdapter } from "../../../adapters/index.ts";
 import { HUMAN } from "../../command.ts";
 import { Paint } from "../../help.ts";
 import { type SetupFlags, SetupError, type SetupOptions } from "./options.ts";
 
-export const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, graph_links: null, repos: null };
+export const NO_SETTINGS: Settings = { host: null, host_roles: null, base_branch: null, review_mode: null, checks: null, shared_folders: null, graph_links: null, repos: null };
 
 export abstract class SetupRun {
   protected readonly projectDir: string;
@@ -64,6 +65,11 @@ export abstract class SetupRun {
     } finally {
       opened.store.close();
     }
+  }
+
+  /** Hands the project's shared folders to each host's adapter, so the worktrees the host makes link them too. */
+  protected shareFolders(adapters: readonly HostAdapter[], folders: readonly string[]): void {
+    for (const adapter of adapters) for (const line of adapter.shareFolders?.(this.projectDir, folders) ?? []) this.out(line);
   }
 
   /** Prints the settings in force and how many changes this run recorded. */

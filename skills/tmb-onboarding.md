@@ -2,13 +2,14 @@
 
 `tmb init` asks nothing, so a project starts with its settings empty. The session start names each empty one, with what tmb found in the project.
 
-## The base branch and the checks
+## The base branch, the checks and the shared folders
 
 These are yours to recommend; the Human gets no question for them.
 
 1. Work out the base branch and the checks you recommend, from what tmb found and what you read of the project.
-2. Apply them with `settings_set` before other work. In a workspace of several repos, each repo has its own base branch and checks, set under `repos`.
-3. Show the Human what you applied, and remind them that `tmb onboard` can be run again at any time to change the settings, and that you change a value when they ask. In an unattended run, name each value you applied in your answer instead.
+2. Name the shared folders from the repo's own toolchain: the folders its install step fills, such as `node_modules` or `.venv`, as paths inside the repo. Every task worktree links them from the main folder instead of installing again. tmb detects none, so an empty list leaves each worktree bare.
+3. Apply them with `settings_set` before other work. In a workspace of several repos, each repo has its own base branch, checks and shared folders, set under `repos`. Then install the dependencies in the main folder, so the folders exist to link.
+4. Show the Human what you applied, and remind them that `tmb onboard` can be run again at any time to change the settings, and that you change a value when they ask. In an unattended run, name each value you applied in your answer instead.
 
 ## The review mode
 

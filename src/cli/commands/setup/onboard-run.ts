@@ -23,10 +23,11 @@ import {
   validateRepoName,
   workingRepos,
 } from "../../../engine/index.ts";
+import type { HostAdapter } from "../../../adapters/index.ts";
 import type { Ask } from "../../terminal.ts";
 import { hostName, noReviewModeLine, notInitialised, reviewModeMissing } from "./lines.ts";
 import { type Answered, DEFAULT_PROGRAM_NAME, FALLBACK_BASE_BRANCH, repoModeFlag, SetupError, validatedFlags } from "./options.ts";
-import { askChecks, askModePerRepo, askRepoReviewMode, askReviewMode, askText, askValid } from "./questions.ts";
+import { askChecks, askModePerRepo, askRepoReviewMode, askReviewMode, askSharedFolders, askText, askValid } from "./questions.ts";
 import { SetupRun } from "./run.ts";
 
 /** What onboard stored, for the lines that close the run. */
@@ -73,7 +74,7 @@ export class OnboardRun extends SetupRun {
     if (!ask) {
       out(
         `${flags.yes === true ? "--yes was given" : "There is no terminal to ask on"}, so each question takes its default, except the review mode, which is yours to choose; ` +
-          "--role, --base, --review-mode and --check set them.",
+          "--role, --base, --review-mode, --check and --shared-folder set them.",
       );
     }
 
@@ -89,12 +90,22 @@ export class OnboardRun extends SetupRun {
     const checksFallback = stored.checks ?? detectChecks(projectDir);
     const checks =
       answered.checks ?? (ask ? await askChecks(ask, checksFallback, stored.checks === null ? "Detected" : "Stored", out) : checksFallback);
+    // tmb detects no shared folders: with no one to ask and no --shared-folder, they stay as they are; none given for none set records nothing.
+    const askedFolders = answered.shared_folders ?? (ask ? await askSharedFolders(ask, stored.shared_folders ?? [], "Stored", out) : undefined);
+    const sharedFolders = stored.shared_folders === null && askedFolders?.length === 0 ? undefined : askedFolders;
 
     const hostRoles = { ...(stored.host_roles ?? {}), [hostId]: role };
-    const recorded = this.storeAnswers({ host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode ?? undefined, checks }, "onboard");
+    const recorded = this.storeAnswers({ host_roles: hostRoles, base_branch: base ?? undefined, review_mode: reviewMode ?? undefined, checks, shared_folders: sharedFolders }, "onboard");
+    if (sharedFolders !== undefined) this.shareFolders(this.hostAdapters(stored), sharedFolders);
     // A new base branch has its own code graph; init indexed the old one.
     if (base !== null && base !== stored.base_branch) await this.indexCodeGraph();
     return { recorded, base, role, reviewMode };
+  }
+
+  /** The adapters of the hosts set up in the project. */
+  private hostAdapters(stored: Settings): HostAdapter[] {
+    const ids = new Set([...Object.keys(stored.host_roles ?? {}), ...(stored.host === null ? [] : [stored.host])]);
+    return this.options.adapters.filter((adapter) => ids.has(adapter.id));
   }
 
   /** The role of the host's main agent: --role, else asked, else the stored one or the default. */
@@ -118,8 +129,8 @@ export class OnboardRun extends SetupRun {
       if (before[repo] === undefined) throw new SetupError(`no repo ${JSON.stringify(flags.repo)} in this workspace; its repos are ${Object.keys(before).join(", ") || "none"}, and ${runningName()} init finds new ones`);
       if (before[repo]!.git === false) throw new SetupError(`the folder ${repo} is not a repo, so it takes no policy; once it is a repo, ${runningName()} init records it as one`);
       targets = [repo];
-    } else if (answered.base_branch !== undefined || answered.checks !== undefined || flags.exempt === true) {
-      if (working.length !== 1) throw new SetupError(`this workspace has ${working.length} repos tmb works in (${working.join(", ") || "none"}); name the one --base, --check or --exempt sets with --repo`);
+    } else if (answered.base_branch !== undefined || answered.checks !== undefined || answered.shared_folders !== undefined || flags.exempt === true) {
+      if (working.length !== 1) throw new SetupError(`this workspace has ${working.length} repos tmb works in (${working.join(", ") || "none"}); name the one --base, --check, --shared-folder or --exempt sets with --repo`);
       targets = working;
     } else {
       targets = ask === null ? [] : working;
@@ -142,6 +153,7 @@ export class OnboardRun extends SetupRun {
       const base = answered.base_branch ?? (ask ? await askText(ask, `Base branch of ${repo}, the branch its pull requests merge into`, baseFallback) : baseFallback);
       const checksFallback = policy.checks ?? detectChecks(dir);
       const checks = answered.checks ?? (ask ? await askChecks(ask, checksFallback, `${repo}'s ${policy.checks === undefined ? "detected" : "stored"} checks`, out) : checksFallback);
+      const sharedFolders = answered.shared_folders ?? (ask ? await askSharedFolders(ask, policy.shared_folders ?? [], `${repo}'s stored shared folders`, out) : policy.shared_folders);
       const ownMode =
         repoMode !== null
           ? repoMode.mode
@@ -150,7 +162,12 @@ export class OnboardRun extends SetupRun {
             : perRepo === false
               ? undefined
               : policy.review_mode;
-      repos[repo] = { base_branch: base ?? baseFallback, checks, ...(ownMode === undefined ? {} : { review_mode: ownMode }) };
+      repos[repo] = {
+        base_branch: base ?? baseFallback,
+        checks,
+        ...(sharedFolders === undefined || sharedFolders.length === 0 ? {} : { shared_folders: sharedFolders }),
+        ...(ownMode === undefined ? {} : { review_mode: ownMode }),
+      };
     }
 
     const hostRoles = { ...(stored.host_roles ?? {}), [host.id]: role };

@@ -10,6 +10,8 @@ export type SetupFlags = {
   base?: string;
   reviewMode?: string;
   checks?: string[];
+  /** onboard: the shared folders, each a path inside the repo, linked into every task worktree (trustmybot/tmb#286). */
+  sharedFolders?: string[];
   yes?: boolean;
   /** onboard in a workspace: the repo --base, --check and --exempt set. */
   repo?: string;
@@ -60,6 +62,7 @@ export function validatedFlags(flags: SetupFlags): Answered {
     // With --repo, --review-mode is that repo's own, which the workspace's onboarding reads (trustmybot/tmb#216).
     review_mode: flags.reviewMode === undefined || flags.repo !== undefined ? undefined : validateSetting("review_mode", flags.reviewMode),
     checks: flags.checks === undefined || flags.checks.length === 0 ? undefined : validateSetting("checks", flags.checks),
+    shared_folders: flags.sharedFolders === undefined || flags.sharedFolders.length === 0 ? undefined : validateSetting("shared_folders", flags.sharedFolders),
   };
 }
 

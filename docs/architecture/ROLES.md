@@ -92,6 +92,15 @@ Agents the project creates are Planned (trustmybot/tmb#437) ([Agents a project c
 - **Edge case.** A verdict needs the reviewer run the host started.
 - **Edge case.** A verdict on a tip that has moved is not taken.
 
+## Each role hands the next a ready environment
+
+**The planner hands the worker a worktree ready to develop in, and the worker hands the reviewer one ready to review. No role fixes its own starting environment.** A worktree is made ready by linking the main folder's dependency folders, not by an install per task ([CONFIG.md](CONFIG.md#shared-folders-are-linked-not-installed)).
+
+- **Example 1.** At onboarding the planner names the shared folders and installs the dependencies in the main folder. Every later worktree starts ready.
+- **Example 2.** A merge changed the dependencies. The planner installs them in the main folder again before it starts the next worker.
+- **Example 3.** The worker leaves its worktree with the checks runnable, so the reviewer starts from it as it is.
+- **Edge case.** A worker finds an import that does not resolve. It reports the environment to the planner and changes no code to work around it.
+
 ## How roles are enforced
 
 **The host keeps each role in bounds, through files the adapter writes. The engine's tools check the role on the calls that matter.** tmb has no hook that checks a caller's role on every tool call, and the adapter holds no rules ([ADAPTERS.md](ADAPTERS.md#the-engine-never-names-a-host)).

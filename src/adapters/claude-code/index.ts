@@ -11,6 +11,7 @@ import { RoleFiles } from "./role-files.ts";
 import { SettingsFile } from "./settings.ts";
 import { SkillFiles } from "./skill-files.ts";
 import { usageOfTranscriptFile } from "./usage.ts";
+import { WorktreeLinks } from "./worktree-links.ts";
 
 /** What the adapter is made of; each part is passed in, so a test can hand in its own. */
 export type ClaudeCodeParts = {
@@ -19,6 +20,7 @@ export type ClaudeCodeParts = {
   readonly roleFiles: RoleFiles;
   readonly skillFiles: SkillFiles;
   readonly hooks: HookTranslator;
+  readonly worktreeLinks: WorktreeLinks;
 };
 
 /** The parts as tmb ships them. */
@@ -30,6 +32,7 @@ export function defaultParts(): ClaudeCodeParts {
     roleFiles: new RoleFiles(),
     skillFiles: new SkillFiles(),
     hooks: new HookTranslator(settings, usageOfTranscriptFile),
+    worktreeLinks: new WorktreeLinks(),
   };
 }
 
@@ -98,7 +101,7 @@ export class ClaudeCodeAdapter implements HostAdapter {
     else lines.push(server.fileDeleted ? `Removed the tmb tool server and the now-empty ${mcpFile}.` : `Removed the tmb tool server from ${mcpFile}.`);
 
     // Role and skill files go first, so the settings file's removal can drop a folder they leave empty.
-    lines.push(...roleFiles.tearDown(projectDir), ...skillFiles.tearDown(projectDir));
+    lines.push(...roleFiles.tearDown(projectDir), ...skillFiles.tearDown(projectDir), ...this.parts.worktreeLinks.set(projectDir, []));
 
     const removed = settings.remove(projectDir);
     const file = shown(projectDir, removed.settingsFile);
@@ -114,10 +117,20 @@ export class ClaudeCodeAdapter implements HostAdapter {
     return lines;
   }
 
-  wiringGaps(projectDir: string, tmbCommand: readonly string[]): string[] {
-    const { toolServer, settings, roleFiles, skillFiles } = this.parts;
+  shareFolders(projectDir: string, folders: readonly string[]): string[] {
+    return this.parts.worktreeLinks.set(projectDir, folders);
+  }
+
+  wiringGaps(projectDir: string, tmbCommand: readonly string[], sharedFolders: readonly string[] = []): string[] {
+    const { toolServer, settings, roleFiles, skillFiles, worktreeLinks } = this.parts;
     const server = toolServer.gap(projectDir, tmbCommand);
-    return [...(server === null ? [] : [server]), ...settings.gaps(projectDir, tmbCommand), ...roleFiles.gaps(projectDir, SUBAGENT_ROLES), ...skillFiles.gaps(projectDir, SKILLS)];
+    return [
+      ...(server === null ? [] : [server]),
+      ...settings.gaps(projectDir, tmbCommand),
+      ...worktreeLinks.gaps(projectDir, sharedFolders),
+      ...roleFiles.gaps(projectDir, SUBAGENT_ROLES),
+      ...skillFiles.gaps(projectDir, SKILLS),
+    ];
   }
 
   answerHook(event: string, stdinText: string, run: HookRun): string {

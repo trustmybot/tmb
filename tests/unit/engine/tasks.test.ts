@@ -1,7 +1,7 @@
 // The task flow: start a task on its own branch and worktree, brief it, and close it only
 // after the checks pass on its committed work. Runs against a real git repository.
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -116,6 +116,36 @@ function commitWork(worktree: string, file = "src/a/work.ts"): string {
 }
 
 describe("task_start", () => {
+  test("links the shared folders from the main folder into the worktree, hidden from git status (trustmybot/tmb#286)", () => {
+    // A trailing-slash ignore rule matches a folder, not a link named like one.
+    writeFileSync(path.join(project, ".gitignore"), ".tmb/\nnode_modules/\n");
+    git(project, "commit", "-q", "-am", "ignore node_modules");
+    mkdirSync(path.join(project, "node_modules", "dep"), { recursive: true });
+    writeFileSync(path.join(project, "node_modules", "dep", "index.js"), "module.exports = 1;\n");
+    writeSetting(store, HUMAN, "shared_folders", ["node_modules", "apps/web/.venv"]);
+
+    const started = taskStart(store, PLANNER, spec(), context());
+    const link = path.join(started.worktree, "node_modules");
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(realpathSync(link)).toBe(path.join(project, "node_modules"));
+    expect(existsSync(path.join(link, "dep", "index.js"))).toBe(true);
+    expect(git(started.worktree, "status", "--porcelain")).toBe("");
+    // The main folder lacks the second folder, so the start names it and links nothing there.
+    expect(started.notLinked).toEqual(["apps/web/.venv"]);
+    expect(existsSync(path.join(started.worktree, "apps"))).toBe(false);
+
+    // A second start writes no exclude line twice.
+    taskStart(store, PLANNER, spec({ files: ["src/b"] }), context());
+    const exclude = readFileSync(path.join(project, ".git", "info", "exclude"), "utf8");
+    expect(exclude.split("\n").filter((line) => line === "/node_modules")).toHaveLength(1);
+  });
+
+  test("with no shared folders, the worktree links nothing and the start names nothing", () => {
+    const started = taskStart(store, PLANNER, spec(), context());
+    expect(started.notLinked).toBeUndefined();
+    expect(existsSync(path.join(started.worktree, "node_modules"))).toBe(false);
+  });
+
   test("cuts tmb/<short id> from the feature branch tip into .tmb/worktrees and records the task", () => {
     const tip = git(project, "rev-parse", FEATURE);
     // The base branch moves on; the task still comes from the feature branch.

@@ -89,6 +89,7 @@ export {
   settingLines,
   type Settings,
   type SettingValues,
+  sharedFoldersOf,
   validateSetting,
   writeSetting,
 } from "./settings.ts";
@@ -128,5 +129,5 @@ export { inGitWorkTree, isManaged, type Repo, repoDirOf, repoOf, repoOfRow, type
 export { type RepoPolicies, type RepoPolicy, repoPolicyLine, validateRepoName, WORKSPACE_REVIEW_MODE, writeRepos } from "./settings.ts";
 export { type Actor, type Discussion, type Issue, type IssueSummary, type ModelUsage, type Role, SCHEMA_VERSION, type SearchHit, SHAPE_WRITER_KEY, Store, type StoredEvent, type Task } from "./store/index.ts";
 export { giveTasksTheirRepos, PLUGIN_IMPORT, tasksWithNoRepo } from "./task-repos.ts";
-export { serveTools } from "./tool-server.ts";
+export { serveTools, type SharedFoldersListener } from "./tool-server.ts";
 export { version, versionLine } from "./version.ts";
